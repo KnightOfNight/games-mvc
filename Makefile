@@ -51,7 +51,8 @@ start: check-secrets _nginx-conf
 
 ## stop: stop all containers
 stop:
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down
+	-$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down
+	-$(DOCKER_COMPOSE) down
 
 ## restart: stop + start
 restart: stop start
@@ -91,9 +92,14 @@ createsuperuser:
 ## new-app NAME=<name>: scaffold a new game app in apps/
 new-app:
 	@test -n "$(NAME)" || (echo "Usage: make new-app NAME=<appname>" && exit 1)
-	$(DOCKER_COMPOSE) run --rm \
+	mkdir -p $(PROJECT_DIR)/django/src/apps/$(NAME)
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) run --rm \
 	    -v $(PROJECT_DIR)/django/src:/app \
 	    django python manage.py startapp $(NAME) apps/$(NAME)
+	sed -i '' "s/name = '$(NAME)'/name = 'apps.$(NAME)'/" \
+	    $(PROJECT_DIR)/django/src/apps/$(NAME)/apps.py
+	printf "from django.urls import path\nfrom . import views\n\napp_name = '$(NAME)'\n\nurlpatterns = [\n]\n" \
+	    > $(PROJECT_DIR)/django/src/apps/$(NAME)/urls.py
 	@echo ""
 	@echo "App '$(NAME)' created at django/src/apps/$(NAME)/"
 	@echo ""
