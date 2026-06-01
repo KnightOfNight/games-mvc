@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Shygames Lobby{% endblock %}
+
+{% block head %}
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f0eafc;
+    --panel: rgba(245, 238, 255, 0.86);
+    --ink: #18112b;
+    --muted: #5a4872;
+    --primary: #9737c8;
+    --primary-dark: #7b1fa8;
+    --amber: #c8831c;
+    --teal: #1cb87a;
+    --shadow: 0 18px 60px rgba(60, 20, 90, 0.14);
+    --border: rgba(100, 50, 150, 0.16);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(circle at top left, rgba(151, 55, 200, 0.22), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(28, 184, 122, 0.15), transparent 26%),
+      linear-gradient(160deg, #f2eafd 0%, #ebe0fa 44%, #e5d7f8 100%);
+  }
+
+  .app {
+    width: min(100%, 1080px);
+    margin: 0 auto;
+    padding: 48px 20px 60px;
+  }
+
+  .app-title {
+    margin: 0 0 6px;
+    color: var(--primary-dark);
+    font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+    font-size: clamp(2.75rem, 7vw, 4.75rem);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 0.95;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .app-subtitle {
+    margin: 0 0 32px;
+    color: var(--muted);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .game-shelf {
+    backdrop-filter: blur(18px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    box-shadow: var(--shadow);
+    padding: 32px 28px;
+  }
+
+  .game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+  }
+
+  .game-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px 20px 20px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: rgba(255, 250, 255, 0.72);
+    text-decoration: none;
+    color: inherit;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .game-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 32px rgba(100, 30, 160, 0.14);
+  }
+
+  .game-card:active {
+    transform: translateY(0);
+  }
+
+  .game-name {
+    margin: 0;
+    color: var(--primary-dark);
+    font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+    font-size: clamp(1.6rem, 4vw, 2rem);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .game-desc {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.45;
+    flex: 1;
+  }
+
+  .play-button {
+    display: inline-block;
+    align-self: flex-start;
+    margin-top: 6px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: var(--amber);
+    color: #fffdf8;
+    font-weight: 800;
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: transform 120ms ease, opacity 120ms ease;
+  }
+
+  .game-card:hover .play-button {
+    transform: translateY(-1px);
+  }
+
+  @media (max-width: 640px) {
+    .app { padding: 24px 12px 40px; }
+    .game-shelf { padding: 20px 16px; border-radius: 20px; }
+    .game-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="app">
+  <h1 class="app-title">Welcome to Shygames!</h1>
+  <p class="app-subtitle">choose a game</p>
+
+  <section class="game-shelf">
+    <div class="game-grid">
+      <a href="/shydle/" class="game-card">
+        <h2 class="game-name">Shydle</h2>
+        <p class="game-desc">A Wordle-style word game. Guess the five-letter word.</p>
+        <span class="play-button">Play</span>
+      </a>
+    </div>
+  </section>
+</main>
+{% endblock %}

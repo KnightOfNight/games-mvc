@@ -41,9 +41,10 @@ nginx/conf/default.conf: nginx/conf/default.conf.template .env
 # Docker
 # ---------------------------------------------------------------------------
 
-## build: build Docker images
+## build: build Docker images and recreate containers
 build:
-	$(DOCKER_COMPOSE) build --no-cache
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) build --no-cache
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --force-recreate
 
 ## start: start all containers
 start: check-secrets _nginx-conf

@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     'channels',
     # Game apps go here as you add them via: make new-app NAME=<name>
     # 'apps.battleship',
+    'apps.shydle',
 ]
 
 MIDDLEWARE = [
