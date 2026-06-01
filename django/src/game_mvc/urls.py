@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
 from .views import HomeView
 
 urlpatterns = [
@@ -10,5 +11,6 @@ urlpatterns = [
     # Game apps register their URL patterns here.
     # Example:
     #   path('battleship/', include('apps.battleship.urls')),
-    path('shydle/', include('apps.shydle.urls')),
+    path('shydle', include('apps.shydle.urls')),
+    path('shydle/', RedirectView.as_view(url='/shydle', permanent=True)),
 ]
