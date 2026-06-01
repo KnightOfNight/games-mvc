@@ -36,7 +36,7 @@ def load_env(path: Path) -> dict:
             continue
         if "=" in line:
             k, _, v = line.partition("=")
-            env[k.strip()] = v.strip()
+            env[k.strip()] = v.strip().strip('"')
     return env
 
 

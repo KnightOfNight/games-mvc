@@ -10,7 +10,7 @@ COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
 .PHONY: setup init build start stop restart logs shell \
-        migrate makemigrations gen-certs check-secrets \
+        migrate makemigrations createsuperuser gen-certs check-secrets \
         new-app _nginx-conf help
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ nginx/conf/default.conf: nginx/conf/default.conf.template .env
 
 ## build: build Docker images
 build:
-	$(DOCKER_COMPOSE) build
+	$(DOCKER_COMPOSE) build --no-cache
 
 ## start: start all containers
 start: check-secrets _nginx-conf
@@ -78,6 +78,11 @@ migrate:
 makemigrations:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py makemigrations $(APP)
+
+## createsuperuser: create a Django admin superuser
+createsuperuser:
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
+	    exec django python manage.py createsuperuser
 
 # ---------------------------------------------------------------------------
 # App scaffolding
@@ -148,6 +153,7 @@ help:
 	@echo "  shell                  Django shell in the container"
 	@echo "  migrate                Run database migrations"
 	@echo "  makemigrations         Make migrations (APP=<name> optional)"
+	@echo "  createsuperuser        Create a Django admin superuser"
 	@echo ""
 	@echo "Games:"
 	@echo "  new-app NAME=<name>    Scaffold a new game app in apps/"

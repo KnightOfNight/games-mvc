@@ -11,7 +11,7 @@ The MVP entry point is `make setup`, which walks through configuration interacti
 ```bash
 make setup        # wizard + build + start
 make migrate      # run initial database migrations
-docker compose exec django python manage.py createsuperuser
+make createsuperuser
 ```
 
 Then visit `https://<your-domain>:40443`.
@@ -105,7 +105,7 @@ Run this once after the initial start, and again after adding a new game app or 
 ### 5. Create a superuser
 
 ```bash
-docker compose exec django python manage.py createsuperuser
+make createsuperuser
 ```
 
 The Django admin is at `https://<your-domain>:40443/admin/`.
@@ -138,6 +138,7 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | `make shell` | Opens a Django shell (`manage.py shell`) inside the running Django container. |
 | `make migrate` | Runs `manage.py migrate` inside the running Django container. Run this after the initial start and after any model changes. |
 | `make makemigrations` | Runs `manage.py makemigrations`. Pass `APP=<name>` to limit to a specific app: `make makemigrations APP=battleship`. |
+| `make createsuperuser` | Creates a Django admin superuser interactively inside the running Django container. |
 
 ### Games
 
