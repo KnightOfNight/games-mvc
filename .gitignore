@@ -1,0 +1,10 @@
+.env
+ssl/*.crt
+ssl/*.key
+ssl/*.pem
+nginx/conf/default.conf
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+django/src/staticfiles/
