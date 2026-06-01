@@ -1,4 +1,4 @@
-# game-mvc
+# games-mvc
 
 A Docker-based server infrastructure for building and hosting web games. The stack is intentionally general-purpose: one deployment can run multiple games simultaneously, each as its own Django app, all sharing a single database and user account system. The same codebase can also be deployed as a single-game installation — spin up a second copy, point it at a different domain, and it runs independently.
 
