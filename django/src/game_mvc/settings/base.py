@@ -19,7 +19,9 @@ INSTALLED_APPS = [
     'channels',
     # Game apps go here as you add them via: make new-app NAME=<name>
     # 'apps.battleship',
+    'apps.profiles',
     'apps.shydle',
+    'apps.shyship',
 ]
 
 MIDDLEWARE = [
@@ -70,7 +72,10 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(env('REDIS_HOST', default='redis'), 6379)],
+            # socket_timeout=None required: redis-py 8.x defaults to 5s socket
+            # timeout, which races with channels_redis brpop_timeout=5 and raises
+            # TimeoutError instead of returning nil (no message).
+            'hosts': [{'host': env('REDIS_HOST', default='redis'), 'port': 6379, 'socket_timeout': None}],
         },
     },
 }
@@ -109,4 +114,4 @@ REST_FRAMEWORK = {
 }
 
 LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/accounts/login/'
+LOGOUT_REDIRECT_URL = '/admin/'

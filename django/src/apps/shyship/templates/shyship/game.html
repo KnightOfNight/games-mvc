@@ -1,0 +1,100 @@
+{% load static profile_tags %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SHYSHIP</title>
+    <link rel="stylesheet" href="{% static 'shyship/styles.css' %}" />
+  </head>
+  <body>
+    <main class="app">
+      <h1 class="app-title">SHYSHIP</h1>
+
+      <section class="game-shell" aria-label="Shyship game">
+        <div class="game-topbar">
+          <a href="{% url 'shyship:lobby' %}" class="topbar-back">&#8592; Shyship Lobby</a>
+          <div
+            id="status-bar"
+            class="status-bar"
+            role="status"
+            aria-live="polite"
+          >Connecting…</div>
+          <div class="topbar-player">
+            <span class="topbar-user">{{ request.user|display_name }}</span>
+            <form id="cancel-form" method="post" action="{% url 'shyship:cancel' game.id %}" hidden>
+              {% csrf_token %}
+            </form>
+            <button type="button" class="danger-button" id="cancel-btn" hidden>CANCEL</button>
+            <form id="forfeit-form" method="post" action="{% url 'shyship:forfeit' game.id %}" hidden>
+              {% csrf_token %}
+            </form>
+            <button type="button" class="danger-button" id="forfeit-btn" hidden>FORFEIT</button>
+          </div>
+        </div>
+
+        <div class="play-area">
+          <div class="board-panel">
+            <h2 class="board-title">YOUR WATERS</h2>
+            <div id="own-grid" class="sea-grid" aria-label="Your board"></div>
+          </div>
+          <div class="board-panel board-panel--enemy" id="enemy-panel">
+            <h2 class="board-title">ENEMY WATERS</h2>
+            <div id="enemy-grid" class="sea-grid" aria-label="Enemy board"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Waiting for opponent overlay -->
+    <div
+      id="waiting-overlay"
+      class="modal is-open"
+      aria-hidden="false"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="waiting-title"
+    >
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="waiting-title" class="modal-title">Waiting for opponent</h2>
+        <p class="modal-text">Share this page URL with a friend to start the game.</p>
+        <div class="modal-actions">
+          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship Lobby</a>
+          <button type="button" class="modal-button modal-button-danger" id="cancel-overlay-btn">CANCEL GAME</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div id="confirm-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="confirm-modal-title" class="modal-title"></h2>
+        <p id="confirm-modal-text" class="modal-text"></p>
+        <div class="modal-actions">
+          <button id="confirm-no" class="modal-button modal-button-cancel">BACK</button>
+          <button id="confirm-yes" class="modal-button modal-button-danger">CONFIRM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result overlay (forfeit / cancel notification) -->
+    <div id="result-overlay" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="result-title" class="modal-title"></h2>
+        <p id="result-text" class="modal-text"></p>
+        <div class="modal-actions">
+          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship Lobby</a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.SHYSHIP_GAME_ID = "{{ game_id }}";
+      window.SHYSHIP_PLAYER_NUM = {{ player_num }};
+    </script>
+    <script src="{% static 'shyship/script.js' %}"></script>
+  </body>
+</html>

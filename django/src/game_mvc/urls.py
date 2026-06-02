@@ -13,4 +13,5 @@ urlpatterns = [
     #   path('battleship/', include('apps.battleship.urls')),
     path('shydle', include('apps.shydle.urls')),
     path('shydle/', RedirectView.as_view(url='/shydle', permanent=True)),
+    path('shyship/', include('apps.shyship.urls')),
 ]

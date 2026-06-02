@@ -1,10 +1,7 @@
 from django.urls import path
 
-# Register WebSocket URL patterns here as you add game apps.
-#
-# Example:
-#   from apps.battleship.consumers import GameConsumer
-#   path('ws/battleship/', GameConsumer.as_asgi()),
+from apps.shyship.consumers import ShyshipConsumer
 
 websocket_urlpatterns = [
+    path('ws/shyship/<uuid:game_id>/', ShyshipConsumer.as_asgi()),
 ]

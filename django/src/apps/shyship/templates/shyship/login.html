@@ -1,0 +1,57 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SHYSHIP — Log In</title>
+    <link rel="stylesheet" href="{% static 'shyship/styles.css' %}" />
+  </head>
+  <body>
+    <main class="app login-app">
+      <h1 class="app-title">SHYSHIP</h1>
+
+      <section class="game-shell login-shell" aria-label="Log in">
+        <form method="post" class="login-form">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next }}" />
+
+          {% if form.errors %}
+          <p class="login-error" role="alert">Invalid username or password.</p>
+          {% endif %}
+
+          <div class="login-field">
+            <label for="id_username" class="login-label">Username</label>
+            <input
+              type="text"
+              name="username"
+              id="id_username"
+              class="login-input"
+              autofocus
+              autocomplete="username"
+              required
+            />
+          </div>
+
+          <div class="login-field">
+            <label for="id_password" class="login-label">Password</label>
+            <input
+              type="password"
+              name="password"
+              id="id_password"
+              class="login-input"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+
+          <button type="submit" class="new-game-button login-submit">Log In</button>
+        </form>
+
+        <div class="login-footer">
+          <a href="/" class="login-back">&#8592; Games Lobby</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

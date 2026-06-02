@@ -1,0 +1,207 @@
+{% load static profile_tags %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SHYSHIP</title>
+    <link rel="stylesheet" href="{% static 'shyship/styles.css' %}" />
+  </head>
+  <body>
+    <main class="app">
+      <h1 class="app-title">SHYSHIP</h1>
+
+      <section class="game-shell" aria-label="Shyship lobby">
+        <div class="lobby-header">
+          <a href="/" class="lobby-back">&#8592; Games Lobby</a>
+          <span class="lobby-user">{{ request.user|display_name }}</span>
+          <form method="post" action="{% url 'shyship:logout' %}" style="margin:0">
+            {% csrf_token %}
+            <button type="submit" class="lobby-logout">Log out</button>
+          </form>
+        </div>
+
+        <div class="lobby-actions">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create" />
+            <button type="submit" class="new-game-button">+ NEW GAME</button>
+          </form>
+        </div>
+
+        {% if my_games %}
+        <div class="lobby-section">
+          <h2 class="lobby-section-title">YOUR GAMES</h2>
+          <ul class="game-list" role="list">
+            {% for game in my_games %}
+            <li class="game-row">
+              <div class="game-row-info">
+                <span class="game-row-players">
+                  {% if game.player2 %}
+                    {{ game.player1|display_name }} vs {{ game.player2|display_name }}
+                  {% else %}
+                    {{ game.player1|display_name }} — waiting for opponent
+                  {% endif %}
+                </span>
+                <span class="game-row-status game-row-status--{{ game.status }}">
+                  {{ game.status|upper }}
+                </span>
+              </div>
+              <div class="game-row-actions">
+                <a href="{% url 'shyship:game' game.id %}" class="secondary-button">RESUME</a>
+                {% if request.user == game.player1 and game.move_count == 0 %}
+                  <form id="form-cancel-{{ game.id }}" method="post" action="{% url 'shyship:cancel' game.id %}" style="display:none">{% csrf_token %}</form>
+                  <button type="button" class="danger-button" data-action="cancel" data-form="form-cancel-{{ game.id }}">CANCEL</button>
+                {% elif game.status == 'active' %}
+                  <form id="form-forfeit-{{ game.id }}" method="post" action="{% url 'shyship:forfeit' game.id %}" style="display:none">{% csrf_token %}</form>
+                  <button type="button" class="danger-button" data-action="forfeit" data-form="form-forfeit-{{ game.id }}">FORFEIT</button>
+                {% endif %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if open_games %}
+        <div class="lobby-section">
+          <h2 class="lobby-section-title">OPEN GAMES</h2>
+          <ul class="game-list" role="list">
+            {% for game in open_games %}
+            <li class="game-row">
+              <div class="game-row-info">
+                <span class="game-row-players">{{ game.player1|display_name }} is waiting</span>
+                <span class="game-row-time">{{ game.created_at|timesince }} ago</span>
+              </div>
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="join" />
+                <input type="hidden" name="game_id" value="{{ game.id }}" />
+                <button type="submit" class="new-game-button">JOIN</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if not open_games and not my_games %}
+        <p class="lobby-empty">No games yet. Start one!</p>
+        {% endif %}
+      </section>
+    </main>
+
+    <!-- Player joined notification modal -->
+    <div id="join-notify-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="join-notify-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="join-notify-title" class="modal-title">Game On!</h2>
+        <p id="join-notify-text" class="modal-text"></p>
+        <div class="modal-actions">
+          <button id="join-notify-stay" class="modal-button modal-button-cancel">STAY IN LOBBY</button>
+          <a id="join-notify-enter" href="#" class="modal-button modal-button-primary">ENTER GAME</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shared confirmation modal -->
+    <div id="confirm-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="confirm-title" class="modal-title"></h2>
+        <p id="confirm-text" class="modal-text"></p>
+        <div class="modal-actions">
+          <button id="confirm-no" class="modal-button modal-button-cancel">BACK</button>
+          <button id="confirm-yes" class="modal-button modal-button-danger">CONFIRM</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function () {
+      const modal    = document.getElementById('confirm-modal');
+      const titleEl  = document.getElementById('confirm-title');
+      const textEl   = document.getElementById('confirm-text');
+      const yesBtn   = document.getElementById('confirm-yes');
+      const noBtn    = document.getElementById('confirm-no');
+      let pending    = null;
+
+      function open(title, text, formId) {
+        titleEl.textContent = title;
+        textEl.textContent  = text;
+        pending = formId;
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function close() {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        pending = null;
+      }
+
+      noBtn.addEventListener('click', close);
+      modal.querySelector('.modal-backdrop').addEventListener('click', close);
+
+      yesBtn.addEventListener('click', function () {
+        if (pending) document.getElementById(pending).submit();
+        close();
+      });
+
+      document.querySelectorAll('[data-action]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (btn.dataset.action === 'cancel') {
+            open('Cancel Game', 'This will cancel the game for all players.', btn.dataset.form);
+          } else if (btn.dataset.action === 'forfeit') {
+            open('Forfeit Game', 'Are you sure? Your opponent will win.', btn.dataset.form);
+          }
+        });
+      });
+    })();
+    </script>
+
+    <script>
+    (function () {
+      const joinModal  = document.getElementById('join-notify-modal');
+      const joinText   = document.getElementById('join-notify-text');
+      const joinEnter  = document.getElementById('join-notify-enter');
+      const joinStay   = document.getElementById('join-notify-stay');
+
+      function openJoinModal(playerName, gameUrl) {
+        joinText.textContent = playerName + ' has joined your game.';
+        joinEnter.href = gameUrl;
+        joinModal.classList.add('is-open');
+        joinModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeJoinModal() {
+        joinModal.classList.remove('is-open');
+        joinModal.setAttribute('aria-hidden', 'true');
+      }
+
+      joinStay.addEventListener('click', closeJoinModal);
+      joinModal.querySelector('.modal-backdrop').addEventListener('click', closeJoinModal);
+
+      var watchGames = [
+        {% for game in my_games %}{% if game.player1 == request.user and game.status == 'waiting' %}
+        { id: "{{ game.id }}", url: "{% url 'shyship:game' game.id %}" },
+        {% endif %}{% endfor %}
+      ];
+
+      function watchGame(game) {
+        var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        var ws = new WebSocket(wsProto + '//' + location.host + '/ws/shyship/' + game.id + '/');
+        ws.onmessage = function (e) {
+          var msg = JSON.parse(e.data);
+          if (msg.type === 'player_joined') {
+            ws.close();
+            openJoinModal(msg.player, game.url);
+          }
+        };
+      }
+
+      watchGames.forEach(watchGame);
+    })();
+    </script>
+  </body>
+</html>
