@@ -15,6 +15,19 @@ class UserProfileInline(admin.StackedInline):
 class UserWithProfileAdmin(UserAdmin):
     inlines = [UserProfileInline]
 
+    def save_formset(self, request, form, formset, change):
+        if formset.model is not UserProfile:
+            return super().save_formset(request, form, formset, change)
+        instances = formset.save(commit=False)
+        for instance in instances:
+            existing = UserProfile.objects.filter(user=instance.user).first()
+            if existing:
+                existing.gamer_tag = instance.gamer_tag or None
+                existing.save()
+            else:
+                instance.save()
+        formset.save_m2m()
+
 
 admin.site.unregister(User)
 admin.site.register(User, UserWithProfileAdmin)
