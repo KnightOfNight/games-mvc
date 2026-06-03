@@ -9,11 +9,20 @@
   </head>
   <body>
     <main class="app">
-      <h1 class="app-title">SHYSHIP</h1>
+      <div class="app-header">
+        <a href="{% url 'shyship:lobby' %}" class="topbar-back">&#8592; Shyship Lobby</a>
+        <h1 class="app-title">SHYSHIP</h1>
+        <div class="user-pane">
+          <span class="user-pane-name">{{ request.user|display_name }}</span>
+          <form method="post" action="{% url 'shyship:logout' %}" style="margin:0">
+            {% csrf_token %}
+            <button type="submit" class="user-pane-action">Log out</button>
+          </form>
+        </div>
+      </div>
 
       <section class="game-shell" aria-label="Shyship game">
         <div class="game-topbar">
-          <a href="{% url 'shyship:lobby' %}" class="topbar-back">&#8592; Shyship Lobby</a>
           <div
             id="status-bar"
             class="status-bar"
@@ -21,30 +30,41 @@
             aria-live="polite"
           >Connecting…</div>
           <div class="topbar-player">
-            <span class="topbar-user">{{ request.user|display_name }}</span>
             <form id="cancel-form" method="post" action="{% url 'shyship:cancel' game.id %}" hidden>
               {% csrf_token %}
             </form>
-            <button type="button" class="danger-button" id="cancel-btn" hidden>CANCEL</button>
+            <button type="button" class="danger-button" id="cancel-btn" hidden>CANCEL GAME</button>
             <form id="forfeit-form" method="post" action="{% url 'shyship:forfeit' game.id %}" hidden>
               {% csrf_token %}
             </form>
-            <button type="button" class="danger-button" id="forfeit-btn" hidden>FORFEIT</button>
+            <button type="button" class="danger-button" id="forfeit-btn" hidden>FORFEIT GAME</button>
           </div>
         </div>
 
         <div class="play-area">
-          <div class="board-panel">
-            <h2 class="board-title">YOUR WATERS</h2>
-            <div id="own-grid" class="sea-grid" aria-label="Your board"></div>
-          </div>
           <div class="board-panel board-panel--enemy" id="enemy-panel">
-            <h2 class="board-title">ENEMY WATERS</h2>
+            <button class="board-title" id="board-title-enemy" type="button">ENEMY WATERS</button>
             <div id="enemy-grid" class="sea-grid" aria-label="Enemy board"></div>
+          </div>
+          <div class="board-panel" id="own-panel">
+            <button class="board-title" id="board-title-own" type="button">MY WATERS</button>
+            <div id="own-grid" class="sea-grid" aria-label="Your board"></div>
           </div>
         </div>
       </section>
     </main>
+
+    <!-- Enemy fire notification modal -->
+    <div id="fire-notify-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="fire-notify-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="fire-notify-title" class="modal-title"></h2>
+        <p id="fire-notify-text" class="modal-text"></p>
+        <div class="modal-actions">
+          <button id="fire-notify-ok" class="modal-button modal-button-cancel">OK</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Waiting for opponent overlay -->
     <div

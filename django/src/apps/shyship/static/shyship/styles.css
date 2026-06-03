@@ -43,14 +43,13 @@ body {
 }
 
 .app-title {
-  margin: 0 0 18px;
+  margin: 0;
   color: #e8f0f8;
   font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: clamp(2.75rem, 7vw, 4.75rem);
   font-weight: 900;
   letter-spacing: 0.12em;
   line-height: 0.95;
-  text-align: center;
   text-transform: uppercase;
   text-shadow:
     0 0 40px rgba(100, 160, 255, 0.35),
@@ -126,6 +125,7 @@ body {
   font-size: 0.82rem;
   font-weight: 800;
   padding: 8px 14px;
+  white-space: nowrap;
   transition: transform 120ms ease, background-color 120ms ease;
 }
 
@@ -142,53 +142,56 @@ body {
    Lobby
    ------------------------- */
 
-.lobby-header {
-  display: flex;
+.app-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
+  gap: 16px;
 }
 
-.lobby-back {
+.app-header .user-pane {
+  justify-self: end;
+}
+
+.user-pane {
+  border: 1px solid rgba(80, 140, 200, 0.2);
+  border-radius: 14px;
+  padding: 10px 16px;
+  background: rgba(15, 32, 56, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.user-pane-name {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  text-decoration: none;
-  transition: color 120ms ease;
   white-space: nowrap;
 }
 
-.lobby-back:hover {
-  color: var(--ink);
-}
-
-.lobby-user {
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.lobby-logout {
-  display: inline-block;
+.user-pane-action {
   background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-decoration: none;
   border: 1px solid rgba(80, 140, 200, 0.2);
   border-radius: 999px;
-  padding: 4px 12px;
+  color: var(--muted);
   cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  text-decoration: none;
   transition: color 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
 }
-
-.lobby-logout:hover {
-  color: var(--ink);
-  border-color: rgba(80, 140, 200, 0.5);
-}
+.user-pane-action:hover { color: var(--ink); border-color: rgba(80,140,200,0.5); }
 
 .lobby-actions {
+  display: flex;
+  justify-content: center;
   margin-bottom: 24px;
 }
 
@@ -262,6 +265,22 @@ body {
 
 .game-row-status--waiting {
   color: #e0a030;
+}
+
+.game-row-status--won {
+  color: #4caf7d;
+}
+
+.game-row-status--lost {
+  color: #e05050;
+}
+
+.game-row-status--cancelled {
+  color: var(--muted);
+}
+
+.game-row-status--done {
+  color: var(--muted);
 }
 
 .game-row-time {
@@ -358,9 +377,16 @@ body {
   color: var(--muted);
   font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: 0.85rem;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-align: center;
   text-transform: uppercase;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+  display: block;
+  width: 100%;
 }
 
 /* -------------------------
@@ -739,18 +765,34 @@ body {
   }
 
   .play-area {
-    grid-template-columns: 1fr;
-    gap: 14px;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title-enemy title-own"
+      "grid        grid";
+    row-gap: 10px;
+    column-gap: 0;
   }
 
+  .board-panel {
+    display: contents;
+  }
+
+  #board-title-enemy { grid-area: title-enemy; }
+  #board-title-own   { grid-area: title-own; }
+  #enemy-grid        { grid-area: grid; }
+  #own-grid          { grid-area: grid; }
+
   .game-topbar {
-    flex-wrap: wrap;
     gap: 8px;
   }
 
   .status-bar {
-    order: 3;
-    flex-basis: 100%;
+    font-size: 0.78rem;
+    padding: 8px 10px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .sea-grid {
@@ -759,5 +801,21 @@ body {
 
   .sea-cell.hit::after {
     font-size: 0.6em;
+  }
+
+  .board-panel.is-hidden .sea-grid {
+    display: none;
+  }
+
+  .board-title.is-link {
+    color: rgba(80, 140, 200, 0.6);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+  }
+
+  .board-title.is-link:hover {
+    color: var(--ink);
   }
 }

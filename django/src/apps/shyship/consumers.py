@@ -40,6 +40,7 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             'type': 'state',
             'player_num': self.player_num,
             'status': game.status,
+            'winner': game.winner,
             'current_turn': game.current_turn,
             'ships_own': ships_own,
             'opponent': await self.get_opponent_name(game, self.player_num),
@@ -89,7 +90,7 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
         is_hit = [row, col] in opponent_ships
 
         next_turn = 2 if self.player_num == 1 else 1
-        await self.save_move(game, row, col, is_hit, next_turn)
+        game_over = await self.save_move(game, row, col, is_hit, next_turn, len(opponent_ships))
 
         await self.channel_layer.group_send(self.group_name, {
             'type': 'game_event',
@@ -102,6 +103,12 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
                 'next_turn': next_turn,
             },
         })
+
+        if game_over:
+            await self.channel_layer.group_send(self.group_name, {
+                'type': 'game_event',
+                'data': {'type': 'game_over', 'winner': self.player_num},
+            })
 
     async def game_event(self, event):
         await self.send(text_data=json.dumps(event['data']))
@@ -163,7 +170,7 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
         ).exists()
 
     @database_sync_to_async
-    def save_move(self, game, row, col, is_hit, next_turn):
+    def save_move(self, game, row, col, is_hit, next_turn, opponent_ship_count):
         ShyshipMove.objects.create(
             game=game,
             player_num=self.player_num,
@@ -171,4 +178,14 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             col=col,
             is_hit=is_hit,
         )
+        if is_hit:
+            hit_count = ShyshipMove.objects.filter(
+                game=game, player_num=self.player_num, is_hit=True
+            ).count()
+            if hit_count >= opponent_ship_count:
+                ShyshipGame.objects.filter(pk=game.pk).update(
+                    status=ShyshipGame.DONE, winner=self.player_num
+                )
+                return True
         ShyshipGame.objects.filter(pk=game.pk).update(current_turn=next_turn)
+        return False

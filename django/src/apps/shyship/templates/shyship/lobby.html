@@ -9,18 +9,19 @@
   </head>
   <body>
     <main class="app">
-      <h1 class="app-title">SHYSHIP</h1>
-
-      <section class="game-shell" aria-label="Shyship lobby">
-        <div class="lobby-header">
-          <a href="/" class="lobby-back">&#8592; Games Lobby</a>
-          <span class="lobby-user">{{ request.user|display_name }}</span>
+      <div class="app-header">
+        <a href="/" class="topbar-back">&#8592; Games Lobby</a>
+        <h1 class="app-title">SHYSHIP</h1>
+        <div class="user-pane">
+          <span class="user-pane-name">{{ request.user|display_name }}</span>
           <form method="post" action="{% url 'shyship:logout' %}" style="margin:0">
             {% csrf_token %}
-            <button type="submit" class="lobby-logout">Log out</button>
+            <button type="submit" class="user-pane-action">Log out</button>
           </form>
         </div>
+      </div>
 
+      <section class="game-shell" aria-label="Shyship lobby">
         <div class="lobby-actions">
           <form method="post">
             {% csrf_token %}
@@ -29,6 +30,7 @@
           </form>
         </div>
 
+        <div id="lobby-games">
         {% if my_games %}
         <div class="lobby-section">
           <h2 class="lobby-section-title">YOUR GAMES</h2>
@@ -88,6 +90,28 @@
         {% if not open_games and not my_games %}
         <p class="lobby-empty">No games yet. Start one!</p>
         {% endif %}
+
+        {% if past_games %}
+        <div class="lobby-section">
+          <h2 class="lobby-section-title">PAST GAMES</h2>
+          <ul class="game-list" role="list">
+            {% for game in past_games %}
+            <li class="game-row">
+              <div class="game-row-info">
+                <span class="game-row-players">
+                  vs {% if game.player1 == request.user %}{{ game.player2|display_name }}{% else %}{{ game.player1|display_name }}{% endif %}
+                </span>
+                <span class="game-row-status game-row-status--{{ game.result }}">
+                  {{ game.result|upper }}{% if game.detail %} &middot; {{ game.detail }}{% endif %}
+                </span>
+              </div>
+              <span class="game-row-time">{{ game.created_at|timesince }} ago</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        </div>
       </section>
     </main>
 
@@ -148,16 +172,30 @@
         close();
       });
 
-      document.querySelectorAll('[data-action]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (btn.dataset.action === 'cancel') {
-            open('Cancel Game', 'This will cancel the game for all players.', btn.dataset.form);
-          } else if (btn.dataset.action === 'forfeit') {
-            open('Forfeit Game', 'Are you sure? Your opponent will win.', btn.dataset.form);
-          }
-        });
+      document.querySelector('.game-shell').addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        if (btn.dataset.action === 'cancel') {
+          open('Cancel Game', 'This will cancel the game for all players.', btn.dataset.form);
+        } else if (btn.dataset.action === 'forfeit') {
+          open('Forfeit Game', 'Are you sure? Your opponent will win.', btn.dataset.form);
+        }
       });
     })();
+    </script>
+
+    <script>
+    setInterval(function () {
+      fetch(window.location.href)
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var fresh = doc.getElementById('lobby-games');
+          var current = document.getElementById('lobby-games');
+          if (fresh && current) current.innerHTML = fresh.innerHTML;
+        })
+        .catch(function () {});
+    }, 15000);
     </script>
 
     <script>

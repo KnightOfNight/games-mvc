@@ -57,6 +57,7 @@
                 <button id="new-game-button" class="new-game-button" type="button">
                   NEW GAME
                 </button>
+                <a href="/" id="lobby-button" class="lobby-button">LOBBY</a>
                 <button
                   id="settings-button"
                   class="icon-button"
@@ -217,6 +218,30 @@
         <div class="modal-actions">
           <button id="no-more-hints-close-button" class="modal-button modal-button-accept" type="button">
             CLOSE
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="leave-modal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="leave-modal-title"
+      aria-describedby="leave-modal-text"
+    >
+      <div id="leave-modal-backdrop" class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <h2 id="leave-modal-title" class="modal-title">LEAVE GAME?</h2>
+        <p id="leave-modal-text" class="modal-text">Your current progress will be lost.</p>
+        <div class="modal-actions">
+          <button id="leave-cancel-button" class="modal-button modal-button-cancel" type="button">
+            KEEP PLAYING
+          </button>
+          <button id="leave-accept-button" class="modal-button modal-button-accept" type="button">
+            LEAVE GAME
           </button>
         </div>
       </div>

@@ -8,7 +8,7 @@ SHIP_SIZES = [5, 4, 3, 3, 2]
 
 
 def place_ships_randomly():
-    occupied = set()
+    forbidden = set()
     result = []
     for size in SHIP_SIZES:
         placed = False
@@ -22,8 +22,13 @@ def place_ships_randomly():
                 row = random.randint(0, 10 - size)
                 col = random.randint(0, 9)
                 ship = [(row + i, col) for i in range(size)]
-            if not any(cell in occupied for cell in ship):
-                occupied.update(ship)
+            if not any(cell in forbidden for cell in ship):
+                for r, c in ship:
+                    for dr in (-1, 0, 1):
+                        for dc in (-1, 0, 1):
+                            nr, nc = r + dr, c + dc
+                            if 0 <= nr <= 9 and 0 <= nc <= 9:
+                                forbidden.add((nr, nc))
                 result += [[r, c] for r, c in ship]
                 placed = True
     return result
@@ -47,6 +52,7 @@ class ShyshipGame(models.Model):
         User, null=True, blank=True, related_name='shyship_p2', on_delete=models.SET_NULL
     )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=WAITING)
+    winner = models.IntegerField(null=True, blank=True)
     current_turn = models.IntegerField(default=1)
     ships_p1 = models.JSONField(default=list)
     ships_p2 = models.JSONField(default=list)

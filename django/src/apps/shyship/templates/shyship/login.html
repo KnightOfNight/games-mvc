@@ -4,14 +4,149 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SHYSHIP — Log In</title>
-    <link rel="stylesheet" href="{% static 'shyship/styles.css' %}" />
+    <title>SHYGAMES — Log In</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #18112b;
+        --muted: #5a4872;
+        --primary: #9737c8;
+        --primary-dark: #7b1fa8;
+        --border: rgba(100, 50, 150, 0.16);
+        --shadow: 0 18px 60px rgba(60, 20, 90, 0.14);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(151, 55, 200, 0.22), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(28, 184, 122, 0.15), transparent 26%),
+          linear-gradient(160deg, #f2eafd 0%, #ebe0fa 44%, #e5d7f8 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .login-box {
+        width: min(100%, 400px);
+      }
+
+      .app-title {
+        margin: 0 0 24px;
+        color: var(--primary-dark);
+        font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+        font-size: clamp(2.2rem, 10vw, 3.5rem);
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        line-height: 0.95;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      .login-shell {
+        backdrop-filter: blur(18px);
+        background: rgba(245, 238, 255, 0.86);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        padding: 28px 24px;
+      }
+
+      .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .login-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .login-label {
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .login-input {
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        color: var(--ink);
+        font: inherit;
+        font-size: 1rem;
+        padding: 12px 14px;
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+      }
+
+      .login-input:focus {
+        outline: none;
+        border-color: rgba(151, 55, 200, 0.55);
+        box-shadow: 0 0 0 3px rgba(151, 55, 200, 0.12);
+      }
+
+      .login-error {
+        color: #b91c1c;
+        font-size: 0.88rem;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .login-submit {
+        width: 100%;
+        margin-top: 4px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--primary-dark);
+        color: #fff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 800;
+        font-size: 1rem;
+        letter-spacing: 0.05em;
+        padding: 14px 20px;
+        transition: background 120ms ease, transform 120ms ease;
+      }
+
+      .login-submit:hover {
+        background: var(--primary);
+        transform: translateY(-1px);
+      }
+
+      .login-submit:active {
+        transform: translateY(1px);
+      }
+
+      .login-footer {
+        margin-top: 20px;
+        text-align: center;
+      }
+
+      .login-back {
+        color: var(--muted);
+        font-size: 0.85rem;
+        font-weight: 700;
+        text-decoration: none;
+        transition: color 120ms ease;
+      }
+
+      .login-back:hover { color: var(--ink); }
+    </style>
   </head>
   <body>
-    <main class="app login-app">
-      <h1 class="app-title">SHYSHIP</h1>
-
-      <section class="game-shell login-shell" aria-label="Log in">
+    <div class="login-box">
+      <h1 class="app-title">SHYGAMES</h1>
+      <section class="login-shell" aria-label="Log in">
         <form method="post" class="login-form">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ next }}" />
@@ -45,13 +180,13 @@
             />
           </div>
 
-          <button type="submit" class="new-game-button login-submit">Log In</button>
+          <button type="submit" class="login-submit">LOG IN</button>
         </form>
 
         <div class="login-footer">
           <a href="/" class="login-back">&#8592; Games Lobby</a>
         </div>
       </section>
-    </main>
+    </div>
   </body>
 </html>

@@ -7,11 +7,19 @@ let currentTurn = 1;
 let gameStatus = 'waiting';
 let totalMoves = 0;
 let myFires = new Set();
+let visibleBoard = 'enemy'; // 'enemy' | 'own' — mobile only
 
 const statusBar       = document.getElementById('status-bar');
 const ownGrid         = document.getElementById('own-grid');
 const enemyGrid       = document.getElementById('enemy-grid');
 const enemyPanel      = document.getElementById('enemy-panel');
+const ownPanel        = document.getElementById('own-panel');
+const boardTitleEnemy = document.getElementById('board-title-enemy');
+const boardTitleOwn   = document.getElementById('board-title-own');
+const fireNotifyModal = document.getElementById('fire-notify-modal');
+const fireNotifyTitle = document.getElementById('fire-notify-title');
+const fireNotifyText  = document.getElementById('fire-notify-text');
+const fireNotifyOk    = document.getElementById('fire-notify-ok');
 const waitingOverlay  = document.getElementById('waiting-overlay');
 const resultOverlay   = document.getElementById('result-overlay');
 const resultTitle     = document.getElementById('result-title');
@@ -26,6 +34,66 @@ const cancelBtn       = document.getElementById('cancel-btn');
 const forfeitBtn      = document.getElementById('forfeit-btn');
 const cancelForm      = document.getElementById('cancel-form');
 const forfeitForm     = document.getElementById('forfeit-form');
+
+// ── Board visibility (mobile) ─────────────────────────────────────────────────
+
+function isMobile() {
+  return window.matchMedia('(max-width: 700px)').matches;
+}
+
+function updateBoardDisplay() {
+  if (!isMobile()) {
+    enemyPanel.classList.remove('is-hidden');
+    ownPanel.classList.remove('is-hidden');
+    boardTitleEnemy.classList.remove('is-link');
+    boardTitleOwn.classList.remove('is-link');
+    return;
+  }
+  if (visibleBoard === 'enemy') {
+    enemyPanel.classList.remove('is-hidden');
+    ownPanel.classList.add('is-hidden');
+    boardTitleEnemy.classList.remove('is-link');
+    boardTitleOwn.classList.add('is-link');
+  } else {
+    enemyPanel.classList.add('is-hidden');
+    ownPanel.classList.remove('is-hidden');
+    boardTitleEnemy.classList.add('is-link');
+    boardTitleOwn.classList.remove('is-link');
+  }
+}
+
+function setVisibleBoard(board) {
+  visibleBoard = board;
+  updateBoardDisplay();
+}
+
+boardTitleEnemy.addEventListener('click', () => { if (isMobile()) setVisibleBoard('enemy'); });
+boardTitleOwn.addEventListener('click',   () => { if (isMobile()) setVisibleBoard('own'); });
+window.addEventListener('resize', updateBoardDisplay);
+
+// ── Enemy fire notification ───────────────────────────────────────────────────
+
+function showFireNotify(isHit, onClose, isMine) {
+  fireNotifyTitle.textContent = isHit ? 'HIT!' : 'MISS';
+  if (isMine) {
+    fireNotifyText.textContent = isHit ? 'You hit an enemy ship!' : 'Your shot missed.';
+  } else {
+    fireNotifyText.textContent = isHit ? 'Your ship was struck.' : 'The shot missed your waters.';
+  }
+
+  function dismiss() {
+    fireNotifyModal.classList.remove('is-open');
+    fireNotifyModal.setAttribute('aria-hidden', 'true');
+    fireNotifyOk.removeEventListener('click', dismiss);
+    fireNotifyModal.querySelector('.modal-backdrop').removeEventListener('click', dismiss);
+    if (onClose) onClose();
+  }
+
+  fireNotifyOk.addEventListener('click', dismiss);
+  fireNotifyModal.querySelector('.modal-backdrop').addEventListener('click', dismiss);
+  fireNotifyModal.classList.add('is-open');
+  fireNotifyModal.setAttribute('aria-hidden', 'false');
+}
 
 // ── Confirmation modal ────────────────────────────────────────────────────────
 
@@ -179,13 +247,23 @@ function applyState(msg) {
     return;
   }
   if (gameStatus === 'done') {
-    showResult('Game Over', 'This game has ended.');
+    if (msg.winner === playerNum) {
+      showResult('You Win!', 'You sank all enemy ships!');
+    } else if (msg.winner != null) {
+      showResult('You Lose!', 'All your ships were sunk.');
+    } else {
+      showResult('Game Over', 'This game has ended.');
+    }
     return;
   }
 
   if (gameStatus !== 'waiting') {
     waitingOverlay.classList.remove('is-open');
     waitingOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  if (gameStatus === 'active') {
+    setVisibleBoard(currentTurn === playerNum ? 'enemy' : 'own');
   }
 
   updateActionButtons();
@@ -201,12 +279,18 @@ function applyMove(msg) {
   }
   updateActionButtons();
   updateStatusBar();
+  if (msg.player_num !== playerNum) {
+    showFireNotify(msg.is_hit, () => setVisibleBoard('enemy'));
+  } else {
+    showFireNotify(msg.is_hit, () => setVisibleBoard('own'), true);
+  }
 }
 
 function applyPlayerJoined(msg) {
   gameStatus = 'active';
   waitingOverlay.classList.remove('is-open');
   waitingOverlay.setAttribute('aria-hidden', 'true');
+  setVisibleBoard(currentTurn === playerNum ? 'enemy' : 'own');
   updateActionButtons();
   updateStatusBar();
 }
@@ -227,6 +311,13 @@ function handleMessage(msg) {
     case 'move':           applyMove(msg); break;
     case 'player_joined':  applyPlayerJoined(msg); break;
     case 'error':          applyError(msg); break;
+    case 'game_over':
+      gameStatus = 'done';
+      showResult(
+        msg.winner === playerNum ? 'You Win!' : 'You Lose!',
+        msg.winner === playerNum ? 'You sank all enemy ships!' : 'All your ships were sunk.'
+      );
+      break;
     case 'game_cancelled':
       showResult('Game Cancelled', 'The creator cancelled this game.'); break;
     case 'game_forfeited':

@@ -46,6 +46,11 @@ const loseNewGameButton = document.getElementById("lose-new-game-button");
 const noMoreHintsModal = document.getElementById("no-more-hints-modal");
 const noMoreHintsModalBackdrop = document.getElementById("no-more-hints-modal-backdrop");
 const noMoreHintsCloseButton = document.getElementById("no-more-hints-close-button");
+const leaveModal = document.getElementById("leave-modal");
+const leaveModalBackdrop = document.getElementById("leave-modal-backdrop");
+const leaveCancelButton = document.getElementById("leave-cancel-button");
+const leaveAcceptButton = document.getElementById("leave-accept-button");
+const lobbyButton = document.getElementById("lobby-button");
 const errorScreen = document.getElementById("error-screen");
 const errorScreenTitle = document.getElementById("error-screen-title");
 const errorScreenText = document.getElementById("error-screen-text");
@@ -931,6 +936,25 @@ function openConfirmModal(onConfirm) {
   });
 }
 
+function openLobbyConfirmModal() {
+  const handleCancel = () => { closeModal(); };
+  const handleLeave = () => {
+    closeModal({ restoreFocus: false });
+    window.location.href = '/';
+  };
+
+  openModal({
+    modal: leaveModal,
+    initialFocus: leaveCancelButton,
+    bindings: [
+      { element: leaveCancelButton, event: "click", handler: handleCancel },
+      { element: leaveAcceptButton, event: "click", handler: handleLeave },
+      { element: leaveModalBackdrop, event: "click", handler: handleCancel },
+    ],
+    onEscape: handleCancel,
+  });
+}
+
 function openRevealModal(word, onAcknowledge) {
   revealModalText.textContent = word ? word : "";
 
@@ -1075,6 +1099,12 @@ document.addEventListener("keydown", (event) => {
 newGameButton.addEventListener("click", handleStartNewGame);
 settingsButton.addEventListener("click", openSettingsModal);
 hintButton.addEventListener("click", handleHintRequest);
+lobbyButton.addEventListener("click", function (e) {
+  if (hasInProgressGame()) {
+    e.preventDefault();
+    openLobbyConfirmModal();
+  }
+});
 enterKeyButton.addEventListener("click", () => handleKeyPress("ENTER"));
 clearRowButton.addEventListener("click", clearCurrentRow);
 backspaceKeyButton.addEventListener("click", () => handleKeyPress("BACK"));

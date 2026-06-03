@@ -14,7 +14,7 @@ class ShyshipLoginView(LoginView):
     template_name = 'shyship/login.html'
 
     def get_default_redirect_url(self):
-        return '/shyship/'
+        return '/'
 
 GROUP_NAME = 'players.shyship'
 
@@ -49,6 +49,38 @@ class LobbyView(ShyshipAccessMixin, TemplateView):
             .select_related('player1', 'player2')
             .annotate(move_count=Count('moves'))
         )
+        past_qs = (
+            ShyshipGame.objects
+            .filter(Q(player1=user) | Q(player2=user))
+            .filter(status__in=[ShyshipGame.DONE, ShyshipGame.CANCELLED])
+            .select_related('player1', 'player2')
+            .prefetch_related('moves')
+            .order_by('-created_at')[:10]
+        )
+        past_games = list(past_qs)
+        for game in past_games:
+            my_num = 1 if game.player1_id == user.pk else 2
+            if game.status == ShyshipGame.CANCELLED:
+                game.result = 'cancelled'
+                game.detail = ''
+            elif game.winner is None:
+                game.result = 'done'
+                game.detail = ''
+            else:
+                moves = game.moves.all()
+                p1_hits = sum(1 for m in moves if m.player_num == 1 and m.is_hit)
+                p2_hits = sum(1 for m in moves if m.player_num == 2 and m.is_hit)
+                my_hits = p1_hits if my_num == 1 else p2_hits
+                opp_hits = p2_hits if my_num == 1 else p1_hits
+                winner_hits = p1_hits if game.winner == 1 else p2_hits
+                forfeit = winner_hits < 17
+                if game.winner == my_num:
+                    game.result = 'won'
+                    game.detail = 'opponent forfeited' if forfeit else f'{my_hits}–{opp_hits}'
+                else:
+                    game.result = 'lost'
+                    game.detail = 'you forfeited' if forfeit else f'{my_hits}–{opp_hits}'
+        ctx['past_games'] = past_games
         return ctx
 
     def post(self, request):
@@ -135,6 +167,9 @@ class ForfeitView(ShyshipAccessMixin, View):
             player_num = 2
         else:
             raise PermissionDenied
-        ShyshipGame.objects.filter(pk=game_id).update(status=ShyshipGame.DONE)
+        ShyshipGame.objects.filter(pk=game_id).update(
+            status=ShyshipGame.DONE,
+            winner=3 - player_num,
+        )
         _broadcast(game_id, {'type': 'game_forfeited', 'by': player_num})
         return redirect('shyship:lobby')
