@@ -167,27 +167,30 @@ body {
 }
 
 .user-pane-name {
-  color: var(--muted);
+  color: var(--ink);
   font-size: 0.88rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .user-pane-action {
-  background: none;
-  border: 1px solid rgba(80, 140, 200, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
   border-radius: 999px;
-  color: var(--muted);
+  background: #7b1fa8;
+  color: #fffdf8;
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
   font-weight: 700;
   padding: 4px 12px;
   text-decoration: none;
-  transition: color 120ms ease, border-color 120ms ease;
   white-space: nowrap;
+  transition: background 120ms ease;
 }
-.user-pane-action:hover { color: var(--ink); border-color: rgba(80,140,200,0.5); }
+.user-pane-action:hover { background: #9737c8; }
 
 .lobby-actions {
   display: flex;
@@ -308,16 +311,24 @@ body {
 }
 
 .topbar-back {
-  color: var(--muted);
-  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: #7b1fa8;
+  color: #fffdf8;
+  font: inherit;
+  font-size: 0.82rem;
   font-weight: 700;
+  padding: 8px 14px;
   text-decoration: none;
   white-space: nowrap;
-  transition: color 120ms ease;
+  transition: background 120ms ease;
 }
 
 .topbar-back:hover {
-  color: var(--ink);
+  background: #9737c8;
 }
 
 .topbar-player {
@@ -373,20 +384,21 @@ body {
 }
 
 .board-title {
+  display: block;
+  width: 100%;
   margin: 0;
-  color: var(--muted);
+  border: 1px solid rgba(80, 140, 200, 0.3);
+  border-radius: 999px;
+  background: rgba(30, 58, 100, 0.6);
+  color: var(--ink);
   font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.1em;
+  padding: 8px 12px;
   text-align: center;
   text-transform: uppercase;
-  background: none;
-  border: none;
-  padding: 0;
   cursor: default;
-  display: block;
-  width: 100%;
 }
 
 /* -------------------------
@@ -750,7 +762,7 @@ body {
 
 @media (max-width: 700px) {
   .app {
-    padding: 12px 8px 24px;
+    padding: 4px 4px 8px;
     width: 100%;
   }
 
@@ -759,9 +771,13 @@ body {
     margin-bottom: 12px;
   }
 
+  .app-header {
+    margin-bottom: 8px;
+  }
+
   .game-shell {
     border-radius: 18px;
-    padding: 14px 10px 16px;
+    padding: 8px 4px 10px;
   }
 
   .play-area {
@@ -795,8 +811,19 @@ body {
     text-overflow: ellipsis;
   }
 
+  .grid-col-label,
+  .grid-row-label,
+  .grid-corner {
+    display: none;
+  }
+
   .sea-grid {
-    gap: 2px;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 0;
+  }
+
+  .sea-cell {
+    border-radius: 1px;
   }
 
   .sea-cell.hit::after {
@@ -808,14 +835,16 @@ body {
   }
 
   .board-title.is-link {
-    color: rgba(80, 140, 200, 0.6);
+    background: rgba(15, 32, 56, 0.4);
+    border-color: rgba(80, 140, 200, 0.15);
+    color: var(--muted);
     cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    text-underline-offset: 3px;
+    text-decoration: none;
   }
 
   .board-title.is-link:hover {
+    background: rgba(30, 58, 100, 0.6);
+    border-color: rgba(80, 140, 200, 0.3);
     color: var(--ink);
   }
 }

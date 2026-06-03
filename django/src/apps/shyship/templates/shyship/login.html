@@ -133,14 +133,24 @@
       }
 
       .login-back {
-        color: var(--muted);
-        font-size: 0.85rem;
-        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(123, 31, 168, 0.18);
+        color: var(--primary-dark);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        padding: 10px 24px;
         text-decoration: none;
-        transition: color 120ms ease;
+        transition: background 120ms ease;
       }
 
-      .login-back:hover { color: var(--ink); }
+      .login-back:hover { background: rgba(123, 31, 168, 0.28); }
     </style>
   </head>
   <body>
@@ -184,7 +194,7 @@
         </form>
 
         <div class="login-footer">
-          <a href="/" class="login-back">&#8592; Games Lobby</a>
+          <a href="/" class="login-back">CANCEL</a>
         </div>
       </section>
     </div>

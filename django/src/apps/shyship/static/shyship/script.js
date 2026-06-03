@@ -81,7 +81,10 @@ function showFireNotify(isHit, onClose, isMine) {
     fireNotifyText.textContent = isHit ? 'Your ship was struck.' : 'The shot missed your waters.';
   }
 
+  let timer;
+
   function dismiss() {
+    clearTimeout(timer);
     fireNotifyModal.classList.remove('is-open');
     fireNotifyModal.setAttribute('aria-hidden', 'true');
     fireNotifyOk.removeEventListener('click', dismiss);
@@ -93,6 +96,7 @@ function showFireNotify(isHit, onClose, isMine) {
   fireNotifyModal.querySelector('.modal-backdrop').addEventListener('click', dismiss);
   fireNotifyModal.classList.add('is-open');
   fireNotifyModal.setAttribute('aria-hidden', 'false');
+  timer = setTimeout(dismiss, 3000);
 }
 
 // ── Confirmation modal ────────────────────────────────────────────────────────
@@ -129,7 +133,7 @@ forfeitBtn.addEventListener('click', () =>
 
 // ── Result overlay ────────────────────────────────────────────────────────────
 
-function showResult(title, text) {
+function showResult(title, text, timeoutMs) {
   resultTitle.textContent = title;
   resultText.textContent  = text;
   resultOverlay.classList.add('is-open');
@@ -138,6 +142,7 @@ function showResult(title, text) {
   waitingOverlay.setAttribute('aria-hidden', 'true');
   cancelBtn.hidden  = true;
   forfeitBtn.hidden = true;
+  if (timeoutMs) setTimeout(() => { window.location.href = window.SHYSHIP_LOBBY_URL; }, timeoutMs);
 }
 
 // ── Action button visibility ──────────────────────────────────────────────────
@@ -243,7 +248,7 @@ function applyState(msg) {
   }
 
   if (gameStatus === 'cancelled') {
-    showResult('Game Cancelled', 'This game was cancelled by the creator.');
+    showResult('Game Cancelled', 'This game was cancelled by the creator.', 5000);
     return;
   }
   if (gameStatus === 'done') {
@@ -319,9 +324,9 @@ function handleMessage(msg) {
       );
       break;
     case 'game_cancelled':
-      showResult('Game Cancelled', 'The creator cancelled this game.'); break;
+      showResult('Game Cancelled', 'The creator cancelled this game.', 5000); break;
     case 'game_forfeited':
-      showResult('Game Over', msg.by === playerNum ? 'You forfeited.' : 'Your opponent forfeited. You win!'); break;
+      showResult('Game Over', msg.by === playerNum ? 'You forfeited.' : 'Your opponent forfeited. You win!', 5000); break;
   }
 }
 
@@ -350,7 +355,7 @@ function init() {
 
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
   ws.onclose = () => {
-    statusBar.textContent = 'Disconnected — reload to reconnect.';
+    statusBar.innerHTML = 'Disconnected — <a href="" onclick="location.reload();return false;" style="color:inherit;text-decoration:underline;">refresh</a> to reconnect.';
     statusBar.className = 'status-bar enemy-turn';
   };
 }

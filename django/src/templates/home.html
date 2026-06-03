@@ -166,20 +166,24 @@
   }
 
   .user-pane-action {
-    background: none;
-    border: 1px solid rgba(100, 50, 150, 0.22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
     border-radius: 999px;
-    color: var(--muted);
+    background: #7b1fa8;
+    color: #fffdf8;
     cursor: pointer;
     font: inherit;
     font-size: 0.85rem;
     font-weight: 700;
     padding: 4px 12px;
     text-decoration: none;
-    transition: color 120ms ease, border-color 120ms ease;
+    white-space: nowrap;
+    transition: background 120ms ease;
   }
 
-  .user-pane-action:hover { color: var(--ink); border-color: rgba(100,50,150,0.5); }
+  .user-pane-action:hover { background: #9737c8; }
 
   @media (max-width: 640px) {
     .app { padding: 24px 12px 40px; }

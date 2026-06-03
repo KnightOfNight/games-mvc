@@ -10,7 +10,7 @@
   <body>
     <main class="app">
       <div class="app-header">
-        <a href="{% url 'shyship:lobby' %}" class="topbar-back">&#8592; Shyship Lobby</a>
+        <a href="{% url 'shyship:lobby' %}" class="secondary-button">&#8592; Shyship</a>
         <h1 class="app-title">SHYSHIP</h1>
         <div class="user-pane">
           <span class="user-pane-name">{{ request.user|display_name }}</span>
@@ -43,11 +43,11 @@
 
         <div class="play-area">
           <div class="board-panel board-panel--enemy" id="enemy-panel">
-            <button class="board-title" id="board-title-enemy" type="button">ENEMY WATERS</button>
+            <button class="board-title" id="board-title-enemy" type="button">ENEMY FLEET</button>
             <div id="enemy-grid" class="sea-grid" aria-label="Enemy board"></div>
           </div>
           <div class="board-panel" id="own-panel">
-            <button class="board-title" id="board-title-own" type="button">MY WATERS</button>
+            <button class="board-title" id="board-title-own" type="button">MY FLEET</button>
             <div id="own-grid" class="sea-grid" aria-label="Your board"></div>
           </div>
         </div>
@@ -80,7 +80,7 @@
         <h2 id="waiting-title" class="modal-title">Waiting for opponent</h2>
         <p class="modal-text">Share this page URL with a friend to start the game.</p>
         <div class="modal-actions">
-          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship Lobby</a>
+          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship</a>
           <button type="button" class="modal-button modal-button-danger" id="cancel-overlay-btn">CANCEL GAME</button>
         </div>
       </div>
@@ -106,7 +106,7 @@
         <h2 id="result-title" class="modal-title"></h2>
         <p id="result-text" class="modal-text"></p>
         <div class="modal-actions">
-          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship Lobby</a>
+          <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship</a>
         </div>
       </div>
     </div>
@@ -114,6 +114,7 @@
     <script>
       window.SHYSHIP_GAME_ID = "{{ game_id }}";
       window.SHYSHIP_PLAYER_NUM = {{ player_num }};
+      window.SHYSHIP_LOBBY_URL = "{% url 'shyship:lobby' %}";
     </script>
     <script src="{% static 'shyship/script.js' %}"></script>
   </body>
