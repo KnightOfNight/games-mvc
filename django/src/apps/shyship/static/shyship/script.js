@@ -7,6 +7,9 @@ let currentTurn = 1;
 let gameStatus = 'waiting';
 let totalMoves = 0;
 let myFires = new Set();
+let shipNameCounts = {};
+let autoPlay = false;
+let targeting = null; // null = hunt mode; object = targeting a ship
 let visibleBoard = 'enemy'; // 'enemy' | 'own' — mobile only
 
 const statusBar       = document.getElementById('status-bar');
@@ -71,10 +74,87 @@ boardTitleEnemy.addEventListener('click', () => { if (isMobile()) setVisibleBoar
 boardTitleOwn.addEventListener('click',   () => { if (isMobile()) setVisibleBoard('own'); });
 window.addEventListener('resize', updateBoardDisplay);
 
+// ── Auto-play ─────────────────────────────────────────────────────────────────
+
+function inBounds(r, c) { return r >= 0 && r <= 9 && c >= 0 && c <= 9; }
+
+function randomUnfired() {
+  const candidates = [];
+  for (let r = 0; r < 10; r++)
+    for (let c = 0; c < 10; c++)
+      if (!myFires.has(cellKey(r, c))) candidates.push([r, c]);
+  return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
+}
+
+function reverseOrHunt() {
+  if (!targeting.reversed) {
+    targeting.dir = [-targeting.dir[0], -targeting.dir[1]];
+    targeting.lastHit = targeting.firstHit;
+    targeting.reversed = true;
+    const nr = targeting.lastHit[0] + targeting.dir[0];
+    const nc = targeting.lastHit[1] + targeting.dir[1];
+    if (inBounds(nr, nc) && !myFires.has(cellKey(nr, nc))) return [nr, nc];
+  }
+  targeting = null;
+  return randomUnfired();
+}
+
+function nextAutoCell() {
+  if (targeting === null) return randomUnfired();
+
+  if (targeting.dir !== null) {
+    const nr = targeting.lastHit[0] + targeting.dir[0];
+    const nc = targeting.lastHit[1] + targeting.dir[1];
+    if (inBounds(nr, nc) && !myFires.has(cellKey(nr, nc))) return [nr, nc];
+    return reverseOrHunt();
+  }
+
+  while (targeting.pending.length) {
+    const [pr, pc] = targeting.pending[0];
+    if (inBounds(pr, pc) && !myFires.has(cellKey(pr, pc))) return [pr, pc];
+    targeting.pending.shift();
+  }
+  targeting = null;
+  return randomUnfired();
+}
+
+function updateTargeting(row, col, isHit, sunk) {
+  if (sunk)   { targeting = null; return; }
+  if (!isHit) return;
+  if (targeting === null) {
+    targeting = {
+      firstHit: [row, col], lastHit: [row, col],
+      dir: null, reversed: false,
+      pending: [[row-1,col],[row+1,col],[row,col-1],[row,col+1]],
+    };
+  } else if (targeting.dir === null) {
+    targeting.dir = [row - targeting.firstHit[0], col - targeting.firstHit[1]];
+    targeting.lastHit = [row, col];
+  } else {
+    targeting.lastHit = [row, col];
+  }
+}
+
+function autoFire() {
+  if (!autoPlay || gameStatus !== 'active' || currentTurn !== playerNum) return;
+  const cell = nextAutoCell();
+  if (!cell) return;
+  ws.send(JSON.stringify({ type: 'fire', row: cell[0], col: cell[1] }));
+}
+
 // ── Enemy fire notification ───────────────────────────────────────────────────
 
-function showFireNotify(isHit, onClose, isMine) {
+function showFireNotify(isHit, shipName, sunk, onClose, isMine) {
+  if (autoPlay) return;
   fireNotifyTitle.textContent = isHit ? 'HIT! HIT! HIT!' : 'MISS';
+  if (isHit && shipName && !isMine) {
+    const article = shipNameCounts[shipName] > 1 ? 'a' : 'the';
+    fireNotifyText.textContent = sunk
+      ? `Enemy sank ${article} ${shipName}!`
+      : `Enemy hit ${article} ${shipName}!`;
+  } else {
+    fireNotifyText.textContent = '';
+  }
   fireNotifyModal.classList.toggle('is-hit', isHit);
 
   let timer;
@@ -92,7 +172,7 @@ function showFireNotify(isHit, onClose, isMine) {
   fireNotifyModal.querySelector('.modal-backdrop').addEventListener('click', dismiss);
   fireNotifyModal.classList.add('is-open');
   fireNotifyModal.setAttribute('aria-hidden', 'false');
-  timer = setTimeout(dismiss, 3000);
+  timer = setTimeout(dismiss, autoPlay ? 600 : 3000);
 }
 
 // ── Confirmation modal ────────────────────────────────────────────────────────
@@ -231,9 +311,12 @@ function applyState(msg) {
   gameStatus   = msg.status;
   totalMoves   = msg.moves.length;
 
-  for (const [r, c] of msg.ships_own) {
-    const cell = getCell(ownGrid, r, c);
-    if (cell) cell.classList.add('ship');
+  for (const ship of msg.ships_own) {
+    shipNameCounts[ship.name] = (shipNameCounts[ship.name] || 0) + 1;
+    for (const [r, c] of ship.cells) {
+      const cell = getCell(ownGrid, r, c);
+      if (cell) cell.classList.add('ship');
+    }
   }
 
   for (const move of msg.moves) {
@@ -281,10 +364,12 @@ function applyMove(msg) {
   updateActionButtons();
   updateStatusBar();
   if (msg.player_num !== playerNum) {
-    showFireNotify(msg.is_hit, () => setVisibleBoard('enemy'));
+    showFireNotify(msg.is_hit, msg.ship_name, msg.sunk, () => setVisibleBoard('enemy'));
   } else {
-    showFireNotify(msg.is_hit, () => setVisibleBoard('own'), true);
+    showFireNotify(msg.is_hit, msg.ship_name, msg.sunk, () => setVisibleBoard('own'), true);
   }
+  if (autoPlay && msg.player_num === playerNum) updateTargeting(msg.row, msg.col, msg.is_hit, msg.sunk);
+  if (autoPlay) setTimeout(autoFire, 100);
 }
 
 function applyPlayerJoined(msg) {
@@ -345,6 +430,12 @@ function init() {
   buildGrid(ownGrid);
   buildGrid(enemyGrid);
   enemyGrid.addEventListener('click', handleEnemyClick);
+
+  document.getElementById('auto-btn').addEventListener('click', () => {
+    autoPlay = !autoPlay;
+    document.getElementById('auto-btn').classList.toggle('is-active', autoPlay);
+    if (autoPlay) { setVisibleBoard('own'); setTimeout(autoFire, 400); }
+  });
 
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${wsProto}//${location.host}/ws/shyship/${gameId}/`);

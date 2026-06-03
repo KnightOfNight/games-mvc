@@ -38,6 +38,7 @@
               {% csrf_token %}
             </form>
             <button type="button" class="danger-button" id="forfeit-btn" hidden>FORFEIT GAME</button>
+            <button type="button" class="secondary-button" id="auto-btn">AUTO</button>
           </div>
         </div>
 
@@ -69,8 +70,8 @@
     <!-- Waiting for opponent overlay -->
     <div
       id="waiting-overlay"
-      class="modal is-open"
-      aria-hidden="false"
+      class="modal{% if game.status == 'waiting' %} is-open{% endif %}"
+      aria-hidden="{% if game.status == 'waiting' %}false{% else %}true{% endif %}"
       role="dialog"
       aria-modal="true"
       aria-labelledby="waiting-title"

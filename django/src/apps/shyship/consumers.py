@@ -87,10 +87,21 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             return
 
         opponent_ships = game.ships_p2 if self.player_num == 1 else game.ships_p1
-        is_hit = [row, col] in opponent_ships
+        ship_name = None
+        ship_cells = None
+        is_hit = False
+        for ship in opponent_ships:
+            if [row, col] in ship['cells']:
+                is_hit = True
+                ship_name = ship['name']
+                ship_cells = ship['cells']
+                break
 
+        total_cells = sum(len(s['cells']) for s in opponent_ships)
         next_turn = 2 if self.player_num == 1 else 1
-        game_over = await self.save_move(game, row, col, is_hit, next_turn, len(opponent_ships))
+        game_over = await self.save_move(game, row, col, is_hit, next_turn, total_cells)
+
+        ship_sunk = is_hit and await self.is_ship_sunk(ship_cells)
 
         await self.channel_layer.group_send(self.group_name, {
             'type': 'game_event',
@@ -100,6 +111,8 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
                 'row': row,
                 'col': col,
                 'is_hit': is_hit,
+                'ship_name': ship_name,
+                'sunk': ship_sunk,
                 'next_turn': next_turn,
             },
         })
@@ -159,6 +172,17 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             .filter(game_id=self.game_id)
             .values('player_num', 'row', 'col', 'is_hit')
         )
+
+    @database_sync_to_async
+    def is_ship_sunk(self, ship_cells):
+        hit_coords = set(
+            ShyshipMove.objects.filter(
+                game_id=self.game_id,
+                player_num=self.player_num,
+                is_hit=True,
+            ).values_list('row', 'col')
+        )
+        return all((r, c) in hit_coords for r, c in ship_cells)
 
     @database_sync_to_async
     def cell_already_fired(self, row, col):

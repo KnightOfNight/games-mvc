@@ -53,6 +53,7 @@ class LobbyView(ShyshipAccessMixin, TemplateView):
             ShyshipGame.objects
             .filter(Q(player1=user) | Q(player2=user))
             .filter(status__in=[ShyshipGame.DONE, ShyshipGame.CANCELLED])
+            .exclude(status=ShyshipGame.CANCELLED, player2__isnull=True)
             .select_related('player1', 'player2')
             .prefetch_related('moves')
             .order_by('-created_at')[:10]
@@ -76,10 +77,10 @@ class LobbyView(ShyshipAccessMixin, TemplateView):
                 forfeit = winner_hits < 17
                 if game.winner == my_num:
                     game.result = 'won'
-                    game.detail = 'opponent forfeited' if forfeit else f'{my_hits}–{opp_hits}'
+                    game.detail = f'opponent forfeited · {my_hits}–{opp_hits}' if forfeit else f'{my_hits}–{opp_hits}'
                 else:
                     game.result = 'lost'
-                    game.detail = 'you forfeited' if forfeit else f'{my_hits}–{opp_hits}'
+                    game.detail = f'you forfeited · {my_hits}–{opp_hits}' if forfeit else f'{my_hits}–{opp_hits}'
         ctx['past_games'] = past_games
         return ctx
 

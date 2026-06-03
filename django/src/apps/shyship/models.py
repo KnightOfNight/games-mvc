@@ -4,13 +4,20 @@ import uuid
 from django.contrib.auth.models import User
 from django.db import models
 
-SHIP_SIZES = [5, 4, 3, 3, 2]
+SHIPS = [
+    {'name': 'Carrier',   'size': 5},
+    {'name': 'Cruiser',   'size': 4},
+    {'name': 'Destroyer', 'size': 3},
+    {'name': 'Destroyer', 'size': 3},
+    {'name': 'Frigate',   'size': 2},
+]
 
 
 def place_ships_randomly():
     forbidden = set()
     result = []
-    for size in SHIP_SIZES:
+    for ship_def in SHIPS:
+        size = ship_def['size']
         placed = False
         while not placed:
             horizontal = random.choice([True, False])
@@ -29,7 +36,7 @@ def place_ships_randomly():
                             nr, nc = r + dr, c + dc
                             if 0 <= nr <= 9 and 0 <= nc <= 9:
                                 forbidden.add((nr, nc))
-                result += [[r, c] for r, c in ship]
+                result.append({'name': ship_def['name'], 'cells': [[r, c] for r, c in ship]})
                 placed = True
     return result
 
