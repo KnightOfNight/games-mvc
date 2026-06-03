@@ -74,12 +74,8 @@ window.addEventListener('resize', updateBoardDisplay);
 // ── Enemy fire notification ───────────────────────────────────────────────────
 
 function showFireNotify(isHit, onClose, isMine) {
-  fireNotifyTitle.textContent = isHit ? 'HIT!' : 'MISS';
-  if (isMine) {
-    fireNotifyText.textContent = isHit ? 'You hit an enemy ship!' : 'Your shot missed.';
-  } else {
-    fireNotifyText.textContent = isHit ? 'Your ship was struck.' : 'The shot missed your waters.';
-  }
+  fireNotifyTitle.textContent = isHit ? 'HIT! HIT! HIT!' : 'MISS';
+  fireNotifyModal.classList.toggle('is-hit', isHit);
 
   let timer;
 

@@ -666,6 +666,40 @@ body {
 }
 
 /* -------------------------
+   Fire-notify modal overrides
+   ------------------------- */
+
+#fire-notify-modal .modal-panel {
+  text-align: center;
+}
+
+#fire-notify-modal #fire-notify-text {
+  display: none;
+}
+
+#fire-notify-modal .modal-title {
+  margin-bottom: 18px;
+}
+
+#fire-notify-modal .modal-actions {
+  justify-content: center;
+}
+
+#fire-notify-modal.is-hit .modal-title {
+  color: var(--hit);
+}
+
+#fire-notify-modal.is-hit #fire-notify-ok {
+  background: rgba(192, 57, 43, 0.85);
+  color: #ffccc8;
+  border: 1px solid rgba(220, 60, 40, 0.5);
+}
+
+#fire-notify-modal.is-hit #fire-notify-ok:hover {
+  background: rgba(220, 70, 50, 0.95);
+}
+
+/* -------------------------
    Login page
    ------------------------- */
 
