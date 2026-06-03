@@ -63,6 +63,8 @@ class ShyshipGame(models.Model):
     current_turn = models.IntegerField(default=1)
     ships_p1 = models.JSONField(default=list)
     ships_p2 = models.JSONField(default=list)
+    vs_bot = models.BooleanField(default=False)
+    bot_state = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -71,6 +73,26 @@ class ShyshipGame(models.Model):
     def __str__(self):
         p2 = self.player2.username if self.player2_id else 'waiting...'
         return f'{self.player1.username} vs {p2} [{self.status}]'
+
+
+def get_or_create_bot_user():
+    try:
+        return User.objects.get(username='_shyship_bot_')
+    except User.DoesNotExist:
+        pass
+
+    from django.db.models.signals import post_save
+    from apps.profiles.apps import _create_profile
+    post_save.disconnect(_create_profile, sender=User)
+    try:
+        user = User.objects.create_user(
+            username='_shyship_bot_',
+            first_name='Computer',
+            is_active=False,
+        )
+    finally:
+        post_save.connect(_create_profile, sender=User)
+    return user
 
 
 class ShyshipMove(models.Model):

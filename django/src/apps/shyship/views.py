@@ -7,7 +7,7 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import TemplateView, View
 
-from .models import ShyshipGame, ShyshipMove, place_ships_randomly
+from .models import ShyshipGame, ShyshipMove, get_or_create_bot_user, place_ships_randomly
 
 
 class ShyshipLoginView(LoginView):
@@ -153,6 +153,28 @@ class CancelView(ShyshipAccessMixin, View):
         ShyshipGame.objects.filter(pk=game_id).update(status=ShyshipGame.CANCELLED)
         _broadcast(game_id, {'type': 'game_cancelled'})
         return redirect('shyship:lobby')
+
+
+class VsComputerView(ShyshipAccessMixin, View):
+    def post(self, request, game_id):
+        game = get_object_or_404(
+            ShyshipGame,
+            pk=game_id,
+            player1=request.user,
+            status=ShyshipGame.WAITING,
+        )
+        bot = get_or_create_bot_user()
+        game.player2 = bot
+        game.ships_p2 = place_ships_randomly()
+        game.status = ShyshipGame.ACTIVE
+        game.vs_bot = True
+        game.save(update_fields=['player2', 'ships_p2', 'status', 'vs_bot'])
+        _broadcast(game_id, {
+            'type': 'player_joined',
+            'player': 'Computer',
+            'status': 'active',
+        })
+        return redirect('shyship:game', game_id=game.pk)
 
 
 class ForfeitView(ShyshipAccessMixin, View):

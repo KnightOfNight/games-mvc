@@ -1,8 +1,10 @@
+import asyncio
 import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+from .bot import next_bot_cell, update_bot_state
 from .models import ShyshipGame, ShyshipMove
 
 
@@ -122,6 +124,31 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
                 'type': 'game_event',
                 'data': {'type': 'game_over', 'winner': self.player_num},
             })
+            return
+
+        if game.vs_bot and self.player_num == 1:
+            await asyncio.sleep(0.6)
+            bot_result = await self.bot_take_turn()
+            if bot_result:
+                b_row, b_col, b_hit, b_ship, b_sunk, b_over = bot_result
+                await self.channel_layer.group_send(self.group_name, {
+                    'type': 'game_event',
+                    'data': {
+                        'type': 'move',
+                        'player_num': 2,
+                        'row': b_row,
+                        'col': b_col,
+                        'is_hit': b_hit,
+                        'ship_name': b_ship,
+                        'sunk': b_sunk,
+                        'next_turn': 1,
+                    },
+                })
+                if b_over:
+                    await self.channel_layer.group_send(self.group_name, {
+                        'type': 'game_event',
+                        'data': {'type': 'game_over', 'winner': 2},
+                    })
 
     async def game_event(self, event):
         await self.send(text_data=json.dumps(event['data']))
@@ -172,6 +199,53 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             .filter(game_id=self.game_id)
             .values('player_num', 'row', 'col', 'is_hit')
         )
+
+    @database_sync_to_async
+    def bot_take_turn(self):
+        game = ShyshipGame.objects.get(pk=self.game_id)
+        fired = set(
+            ShyshipMove.objects.filter(game=game, player_num=2).values_list('row', 'col')
+        )
+        cell = next_bot_cell(game.bot_state, fired)
+        if not cell:
+            return None
+        row, col = cell
+
+        ship_name = None
+        ship_cells = None
+        is_hit = False
+        for ship in game.ships_p1:
+            if [row, col] in ship['cells']:
+                is_hit = True
+                ship_name = ship['name']
+                ship_cells = ship['cells']
+                break
+
+        ShyshipMove.objects.create(game=game, player_num=2, row=row, col=col, is_hit=is_hit)
+
+        sunk = False
+        if is_hit:
+            hit_coords = set(
+                ShyshipMove.objects.filter(game=game, player_num=2, is_hit=True).values_list('row', 'col')
+            )
+            sunk = all((r, c) in hit_coords for r, c in ship_cells)
+
+        update_bot_state(game.bot_state, row, col, is_hit, sunk)
+
+        total_cells = sum(len(s['cells']) for s in game.ships_p1)
+        hit_count = ShyshipMove.objects.filter(game=game, player_num=2, is_hit=True).count()
+        game_over = is_hit and hit_count >= total_cells
+
+        if game_over:
+            ShyshipGame.objects.filter(pk=game.pk).update(
+                status=ShyshipGame.DONE, winner=2, bot_state=game.bot_state
+            )
+        else:
+            ShyshipGame.objects.filter(pk=game.pk).update(
+                current_turn=1, bot_state=game.bot_state
+            )
+
+        return row, col, is_hit, ship_name, sunk, game_over
 
     @database_sync_to_async
     def is_ship_sunk(self, ship_cells):

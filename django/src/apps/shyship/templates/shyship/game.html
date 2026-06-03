@@ -82,6 +82,10 @@
         <p class="modal-text">Share this page URL with a friend to start the game.</p>
         <div class="modal-actions">
           <a href="{% url 'shyship:lobby' %}" class="modal-button modal-button-cancel">&#8592; Shyship</a>
+          <form method="post" action="{% url 'shyship:vs_computer' game.id %}" style="flex:1 1 0">
+            {% csrf_token %}
+            <button type="submit" class="modal-button modal-button-primary" style="width:100%">PLAY THE COMPUTER</button>
+          </form>
           <button type="button" class="modal-button modal-button-danger" id="cancel-overlay-btn">CANCEL GAME</button>
         </div>
       </div>

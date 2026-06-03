@@ -52,6 +52,7 @@
               <div class="game-row-actions">
                 <a href="{% url 'shyship:game' game.id %}" class="secondary-button">RESUME</a>
                 {% if request.user == game.player1 and game.move_count == 0 %}
+                  <form method="post" action="{% url 'shyship:vs_computer' game.id %}">{% csrf_token %}<button type="submit" class="secondary-button">VS COMPUTER</button></form>
                   <form id="form-cancel-{{ game.id }}" method="post" action="{% url 'shyship:cancel' game.id %}" style="display:none">{% csrf_token %}</form>
                   <button type="button" class="danger-button" data-action="cancel" data-form="form-cancel-{{ game.id }}">CANCEL</button>
                 {% elif game.status == 'active' %}
