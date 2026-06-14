@@ -29,8 +29,54 @@ class Zone(models.Model):
         return self.name
 
 
+class Area(models.Model):
+    """
+    A named grouping of rooms within a zone, sharing a common ambient context.
+
+    Areas sit between Zone and Room in the world hierarchy:
+        Zone → Area → Room
+
+    The area_description provides shared atmospheric text — the sounds, smells,
+    and feel of the location — that applies to all rooms within the area.
+    Individual rooms add their specific detail on top.
+
+    Rooms are not required to belong to an area (area is nullable on Room).
+    """
+
+    zone = models.ForeignKey(
+        Zone,
+        on_delete=models.CASCADE,
+        related_name='areas',
+    )
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=200, unique=True)
+
+    area_description = models.TextField(
+        blank=True,
+        help_text=(
+            'Shared atmospheric text for all rooms in this area. '
+            'Describes the general feel, sounds, smells, and environment. '
+            'Shown alongside the room-specific description.'
+        ),
+    )
+
+    class Meta:
+        ordering = ['zone', 'name']
+
+    def __str__(self):
+        return f'{self.zone.name} / {self.name}'
+
+
 class Room(models.Model):
     zone = models.ForeignKey(Zone, on_delete=models.CASCADE, related_name='rooms')
+    area = models.ForeignKey(
+        Area,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='rooms',
+        help_text='Optional. Groups this room with others sharing a common atmosphere.',
+    )
     name = models.CharField(max_length=200)
     description = models.TextField()
     brief_description = models.CharField(max_length=500)

@@ -122,6 +122,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'exclude': self.channel_name,
         })
 
+        # Re-fetch with full select_related (destination from exit FK lacks area pre-fetch)
+        destination = await self.get_current_room()
         await self.send_room_description(destination, entering=True)
 
     async def cmd_say(self, text):
@@ -188,11 +190,26 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         exit_str = ', '.join(exits.keys()) if exits else 'none'
         others = await self.get_others_in_room(room)
 
+        if room.area:
+            location_header = f'[ {room.area.name} — {room.name} ]'
+        else:
+            location_header = f'[ {room.name} ]'
+
+        area_context = ''
+        if room.area and room.area.area_description:
+            area_context = f'{room.area.area_description}\n\n'
+
+        text = (
+            f'{location_header}\n'
+            f'{area_context}'
+            f'{room.description}'
+        )
+
         await self.send_json({
             'type': 'output',
             'category': 'room',
             'enter': entering,
-            'text': f'[ {room.name} ]\n{room.description}',
+            'text': text,
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
         })
@@ -206,6 +223,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'acuity': a,
             'longevity': l,
             'room_name': room.name,
+            'area_name': room.area.name if room.area else None,
         })
 
     # ------------------------------------------------------------------
@@ -228,7 +246,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def get_current_room(self):
         return (
             Room.objects
-            .select_related('zone',
+            .select_related('zone', 'area',
                             'exit_north', 'exit_south',
                             'exit_east', 'exit_west',
                             'exit_up', 'exit_down')

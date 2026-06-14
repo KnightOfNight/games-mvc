@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from apps.shyland.models import Zone, Room
+from apps.shyland.models import Area, Room, Zone
 
 
 class Command(BaseCommand):
@@ -123,7 +123,25 @@ class Command(BaseCommand):
         west.exit_east = center
         west.save()
 
+        convergence_area, _ = Area.objects.get_or_create(
+            slug='the-fracture-point-plaza',
+            defaults={
+                'zone': zone,
+                'name': 'The Fracture Point Plaza',
+                'area_description': (
+                    'The air here shimmers faintly, a residual effect of The Fracture '
+                    'that created this place. Travelers from a dozen different realities '
+                    'pass through the plaza — a knight in plate armor haggles with a '
+                    'woman in a leather duster, and somewhere nearby a generator hums '
+                    'beneath the sound of a lute. This is where all roads meet.'
+                ),
+            }
+        )
+
+        Room.objects.filter(zone=zone).update(area=convergence_area)
+
         self.stdout.write(self.style.SUCCESS(
             f'Seeded: zone "{zone.name}" with 5 rooms. Starting room PK={center.pk}.'
         ))
         self.stdout.write(f'  Set new characters\' current_room to pk={center.pk}.')
+        self.stdout.write(f'  Area "{convergence_area.name}" assigned to all {zone.name} rooms.')

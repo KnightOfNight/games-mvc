@@ -1,7 +1,7 @@
 # Shyland Architecture
 
 > Authoritative technical reference as of commit 391ae1f.  
-> Describes what is built. For design intent see `Shyland_GDD_v3.md`.
+> Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
 
@@ -134,10 +134,30 @@ is_scaled    BooleanField(default=False)    — True for The Wastelands (scales 
 description  TextField
 ```
 
+#### Area
+
+```
+zone              FK → Zone (CASCADE), related_name='areas'
+name              CharField(200)
+slug              SlugField(200, unique)
+area_description  TextField(blank=True)
+                  — shared atmospheric prose for all rooms in this area.
+                  Shown above the room-specific description when non-empty.
+                  An area with no area_description still groups rooms for
+                  admin filtering and minimap clustering.
+```
+
+`Meta: ordering = ['zone', 'name']`  
+`__str__`: `"Zone name / Area name"`
+
+Areas are **optional** — not every room belongs to one. Standalone rooms work exactly as before. Any multi-room location with a coherent identity (marketplace, dungeon wing, ship) should be modelled as an Area.
+
 #### Room
 
 ```
 zone              FK → Zone (CASCADE)
+area              FK → Area (nullable, SET_NULL), related_name='rooms'
+                  — optional; rooms without an area behave identically to pre-Area behaviour
 name              CharField(200)
 description       TextField              — shown on first visit / look
 brief_description CharField(500)        — shown on repeat visits (not yet implemented)
@@ -307,7 +327,8 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 5. Updates `Character.current_room` in DB; creates `RoomVisit` record if new.
 6. Joins new room group.
 7. Broadcasts `"{name} has arrived."` to new room group (excluding the mover).
-8. Sends room description for destination.
+8. Re-fetches destination via `get_current_room()` before calling `send_room_description()`. The exit-FK room object obtained in step 1 does not have its own FK relations (including `area`) pre-loaded; accessing them in async context raises `SynchronousOnlyOperation`. The re-fetch ensures `area` is available.
+9. Sends room description for destination.
 
 **`say <text>`** — broadcasts `[say] {name}: {text}` with category `chat` to current room group (all players in room, including the sender, receive it).
 
@@ -322,10 +343,18 @@ Two message types sent to client:
 {"type": "output", "text": "...", "category": "room|chat|system|error"}
 
 // Status update — updates header bar and room name
-{"type": "status", "vitality": N, "acuity": N, "longevity": N, "room_name": "..."}
+{"type": "status", "vitality": N, "acuity": N, "longevity": N,
+ "room_name": "...", "area_name": "..." | null}
 ```
 
+`area_name` is `null` when the room has no area; the client must handle both cases. `room_name` is always present.
+
 Categories map to CSS classes: `room` (green), `chat` (amber), `combat` (red), `system` (muted purple), `error` (red).
+
+**Room description output format** (`send_room_description`):
+- Header line: `[ Area Name — Room Name ]` when the room belongs to an area; `[ Room Name ]` when it does not.
+- If `room.area.area_description` is non-empty, it is inserted between the header and the room-specific description, with a blank line separating them. This is the shared atmospheric text written once per area.
+- Rooms without an area produce identical output to the pre-Area behaviour.
 
 #### DB helper pattern
 
@@ -334,7 +363,7 @@ All ORM operations are in `@database_sync_to_async` methods. The consumer corout
 | Helper | Key select_related |
 |--------|-------------------|
 | `get_character(user)` | `current_room__zone`, `recall_room`, `user__profile` |
-| `get_current_room()` | `zone`, all six `exit_*` rooms |
+| `get_current_room()` | `zone`, `area`, all six `exit_*` rooms |
 | `get_others_in_room(room)` | `user__profile` |
 | `get_online_names()` | `user__profile` |
 
@@ -361,8 +390,9 @@ The `game` view is a single `@login_required` function view that renders `shylan
 
 | Model | Registered as | Notable config |
 |-------|--------------|----------------|
-| `Zone` | `ZoneAdmin` | `RoomInline` (tabular, shows name + coords + flag_safe); list_display: name, slug, danger_level, is_pvp_zone, is_scaled |
-| `Room` | `RoomAdmin` | `raw_id_fields` for all six exit FKs (prevents loading all rooms in a select); list_filter on zone/flag_safe/flag_pvp |
+| `Zone` | `ZoneAdmin` | Two inlines: `AreaInline` (tabular, name + slug, show_change_link) and `RoomInline` (tabular, name + coords + flag_safe); list_display: name, slug, danger_level, is_pvp_zone, is_scaled |
+| `Area` | `AreaAdmin` | `RoomInlineForArea` (tabular, name + coords + flag_safe, show_change_link); list_filter on zone; `prepopulated_fields` slug from name |
+| `Room` | `RoomAdmin` | `area` in list_display, list_filter, and raw_id_fields; `raw_id_fields` for all six exit FKs (prevents loading all rooms in a select); list_filter on zone/area/flag_safe/flag_pvp |
 | `Character` | `CharacterAdmin` | `list_select_related = ('user__profile',)` (avoids N+1 on name property); `readonly_fields = ('wallet_display',)` (human-readable copper via `currency.display()`); `raw_id_fields` for current_room/recall_room |
 | `RoomVisit` | `RoomVisitAdmin` | Basic list: character, room, visited_at |
 
@@ -387,6 +417,10 @@ The Western Gate ↔ The Fracture Point ↔ The Eastern Bazaar
 ```
 
 Exits are bidirectional. No up/down exits exist. **The Fracture Point is the default starting room for new characters** (PK=1 after a fresh seed). Characters are created via Django admin or the shell — no in-game creation flow exists yet.
+
+After creating the rooms and wiring exits, the command also creates:
+
+**Area: The Fracture Point Plaza** (slug `the-fracture-point-plaza`), zone = The Convergence, with a shared `area_description` describing the shimmering residual-Fracture atmosphere of the plaza. All 5 Convergence rooms are assigned to this area via a single `Room.objects.filter(zone=convergence).update(area=convergence_area)` call.
 
 The command uses `get_or_create` throughout and is safe to run multiple times (idempotent on slug/name keys).
 
@@ -450,7 +484,7 @@ Browser → nginx (SSL/WSS) → Daphne (ASGI)
   → SkylandConsumer.connect()
   → get_character()       [DB: SELECT with select_related user__profile, current_room__zone]
   → group_add('room_{id}')
-  → get_current_room()    [DB: SELECT with select_related all exits]
+  → get_current_room()    [DB: SELECT with select_related zone, area, all exits]
   → send_room_description()
       → get_others_in_room()  [DB: SELECT chars in room]
       → send_json {type: output, text: room desc, category: room}
@@ -471,6 +505,7 @@ Client sends {"text": "north"}
 → self.room_group = 'room_{destination.id}'
 → group_add(new_room)
 → group_send(new_room, {type: room_message, text: "X has arrived.", exclude: channel_name})
+→ get_current_room()           [DB: re-fetch destination with zone, area, all exits pre-loaded]
 → send_room_description(destination)
     → get_others_in_room(destination)   [DB]
     → send_json {type: output, ...}
