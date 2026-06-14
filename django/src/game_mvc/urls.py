@@ -14,4 +14,6 @@ urlpatterns = [
     path('shydle', include('apps.shydle.urls')),
     path('shydle/', RedirectView.as_view(url='/shydle', permanent=True)),
     path('shyship/', include('apps.shyship.urls')),
+    path('shyland/', include('apps.shyland.urls')),
+    path('shyland', RedirectView.as_view(url='/shyland/play/', permanent=False)),
 ]

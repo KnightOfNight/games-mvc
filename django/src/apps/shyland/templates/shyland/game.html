@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Shyland{% endblock %}
+
+{% block head %}
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --border: #2a2a35;
+    --text: #c8c8d4;
+    --muted: #6b6b80;
+    --accent: #7b68ee;
+    --room: #a8d8a8;
+    --chat: #f0c060;
+    --combat: #e06060;
+    --system: #8888aa;
+    --error: #cc4444;
+    --bar-v: #4caf7d;
+    --bar-a: #7b68ee;
+    --bar-l: #e07040;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+
+  #shell {
+    display: grid;
+    grid-template-rows: 44px 1fr 42px;
+    grid-template-columns: 1fr 220px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* Header */
+  #header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  #room-name { font-weight: bold; color: var(--room); font-size: 15px; }
+  #bars { display: flex; gap: 12px; font-size: 12px; }
+  .bar { display: flex; align-items: center; gap: 4px; }
+  .bar-label { color: var(--muted); }
+  .bar-v { color: var(--bar-v); }
+  .bar-a { color: var(--bar-a); }
+  .bar-l { color: var(--bar-l); }
+
+  /* Output */
+  #output-wrap {
+    overflow-y: auto;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+  }
+  #output { white-space: pre-wrap; line-height: 1.55; }
+  .msg-room   { color: var(--room); }
+  .msg-chat   { color: var(--chat); }
+  .msg-combat { color: var(--combat); }
+  .msg-system { color: var(--system); }
+  .msg-error  { color: var(--error); }
+
+  /* Side panel */
+  #side {
+    padding: 10px;
+    background: var(--surface);
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  #side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+
+  /* Input row */
+  #input-row {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  #prompt { color: var(--accent); font-size: 15px; user-select: none; }
+  #cmd {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    caret-color: var(--accent);
+  }
+  #send-btn {
+    padding: 4px 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  #send-btn:hover { opacity: .85; }
+
+  /* Visually hidden — for assertive ARIA live region */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  /* Phone: hide side panel by default, show via toggle */
+  #side-toggle { display: none; }
+  @media (max-width: 600px) {
+    #shell { grid-template-columns: 1fr; }
+    #side { display: none; position: fixed; top: 44px; right: 0; bottom: 42px; width: 200px; z-index: 10; border-left: 1px solid var(--border); }
+    #side.open { display: block; }
+    #side-toggle { display: inline-block; cursor: pointer; color: var(--muted); font-size: 18px; background: none; border: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="shell">
+
+  <header id="header">
+    <span id="room-name">Connecting…</span>
+    <div id="bars">
+      <span class="bar"><span class="bar-label">V</span><span id="bar-v" class="bar-v">—</span></span>
+      <span class="bar"><span class="bar-label">A</span><span id="bar-a" class="bar-a">—</span></span>
+      <span class="bar"><span class="bar-label">L</span><span id="bar-l" class="bar-l">—</span></span>
+    </div>
+    <button id="side-toggle" aria-label="Toggle side panel">☰</button>
+  </header>
+
+  <main id="output-wrap">
+    <div id="output" role="log" aria-live="polite" aria-label="Game output" aria-atomic="false"></div>
+  </main>
+
+  <aside id="side">
+    <h2>Shyland</h2>
+    <p>Session 1 — world coming soon.</p>
+  </aside>
+
+  <!-- Assertive live region for combat alerts (off-screen) -->
+  <div id="combat-live" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <div id="input-row">
+    <span id="prompt" aria-hidden="true">&gt;</span>
+    <input id="cmd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+           spellcheck="false" aria-label="Command input" placeholder="enter a command…" />
+    <button id="send-btn">SEND</button>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const output   = document.getElementById('output');
+  const outputWrap = document.getElementById('output-wrap');
+  const cmd      = document.getElementById('cmd');
+  const sendBtn  = document.getElementById('send-btn');
+  const roomName = document.getElementById('room-name');
+  const barV     = document.getElementById('bar-v');
+  const barA     = document.getElementById('bar-a');
+  const barL     = document.getElementById('bar-l');
+  const combatLive = document.getElementById('combat-live');
+  const sidePanel  = document.getElementById('side');
+  const sideToggle = document.getElementById('side-toggle');
+
+  const history = [];
+  let histIdx = -1;
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/shyland/`);
+
+  ws.addEventListener('open', () => {
+    append('Connected to Shyland.', 'system');
+    cmd.focus();
+  });
+
+  ws.addEventListener('close', () => {
+    append('Connection closed. Refresh to reconnect.', 'error');
+  });
+
+  ws.addEventListener('error', () => {
+    append('WebSocket error. Check your connection.', 'error');
+  });
+
+  ws.addEventListener('message', (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    if (msg.type === 'output') {
+      append(msg.text, msg.category || 'system');
+      if (msg.category === 'combat') {
+        combatLive.textContent = '';
+        // Force re-announcement by resetting and setting
+        requestAnimationFrame(() => { combatLive.textContent = msg.text; });
+      }
+    } else if (msg.type === 'status') {
+      roomName.textContent = msg.room_name || '';
+      barV.textContent = msg.vitality;
+      barA.textContent = msg.acuity;
+      barL.textContent = msg.longevity;
+    }
+  });
+
+  function append(text, category) {
+    const el = document.createElement('div');
+    el.className = `msg-${category}`;
+    el.textContent = text;
+    output.appendChild(el);
+    outputWrap.scrollTop = outputWrap.scrollHeight;
+  }
+
+  function send() {
+    const text = cmd.value.trim();
+    if (!text || ws.readyState !== WebSocket.OPEN) return;
+    history.unshift(text);
+    if (history.length > 100) history.pop();
+    histIdx = -1;
+    ws.send(JSON.stringify({ text }));
+    cmd.value = '';
+    cmd.focus();
+  }
+
+  sendBtn.addEventListener('click', send);
+
+  cmd.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { send(); return; }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (histIdx < history.length - 1) { histIdx++; cmd.value = history[histIdx]; }
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx > 0) { histIdx--; cmd.value = history[histIdx]; }
+      else if (histIdx === 0) { histIdx = -1; cmd.value = ''; }
+    }
+  });
+
+  sideToggle.addEventListener('click', () => {
+    sidePanel.classList.toggle('open');
+  });
+})();
+</script>
+{% endblock %}

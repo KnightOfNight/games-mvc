@@ -76,10 +76,16 @@ migrate:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py migrate
 
-## makemigrations: make migrations (APP=<name> optional)
+## makemigrations: make migrations (APP=<name> optional) and sync generated files to local tree
 makemigrations:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py makemigrations $(APP)
+	@for app in $$(ls $(PROJECT_DIR)/django/src/apps/); do \
+	    $(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
+	        cp django:/app/apps/$$app/migrations/. \
+	        $(PROJECT_DIR)/django/src/apps/$$app/migrations/ 2>/dev/null || true; \
+	done
+	@echo "  → migrations synced to local filesystem"
 
 ## createsuperuser: create a Django admin superuser
 createsuperuser:

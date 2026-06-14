@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'apps.profiles',
     'apps.shydle',
     'apps.shyship',
+    'apps.shyland',
 ]
 
 MIDDLEWARE = [
@@ -115,3 +116,4 @@ REST_FRAMEWORK = {
 
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+LOGIN_URL = '/accounts/login/'
