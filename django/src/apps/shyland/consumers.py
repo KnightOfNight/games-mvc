@@ -73,8 +73,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_say(args)
         elif verb == 'who':
             await self.cmd_who()
+        elif verb == 'help' or verb == '?':
+            await self.cmd_help()
         else:
-            await self.output("Unknown command. Type 'look' to see your surroundings.", 'system')
+            await self.output("Unknown command. Type 'help' for a list of commands.", 'system')
 
     # ------------------------------------------------------------------
     # Commands
@@ -82,7 +84,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_look(self):
         room = await self.get_current_room()
-        await self.send_room_description(room)
+        await self.send_room_description(room, entering=True)
 
     async def cmd_move(self, direction):
         exit_field = DIRECTIONS[direction]
@@ -135,10 +137,30 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def cmd_who(self):
         names = await self.get_online_names()
         if names:
-            listing = '\n'.join(f'  {n}' for n in names)
-            await self.output(f'Players online:\n{listing}', 'system')
+            await self.send_json({
+                'type': 'output',
+                'category': 'who',
+                'players': ', '.join(names),
+            })
         else:
             await self.output('No players are online.', 'system')
+
+    async def cmd_help(self):
+        room = await self.get_current_room()
+        exits = room.exits()
+        abbrevs = {'north': 'n', 'south': 's', 'east': 'e', 'west': 'w', 'up': 'u', 'down': 'd'}
+        dir_list = ', '.join(f'{d} ({abbrevs[d]})' for d in abbrevs if d in exits)
+        movement = dir_list if dir_list else 'none'
+        help_text = (
+            f'Movement: {movement}\n'
+            '\n'
+            'Commands:\n'
+            '  look / l      — describe this room\n'
+            '  say <text>    — speak to players here\n'
+            '  who           — list players online\n'
+            '  help / ?      — show this list'
+        )
+        await self.output(help_text, 'system')
 
     # ------------------------------------------------------------------
     # Channel layer event handlers

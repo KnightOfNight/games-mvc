@@ -207,6 +207,8 @@
       if (msg.category === 'room') {
         if (msg.enter) output.innerHTML = '';
         renderRoom(msg);
+      } else if (msg.category === 'who') {
+        appendSection('Players online:', msg.players + '.', '1.55em');
       } else {
         append(msg);
         if (msg.category === 'combat') {
