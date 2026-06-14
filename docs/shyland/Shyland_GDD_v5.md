@@ -1,5 +1,5 @@
 # Shyland — Game Design Document
-**Version 2.0 — Working Draft**
+**Version 5.0 — Working Draft**
 
 ---
 
@@ -13,9 +13,10 @@
 6. [Economy & Items](#6-economy--items)
 7. [Social Systems](#7-social-systems)
 8. [Quest & Narrative](#8-quest--narrative)
-9. [Technical Architecture](#9-technical-architecture)
-10. [Admin & Content Tools](#10-admin--content-tools)
-11. [Future Systems](#11-future-systems)
+9. [Player Command Reference](#9-player-command-reference)
+10. [Technical Architecture](#10-technical-architecture)
+11. [Admin & Content Tools](#11-admin--content-tools)
+12. [Future Systems](#12-future-systems)
 
 ---
 
@@ -96,13 +97,67 @@ World
 
 **The Wastelands (Z08)** is a special infinite scaling zone — see Section 2.6.
 
-### 2.3 Rooms
+### 2.3 Areas
+
+An **Area** is a named grouping of rooms within a zone that share a common ambient context. Areas are the middle layer of the world hierarchy — they sit between Zone and Room, giving world builders a tool to express shared atmosphere without repeating it in every room description.
+
+```
+Zone → Area → Room
+```
+
+Areas are **optional** — a room does not have to belong to an area. Standalone rooms (a remote wilderness clearing, a unique landmark) exist without one. But any multi-room location with a coherent identity — a marketplace, a dungeon wing, a ship, a temple — should be modelled as an Area.
+
+#### What an Area Contains
+
+- **Name** — the location name players see as part of their room header (e.g., "The Eastern Bazaar")
+- **Area description** — shared ambient prose that applies to all rooms in the area. Describes the general atmosphere: sounds, smells, lighting, the feel of the place. Written once, displayed in every room that belongs to the area.
+
+#### How Areas Appear to Players
+
+When a player enters a room that belongs to an area, their output has two layers:
+
+1. **Header:** `[ Area Name — Room Name ]` — they always know where they are in the broader location
+2. **Area description** (if present) — the shared ambient text, shown above the room-specific description
+3. **Room description** — the specific detail of this individual space
+
+**Example — The Eastern Bazaar:**
+
+```
+[ The Eastern Bazaar — Stall 3: The Armorer ]
+
+The Eastern Bazaar hums with commerce. Vendors call out from their stalls,
+the smell of spices mingles with hot metal and sawdust, and the clatter of
+coins fills the air. Torches line the perimeter, casting warm light across
+a dozen competing storefronts.
+
+A scarred dwarf stands behind a worn wooden counter, eyeing you appraisingly.
+Racks of swords, axes, and shields cover every wall. A grinding wheel spins
+slowly in the corner.
+
+Exits: north, out.
+```
+
+For a room without an area, the header is just `[ Room Name ]` and no area text is shown — identical to previous behavior.
+
+#### Builder Guidelines
+
+- The **area description** describes the environment — what it feels, sounds, and smells like. It does not describe specific objects or characters that only exist in one room.
+- Each **room description** describes what is specific and unique to that room — the vendor, the furniture, the view, the hazard.
+- Keep area descriptions atmospheric and timeless. Room descriptions can reference specific NPCs and items.
+- An area with no `area_description` still serves a purpose — it groups rooms for admin filtering, minimap clustering, and potential future uses — but players will not see any extra text.
+
+#### Minimap Integration
+
+Rooms belonging to the same area are visually clustered on the minimap. The area name appears as a label on the minimap when the player is inside it. This helps players understand the spatial relationship between rooms that share a common location.
+
+### 2.4 Rooms
 
 Each room is the atomic unit of the world. Rooms contain:
 
-- **Short name** — displayed in the room header (e.g., `[Black Market Stall #7]`)
-- **Long description** — the prose a player reads on entering or using the `look` command
+- **Short name** — displayed in the room header alongside the area name if present (e.g., `[ The Eastern Bazaar — Stall 3: The Armorer ]`)
+- **Long description** — the room-specific prose a player reads on entering or using the `look` command
 - **Brief description** — one-line version shown when the player has visited before (toggleable)
+- **Area** — optional parent area providing shared ambient context (see 2.3)
 - **Exit list** — directional links to adjacent rooms (N, S, E, W, U, D, and custom named exits)
 - **Flags** — booleans that modify room behavior (see below)
 - **Contents** — current list of players, NPCs, and items present
@@ -122,7 +177,7 @@ Each room is the atomic unit of the world. Rooms contain:
 | `MAGIC_DEAD` | Spell and tech abilities disabled |
 | `SCALED` | Room and its contents scale to entering player's level (Wastelands) |
 
-### 2.4 The Visual Map Layer
+### 2.5 The Visual Map Layer
 
 Rooms belong to a coordinate grid within their zone. The client renders a small ASCII/SVG minimap (configurable size, default 5×5 tiles centered on the player) showing:
 
@@ -130,10 +185,11 @@ Rooms belong to a coordinate grid within their zone. The client renders a small 
 - Adjacent visited rooms
 - Unexplored exits (shown as dotted connections)
 - Special room types (shops, quest givers, danger) via icon overlays
+- Area boundaries — rooms sharing an area are visually clustered and labelled with the area name
 
 The map does not replace text navigation — it is supplementary. Players can hide it. The map only reveals rooms the player has personally visited (fog of war).
 
-### 2.5 Travel & Navigation
+### 2.6 Travel & Navigation
 
 Players move using directional commands: `north`, `south`, `east`, `west`, `up`, `down` (and abbreviations: `n`, `s`, `e`, `w`, `u`, `d`). Named exits use the exit name directly (e.g., `enter portal`).
 
@@ -145,7 +201,7 @@ Special travel options:
 
 Mounts are deferred to a future version.
 
-### 2.6 The Wastelands — Infinite Scaling Zone
+### 2.7 The Wastelands — Infinite Scaling Zone
 
 The Wastelands is a post-apocalyptic expanse that serves as the game's permanent endgame safety valve. It has no fixed difficulty — the zone scales to match any entering character's level.
 
@@ -158,7 +214,7 @@ The Wastelands is a post-apocalyptic expanse that serves as the game's permanent
 **Design purpose:**
 When no higher-level content has yet been published, The Wastelands ensures players always have somewhere challenging to go. It is not a substitute for purpose-built high-level zones but bridges the gap between content updates.
 
-### 2.7 Logout Persistence
+### 2.8 Logout Persistence
 
 When a player logs out, their character remains in the world at their exact location for 60 seconds (allowing them to be targeted in PvP zones — a deliberate risk of logging out in dangerous areas), then fades from the world. On next login, they appear at the exact room where they logged out.
 
@@ -490,15 +546,50 @@ Bosses have multi-phase fights with behavioral changes at HP thresholds. Some bo
 
 ### 6.2 Currency
 
-Three tiers:
+#### Engine-side (internal representation)
 
-| Tier | Name | Acquisition |
-|---|---|---|
-| Base | **Shards** | Enemy drops, vendor sell, quests |
-| Mid | **Marks** | 100 Shards = 1 Mark; quest rewards, dungeon drops |
-| High | **Crowns** | 100 Marks = 1 Crown; rare drops, endgame content |
+All currency is stored as a single `bigint` in the database representing the total amount in **copper** — the base unit. Display and conversion are purely presentational. Python's arbitrary-precision integers mean there is no practical ceiling.
 
-Currency sinks: repairs, skill respecs, crafting materials, NPC services.
+The tier system follows an escalating-multiplier pattern: each tier's conversion factor is an order of magnitude larger than the previous tier's.
+
+| Tier | Engine Name | Multiplier from Previous | Value in Copper |
+|---|---|---|---|
+| 1 | **Copper** | — (base unit) | 1 |
+| 2 | **Silver** | ×10 | 10 |
+| 3 | **Gold** | ×100 | 1,000 |
+| 4 | **Platinum** | ×1,000 | 1,000,000 |
+| 5 | *(future)* | ×10,000 | 10,000,000,000 |
+
+The multiplier between tiers is itself multiplied by 10 at each step. High-tier currency is genuinely rare — not just a bigger number with the same feel.
+
+**Conversion is automatic.** When a player's copper total crosses a tier threshold, the display rolls up. Players never manually convert. The conversion function uses the multiplier sequence `[1, 10, 1000, 1000000, ...]` to compute display denominations.
+
+**Display format:** Show the minimum denominations needed. Examples:
+- 1,543 copper → `1 gold, 5 silver, 43 copper` (never show zero-value tiers)
+- 10 copper → `10 copper`
+- 1,000,000 copper → `1 platinum`
+
+#### Player-facing names
+
+In standard zones, players see the engine names: Copper, Silver, Gold, Platinum.
+
+#### Local Currency (zone-specific display aliases)
+
+Some zones use local currency names for flavor — the math is identical, only the display strings differ. A ghost dropping "Soul Tokens" is giving the player copper under the hood. The zone or enemy definition carries a `currency_display` config that maps the four tier names to local equivalents.
+
+Example:
+
+| Zone | Copper alias | Silver alias | Gold alias | Gold alias |
+|---|---|---|---|---|
+| Standard | Copper | Silver | Gold | Platinum |
+| Ashenveil Cathedral | Soul Token | Grave Mark | Death Crown | *(rare)* |
+| The Neon Sprawl | Credit | Kilocredit | Megacredit | *(rare)* |
+
+Local currency received is converted to the player's copper total immediately on pickup. The flavor name appears in the loot message; the wallet always displays in standard denominations (or a future setting could display in local names while in-zone — TBD).
+
+#### Currency sinks
+
+Repairs, skill respecs, crafting materials, NPC services, guild hall upgrades.
 
 ### 6.3 The Mark System — Item Naming & Scaling
 
@@ -655,9 +746,112 @@ Periodic server-wide events: rift openings, faction assaults on towns, legendary
 
 ---
 
-## 9. Technical Architecture
+## 9. Player Command Reference
 
-### 9.1 Stack
+This section is the authoritative list of all player-facing commands. Commands are typed into the input line and sent to the server. The server is the only authority — no command has any effect unless the server accepts and processes it.
+
+Commands are case-insensitive. Arguments are separated from the verb by a space.
+
+### 9.1 Implemented Commands (v1)
+
+These commands exist in the current codebase and are available to all players.
+
+#### Navigation
+
+| Command | Alias | Description |
+|---|---|---|
+| `north` | `n` | Move north if an exit exists |
+| `south` | `s` | Move south if an exit exists |
+| `east` | `e` | Move east if an exit exists |
+| `west` | `w` | Move west if an exit exists |
+| `up` | `u` | Move up if an exit exists |
+| `down` | `d` | Move down if an exit exists |
+
+If no exit exists in the requested direction, the server responds with a message and no movement occurs. Movement has no action economy cost outside of combat.
+
+#### Exploration
+
+| Command | Alias | Description |
+|---|---|---|
+| `look` | `l` | Display the current room's full description, exits, and other players present |
+
+#### Communication
+
+| Command | Alias | Description |
+|---|---|---|
+| `say <text>` | — | Speak to all players in the current room |
+
+#### Information
+
+| Command | Alias | Description |
+|---|---|---|
+| `who` | — | List all players currently online |
+| `help` | `?` | Display available commands and current room exits |
+
+The `help` output is context-aware — it shows only the exits that actually exist in the current room, not a fixed list of all possible directions.
+
+The unknown command response directs players to `help`: *"Unknown command. Type 'help' for a list of commands."*
+
+### 9.2 Planned Commands (not yet implemented)
+
+These commands are designed and documented elsewhere in the GDD but not yet in the codebase. Listed here for completeness and to prevent duplication of design effort.
+
+#### Communication (Section 7.1)
+
+| Command | Description |
+|---|---|
+| `yell <text>` | Speak to players in current room and all adjacent rooms |
+| `tell <name> <text>` | Private message to a named player anywhere |
+| `party <text>` | Message all party members |
+| `guild <text>` | Message all online guild members |
+| `zone <text>` | Message all players in current zone |
+| `general <text>` | Message all players online (throttled) |
+| `emote <text>` | Freeform action visible in current room |
+
+#### World Interaction
+
+| Command | Description |
+|---|---|
+| `talk` / `ask <topic>` | Initiate NPC dialogue |
+| `forage` | Gather plant/organic materials in applicable rooms |
+| `mine` | Gather ore/mineral materials in applicable rooms |
+| `salvage` | Disassemble items or gather tech components |
+| `harvest` | Gather zone-specific resources |
+
+#### Combat (Section 5)
+
+| Command | Description |
+|---|---|
+| `kill <target>` / `attack <target>` | Initiate combat with a target |
+| `flee` | Attempt to escape combat |
+
+#### Character & Inventory
+
+| Command | Description |
+|---|---|
+| `inventory` / `inv` | List carried items |
+| `equipment` / `eq` | Show equipped items |
+| `quests` | Show active quest journal |
+
+#### Travel
+
+| Command | Description |
+|---|---|
+| `recall` | Teleport to bound recall point (requires recall scroll) |
+| `enter <exit name>` | Use a named exit (non-directional) |
+
+### 9.3 Command Design Rules
+
+- Every command must work via keyboard input only — no mouse-only interactions. Screen reader users must be able to access all functionality through the input line.
+- Commands should be short, memorable, and consistent with classic MUD conventions where possible.
+- Every unrecognised command gets a helpful redirect, not a bare error. Currently: *"Unknown command. Type 'help' for a list of commands."*
+- `help` output must stay current as new commands are added. When a new command is implemented, update both this section of the GDD and the `cmd_help()` method in `consumers.py`.
+
+---
+
+## 10. Technical Architecture
+
+### 10.1 Stack
 
 Shyland is built on an existing Django-based foundation. The stack is:
 
@@ -673,7 +867,7 @@ Shyland is built on an existing Django-based foundation. The stack is:
 
 The Node.js/Go recommendation from v1.0 of this document is retired. The existing Django + Channels + PostgreSQL stack is the foundation.
 
-### 9.2 Client Architecture
+### 10.2 Client Architecture
 
 Web-only. Responsive down to phone screen size. No native app.
 
@@ -701,7 +895,7 @@ Web-only. Responsive down to phone screen size. No native app.
 
 **Single visual theme** — no colorblind mode or high-contrast mode in v1.
 
-### 9.3 Server / Tick Architecture
+### 10.3 Server / Tick Architecture
 
 The game server runs a **tick engine** implemented as a Django Channels consumer or a background async worker:
 
@@ -717,7 +911,7 @@ The game server runs a **tick engine** implemented as a Django Channels consumer
 
 NPC AI runs server-side. No game state is trusted from the client.
 
-### 9.4 Persistence Model
+### 10.4 Persistence Model
 
 #### Written to DB on change (event-driven):
 - Character stats, all three bars (Vitality/Acuity/Longevity current values), inventory, position
@@ -740,7 +934,7 @@ NPC AI runs server-side. No game state is trusted from the client.
 - Chat messages (ephemeral; stored only if reported for moderation)
 - Combat log
 
-### 9.5 World State & Instancing
+### 10.5 World State & Instancing
 
 Shared persistent world — all players inhabit the same rooms. No instancing for standard content.
 
@@ -750,7 +944,7 @@ Shared persistent world — all players inhabit the same rooms. No instancing fo
 
 **The Wastelands:** Shared world but all content is dynamically scaled — no instancing required. Scaling is computed server-side at spawn time based on the highest-level player in the triggering party.
 
-### 9.6 Admin / Super User Infrastructure
+### 10.6 Admin / Super User Infrastructure
 
 Super user tools are **v1 critical infrastructure** — not an afterthought. Given no mounts and no housing, teleportation and world-inspection tools are the primary means of navigating and testing the game during development.
 
@@ -764,7 +958,7 @@ Required v1 admin capabilities:
 - Force-reset dungeon instances
 - Access moderation queue
 
-### 9.7 Security
+### 10.7 Security
 
 - All game logic runs server-side; client is a dumb terminal
 - Rate limiting on all WebSocket messages
@@ -773,7 +967,7 @@ Required v1 admin capabilities:
 - Anti-cheat: server validates all position changes, damage values, inventory states
 - Item gifting requires super user authentication — cannot be spoofed by regular players
 
-### 9.8 Moderation
+### 10.8 Moderation
 
 - `report <player> <reason>` sends flagged log to moderation queue
 - Staff can appear invisible, observe rooms, mute/kick/ban
@@ -781,7 +975,7 @@ Required v1 admin capabilities:
 
 ---
 
-## 10. Admin & Content Tools
+## 11. Admin & Content Tools
 
 ### 10.1 Builder System
 
@@ -795,11 +989,11 @@ Web-based builder interface (separate from game client) for authorized staff:
 
 Changes can be staged and reviewed before going live.
 
-### 10.2 OLC (Online Level Creation)
+### 11.2 OLC (Online Level Creation)
 
 In-game OLC commands available to trusted builders for iteration and tweaking. Complex new content goes through the full builder UI.
 
-### 10.3 Content Scripting
+### 11.3 Content Scripting
 
 NPCs and rooms support lightweight event scripting (sandboxed Python subset or Lua) for:
 - Triggered events (player enters room → NPC speaks)
@@ -809,7 +1003,7 @@ NPCs and rooms support lightweight event scripting (sandboxed Python subset or L
 
 Scripts written in builder UI with a validator.
 
-### 10.4 Analytics & Monitoring
+### 11.4 Analytics & Monitoring
 
 Structured event emission for:
 - Player deaths (location, cause, level, bar states at time of death)
@@ -823,7 +1017,7 @@ Internal dashboard for balancing decisions.
 
 ---
 
-## 11. Future Systems
+## 12. Future Systems
 
 These are explicitly deferred — not in scope for v1, documented here for future design sessions:
 
@@ -873,6 +1067,6 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 
 ---
 
-*Document version 2.0 — Shyland Working Draft*
+*Document version 5.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
 *Technical review notes are provisional pending development Q&A session.*
