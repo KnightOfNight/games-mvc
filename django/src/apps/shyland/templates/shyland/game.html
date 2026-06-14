@@ -58,11 +58,15 @@
     border-right: 1px solid var(--border);
   }
   #output { white-space: pre-wrap; line-height: 1.55; }
-  .msg-room   { color: var(--room); }
-  .msg-chat   { color: var(--chat); }
-  .msg-combat { color: var(--combat); }
-  .msg-system { color: var(--system); }
-  .msg-error  { color: var(--error); }
+  .msg-room    { color: var(--room); }
+  .msg-chat    { color: var(--chat); }
+  .msg-combat  { color: var(--combat); }
+  .msg-system  { color: var(--system); }
+  .msg-error   { color: var(--error); }
+  .msg-section         { color: var(--room); margin-top: 1.55em; }
+  .msg-section strong  { color: var(--accent); font-weight: bold; }
+  #cmd::placeholder            { color: var(--muted); }
+  #cmd.disconnected::placeholder { color: var(--error); font-weight: bold; }
 
   /* Side panel */
   #side {
@@ -153,7 +157,7 @@
   <div id="input-row">
     <span id="prompt" aria-hidden="true">&gt;</span>
     <input id="cmd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
-           spellcheck="false" aria-label="Command input" placeholder="enter a command…" />
+           spellcheck="false" aria-label="Command input" placeholder="Connecting…" />
     <button id="send-btn">SEND</button>
   </div>
 
@@ -180,16 +184,19 @@
   const ws = new WebSocket(`${proto}://${location.host}/ws/shyland/`);
 
   ws.addEventListener('open', () => {
-    append('Connected to Shyland.', 'system');
+    cmd.classList.remove('disconnected');
+    cmd.placeholder = 'Connected to Shyland. Enter a command…';
     cmd.focus();
   });
 
   ws.addEventListener('close', () => {
-    append('Connection closed. Refresh to reconnect.', 'error');
+    cmd.classList.add('disconnected');
+    cmd.placeholder = 'Connection closed. Refresh to reconnect.';
   });
 
   ws.addEventListener('error', () => {
-    append('WebSocket error. Check your connection.', 'error');
+    cmd.classList.add('disconnected');
+    cmd.placeholder = 'Connection error. Refresh to reconnect.';
   });
 
   ws.addEventListener('message', (e) => {
@@ -197,11 +204,15 @@
     try { msg = JSON.parse(e.data); } catch { return; }
 
     if (msg.type === 'output') {
-      append(msg.text, msg.category || 'system');
-      if (msg.category === 'combat') {
-        combatLive.textContent = '';
-        // Force re-announcement by resetting and setting
-        requestAnimationFrame(() => { combatLive.textContent = msg.text; });
+      if (msg.category === 'room') {
+        if (msg.enter) output.innerHTML = '';
+        renderRoom(msg);
+      } else {
+        append(msg);
+        if (msg.category === 'combat') {
+          combatLive.textContent = '';
+          requestAnimationFrame(() => { combatLive.textContent = msg.text; });
+        }
       }
     } else if (msg.type === 'status') {
       roomName.textContent = msg.room_name || '';
@@ -211,12 +222,49 @@
     }
   });
 
-  function append(text, category) {
-    const el = document.createElement('div');
-    el.className = `msg-${category}`;
-    el.textContent = text;
-    output.appendChild(el);
+  function renderRoom(msg) {
+    const lines = msg.text.split('\n').filter(l => !(l.trim().startsWith('[') && l.trim().endsWith(']')));
+    const desc = lines.join('\n').trim();
+
+    if (desc) {
+      const el = document.createElement('div');
+      el.className = 'msg-room';
+      el.textContent = desc;
+      output.appendChild(el);
+    }
+
+    if (msg.players) {
+      appendSection('Players here:', msg.players + '.', '1.55em');
+    }
+
+    if (msg.exits) {
+      appendSection('Exits:', msg.exits + '.', '1.55em');
+    }
+
     outputWrap.scrollTop = outputWrap.scrollHeight;
+  }
+
+  function append(msg) {
+    const el = document.createElement('div');
+    el.className = `msg-${msg.category || 'system'}`;
+    if (msg.hint_exits) { el.style.marginTop = '1.55em'; el.style.fontWeight = 'bold'; }
+    el.textContent = msg.text;
+    output.appendChild(el);
+    if (msg.hint_exits) {
+      appendSection('Exits:', msg.hint_exits + '.', '1.55em');
+    }
+    outputWrap.scrollTop = outputWrap.scrollHeight;
+  }
+
+  function appendSection(label, text, marginTop) {
+    const el = document.createElement('div');
+    el.className = 'msg-section';
+    el.style.marginTop = marginTop;
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    el.appendChild(strong);
+    el.appendChild(document.createTextNode(' ' + text));
+    output.appendChild(el);
   }
 
   function send() {

@@ -90,7 +90,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         destination = getattr(room, exit_field)
 
         if destination is None:
-            await self.output('There is no exit in that direction.', 'system')
+            exits = room.exits()
+            await self.send_json({
+                'type': 'output',
+                'category': 'error',
+                'text': 'There is no exit in that direction.',
+                'hint_exits': ', '.join(exits.keys()) if exits else 'none',
+            })
             return
 
         char_name = self.character.name
@@ -114,7 +120,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'exclude': self.channel_name,
         })
 
-        await self.send_room_description(destination)
+        await self.send_room_description(destination, entering=True)
 
     async def cmd_say(self, text):
         if not text:
@@ -154,22 +160,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category})
 
-    async def send_room_description(self, room):
+    async def send_room_description(self, room, entering=False):
         char = self.character
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
-
         others = await self.get_others_in_room(room)
-        other_str = ''
-        if others:
-            other_str = '\nAlso here: ' + ', '.join(others) + '.'
 
-        text = (
-            f'\n[ {room.name} ]\n'
-            f'{room.description}\n'
-            f'Exits: {exit_str}.{other_str}'
-        )
-        await self.output(text, 'room')
+        await self.send_json({
+            'type': 'output',
+            'category': 'room',
+            'enter': entering,
+            'text': f'[ {room.name} ]\n{room.description}',
+            'players': ', '.join(others) if others else None,
+            'exits': exit_str,
+        })
 
         v = char.vitality_current
         a = char.acuity_current
