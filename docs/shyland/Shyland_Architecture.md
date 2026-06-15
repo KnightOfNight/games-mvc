@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit e3a62fe.  
+> Authoritative technical reference as of commit 7757ddc (item system branch).  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, and query who is online. Currency storage and the display utility are implemented. Combat, items, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, and query who is online. The item system is built: EffectDefinition, ItemDefinition, ItemInstance, and EffectInstance models exist; items can be generated, assigned to characters, and viewed via the `inventory` command. Currency storage and the display utility are implemented. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
 
 ---
 
@@ -246,6 +246,133 @@ unique_together: (character, room)
 
 Fog-of-war tracking. A row is created on first entry to each room via `get_or_create` in `move_character()`. The minimap renderer (not yet built) will query this table.
 
+#### EffectDefinition
+
+Template for a game effect (buff, debuff, DoT, curse, etc.). The same definition is shared by all instances of that effect.
+
+```
+name           CharField(200)
+slug           SlugField(unique)
+effect_type    CharField(30), choices:
+                 restore_vitality | restore_acuity | restore_longevity |
+                 dot_vitality | dot_acuity | dot_longevity |
+                 shift_acuity_high | shift_acuity_low |
+                 stat_bonus | stat_penalty | durability_restore | curse_generic
+magnitude_min  FloatField
+magnitude_max  FloatField
+duration_min   FloatField(null)   — seconds; null = instantaneous
+duration_max   FloatField(null)
+scales_with_mk BooleanField(default=False)
+scaling_base   FloatField(null)
+scaling_factor FloatField(null)
+description    TextField(blank)   — builder notes
+```
+
+#### ItemDefinition
+
+Template for an item type. One definition per item type (not per Mk tier). Instances are generated at drop time with Mk tier and rarity applied.
+
+```
+name                 CharField(200)
+slug                 SlugField(unique)
+item_type            CharField(20), choices: weapon | armor | accessory | consumable | bag | readable | key
+genre_tag            CharField(20), choices: fantasy | cyber | wasteland | gothic | steam | cosmic
+description          TextField         — flavor text shown to player
+
+# Scaling
+scaling_base         FloatField
+scaling_factor       FloatField
+
+# Weapon-specific
+damage_spread        FloatField(null)
+is_ranged            BooleanField(default=False)
+
+# Equipment
+valid_slots          JSONField(default=list)   — list of slot strings e.g. ["MAIN_HAND", "OFF_HAND"]
+is_two_handed        BooleanField(default=False)
+
+# Durability
+takes_durability_loss    BooleanField(default=True)
+durability_table         JSONField(default=list)
+                         — [{min: N, max: N, penalty: N}, ...] threshold table
+
+# Carry capacity (bags)
+carry_bonus          IntegerField(default=0)
+
+# Stats
+primary_stats        JSONField(default=list)   — [{stat: "str", base: 5.0, factor: 1.2}, ...]
+secondary_stat_pool  JSONField(default=list)   — same format; instances draw from this pool at generation
+
+# Effect (consumables and cursed items)
+effect               FK → EffectDefinition (null, SET_NULL)
+is_cursed_template   BooleanField(default=False)
+```
+
+#### ItemInstance
+
+A single in-game item. Either owned by a character (`owner` set) or on the ground in a room (`current_room` set). Both cannot be set simultaneously — `save()` raises `ValidationError` if both are non-null.
+
+```
+definition           FK → ItemDefinition (CASCADE)
+owner                FK → Character (null, SET_NULL), related_name='inventory'
+current_room         FK → Room (null, SET_NULL), related_name='items'
+                     — mutually exclusive with owner; enforced in save()
+
+# Mk tier and rarity
+mk_tier              IntegerField
+rarity               CharField(20), choices: common | uncommon | rare | epic | legendary | artifact
+
+# Rolled stats — stored at generation time
+rolled_primary_stats    JSONField(default=list)   — [{stat: "str", value: 14}, ...]
+rolled_secondary_stats  JSONField(default=list)   — same format
+
+# Weapon damage
+damage_midpoint      FloatField(null)
+damage_spread        FloatField(null)   — copied from definition; not affected by rarity
+
+# Durability
+durability_current   FloatField(default=100.0)   — 0.0–100.0
+is_broken            BooleanField(default=False)
+
+# Soulbind
+is_soulbound         BooleanField(default=False)
+soulbound_to         FK → Character (null, SET_NULL), related_name='soulbound_items'
+
+# Equipment state
+is_equipped          BooleanField(default=False)
+equipped_slot        CharField(20, blank)
+
+# Curse state
+is_cursed            BooleanField(default=False)
+curse_identified     BooleanField(default=False)
+active_curse         FK → EffectInstance (null, SET_NULL), related_name='cursed_item'
+
+is_artifact          BooleanField(default=False)
+created_at           DateTimeField(auto_now_add=True)
+```
+
+`is_soulbound` flips to `True` the moment a character picks up an item. Items cannot be traded between players. `generate_item_instance()` sets `is_soulbound=True` and `soulbound_to=owner` when an owner is supplied.
+
+#### EffectInstance
+
+An active application of an EffectDefinition on a Character. Used for consumable effects, curse effects, and (future) combat effects.
+
+```
+definition     FK → EffectDefinition (CASCADE)
+target         FK → Character (CASCADE), related_name='active_effects'
+source_item    FK → ItemInstance (null, SET_NULL), related_name='applied_effects'
+source_ability CharField(100, blank)   — combat ability slug if from combat
+
+magnitude      FloatField
+duration       FloatField(null)        — seconds; null = instantaneous
+applied_at     DateTimeField(auto_now_add=True)
+expires_at     DateTimeField(null)     — computed: applied_at + duration
+
+is_active      BooleanField(default=True)
+removed_by     CharField(50, blank)
+               — "timeout" | "warden" | "consumable" | "npc_service" | "repair"
+```
+
 ### 4.2 Currency system (`currency.py`)
 
 All currency is stored as a single `BigIntegerField` named `copper` on `Character`. Display is purely presentational.
@@ -328,6 +455,7 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 | `look` / `l` | `cmd_look()` |
 | `say` | `cmd_say(args)` |
 | `who` | `cmd_who()` |
+| `inventory` / `inv` | `cmd_inventory()` |
 | anything else | unknown command message |
 
 #### Commands
@@ -348,6 +476,20 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 **`say <text>`** — broadcasts `[say] {name}: {text}` with category `chat` to current room group (all players in room, including the sender, receive it).
 
 **`who`** — queries Redis for all `shyland:online:*` keys, retrieves names via `mget`, and returns a sorted list with a count. Only players with a live connection (or whose TTL has not yet expired after an unclean disconnect) appear. `None` values from `mget` are filtered to handle the race where a key expires between `keys()` and `mget()`. No DB call is made.
+
+**`inventory` / `inv`** — fetches all `ItemInstance` objects owned by the character via `get_inventory()` and renders two sections:
+
+1. **Equipment** — items where `is_equipped=True`, sorted by a fixed slot order: HEAD, NECK, SHOULDERS, CHEST, HANDS, WAIST, LEGS, FEET, RING, MAIN_HAND, OFF_HAND, RANGED, BACK. Each line shows: `[SLOT]  {Rarity} {Name} Mk {tier}` plus a suffix. Empty slots are omitted.
+
+2. **Inventory** — unequipped items, sorted by item_type → mk_tier → rarity rank → name. Consumables of identical definition, Mk tier, and rarity are stacked with an `x{N}` count (presentational only — each is a separate DB row). Header shows current/max carry count: `(current/max items)` where max = `stat_str × 10 + sum of equipped bag carry_bonus values`.
+
+Suffix rules:
+- Bags: `+{carry_bonus} carry capacity`
+- Items with `takes_durability_loss=True` and `is_broken=True`: `BROKEN`
+- Items with `takes_durability_loss=True` and not broken: `{dur}% durability`
+- All other items (rings, accessories without durability): no suffix
+
+Curse status is never revealed for items where `curse_identified=False`.
 
 #### Output format
 
@@ -387,7 +529,56 @@ All ORM operations are in `@database_sync_to_async` methods. The consumer corout
 
 Not yet called from any command, but available for future use (looting, vendors, `inventory`). Returns `display_for_zone(character.copper, zone_slug)`, using the zone of the character's current room.
 
-### 4.4 Views and URLs
+### 4.4 Item generation (`item_utils.py`)
+
+`generate_item_instance(definition, mk_tier, rarity, owner=None, room=None)` — generates but does not save an `ItemInstance`. The caller decides when to call `.save()`.
+
+**Parameters:**
+- `definition` — an `ItemDefinition` instance
+- `mk_tier` — integer; the Mk tier to generate at
+- `rarity` — one of `common | uncommon | rare | epic | legendary` (never `artifact` — those are hand-authored)
+- `owner` — a `Character` instance, or `None` if placing in a room
+- `room` — a `Room` instance, or `None` if assigning to a character
+
+**Stat scaling:**
+
+For each stat entry `{stat, base, factor}` in the definition's stat pools:
+- `midpoint = base + (factor × mk_tier)`
+- A random value is drawn within a rarity-specific spread around midpoint:
+
+| Rarity | Multiplier range |
+|--------|-----------------|
+| common | 0.85 – 1.00 |
+| uncommon | 0.90 – 1.05 |
+| rare | 0.95 – 1.10 |
+| epic | 1.00 – 1.15 |
+| legendary | 1.05 – 1.20 |
+
+- Result is rounded to the nearest integer.
+
+**Secondary stat draw:**
+
+The number of secondary stats drawn from the pool depends on rarity:
+
+| Rarity | Secondary stats |
+|--------|----------------|
+| common | 0 |
+| uncommon | 1 |
+| rare | 2 |
+| epic | 3 |
+| legendary | all entries in pool |
+
+Stats are drawn without replacement via `random.sample`. The same spread multipliers apply.
+
+**Weapon damage:**
+- `damage_midpoint = definition.scaling_base + (definition.scaling_factor × mk_tier)`, then rarity spread applied
+- `damage_spread` copied directly from definition — not affected by rarity
+
+**Soulbind:** `is_soulbound=True` and `soulbound_to=owner` when an owner is provided; `False` when placing in a room.
+
+**Durability helper:** `get_durability_penalty(item)` walks `item.definition.durability_table` to return the active performance penalty multiplier for an instance.
+
+### 4.5 Views and URLs
 
 ```python
 # apps/shyland/urls.py
@@ -400,7 +591,7 @@ path('shyland', RedirectView → /shyland/play/)   # handles missing trailing sl
 
 The `game` view is a single `@login_required` function view that renders `shyland/game.html` with no context. All game state is delivered via WebSocket after page load.
 
-### 4.5 Admin
+### 4.6 Admin
 
 | Model | Registered as | Notable config |
 |-------|--------------|----------------|
@@ -409,8 +600,12 @@ The `game` view is a single `@login_required` function view that renders `shylan
 | `Room` | `RoomAdmin` | `area` in list_display, list_filter, and raw_id_fields; `raw_id_fields` for all six exit FKs (prevents loading all rooms in a select); list_filter on zone/area/flag_safe/flag_pvp |
 | `Character` | `CharacterAdmin` | `list_select_related = ('user__profile',)` (avoids N+1 on name property); `readonly_fields = ('wallet_display',)` (human-readable copper via `currency.display()`); `raw_id_fields` for current_room/recall_room |
 | `RoomVisit` | `RoomVisitAdmin` | Basic list: character, room, visited_at |
+| `EffectDefinition` | `EffectDefinitionAdmin` | list_display: name, effect_type, scales_with_mk; `prepopulated_fields` slug from name |
+| `ItemDefinition` | `ItemDefinitionAdmin` | list_display: name, item_type, genre_tag, takes_durability_loss; list_filter on item_type, genre_tag; `prepopulated_fields` slug from name |
+| `ItemInstance` | `ItemInstanceAdmin` | list_display: definition, owner, mk_tier, rarity, is_equipped, is_broken, is_soulbound; list_filter on rarity, is_equipped, is_broken; `raw_id_fields` for owner, current_room, soulbound_to, active_curse |
+| `EffectInstance` | `EffectInstanceAdmin` | list_display: definition, target, is_active, applied_at, expires_at; list_filter on is_active |
 
-### 4.6 Seed data (`management/commands/seed_world.py`)
+### 4.7 Seed data (`management/commands/seed_world.py`)
 
 `python manage.py seed_world` (via `make shell`) creates:
 
@@ -438,7 +633,31 @@ After creating the rooms and wiring exits, the command also creates:
 
 The command uses `get_or_create` throughout and is safe to run multiple times (idempotent on slug/name keys).
 
-### 4.7 Client template (`templates/shyland/game.html`)
+**EffectDefinitions seeded:**
+
+| slug | effect_type | magnitude_min | magnitude_max | duration | scales_with_mk | scaling_base | scaling_factor |
+|------|-------------|---------------|---------------|----------|----------------|--------------|----------------|
+| `vitality-restore` | restore_vitality | 20.0 | 20.0 | instant | True | 10.0 | 5.0 |
+| `acuity-shift-high` | shift_acuity_high | 15.0 | 25.0 | 15–30s | False | — | — |
+| `durability-restore` | durability_restore | 25.0 | 25.0 | instant | False | — | — |
+
+**ItemDefinitions seeded (11 total):**
+
+| slug | item_type | genre_tag | valid_slots | dur_table |
+|------|-----------|-----------|-------------|-----------|
+| `iron-sword` | weapon | fantasy | MAIN_HAND | weapon |
+| `combat-knife` | weapon | wasteland | MAIN_HAND, OFF_HAND | weapon |
+| `pulse-pistol` | weapon (ranged) | cyber | RANGED, MAIN_HAND | ranged |
+| `apprentice-staff` | weapon (2H) | fantasy | MAIN_HAND | weapon |
+| `leather-vest` | armor | fantasy | CHEST | armor |
+| `ballistic-jacket` | armor | wasteland | CHEST | armor |
+| `copper-ring` | accessory | fantasy | RING | none |
+| `satchel` | bag | fantasy | BACK | none (carry_bonus=20) |
+| `healing-draught` | consumable | fantasy | — | — (effect: vitality-restore) |
+| `focus-tonic` | consumable | fantasy | — | — (effect: acuity-shift-high) |
+| `repair-kit` | consumable | wasteland | — | — (effect: durability-restore) |
+
+### 4.8 Client template (`templates/shyland/game.html`)
 
 Extends `base.html`. Pure vanilla JS — no framework.
 
@@ -540,7 +759,11 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Character name from `user.profile.gamer_tag`.** No standalone name field on Character (removed in migration `0002_remove_character_name`). Reuses the platform-wide gamer tag system. Changing your tag renames you in Shyland immediately. Always `select_related('user__profile')` before accessing `.name`.
 
-**Items soulbound on pickup.** No player-to-player item trading ever. Items cannot leave the character who picked them up. Super user gifting flow sets soulbind on write. (Items not yet implemented.)
+**Items soulbound on pickup.** No player-to-player item trading ever. Items cannot leave the character who picked them up. Super user gifting flow sets soulbind on write. `is_soulbound` flips to `True` the moment a character picks up an item; `generate_item_instance()` sets it when `owner` is provided. There is no unsoulbind operation for regular players. Every code path where an item changes hands must enforce this.
+
+**ItemDefinition / ItemInstance split.** One `ItemDefinition` per item type (not per Mk tier). `ItemInstance` stores the generated stats, durability state, and equipped/owner state. This avoids duplicating template data across items. `generate_item_instance()` applies Mk tier and rarity spread at generation time and stores the rolled stats on the instance.
+
+**Shared effect vocabulary.** Consumable effects, curse effects, and (future) combat effects all use `EffectDefinition` + `EffectInstance`. A single model pair covers all applied effects in the game rather than separate tables per effect category.
 
 **Room Groups as the broadcast primitive.** Every player in room X is in channel group `room_{X.id}`. Movement = leave old group + join new group. No per-player fan-out needed for room-scoped events.
 
@@ -563,9 +786,13 @@ These are settled. Do not revisit without deliberate consideration.
 Future sessions should check this list before assuming a system exists.
 
 - Tick engine and combat system (including the fixed 1-second tick / 3-tick combat round)
-- Item model, loot system, and soulbind logic
 - In-game character creation flow (admin creation works)
-- `inventory` command
+- Item pickup, drop, and equip/unequip commands (models exist; no player-facing commands yet)
+- Consumable use command (`use` / `consume`)
+- Loot system (NPC drops, room loot tables)
+- Super user in-game item gifting flow
+- Durability degradation tick (model field exists; no tick logic yet)
+- Repair mechanic
 - `brief` toggle (first visit shows full description; repeat visits show `brief_description`)
 - Minimap and fog-of-war rendering in the client (`RoomVisit` records exist but are not rendered)
 - Party system
@@ -586,6 +813,6 @@ Future sessions should check this list before assuming a system exists.
 
 **Status message omits bar maximums.** `send_room_description()` sends `vitality`, `acuity`, and `longevity` current values but not their maximums (`vitality_max`, `longevity_max`) or Acuity band bounds (`acuity_band_low`, `acuity_band_high`). The client cannot render proportional bars. Add these to the `status` message when the client UI is extended.
 
-**`format_wallet()` is wired but unused.** The helper exists in the consumer and is ready for `inventory`, vendor transactions, and loot commands. It accesses `character.current_room.zone.slug` — ensure `current_room__zone` is in `select_related` when calling it (already is in `get_character()`).
+**`format_wallet()` is wired but unused.** The helper exists in the consumer and is ready for vendor transactions and loot commands. It accesses `character.current_room.zone.slug` — ensure `current_room__zone` is in `select_related` when calling it (already is in `get_character()`).
 
 **Side panel is a stub.** `game.html` shows "Session 1 — world coming soon." in the side panel. Future sessions will populate it with minimap, character stats, or party info.

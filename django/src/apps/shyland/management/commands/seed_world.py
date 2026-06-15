@@ -1,5 +1,29 @@
 from django.core.management.base import BaseCommand
-from apps.shyland.models import Area, Room, Zone
+from apps.shyland.models import Area, EffectDefinition, ItemDefinition, Room, Zone
+
+WEAPON_DUR = [
+    {'min': 75, 'max': 100, 'penalty': 0.0},
+    {'min': 50, 'max': 75,  'penalty': 0.25},
+    {'min': 25, 'max': 50,  'penalty': 0.35},
+    {'min': 1,  'max': 25,  'penalty': 0.50},
+    {'min': 0,  'max': 0,   'penalty': 1.0},
+]
+
+RANGED_DUR = [
+    {'min': 75, 'max': 100, 'penalty': 0.0},
+    {'min': 50, 'max': 75,  'penalty': 0.20},
+    {'min': 25, 'max': 50,  'penalty': 0.30},
+    {'min': 1,  'max': 25,  'penalty': 0.45},
+    {'min': 0,  'max': 0,   'penalty': 1.0},
+]
+
+ARMOR_DUR = [
+    {'min': 75, 'max': 100, 'penalty': 0.0},
+    {'min': 50, 'max': 75,  'penalty': 0.15},
+    {'min': 25, 'max': 50,  'penalty': 0.25},
+    {'min': 1,  'max': 25,  'penalty': 0.40},
+    {'min': 0,  'max': 0,   'penalty': 1.0},
+]
 
 
 class Command(BaseCommand):
@@ -145,3 +169,286 @@ class Command(BaseCommand):
         ))
         self.stdout.write(f'  Set new characters\' current_room to pk={center.pk}.')
         self.stdout.write(f'  Area "{convergence_area.name}" assigned to all {zone.name} rooms.')
+
+        self._seed_effects()
+        self._seed_items()
+
+    def _seed_effects(self):
+        vitality_restore, created = EffectDefinition.objects.get_or_create(
+            slug='vitality-restore',
+            defaults={
+                'name': 'Vitality Restore',
+                'effect_type': EffectDefinition.RESTORE_VITALITY,
+                'magnitude_min': 20.0,
+                'magnitude_max': 20.0,
+                'duration_min': None,
+                'duration_max': None,
+                'scales_with_mk': True,
+                'scaling_base': 10.0,
+                'scaling_factor': 5.0,
+            },
+        )
+        self.stdout.write(f'  EffectDefinition "{vitality_restore.name}" {"created" if created else "exists"}.')
+
+        acuity_shift, created = EffectDefinition.objects.get_or_create(
+            slug='acuity-shift-high',
+            defaults={
+                'name': 'Acuity Shift High',
+                'effect_type': EffectDefinition.SHIFT_ACUITY_HIGH,
+                'magnitude_min': 15.0,
+                'magnitude_max': 25.0,
+                'duration_min': 15.0,
+                'duration_max': 30.0,
+                'scales_with_mk': False,
+            },
+        )
+        self.stdout.write(f'  EffectDefinition "{acuity_shift.name}" {"created" if created else "exists"}.')
+
+        dur_restore, created = EffectDefinition.objects.get_or_create(
+            slug='durability-restore',
+            defaults={
+                'name': 'Durability Restore',
+                'effect_type': EffectDefinition.DURABILITY_RESTORE,
+                'magnitude_min': 25.0,
+                'magnitude_max': 25.0,
+                'duration_min': None,
+                'duration_max': None,
+                'scales_with_mk': False,
+            },
+        )
+        self.stdout.write(f'  EffectDefinition "{dur_restore.name}" {"created" if created else "exists"}.')
+
+        self._effects = {
+            'vitality-restore': vitality_restore,
+            'acuity-shift-high': acuity_shift,
+            'durability-restore': dur_restore,
+        }
+
+    def _seed_items(self):
+        effects = self._effects
+        items = [
+            # Weapons
+            {
+                'slug': 'iron-sword',
+                'name': 'Iron Sword',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['MAIN_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 8.0,
+                'scaling_factor': 3.0,
+                'damage_spread': 4.0,
+                'is_ranged': False,
+                'takes_durability_loss': True,
+                'durability_table': WEAPON_DUR,
+                'primary_stats': [{'stat': 'str', 'base': 3.0, 'factor': 1.0}],
+                'secondary_stat_pool': [
+                    {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
+                    {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'lifesteal', 'base': 0.2, 'factor': 0.1},
+                ],
+                'description': 'A reliable iron blade. Well-balanced and well-worn.',
+            },
+            {
+                'slug': 'combat-knife',
+                'name': 'Combat Knife',
+                'item_type': 'weapon',
+                'genre_tag': 'wasteland',
+                'valid_slots': ['MAIN_HAND', 'OFF_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 5.0,
+                'scaling_factor': 2.0,
+                'damage_spread': 2.0,
+                'is_ranged': False,
+                'takes_durability_loss': True,
+                'durability_table': WEAPON_DUR,
+                'primary_stats': [{'stat': 'dex', 'base': 3.0, 'factor': 1.0}],
+                'secondary_stat_pool': [
+                    {'stat': 'str', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'poison_chance', 'base': 0.3, 'factor': 0.1},
+                ],
+                'description': 'Scratched and notched but still sharp. Does the job.',
+            },
+            {
+                'slug': 'pulse-pistol',
+                'name': 'Pulse Pistol',
+                'item_type': 'weapon',
+                'genre_tag': 'cyber',
+                'valid_slots': ['RANGED', 'MAIN_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 6.0,
+                'scaling_factor': 2.5,
+                'damage_spread': 3.0,
+                'is_ranged': True,
+                'takes_durability_loss': True,
+                'durability_table': RANGED_DUR,
+                'primary_stats': [
+                    {'stat': 'dex', 'base': 2.0, 'factor': 0.8},
+                    {'stat': 'per', 'base': 2.0, 'factor': 0.8},
+                ],
+                'secondary_stat_pool': [
+                    {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'electric_damage_bonus', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'per', 'base': 1.0, 'factor': 0.4},
+                ],
+                'description': 'A compact energy sidearm. Hums faintly when charged.',
+            },
+            {
+                'slug': 'apprentice-staff',
+                'name': 'Apprentice Staff',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['MAIN_HAND'],
+                'is_two_handed': True,
+                'scaling_base': 7.0,
+                'scaling_factor': 2.5,
+                'damage_spread': 5.0,
+                'is_ranged': False,
+                'takes_durability_loss': True,
+                'durability_table': WEAPON_DUR,
+                'primary_stats': [{'stat': 'int', 'base': 4.0, 'factor': 1.2}],
+                'secondary_stat_pool': [
+                    {'stat': 'wis', 'base': 1.0, 'factor': 0.5},
+                    {'stat': 'spell_damage_bonus', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'mana_regen', 'base': 0.3, 'factor': 0.1},
+                ],
+                'description': 'Gnarled wood wrapped in copper wire. Crackles with unfocused energy.',
+            },
+            # Armor
+            {
+                'slug': 'leather-vest',
+                'name': 'Leather Vest',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['CHEST'],
+                'scaling_base': 5.0,
+                'scaling_factor': 2.0,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 3.0, 'factor': 1.0}],
+                'secondary_stat_pool': [
+                    {'stat': 'str', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'dex', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'physical_resist', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': 'Cured hide stitched with gut thread. Basic but proven.',
+            },
+            {
+                'slug': 'ballistic-jacket',
+                'name': 'Ballistic Jacket',
+                'item_type': 'armor',
+                'genre_tag': 'wasteland',
+                'valid_slots': ['CHEST'],
+                'scaling_base': 6.0,
+                'scaling_factor': 2.2,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [
+                    {'stat': 'end', 'base': 3.0, 'factor': 1.0},
+                    {'stat': 'per', 'base': 1.0, 'factor': 0.4},
+                ],
+                'secondary_stat_pool': [
+                    {'stat': 'physical_resist', 'base': 0.8, 'factor': 0.3},
+                    {'stat': 'radiation_resist', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'dex', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': 'Layered composite panels over a worn canvas shell. Smells like smoke.',
+            },
+            # Accessory
+            {
+                'slug': 'copper-ring',
+                'name': 'Copper Ring',
+                'item_type': 'accessory',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['RING'],
+                'scaling_base': 2.0,
+                'scaling_factor': 0.8,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [{'stat': 'wis', 'base': 1.0, 'factor': 0.5}],
+                'secondary_stat_pool': [
+                    {'stat': 'int', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'magic_resist', 'base': 0.3, 'factor': 0.1},
+                ],
+                'description': 'A simple copper band. Faintly warm to the touch.',
+            },
+            # Bag
+            {
+                'slug': 'satchel',
+                'name': 'Satchel',
+                'item_type': 'bag',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['BACK'],
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'carry_bonus': 20,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': 'A worn canvas satchel with a single shoulder strap. Fits more than it looks.',
+            },
+            # Consumables
+            {
+                'slug': 'healing-draught',
+                'name': 'Healing Draught',
+                'item_type': 'consumable',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'effect': effects['vitality-restore'],
+                'description': 'A bitter herbal infusion in a stoppered vial. Works fast.',
+            },
+            {
+                'slug': 'focus-tonic',
+                'name': 'Focus Tonic',
+                'item_type': 'consumable',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'effect': effects['acuity-shift-high'],
+                'description': 'Clear liquid with a sharp chemical smell. Narrows the world to a point.',
+            },
+            {
+                'slug': 'repair-kit',
+                'name': 'Repair Kit',
+                'item_type': 'consumable',
+                'genre_tag': 'wasteland',
+                'valid_slots': [],
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'effect': effects['durability-restore'],
+                'description': 'Patches, adhesive, and a small wrench. Enough to hold things together.',
+            },
+        ]
+
+        count_created = 0
+        for data in items:
+            slug = data.pop('slug')
+            _, created = ItemDefinition.objects.get_or_create(slug=slug, defaults=data)
+            if created:
+                count_created += 1
+            self.stdout.write(
+                f'  ItemDefinition "{data["name"]}" {"created" if created else "exists"}.'
+            )
+
+        self.stdout.write(self.style.SUCCESS(
+            f'Item seed complete: {count_created} new ItemDefinitions created.'
+        ))

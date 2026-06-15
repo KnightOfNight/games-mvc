@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 
 
@@ -200,3 +200,222 @@ class RoomVisit(models.Model):
 
     class Meta:
         unique_together = ('character', 'room')
+
+
+class EffectDefinition(models.Model):
+    RESTORE_VITALITY = 'restore_vitality'
+    RESTORE_ACUITY = 'restore_acuity'
+    RESTORE_LONGEVITY = 'restore_longevity'
+    DOT_VITALITY = 'dot_vitality'
+    DOT_ACUITY = 'dot_acuity'
+    DOT_LONGEVITY = 'dot_longevity'
+    SHIFT_ACUITY_HIGH = 'shift_acuity_high'
+    SHIFT_ACUITY_LOW = 'shift_acuity_low'
+    STAT_BONUS = 'stat_bonus'
+    STAT_PENALTY = 'stat_penalty'
+    DURABILITY_RESTORE = 'durability_restore'
+    CURSE_GENERIC = 'curse_generic'
+    EFFECT_TYPE_CHOICES = [
+        (RESTORE_VITALITY, 'Restore Vitality'),
+        (RESTORE_ACUITY, 'Restore Acuity'),
+        (RESTORE_LONGEVITY, 'Restore Longevity'),
+        (DOT_VITALITY, 'DoT Vitality'),
+        (DOT_ACUITY, 'DoT Acuity'),
+        (DOT_LONGEVITY, 'DoT Longevity'),
+        (SHIFT_ACUITY_HIGH, 'Shift Acuity High'),
+        (SHIFT_ACUITY_LOW, 'Shift Acuity Low'),
+        (STAT_BONUS, 'Stat Bonus'),
+        (STAT_PENALTY, 'Stat Penalty'),
+        (DURABILITY_RESTORE, 'Durability Restore'),
+        (CURSE_GENERIC, 'Curse Generic'),
+    ]
+
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    effect_type = models.CharField(max_length=30, choices=EFFECT_TYPE_CHOICES)
+    magnitude_min = models.FloatField()
+    magnitude_max = models.FloatField()
+    duration_min = models.FloatField(null=True, blank=True)
+    duration_max = models.FloatField(null=True, blank=True)
+    scales_with_mk = models.BooleanField(default=False)
+    scaling_base = models.FloatField(null=True, blank=True)
+    scaling_factor = models.FloatField(null=True, blank=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+
+class ItemDefinition(models.Model):
+    WEAPON = 'weapon'
+    ARMOR = 'armor'
+    ACCESSORY = 'accessory'
+    CONSUMABLE = 'consumable'
+    BAG = 'bag'
+    READABLE = 'readable'
+    KEY = 'key'
+    ITEM_TYPE_CHOICES = [
+        (WEAPON, 'Weapon'),
+        (ARMOR, 'Armor'),
+        (ACCESSORY, 'Accessory'),
+        (CONSUMABLE, 'Consumable'),
+        (BAG, 'Bag'),
+        (READABLE, 'Readable'),
+        (KEY, 'Key'),
+    ]
+
+    FANTASY = 'fantasy'
+    CYBER = 'cyber'
+    WASTELAND = 'wasteland'
+    GOTHIC = 'gothic'
+    STEAM = 'steam'
+    COSMIC = 'cosmic'
+    GENRE_TAG_CHOICES = [
+        (FANTASY, 'Fantasy'),
+        (CYBER, 'Cyber'),
+        (WASTELAND, 'Wasteland'),
+        (GOTHIC, 'Gothic'),
+        (STEAM, 'Steam'),
+        (COSMIC, 'Cosmic'),
+    ]
+
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    item_type = models.CharField(max_length=20, choices=ITEM_TYPE_CHOICES)
+    genre_tag = models.CharField(max_length=20, choices=GENRE_TAG_CHOICES)
+    description = models.TextField()
+
+    scaling_base = models.FloatField()
+    scaling_factor = models.FloatField()
+
+    damage_spread = models.FloatField(null=True, blank=True)
+    is_ranged = models.BooleanField(default=False)
+
+    valid_slots = models.JSONField(default=list)
+    is_two_handed = models.BooleanField(default=False)
+
+    takes_durability_loss = models.BooleanField(default=True)
+    durability_table = models.JSONField(default=list)
+
+    carry_bonus = models.IntegerField(default=0)
+
+    primary_stats = models.JSONField(default=list)
+    secondary_stat_pool = models.JSONField(default=list)
+
+    effect = models.ForeignKey(
+        'EffectDefinition',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='items',
+    )
+    is_cursed_template = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+
+class ItemInstance(models.Model):
+    COMMON = 'common'
+    UNCOMMON = 'uncommon'
+    RARE = 'rare'
+    EPIC = 'epic'
+    LEGENDARY = 'legendary'
+    ARTIFACT = 'artifact'
+    RARITY_CHOICES = [
+        (COMMON, 'Common'),
+        (UNCOMMON, 'Uncommon'),
+        (RARE, 'Rare'),
+        (EPIC, 'Epic'),
+        (LEGENDARY, 'Legendary'),
+        (ARTIFACT, 'Artifact'),
+    ]
+
+    definition = models.ForeignKey(
+        'ItemDefinition',
+        on_delete=models.CASCADE,
+        related_name='instances',
+    )
+    owner = models.ForeignKey(
+        'Character',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='inventory',
+    )
+    current_room = models.ForeignKey(
+        'Room',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='items',
+    )
+
+    mk_tier = models.IntegerField()
+    rarity = models.CharField(max_length=20, choices=RARITY_CHOICES)
+
+    rolled_primary_stats = models.JSONField(default=list)
+    rolled_secondary_stats = models.JSONField(default=list)
+
+    damage_midpoint = models.FloatField(null=True, blank=True)
+    damage_spread = models.FloatField(null=True, blank=True)
+
+    durability_current = models.FloatField(default=100.0)
+    is_broken = models.BooleanField(default=False)
+
+    is_soulbound = models.BooleanField(default=False)
+    soulbound_to = models.ForeignKey(
+        'Character',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='soulbound_items',
+    )
+
+    is_equipped = models.BooleanField(default=False)
+    equipped_slot = models.CharField(max_length=20, blank=True)
+
+    is_cursed = models.BooleanField(default=False)
+    curse_identified = models.BooleanField(default=False)
+    active_curse = models.ForeignKey(
+        'EffectInstance',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='cursed_item',
+    )
+
+    is_artifact = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.owner_id and self.current_room_id:
+            raise ValidationError('ItemInstance cannot have both owner and current_room set.')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.rarity} {self.definition.name} Mk {self.mk_tier}'
+
+
+class EffectInstance(models.Model):
+    definition = models.ForeignKey(
+        'EffectDefinition',
+        on_delete=models.CASCADE,
+        related_name='instances',
+    )
+    target = models.ForeignKey(
+        'Character',
+        on_delete=models.CASCADE,
+        related_name='active_effects',
+    )
+    source_item = models.ForeignKey(
+        'ItemInstance',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='applied_effects',
+    )
+    source_ability = models.CharField(max_length=100, blank=True)
+    magnitude = models.FloatField()
+    duration = models.FloatField(null=True, blank=True)
+    applied_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    removed_by = models.CharField(max_length=50, blank=True)
+
+    def __str__(self):
+        return f'{self.definition.name} on {self.target}'

@@ -6,7 +6,18 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.utils import timezone
 
 from .currency import display_for_zone
-from .models import Character, Room, RoomVisit
+from .models import Character, ItemInstance, Room, RoomVisit
+
+SLOT_ORDER = [
+    'HEAD', 'NECK', 'SHOULDERS', 'CHEST', 'HANDS', 'WAIST',
+    'LEGS', 'FEET', 'RING', 'MAIN_HAND', 'OFF_HAND', 'RANGED', 'BACK',
+]
+SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
+
+RARITY_RANK = {
+    'common': 1, 'uncommon': 2, 'rare': 3,
+    'epic': 4, 'legendary': 5, 'artifact': 6,
+}
 
 
 DIRECTIONS = {
@@ -17,6 +28,16 @@ DIRECTIONS = {
     'up': 'exit_up',      'u': 'exit_up',
     'down': 'exit_down',  'd': 'exit_down',
 }
+
+
+def _item_suffix(item, defn):
+    if defn.item_type == 'bag':
+        return f'   — +{defn.carry_bonus} carry capacity'
+    if defn.takes_durability_loss:
+        if item.is_broken:
+            return '   — BROKEN'
+        return f'   — {int(round(item.durability_current))}% durability'
+    return ''
 
 
 class SkylandConsumer(AsyncJsonWebsocketConsumer):
@@ -90,6 +111,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_say(args)
         elif verb == 'who':
             await self.cmd_who()
+        elif verb == 'inventory' or verb == 'inv':
+            await self.cmd_inventory()
         elif verb == 'help' or verb == '?':
             await self.cmd_help()
         else:
@@ -172,6 +195,68 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 90,
             )
 
+    async def cmd_inventory(self):
+        items = await self.get_inventory()
+        char = self.character
+
+        equipped = [i for i in items if i.is_equipped]
+        unequipped = [i for i in items if not i.is_equipped]
+
+        bag_bonus = sum(
+            i.definition.carry_bonus for i in equipped if i.definition.item_type == 'bag'
+        )
+        max_carry = char.stat_str * 10 + bag_bonus
+        current_carry = len(unequipped)
+
+        lines = []
+
+        if equipped:
+            lines.append('Equipment:')
+            for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
+                defn = item.definition
+                name_str = f'{item.rarity.capitalize()} {defn.name} Mk {item.mk_tier}'
+                suffix = _item_suffix(item, defn)
+                lines.append(f'  [{item.equipped_slot}]  {name_str}{suffix}')
+            lines.append('')
+
+        lines.append(f'Inventory ({current_carry}/{max_carry} items):')
+
+        unequipped_sorted = sorted(unequipped, key=lambda i: (
+            i.definition.item_type,
+            i.mk_tier,
+            RARITY_RANK.get(i.rarity, 0),
+            i.definition.name,
+        ))
+
+        idx = 0
+        while idx < len(unequipped_sorted):
+            item = unequipped_sorted[idx]
+            defn = item.definition
+            rarity_label = item.rarity.capitalize()
+            name_str = f'{defn.name} Mk {item.mk_tier}'
+
+            if defn.item_type == 'consumable':
+                count = 1
+                j = idx + 1
+                while j < len(unequipped_sorted):
+                    other = unequipped_sorted[j]
+                    if (other.definition_id == item.definition_id
+                            and other.mk_tier == item.mk_tier
+                            and other.rarity == item.rarity):
+                        count += 1
+                        j += 1
+                    else:
+                        break
+                count_str = f'   x{count}' if count > 1 else ''
+                lines.append(f'  {rarity_label:<9} {name_str}{count_str}')
+                idx = j
+            else:
+                suffix = _item_suffix(item, defn)
+                lines.append(f'  {rarity_label:<9} {name_str}{suffix}')
+                idx += 1
+
+        await self.output('\n'.join(lines), 'system')
+
     async def cmd_help(self):
         room = await self.get_current_room()
         exits = room.exits()
@@ -182,10 +267,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'Movement: {movement}\n'
             '\n'
             'Commands:\n'
-            '  look / l      — describe this room\n'
-            '  say <text>    — speak to players here\n'
-            '  who           — list players online\n'
-            '  help / ?      — show this list'
+            '  look / l        — describe this room\n'
+            '  say <text>      — speak to players here\n'
+            '  who             — list players online\n'
+            '  inventory / inv — show carried items and equipment\n'
+            '  help / ?        — show this list'
         )
         await self.output(help_text, 'system')
 
@@ -288,6 +374,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def touch_last_seen(self, character):
         Character.objects.filter(pk=character.pk).update(last_seen=timezone.now())
+
+    @database_sync_to_async
+    def get_inventory(self):
+        return list(
+            ItemInstance.objects.filter(owner=self.character)
+            .select_related('definition')
+            .order_by('is_equipped', 'definition__item_type', 'mk_tier', 'rarity', 'definition__name')
+        )
 
     @database_sync_to_async
     def get_others_in_room(self, room):

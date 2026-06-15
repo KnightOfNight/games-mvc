@@ -1,6 +1,9 @@
 from django.contrib import admin
 from .currency import display as currency_display
-from .models import Area, Character, Room, RoomVisit, Zone
+from .models import (
+    Area, Character, EffectDefinition, EffectInstance,
+    ItemDefinition, ItemInstance, Room, RoomVisit, Zone,
+)
 
 
 class AreaInline(admin.TabularInline):
@@ -61,3 +64,29 @@ class CharacterAdmin(admin.ModelAdmin):
 @admin.register(RoomVisit)
 class RoomVisitAdmin(admin.ModelAdmin):
     list_display = ('character', 'room', 'visited_at')
+
+
+@admin.register(EffectDefinition)
+class EffectDefinitionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'effect_type', 'scales_with_mk')
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(ItemDefinition)
+class ItemDefinitionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'item_type', 'genre_tag', 'takes_durability_loss')
+    list_filter = ('item_type', 'genre_tag')
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(ItemInstance)
+class ItemInstanceAdmin(admin.ModelAdmin):
+    list_display = ('definition', 'owner', 'mk_tier', 'rarity', 'is_equipped', 'is_broken', 'is_soulbound')
+    list_filter = ('rarity', 'is_equipped', 'is_broken')
+    raw_id_fields = ('owner', 'current_room', 'soulbound_to', 'active_curse')
+
+
+@admin.register(EffectInstance)
+class EffectInstanceAdmin(admin.ModelAdmin):
+    list_display = ('definition', 'target', 'is_active', 'applied_at', 'expires_at')
+    list_filter = ('is_active',)
