@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 391ae1f.  
+> Authoritative technical reference as of commit e3a62fe.  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
