@@ -291,15 +291,30 @@ Platinum has no alias in either zone (too rare to need one at this stage).
 1. Rejects unauthenticated connections immediately (no `accept()`).
 2. Loads `Character` via `get_character(user)` with `select_related('current_room__zone', 'recall_room', 'user__profile')`.
 3. If no character found: accepts, sends error output, closes.
-4. Accepts the connection.
-5. If `current_room_id` is `None`: sends error, returns (connection stays open but idle).
-6. Calls `get_current_room()` (full select_related on all exits).
-7. Joins `room_{room.id}` channel group.
-8. Sends room description + status message to client.
+4. Stores `character_pk` as a primitive on `self` — used in disconnect even if connect fails later.
+5. Accepts the connection.
+6. If `current_room_id` is `None`: sends error, returns (connection stays open but idle).
+7. Calls `get_current_room()` (full select_related on all exits).
+8. Joins `room_{room.id}` channel group.
+9. Creates an `aioredis` client (`redis://redis:6379`); writes `shyland:online:{character_pk}` with the character's display name and a 90-second TTL.
+10. Starts `presence_heartbeat` background task.
+11. Sends room description + status message to client.
 
 **`disconnect(code)`**
-1. Leaves room channel group if joined.
-2. Updates `character.last_seen` via `touch_last_seen()`.
+1. Cancels `presence_heartbeat` task if started.
+2. Deletes `shyland:online:{character_pk}` from Redis if the presence key was written.
+3. Leaves room channel group if joined.
+4. Updates `character.last_seen` via `touch_last_seen()`.
+
+#### Redis presence system
+
+Online presence is tracked via Redis keys with the pattern `shyland:online:{character_pk}`. The value stored is the character's display name (resolved at connect time from `character.name`). This avoids a DB lookup on every `who` call.
+
+- **TTL:** 90 seconds
+- **Heartbeat:** `presence_heartbeat()` is a background `asyncio` task that refreshes the TTL via `redis.expire()` every 60 seconds while the connection is live. The 30-second grace window (90s TTL − 60s interval) means an unclean disconnect (process crash, network drop) causes the key to expire within 90 seconds — the player falls off `who` automatically.
+- **Connect:** key is written after the room group is joined, immediately before `send_room_description()`.
+- **Disconnect:** heartbeat task is cancelled first, then the key is deleted. `character_pk` (an integer) is used rather than `self.character` (an ORM object) because the character object may not be available if disconnect fires before connect completes.
+- **Separate client:** a dedicated `aioredis` client is created per connection, distinct from the Django Channels channel layer Redis connection.
 
 #### Command dispatch (`receive_json`)
 
@@ -332,7 +347,7 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 
 **`say <text>`** — broadcasts `[say] {name}: {text}` with category `chat` to current room group (all players in room, including the sender, receive it).
 
-**`who`** — queries all `Character` records (not filtered to active connections), returns names list. **Known limitation: shows all characters, not just online players.**
+**`who`** — queries Redis for all `shyland:online:*` keys, retrieves names via `mget`, and returns a sorted list with a count. Only players with a live connection (or whose TTL has not yet expired after an unclean disconnect) appear. `None` values from `mget` are filtered to handle the race where a key expires between `keys()` and `mget()`. No DB call is made.
 
 #### Output format
 
@@ -365,7 +380,6 @@ All ORM operations are in `@database_sync_to_async` methods. The consumer corout
 | `get_character(user)` | `current_room__zone`, `recall_room`, `user__profile` |
 | `get_current_room()` | `zone`, `area`, all six `exit_*` rooms |
 | `get_others_in_room(room)` | `user__profile` |
-| `get_online_names()` | `user__profile` |
 
 `move_character(destination)` uses `Character.objects.filter(pk=...).update(current_room=destination)` (targeted update, not full save) plus `RoomVisit.objects.get_or_create(...)`.
 
@@ -532,6 +546,8 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Server is the authority; client is a dumb terminal.** Client sends text strings. Server sends JSON output. No game state is trusted from the client.
 
+**Redis presence for `who`, not a DB flag.** Online players are tracked via `shyland:online:{character_pk}` keys in Redis (90-second TTL, 60-second heartbeat refresh). The value is the character's display name, so `who` needs no DB call — it scans keys and fetches values in two Redis round-trips. A separate `aioredis` client is created per consumer connection, independent of the Channels channel layer. The key prefix `shyland:online:` namespaces presence away from all other Redis data in the shared instance.
+
 **`@database_sync_to_async` pattern throughout.** Django ORM is synchronous. Every DB operation in the consumer is wrapped. Never call ORM methods directly in async consumer methods — this raises `SynchronousOnlyOperation` and crashes the connection. Accessing FK descriptor objects (e.g., `room.exit_north`) in async context is also unsafe unless the object was prefetched via `select_related`. `Room.exits()` uses `exit_{direction}_id` (an integer column, always available) to avoid this.
 
 **Three bars: Vitality / Acuity / Longevity.** All three are in the data model from day one. Currently only current values are sent to the client. Acuity is a dynamic spectrum — being too high or too low is bad for different reasons; it is not a simple 0–100 good/bad scale. Each origin has a baseline and an optimal band (`acuity_baseline`, `acuity_band_low`, `acuity_band_high`).
@@ -567,8 +583,6 @@ Future sessions should check this list before assuming a system exists.
 ---
 
 ## 8. Known Issues / Flags for Future Sessions
-
-**`who` shows all characters, not just online players.** `get_online_names()` queries all `Character` records. A proper presence mechanism (Redis key per active channel name, or a `is_online` flag updated on connect/disconnect) is needed before `who` is accurate.
 
 **Status message omits bar maximums.** `send_room_description()` sends `vitality`, `acuity`, and `longevity` current values but not their maximums (`vitality_max`, `longevity_max`) or Acuity band bounds (`acuity_band_low`, `acuity_band_high`). The client cannot render proportional bars. Add these to the `status` message when the client UI is extended.
 

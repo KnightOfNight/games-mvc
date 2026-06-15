@@ -1,3 +1,6 @@
+import asyncio
+
+import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.utils import timezone
@@ -35,6 +38,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.close()
             return
 
+        self.character_pk = self.character.pk
         await self.accept()
 
         if self.character.current_room_id is None:
@@ -44,9 +48,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         self.room_group = f'room_{room.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
+
+        self.redis = aioredis.from_url("redis://redis:6379")
+        await self.redis.set(
+            f"shyland:online:{self.character_pk}",
+            self.character.name,
+            ex=90,
+        )
+        self.heartbeat_task = asyncio.ensure_future(self.presence_heartbeat())
+
         await self.send_room_description(room)
 
     async def disconnect(self, code):
+        if hasattr(self, 'heartbeat_task'):
+            self.heartbeat_task.cancel()
+        if hasattr(self, 'character_pk') and hasattr(self, 'redis'):
+            await self.redis.delete(f"shyland:online:{self.character_pk}")
         if hasattr(self, 'room_group'):
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
         if hasattr(self, 'character'):
@@ -137,15 +154,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def cmd_who(self):
-        names = await self.get_online_names()
-        if names:
-            await self.send_json({
-                'type': 'output',
-                'category': 'who',
-                'players': ', '.join(names),
-            })
-        else:
-            await self.output('No players are online.', 'system')
+        keys = await self.redis.keys("shyland:online:*")
+        if not keys:
+            await self.output("No players are currently online.", "system")
+            return
+        names = await self.redis.mget(*keys)
+        online = sorted(n.decode() for n in names if n)
+        count = len(online)
+        lines = [f"Players online ({count}):"] + [f"  {name}" for name in online]
+        await self.output("\n".join(lines), "system")
+
+    async def presence_heartbeat(self):
+        while True:
+            await asyncio.sleep(60)
+            await self.redis.expire(
+                f"shyland:online:{self.character_pk}",
+                90,
+            )
 
     async def cmd_help(self):
         room = await self.get_current_room()
@@ -274,7 +299,3 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
         return [c.name for c in chars]
 
-    @database_sync_to_async
-    def get_online_names(self):
-        chars = list(Character.objects.select_related('user__profile'))
-        return [c.name for c in chars]
