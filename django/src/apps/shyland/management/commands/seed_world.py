@@ -1,5 +1,8 @@
 from django.core.management.base import BaseCommand
-from apps.shyland.models import Area, EffectDefinition, ItemDefinition, Room, Zone
+from apps.shyland.models import (
+    Area, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
+    NpcDefinition, NpcInstance, Room, Zone,
+)
 
 WEAPON_DUR = [
     {'min': 75, 'max': 100, 'penalty': 0.0},
@@ -452,3 +455,85 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'Item seed complete: {count_created} new ItemDefinitions created.'
         ))
+
+        self._seed_npcs()
+
+    def _seed_npcs(self):
+        loot_table, created = LootTable.objects.get_or_create(
+            slug='goblin-drops',
+            defaults={'name': 'Goblin Drops'},
+        )
+        self.stdout.write(f'  LootTable "Goblin Drops" {"created" if created else "exists"}.')
+
+        iron_sword_def = ItemDefinition.objects.get(slug='iron-sword')
+        healing_draught_def = ItemDefinition.objects.get(slug='healing-draught')
+
+        _, created = LootTableEntry.objects.get_or_create(
+            loot_table=loot_table,
+            item_definition=iron_sword_def,
+            defaults={
+                'mk_tier_min': 1,
+                'mk_tier_max': 3,
+                'drop_chance': 0.5,
+                'rarity_weights': {'common': 70, 'uncommon': 25, 'rare': 5},
+            },
+        )
+        self.stdout.write(f'  LootTableEntry iron-sword {"created" if created else "exists"}.')
+
+        _, created = LootTableEntry.objects.get_or_create(
+            loot_table=loot_table,
+            item_definition=healing_draught_def,
+            defaults={
+                'mk_tier_min': 1,
+                'mk_tier_max': 2,
+                'drop_chance': 0.8,
+                'rarity_weights': {'common': 100},
+            },
+        )
+        self.stdout.write(f'  LootTableEntry healing-draught {"created" if created else "exists"}.')
+
+        goblin_def, created = NpcDefinition.objects.get_or_create(
+            slug='goblin-scout',
+            defaults={
+                'name': 'a goblin scout',
+                'description': (
+                    'A wiry creature with darting eyes and quick hands. '
+                    'It watches you with undisguised hunger.'
+                ),
+                'genre_tag': 'fantasy',
+                'is_aggressive': True,
+                'is_unique': False,
+                'wanders': False,
+                'base_vitality': 30,
+                'base_str': 8,
+                'base_dex': 12,
+                'base_end': 8,
+                'base_int': 6,
+                'base_wis': 6,
+                'base_per': 10,
+                'scaling_factor': 1.0,
+                'loot_table': loot_table,
+                'currency_drop_min': 3,
+                'currency_drop_max': 10,
+                'respawn_minutes': 15,
+            },
+        )
+        self.stdout.write(f'  NpcDefinition "a goblin scout" {"created" if created else "exists"}.')
+
+        fracture_point = Room.objects.get(name='The Fracture Point', zone__slug='the-convergence')
+
+        _, created = NpcInstance.objects.get_or_create(
+            definition=goblin_def,
+            defaults={
+                'current_room': fracture_point,
+                'mk_tier': 1,
+                'vitality_current': goblin_def.base_vitality,
+                'vitality_max': goblin_def.base_vitality,
+                'is_alive': True,
+            },
+        )
+        self.stdout.write(
+            f'  NpcInstance goblin-scout in The Fracture Point {"created" if created else "exists"}.'
+        )
+
+        self.stdout.write(self.style.SUCCESS('NPC seed complete.'))

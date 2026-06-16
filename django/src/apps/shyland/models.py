@@ -419,9 +419,24 @@ class ItemInstance(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    corpse = models.ForeignKey(
+        'Corpse',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='contents',
+    )
+
     def save(self, *args, **kwargs):
-        if self.owner_id and self.current_room_id:
-            raise ValidationError('ItemInstance cannot have both owner and current_room set.')
+        non_null = sum([
+            self.owner_id is not None,
+            self.current_room_id is not None,
+            self.corpse_id is not None,
+        ])
+        if non_null > 1:
+            raise ValidationError(
+                "ItemInstance must be in exactly one location: owner, current_room, or corpse. "
+                f"Got {non_null} non-null location fields."
+            )
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -455,3 +470,113 @@ class EffectInstance(models.Model):
 
     def __str__(self):
         return f'{self.definition.name} on {self.target}'
+
+
+class LootTable(models.Model):
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class LootTableEntry(models.Model):
+    loot_table      = models.ForeignKey(LootTable, on_delete=models.CASCADE, related_name='entries')
+    item_definition = models.ForeignKey('ItemDefinition', on_delete=models.CASCADE)
+    mk_tier_min     = models.IntegerField()
+    mk_tier_max     = models.IntegerField()
+    drop_chance     = models.FloatField(help_text="0.0 to 1.0. Rolled independently per entry.")
+    rarity_weights  = models.JSONField(
+        default=dict,
+        help_text='Dict of rarity → weight. Keys: common, uncommon, rare, epic, legendary. Must sum to 100.'
+    )
+
+    def clean(self):
+        total = sum(self.rarity_weights.values())
+        if total != 100:
+            raise ValidationError(f'rarity_weights must sum to 100, got {total}.')
+
+    def __str__(self):
+        return f"{self.loot_table.name} — {self.item_definition.name} ({self.drop_chance*100:.0f}%)"
+
+
+class NpcDefinition(models.Model):
+    GENRE_TAG_CHOICES = [
+        ('fantasy',   'Fantasy'),
+        ('cyber',     'Cyber'),
+        ('wasteland', 'Wasteland'),
+        ('gothic',    'Gothic'),
+        ('steam',     'Steam'),
+        ('cosmic',    'Cosmic'),
+    ]
+
+    name            = models.CharField(max_length=200)
+    slug            = models.SlugField(unique=True)
+    description     = models.TextField(help_text="Shown when a player examines the NPC.")
+    genre_tag       = models.CharField(max_length=20, choices=GENRE_TAG_CHOICES)
+
+    is_aggressive   = models.BooleanField(default=False, help_text="Attacks players on sight.")
+    is_unique       = models.BooleanField(default=False, help_text="One instance only; no respawn.")
+    wanders         = models.BooleanField(default=False, help_text="Moves between rooms. Not yet implemented.")
+
+    base_vitality   = models.IntegerField()
+    base_str        = models.IntegerField()
+    base_dex        = models.IntegerField()
+    base_end        = models.IntegerField()
+    base_int        = models.IntegerField()
+    base_wis        = models.IntegerField()
+    base_per        = models.IntegerField()
+    scaling_factor  = models.FloatField(default=1.0, help_text="Stat multiplier per Mk tier.")
+
+    loot_table          = models.ForeignKey(
+        LootTable, null=True, blank=True, on_delete=models.SET_NULL,
+        help_text="Loot table rolled on death. Null = no item drops."
+    )
+    currency_drop_min   = models.IntegerField(default=0, help_text="Minimum copper drop (before Mk scaling).")
+    currency_drop_max   = models.IntegerField(default=0, help_text="Maximum copper drop (before Mk scaling).")
+
+    respawn_minutes = models.IntegerField(default=30, help_text="Ignored if is_unique=True.")
+
+    def __str__(self):
+        return self.name
+
+
+class NpcInstance(models.Model):
+    definition       = models.ForeignKey(NpcDefinition, on_delete=models.CASCADE, related_name='instances')
+    current_room     = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL, related_name='npcs')
+    mk_tier          = models.IntegerField(default=1)
+    vitality_current = models.IntegerField()
+    vitality_max     = models.IntegerField()
+    is_alive         = models.BooleanField(default=True)
+    spawned_at       = models.DateTimeField(auto_now_add=True)
+    respawn_at       = models.DateTimeField(null=True, blank=True, help_text="Set on death. Null while alive.")
+
+    @property
+    def name(self):
+        return self.definition.name
+
+    def __str__(self):
+        return f"{self.definition.name} (Mk {self.mk_tier}, room {self.current_room_id})"
+
+
+CORPSE_DECAY_MINUTES = 10
+
+
+class Corpse(models.Model):
+    npc_definition    = models.ForeignKey(
+        NpcDefinition, null=True, blank=True, on_delete=models.SET_NULL,
+        help_text="Source NPC definition. SET_NULL so corpse survives definition deletion."
+    )
+    npc_name_snapshot = models.CharField(max_length=200, help_text="NPC name captured at death. Stable reference.")
+    current_room      = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL, related_name='corpses')
+    killed_by         = models.ForeignKey('Character', null=True, blank=True, on_delete=models.SET_NULL, related_name='kills')
+    created_at        = models.DateTimeField(auto_now_add=True)
+    decay_at          = models.DateTimeField(help_text="Corpse and all contents deleted at this time. Sweep deferred to tick engine.")
+    copper_drop       = models.BigIntegerField(default=0, help_text="Copper to transfer to killer on first loot. Set at death.")
+
+    @property
+    def display_name(self):
+        return f"the corpse of {self.npc_name_snapshot}"
+
+    def __str__(self):
+        return f"Corpse of {self.npc_name_snapshot} (room {self.current_room_id})"

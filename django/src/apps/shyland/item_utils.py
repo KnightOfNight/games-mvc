@@ -180,3 +180,107 @@ def get_durability_penalty(item):
         if entry['min'] <= pct <= entry['max']:
             return entry['penalty']
     return 1.0
+
+
+def generate_loot_from_table(loot_table, mk_tier):
+    """
+    Roll a LootTable at the given mk_tier.
+    Returns a list of unsaved ItemInstance objects (caller must set corpse and call .save()).
+    """
+    from .models import LootTableEntry
+
+    results = []
+    entries = loot_table.entries.select_related('item_definition').all()
+
+    for entry in entries:
+        if random.random() > entry.drop_chance:
+            continue
+
+        tier = max(entry.mk_tier_min, min(mk_tier, entry.mk_tier_max))
+
+        rarities = list(entry.rarity_weights.keys())
+        weights  = list(entry.rarity_weights.values())
+        rarity   = random.choices(rarities, weights=weights, k=1)[0]
+
+        instance = generate_item_instance(
+            definition=entry.item_definition,
+            mk_tier=tier,
+            rarity=rarity,
+        )
+        results.append(instance)
+
+    return results
+
+
+def create_corpse(npc_instance, killer):
+    """
+    Create a Corpse for a dead NpcInstance.
+    Rolls loot table and copper drop. Saves corpse and all loot items.
+    Returns the saved Corpse.
+    Must be called from within a @database_sync_to_async wrapper when used from the consumer.
+    """
+    import random as _random
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import Corpse, CORPSE_DECAY_MINUTES
+
+    definition = npc_instance.definition
+    mk_tier    = npc_instance.mk_tier
+
+    copper = 0
+    if definition.currency_drop_max > 0:
+        copper = _random.randint(
+            definition.currency_drop_min * mk_tier,
+            definition.currency_drop_max * mk_tier,
+        )
+
+    corpse = Corpse.objects.create(
+        npc_definition=definition,
+        npc_name_snapshot=definition.name,
+        current_room=npc_instance.current_room,
+        killed_by=killer,
+        decay_at=timezone.now() + timedelta(minutes=CORPSE_DECAY_MINUTES),
+        copper_drop=copper,
+    )
+
+    if definition.loot_table_id:
+        items = generate_loot_from_table(definition.loot_table, mk_tier)
+        for item in items:
+            item.corpse = corpse
+            item.save()
+
+    return corpse
+
+
+def parse_corpse_noun(noun_str, corpse_list):
+    """
+    Parse MUD noun syntax against a list of Corpse objects.
+    Matching is case-insensitive against corpse.display_name.
+
+    Returns:
+      ('single', corpse)   — matched one corpse
+      ('not_found', None)  — no match
+      ('bad_index', None)  — N.keyword where N exceeds matches
+    """
+    if not noun_str:
+        return ('not_found', None)
+
+    noun_str = noun_str.strip().lower()
+
+    index = 1
+    keyword = noun_str
+    if '.' in noun_str:
+        parts = noun_str.split('.', 1)
+        try:
+            index = int(parts[0])
+            keyword = parts[1]
+        except ValueError:
+            pass
+
+    matches = [c for c in corpse_list if keyword in c.display_name.lower()]
+
+    if not matches:
+        return ('not_found', None)
+    if index > len(matches):
+        return ('bad_index', None)
+    return ('single', matches[index - 1])

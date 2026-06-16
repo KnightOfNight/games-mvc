@@ -1,8 +1,9 @@
 from django.contrib import admin
 from .currency import display as currency_display
 from .models import (
-    Area, Character, EffectDefinition, EffectInstance,
-    ItemDefinition, ItemInstance, Room, RoomVisit, Zone,
+    Area, Character, Corpse, EffectDefinition, EffectInstance,
+    ItemDefinition, ItemInstance, LootTable, LootTableEntry,
+    NpcDefinition, NpcInstance, Room, RoomVisit, Zone,
 )
 
 
@@ -116,3 +117,38 @@ class ItemInstanceAdmin(admin.ModelAdmin):
 class EffectInstanceAdmin(admin.ModelAdmin):
     list_display = ('definition', 'target', 'is_active', 'applied_at', 'expires_at')
     list_filter = ('is_active',)
+
+
+class LootTableEntryInline(admin.TabularInline):
+    model = LootTableEntry
+    extra = 1
+    fields = ('item_definition', 'mk_tier_min', 'mk_tier_max', 'drop_chance', 'rarity_weights')
+
+
+@admin.register(LootTable)
+class LootTableAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug')
+    prepopulated_fields = {'slug': ('name',)}
+    inlines = [LootTableEntryInline]
+
+
+@admin.register(NpcDefinition)
+class NpcDefinitionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'genre_tag', 'is_aggressive', 'is_unique', 'respawn_minutes')
+    list_filter = ('genre_tag', 'is_aggressive', 'is_unique')
+    prepopulated_fields = {'slug': ('name',)}
+    raw_id_fields = ('loot_table',)
+
+
+@admin.register(NpcInstance)
+class NpcInstanceAdmin(admin.ModelAdmin):
+    list_display = ('definition', 'mk_tier', 'current_room', 'is_alive', 'vitality_current', 'vitality_max', 'spawned_at')
+    list_filter = ('is_alive', 'mk_tier')
+    raw_id_fields = ('current_room',)
+
+
+@admin.register(Corpse)
+class CorpseAdmin(admin.ModelAdmin):
+    list_display = ('npc_name_snapshot', 'current_room', 'killed_by', 'copper_drop', 'created_at', 'decay_at')
+    list_filter = ('current_room',)
+    raw_id_fields = ('npc_definition', 'current_room', 'killed_by')

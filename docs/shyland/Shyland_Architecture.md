@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 4faa78f (item interaction commands + identification system).  
+> Authoritative technical reference as of commit TBD (NPC model, corpse model, and loot system).  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, query who is online, and fully interact with items. Item interaction commands are implemented: `pickup` / `p`, `drop`, `equip` / `eq`, `unequip` / `uneq`, `use`, and `examine` / `ex`. The soulbind model is in place (items bind on equip, not pickup). The item identification system is in place (items can be mysterious; identification is per-character knowledge; display uses `get_display_name()` / `get_display_description()` throughout). Currency storage and the display utility are implemented. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, query who is online, and fully interact with items. Item interaction commands are implemented: `pickup` / `p`, `drop`, `equip` / `eq`, `unequip` / `uneq`, `use`, and `examine` / `ex`. The soulbind model is in place (items bind on equip, not pickup). The item identification system is in place (items can be mysterious; identification is per-character knowledge; display uses `get_display_name()` / `get_display_description()` throughout). Currency storage and the display utility are implemented. NPC and corpse models are in place. The `loot` command is implemented. The `examine` command covers items, live NPCs, and corpses. The `pickup` command excludes corpse contents. Loot table infrastructure (`LootTable`, `LootTableEntry`) is implemented. Actual NPC AI, combat, respawn logic, and corpse decay sweep are not yet built. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
 
 ---
 
@@ -396,6 +396,105 @@ removed_by     CharField(50, blank)
                — "timeout" | "warden" | "consumable" | "npc_service" | "repair"
 ```
 
+#### LootTable
+
+```
+name  CharField(200)
+slug  SlugField(unique)
+```
+
+A named loot table. One `LootTable` is assigned to an `NpcDefinition`; it is rolled when that NPC dies.
+
+#### LootTableEntry
+
+```
+loot_table      FK → LootTable (CASCADE), related_name='entries'
+item_definition FK → ItemDefinition (CASCADE)
+mk_tier_min     IntegerField    — minimum Mk tier for this entry
+mk_tier_max     IntegerField    — maximum Mk tier for this entry
+drop_chance     FloatField      — 0.0 to 1.0; rolled independently per entry
+rarity_weights  JSONField       — {rarity: weight, ...}; keys: common/uncommon/rare/epic/legendary; must sum to 100
+```
+
+`clean()` validates that `rarity_weights` values sum to 100.
+
+#### NpcDefinition
+
+Template for an NPC type. One definition per NPC type.
+
+```
+name            CharField(200)
+slug            SlugField(unique)
+description     TextField         — shown when a player examines the NPC
+genre_tag       CharField(20), choices: fantasy | cyber | wasteland | gothic | steam | cosmic
+
+is_aggressive   BooleanField(default=False)   — attacks players on sight
+is_unique       BooleanField(default=False)   — one instance only; no respawn
+wanders         BooleanField(default=False)   — moves between rooms (not yet implemented)
+
+base_vitality   IntegerField
+base_str        IntegerField
+base_dex        IntegerField
+base_end        IntegerField
+base_int        IntegerField
+base_wis        IntegerField
+base_per        IntegerField
+scaling_factor  FloatField(default=1.0)       — stat multiplier per Mk tier
+
+loot_table          FK → LootTable (null, SET_NULL)   — rolled on death; null = no item drops
+currency_drop_min   IntegerField(default=0)   — minimum copper drop before Mk scaling
+currency_drop_max   IntegerField(default=0)   — maximum copper drop before Mk scaling
+
+respawn_minutes IntegerField(default=30)      — ignored if is_unique=True
+```
+
+Note: `CORPSE_DECAY_MINUTES = 10` is a module-level constant in `models.py`, not a field on `NpcDefinition`.
+
+#### NpcInstance
+
+A single live (or recently dead) NPC in the world.
+
+```
+definition       FK → NpcDefinition (CASCADE), related_name='instances'
+current_room     FK → Room (null, SET_NULL), related_name='npcs'
+mk_tier          IntegerField(default=1)
+vitality_current IntegerField
+vitality_max     IntegerField
+is_alive         BooleanField(default=True)   — live-NPC discriminator; False = dead/pending respawn
+spawned_at       DateTimeField(auto_now_add=True)
+respawn_at       DateTimeField(null)           — set on death; null while alive
+```
+
+`name` is a Python property returning `self.definition.name`. `is_alive=True` is the discriminator for querying live NPCs in the consumer. On death, the `NpcInstance` row is updated (`is_alive=False`, `respawn_at` set) and a `Corpse` row is created by `create_corpse()` in `item_utils.py`. The NPC row is not deleted — it is reused on respawn (not yet implemented).
+
+#### Corpse
+
+Created by `create_corpse()` in `item_utils.py` when an NPC dies. Deleted (not flagged) when fully looted.
+
+```
+npc_definition    FK → NpcDefinition (null, SET_NULL)
+                  — source NPC definition; SET_NULL so corpse survives definition deletion
+npc_name_snapshot CharField(200)    — NPC name captured at death; stable even if definition is deleted
+current_room      FK → Room (null, SET_NULL), related_name='corpses'
+killed_by         FK → Character (null, SET_NULL), related_name='kills'
+created_at        DateTimeField(auto_now_add=True)
+decay_at          DateTimeField     — corpse and all contents deleted at this time; sweep deferred to tick engine
+copper_drop       BigIntegerField(default=0)
+                  — copper set at death by create_corpse(); transferred to killer on first loot; then set to 0
+```
+
+`display_name` is a Python property returning `f"the corpse of {self.npc_name_snapshot}"`. `copper_drop` is set once at death and zeroed after the killer loots. Only the killer (`killed_by`) may loot items; currency is visible to all via `examine` but only transferred to the killer. Corpse is deleted when `contents` is empty (checked after each loot operation by `check_corpse_empty_and_delete()`). There is no `is_fully_looted` flag.
+
+#### ItemInstance changes
+
+`ItemInstance` gains a third location field:
+
+```
+corpse  FK → Corpse (null, SET_NULL), related_name='contents'
+```
+
+`save()` enforces a three-way mutual exclusion: exactly one of `{owner, current_room, corpse}` may be non-null on a saved instance. `ValidationError` is raised if more than one are set. Zero non-null fields is permitted for unsaved instances being constructed before assignment.
+
 ### 4.2 Currency system (`currency.py`)
 
 All currency is stored as a single `BigIntegerField` named `copper` on `Character`. Display is purely presentational.
@@ -485,6 +584,7 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 | `unequip` / `uneq` | `cmd_unequip(args)` |
 | `use` | `cmd_use(args)` |
 | `examine` / `ex` | `cmd_examine(args)` |
+| `loot` | `cmd_loot(args)` |
 | `help` / `?` | `cmd_help()` |
 | anything else | unknown command message |
 
@@ -572,12 +672,25 @@ Curse status is never revealed for items where `curse_identified=False`.
 - Sends feedback message (category `system`). Sends a `status` update message after any immediate stat change.
 - Errors: `"Use what?"`, `"You aren't carrying that."`, `"You don't have that many of those."`
 
-**`examine` / `ex`** — inspect an item in detail.
-- Scope: searches carried items (equipped and unequipped) first, then loose room items.
+**`examine` / `ex`** — inspect an item, live NPC, or corpse in detail.
+- Search order: (1) carried items, (2) loose room items, (3) live NPCs in room, (4) corpses in room.
 - Does not support `all`.
 - **Unidentified items** (`is_identified = False`): shows mystery name (or `"an unidentified {item_type}"` fallback), mystery description (or `"You can't determine anything about this item."` fallback), and `"(You cannot determine anything further about this item.)"`. If `is_unidentifiable = True`, adds `"No known method of identification will reveal its true nature."`. No stats, rarity, Mk tier, damage, or durability revealed.
 - **Identified items**: shows full stat block — rarity, name, Mk tier; description; item_type and genre_tag; damage range (weapons); durability (items with `takes_durability_loss`); carry bonus (bags); primary and secondary stats (labels from `STAT_LABELS`, with title-case fallback for unlabelled keys); equipped slot; soulbind status; curse notice if `curse_identified = True`; note if not yet bound.
+- **Live NPCs**: shows NPC name and description only. No stats, aggro flag, or Mk tier shown.
+- **Corpses (killer)**: header `"The corpse of {name}."`, currency (via `display_for_zone()`; `"No currency."` if zero), then full identified item block for each item in `contents`. If no items, `"No items."`.
+- **Corpses (non-killer)**: header and currency line shown; item list replaced with flavour denial message.
 - Errors: `"Examine what?"`, `"You don't see that here."`, `"There aren't that many of those."`
+
+**`loot [corpse] [item]`** — loot a corpse.
+- Bare `loot` with no args: targets the most recently created corpse in the room, loots all items.
+- `loot sword`: targets the most recent corpse, loots only items matching "sword".
+- `loot 2.corpse sword`: targets the second-most-recent corpse, loots only items matching "sword".
+- Permission check: only the killer (`killed_by`) may loot items. Non-killers receive `"That is not your kill; you may not loot it."` No copper transferred.
+- Copper is always transferred first (before items), regardless of whether an item noun is provided. Currency transfer is not gated on the kill permission check — wait, it IS — the permission check happens before copper transfer.
+- Items are looted one by one, each with a message. Carry limit applies; stops if full.
+- Corpse is deleted when all `contents` items and copper have been removed (`check_corpse_empty_and_delete()`). Room broadcast: `"The corpse of {name} slowly disappears."`.
+- Errors: `"There is nothing to loot here."`, `"There aren't that many corpses here."`, `"You don't see that here."` (item not in corpse), `"There aren't that many of those."` (item index out of range), `"You can't carry any more. (N/max items)"`.
 
 **Inventory display changes (v2):** All item names use `get_display_name()`. Unidentified items show only their mystery name with no rarity column or Mk tier. A `[bound]` or `[drop]` indicator is appended to every line based on `is_soulbound`.
 
@@ -679,6 +792,12 @@ Stats are drawn without replacement via `random.sample`. The same spread multipl
 Always use these helpers when displaying item names or descriptions to players. Never access `definition.name` or `definition.description` directly in player-facing output.
 
 **Noun parser:** `parse_item_noun(noun_str, item_list)` — parses classic MUD noun syntax against a list of `ItemInstance` objects. Returns a `(result_code, item_or_None)` tuple: `('all', None)`, `('single', item)`, `('not_found', None)`, or `('bad_index', None)`. Matching is performed against `get_display_name(item)`.
+
+**Corpse noun parser:** `parse_corpse_noun(noun_str, corpse_list)` — parses classic MUD noun syntax against a list of `Corpse` objects. Same `(result_code, corpse_or_None)` tuple pattern as `parse_item_noun` (no `'all'` return). Matching is case-insensitive against `corpse.display_name`.
+
+**Loot table roller:** `generate_loot_from_table(loot_table, mk_tier)` — rolls a `LootTable` at the given Mk tier. For each entry: checks `drop_chance`, clamps `mk_tier` to `[mk_tier_min, mk_tier_max]`, picks rarity from `rarity_weights`. Returns a list of unsaved `ItemInstance` objects. Caller must set `item.corpse` and call `item.save()` on each.
+
+**Corpse factory:** `create_corpse(npc_instance, killer)` — creates and saves a `Corpse` from a dead `NpcInstance`. Rolls copper drop (`currency_drop_min * mk_tier` to `currency_drop_max * mk_tier`). Calls `generate_loot_from_table()` if `loot_table_id` is set, then saves each item with `corpse` assigned. Returns the saved `Corpse`. **This is a synchronous function — it must be called from within a `@database_sync_to_async` wrapper when used from the consumer.**
 
 **Slot utilities:**
 
@@ -908,7 +1027,11 @@ Future sessions should check this list before assuming a system exists.
 - Durability degradation on equip/combat use (model field exists; no tick logic yet)
 - `durability_restore` consumable effect (placeholder response implemented; full repair system deferred)
 - Duration-based effect ticking (EffectInstance records created; expiry processing requires tick engine)
-- Loot system (NPC drops, room loot tables)
+- Loot system — loot table models and loot command implemented; NPC AI, respawn logic, and corpse decay sweep deferred to tick engine
+- NPC aggro, AI behavior, and wandering
+- NPC respawn logic
+- Corpse decay sweep (`CORPSE_DECAY_MINUTES` constant and `decay_at` field are in place; sweep requires tick engine)
+- `examine` on NPCs — dialogue tree integration (description shown; no dialogue yet)
 - Super user in-game item gifting flow
 - `brief` toggle (first visit shows full description; repeat visits show `brief_description`)
 - Minimap and fog-of-war rendering in the client (`RoomVisit` records exist but are not rendered)
@@ -933,3 +1056,7 @@ Future sessions should check this list before assuming a system exists.
 **`format_wallet()` is wired but unused.** The helper exists in the consumer and is ready for vendor transactions and loot commands. It accesses `character.current_room.zone.slug` — ensure `current_room__zone` is in `select_related` when calling it (already is in `get_character()`).
 
 **Side panel is a stub.** `game.html` shows "Session 1 — world coming soon." in the side panel. Future sessions will populate it with minimap, character stats, or party info.
+
+**`create_corpse()` is synchronous.** It is a sync function in `item_utils.py` — it must be called from within a `@database_sync_to_async` wrapper in the consumer when combat is implemented.
+
+**Corpse decay sweep is not implemented.** Corpses with items will persist indefinitely until manually deleted or until the tick engine is built. The `decay_at` field is set correctly on all `Corpse` rows.

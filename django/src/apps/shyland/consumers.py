@@ -9,7 +9,7 @@ from django.utils import timezone
 from .currency import display_for_zone
 from .item_utils import (
     format_slot_name, get_display_name, get_display_description,
-    parse_item_noun, STAT_LABELS,
+    parse_item_noun, parse_corpse_noun, STAT_LABELS,
 )
 from .models import Character, EffectInstance, ItemInstance, Room, RoomVisit
 
@@ -130,6 +130,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_use(args)
         elif verb in ('examine', 'ex'):
             await self.cmd_examine(args)
+        elif verb == 'loot':
+            await self.cmd_loot(args)
         elif verb in ('help', '?'):
             await self.cmd_help()
         else:
@@ -299,17 +301,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'Movement: {movement}\n'
             '\n'
             'Commands:\n'
-            '  look / l              — describe this room\n'
-            '  say <text>            — speak to players here\n'
-            '  who                   — list players online\n'
-            '  inventory / inv       — show carried items and equipment\n'
-            '  pickup (p) <item>     — pick up an item from the room\n'
-            '  drop <item>           — drop a carried item (unbound items only)\n'
-            '  equip (eq) <item>     — equip a carried item\n'
-            '  unequip (uneq) <item> — unequip an equipped item\n'
-            '  use <item>            — use a consumable\n'
-            '  examine (ex) <item>   — inspect an item in detail\n'
-            '  help / ?              — show this list\n'
+            '  look / l                   — describe this room\n'
+            '  say <text>                 — speak to players here\n'
+            '  who                        — list players online\n'
+            '  inventory / inv            — show carried items and equipment\n'
+            '  pickup (p) <item>          — pick up an item from the room\n'
+            '  drop <item>                — drop a carried item (unbound items only)\n'
+            '  equip (eq) <item>          — equip a carried item\n'
+            '  unequip (uneq) <item>      — unequip an equipped item\n'
+            '  use <item>                 — use a consumable\n'
+            '  examine (ex) <item>        — inspect an item, NPC, or corpse in detail\n'
+            '  loot [corpse] [item]       — loot a corpse; bare \'loot\' takes everything from your most recent kill\n'
+            '  help / ?                   — show this list\n'
             '\n'
             "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
         )
@@ -631,6 +634,58 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'area_name': room.area.name if room.area else None,
             })
 
+    def _format_identified_item_lines(self, item):
+        defn = item.definition
+        lines = []
+        lines.append(f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}')
+        lines.append(f'  {defn.description}')
+        lines.append('')
+        lines.append(f'  Type:       {defn.item_type.title()}')
+        lines.append(f'  Genre:      {defn.genre_tag.title()}')
+
+        if (defn.item_type == 'weapon'
+                and item.damage_midpoint is not None
+                and item.damage_spread is not None):
+            dmg_lo = int(item.damage_midpoint - item.damage_spread)
+            dmg_hi = int(item.damage_midpoint + item.damage_spread)
+            lines.append(f'  Damage:     {dmg_lo} – {dmg_hi}')
+
+        if defn.takes_durability_loss:
+            dur_str = f'  Durability: {int(item.durability_current)}%'
+            if item.is_broken:
+                dur_str += ' (BROKEN)'
+            lines.append(dur_str)
+
+        if defn.item_type == 'bag':
+            lines.append(f'  Carry bonus: +{defn.carry_bonus}')
+
+        if item.rolled_primary_stats:
+            lines.append('')
+            for entry in item.rolled_primary_stats:
+                label = STAT_LABELS.get(entry['stat'], entry['stat'].replace('_', ' ').title())
+                lines.append(f'  {label}: {entry["value"]}')
+
+        if item.rolled_secondary_stats:
+            if not item.rolled_primary_stats:
+                lines.append('')
+            for entry in item.rolled_secondary_stats:
+                label = STAT_LABELS.get(entry['stat'], entry['stat'].replace('_', ' ').title())
+                lines.append(f'  {label}: {entry["value"]}')
+
+        if item.is_equipped:
+            lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
+
+        if item.is_soulbound:
+            lines.append('  Bound:      This item is bound to you.')
+
+        if item.is_cursed and item.curse_identified:
+            lines.append('  Curse:      This item carries a curse.')
+
+        if not item.is_equipped and not item.is_soulbound:
+            lines.append('  Note:       This item is not yet bound — you may drop it.')
+
+        return lines
+
     async def cmd_examine(self, args):
         if not args:
             await self.output("Examine what?", 'system')
@@ -644,83 +699,163 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         noun_result, matched = parse_item_noun(args, combined)
 
-        if noun_result == 'not_found':
-            await self.output("You don't see that here.", 'system')
+        if noun_result == 'all':
+            await self.output("You can't examine everything at once.", 'system')
             return
         if noun_result == 'bad_index':
             await self.output("There aren't that many of those.", 'system')
             return
-        if noun_result == 'all':
-            await self.output("You can't examine everything at once.", 'system')
+
+        if noun_result == 'single':
+            item = matched
+            lines = []
+            if not item.is_identified:
+                lines.append(get_display_name(item))
+                lines.append('')
+                lines.append(f'  {get_display_description(item)}')
+                lines.append('')
+                lines.append('  (You cannot determine anything further about this item.)')
+                if item.is_unidentifiable:
+                    lines.append('  No known method of identification will reveal its true nature.')
+            else:
+                lines = self._format_identified_item_lines(item)
+            await self.output('\n'.join(lines), 'system')
             return
 
-        item = matched
-        defn = item.definition
-        lines = []
+        # Search live NPCs
+        npcs = await self.get_npcs_in_room(room)
+        noun_lower = args.strip().lower()
+        npc_match = next((n for n in npcs if noun_lower in n.name.lower()), None)
 
-        if not item.is_identified:
-            lines.append(get_display_name(item))
-            lines.append('')
-            lines.append(f'  {get_display_description(item)}')
-            lines.append('')
-            lines.append('  (You cannot determine anything further about this item.)')
-            if item.is_unidentifiable:
-                lines.append('  No known method of identification will reveal its true nature.')
-        else:
-            lines.append(
-                f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}'
-            )
-            lines.append(f'  {defn.description}')
-            lines.append('')
-            lines.append(f'  Type:       {defn.item_type.title()}')
-            lines.append(f'  Genre:      {defn.genre_tag.title()}')
+        if npc_match is not None:
+            lines = [npc_match.name, '', f'  {npc_match.definition.description}']
+            await self.output('\n'.join(lines), 'system')
+            return
 
-            if (defn.item_type == 'weapon'
-                    and item.damage_midpoint is not None
-                    and item.damage_spread is not None):
-                dmg_lo = int(item.damage_midpoint - item.damage_spread)
-                dmg_hi = int(item.damage_midpoint + item.damage_spread)
-                lines.append(f'  Damage:     {dmg_lo} – {dmg_hi}')
+        # Search corpses
+        corpses = await self.get_corpses_in_room(room)
+        code, corpse = parse_corpse_noun(args, corpses)
 
-            if defn.takes_durability_loss:
-                dur_str = f'  Durability: {int(item.durability_current)}%'
-                if item.is_broken:
-                    dur_str += ' (BROKEN)'
-                lines.append(dur_str)
+        if code == 'bad_index':
+            await self.output("There aren't that many of those.", 'system')
+            return
 
-            if defn.item_type == 'bag':
-                lines.append(f'  Carry bonus: +{defn.carry_bonus}')
+        if code == 'single':
+            from .currency import display_for_zone
+            zone_slug = room.zone.slug if room.zone_id else None
+            lines = [f'The corpse of {corpse.npc_name_snapshot}.']
 
-            if item.rolled_primary_stats:
-                lines.append('')
-                for entry in item.rolled_primary_stats:
-                    label = STAT_LABELS.get(
-                        entry['stat'], entry['stat'].replace('_', ' ').title()
-                    )
-                    lines.append(f'  {label}: {entry["value"]}')
+            if corpse.copper_drop > 0:
+                lines.append(f'  Currency:  {display_for_zone(corpse.copper_drop, zone_slug)}')
+            else:
+                lines.append('  Currency:  No currency.')
 
-            if item.rolled_secondary_stats:
-                if not item.rolled_primary_stats:
+            if char.pk == corpse.killed_by_id:
+                contents = await self.get_corpse_contents(corpse)
+                if contents:
                     lines.append('')
-                for entry in item.rolled_secondary_stats:
-                    label = STAT_LABELS.get(
-                        entry['stat'], entry['stat'].replace('_', ' ').title()
-                    )
-                    lines.append(f'  {label}: {entry["value"]}')
+                    for item in contents:
+                        lines.append('')
+                        lines.extend(self._format_identified_item_lines(item))
+                else:
+                    lines.append('  No items.')
+            else:
+                lines.append(
+                    '  The body lies here, its belongings just out of reach. Whatever it was\n'
+                    "  carrying is none of your business — you didn't make this kill."
+                )
 
-            if item.is_equipped:
-                lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
+            await self.output('\n'.join(lines), 'system')
+            return
 
-            if item.is_soulbound:
-                lines.append('  Bound:      This item is bound to you.')
+        await self.output("You don't see that here.", 'system')
 
-            if item.is_cursed and item.curse_identified:
-                lines.append('  Curse:      This item carries a curse.')
+    async def cmd_loot(self, args):
+        from .currency import display_for_zone
 
-            if not item.is_equipped and not item.is_soulbound:
-                lines.append('  Note:       This item is not yet bound — you may drop it.')
+        room = await self.get_current_room()
+        character = await self.get_character(self.scope['user'])
+        corpses = await self.get_corpses_in_room(room)
 
-        await self.output('\n'.join(lines), 'system')
+        if not corpses:
+            await self.output("There is nothing to loot here.", "system")
+            return
+
+        arg_parts = args.split(None, 1) if args else []
+        target_corpse = None
+        item_noun = None
+
+        if not arg_parts:
+            target_corpse = corpses[0]
+        else:
+            first = arg_parts[0]
+            rest = arg_parts[1] if len(arg_parts) > 1 else None
+            code, matched = parse_corpse_noun(first, corpses)
+            if code == 'single':
+                target_corpse = matched
+                item_noun = rest
+            elif code == 'bad_index':
+                await self.output("There aren't that many corpses here.", "error")
+                return
+            else:
+                target_corpse = corpses[0]
+                item_noun = args.strip()
+
+        if target_corpse.killed_by_id != character.pk:
+            await self.output("That is not your kill; you may not loot it.", "error")
+            return
+
+        copper_amount = await self.do_loot_copper(target_corpse, character)
+        if copper_amount > 0:
+            zone_slug = room.zone.slug if room.zone_id else None
+            copper_str = display_for_zone(copper_amount, zone_slug)
+            await self.output(f"You loot {copper_str} from {target_corpse.display_name}.", "system")
+
+        contents = await self.get_corpse_contents(target_corpse)
+
+        if not contents:
+            await self.output(f"{target_corpse.display_name.capitalize()} is already empty.", "system")
+            deleted = await self.check_corpse_empty_and_delete(target_corpse)
+            if deleted:
+                await self.channel_layer.group_send(self.room_group, {
+                    'type': 'room_message',
+                    'text': f"{target_corpse.display_name.capitalize()} slowly disappears.",
+                    'category': 'room',
+                })
+            return
+
+        if item_noun:
+            code, item = parse_item_noun(item_noun, contents)
+            if code == 'not_found':
+                await self.output("You don't see that here.", "error")
+                return
+            if code == 'bad_index':
+                await self.output("There aren't that many of those.", "error")
+                return
+            items_to_loot = [item]
+        else:
+            items_to_loot = contents
+
+        current_count, max_carry = await self.get_carry_counts(character)
+
+        for item in items_to_loot:
+            if current_count >= max_carry:
+                await self.output(
+                    f"You can't carry any more. ({current_count}/{max_carry} items)",
+                    "error"
+                )
+                break
+            name = await self.do_loot_item(item, character)
+            await self.output(f"You loot {name}.", "system")
+            current_count += 1
+
+        deleted = await self.check_corpse_empty_and_delete(target_corpse)
+        if deleted:
+            await self.channel_layer.group_send(self.room_group, {
+                'type': 'room_message',
+                'text': f"{target_corpse.display_name.capitalize()} slowly disappears.",
+                'category': 'room',
+            })
 
     # ------------------------------------------------------------------
     # Channel layer event handlers
@@ -747,6 +882,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
         others = await self.get_others_in_room(room)
+        npcs = await self.get_npcs_in_room(room)
+        corpses = await self.get_corpses_in_room(room)
 
         if room.area:
             location_header = f'[ {room.area.name} — {room.name} ]'
@@ -771,6 +908,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
         })
+
+        for npc in npcs:
+            await self.output(f"{npc.name} is here.", 'room')
+
+        for corpse in corpses:
+            await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room')
 
         v = char.vitality_current
         a = char.acuity_current
@@ -843,7 +986,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_room_items(self, room):
         return list(
-            ItemInstance.objects.filter(current_room=room, owner__isnull=True)
+            ItemInstance.objects.filter(current_room=room, owner__isnull=True, corpse__isnull=True)
             .select_related('definition')
         )
 
@@ -945,4 +1088,63 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def consume_item(self, item):
         item.delete()
+
+    @database_sync_to_async
+    def get_npcs_in_room(self, room):
+        from .models import NpcInstance
+        return list(
+            NpcInstance.objects.filter(current_room=room, is_alive=True)
+            .select_related('definition')
+        )
+
+    @database_sync_to_async
+    def get_corpses_in_room(self, room):
+        from .models import Corpse
+        return list(
+            Corpse.objects.filter(current_room=room)
+            .select_related('killed_by', 'npc_definition')
+            .prefetch_related('contents__definition')
+            .order_by('-created_at')
+        )
+
+    @database_sync_to_async
+    def get_corpse_contents(self, corpse):
+        return list(corpse.contents.select_related('definition').all())
+
+    @database_sync_to_async
+    def do_loot_item(self, item, character):
+        name = get_display_name(item)
+        item.corpse = None
+        item.owner = character
+        item.save()
+        return name
+
+    @database_sync_to_async
+    def do_loot_copper(self, corpse, character):
+        from django.db.models import F
+        amount = corpse.copper_drop
+        if amount > 0:
+            Character.objects.filter(pk=character.pk).update(copper=F('copper') + amount)
+            corpse.copper_drop = 0
+            corpse.save(update_fields=['copper_drop'])
+        return amount
+
+    @database_sync_to_async
+    def check_corpse_empty_and_delete(self, corpse):
+        if not corpse.contents.exists():
+            corpse.delete()
+            return True
+        return False
+
+    @database_sync_to_async
+    def get_carry_counts(self, character):
+        current = ItemInstance.objects.filter(owner=character, is_equipped=False).count()
+        equipped_bags = list(
+            ItemInstance.objects.filter(
+                owner=character, is_equipped=True, definition__item_type='bag'
+            ).select_related('definition')
+        )
+        bag_bonus = sum(b.definition.carry_bonus for b in equipped_bags)
+        max_carry = character.stat_str * 10 + bag_bonus
+        return current, max_carry
 
