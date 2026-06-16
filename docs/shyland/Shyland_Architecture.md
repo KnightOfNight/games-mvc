@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 5f450b5 (item interaction commands + identification system).  
+> Authoritative technical reference as of commit 4faa78f (item interaction commands + identification system).  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
