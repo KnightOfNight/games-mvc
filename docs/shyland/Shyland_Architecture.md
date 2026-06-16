@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit TBD (NPC model, corpse model, and loot system).  
+> Authoritative technical reference as of commit 13df906 (NPC model, corpse model, and loot system).  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
