@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 7.0 — Working Draft**
+**Version 8.0 — Working Draft**
 
 -----
 
@@ -342,7 +342,7 @@ Equipment has:
 - **Secondary stats** (drawn randomly from a per-definition pool at drop time; count determined by rarity)
 - **Flavor genre tag** (fantasy, cyber, wasteland, etc.) — cosmetic only
 - **Durability** — degrades with use on applicable items; breaks at 0%
-- **Bound flag** — all items are soulbound on pickup; cannot be traded between players
+- **Bound flag** — all items are soulbound on equip; cannot be traded between players
 
 Genre mixing in equipment is explicitly supported. A character can carry a plasma rifle in one hand and an enchanted dagger in the other.
 
@@ -547,7 +547,15 @@ Enemies have:
 - A **combat tier** (Normal, Elite, Champion, Boss, World Boss)
 - **Archetype flags** governing tactics
 - **Special abilities** telegraphed in combat log before firing
-- **Loot tables** — tiered probability lists
+- **Loot tables** — normalized `LootTable` and `LootTableEntry` models; one table can be shared across multiple NPC definitions
+
+NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one.
+
+**On death:** a `Corpse` is created from the `NpcInstance`. The `NpcInstance` row is deleted; a new row is created when the respawn timer fires. Dead NPCs are never reused — respawn always creates a fresh instance.
+
+**Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep (deferred to tick engine).
+
+**Currency drops** are rolled at death using the formula: `random.randint(currency_drop_min × mk_tier, currency_drop_max × mk_tier)`. Currency display respects zone aliases via `display_for_zone()`.
 
 Bosses have multi-phase fights with behavioral changes at HP thresholds. Some boss abilities specifically target Acuity — a screaming eldritch horror doesn’t just deal damage, it pushes the entire party’s Acuity toward an extreme.
 
@@ -1030,9 +1038,17 @@ If no exit exists in the requested direction, the server responds with a message
 |`equip <item>`  |`eq` |Equip a carried item into an equipment slot         |
 |`unequip <item>`|`uneq`|Move an equipped item back to carried inventory   |
 |`use <item>`    |—    |Use a consumable item                               |
-|`examine <item>`|`ex` |Inspect an item in detail (carried or in the room)  |
+|`examine <item>`|`ex` |Inspect an item, live NPC, or corpse in detail      |
 
-**Item noun syntax:** Classic MUD convention applies to all item commands. `sword` targets the first item whose name contains "sword"; `2.sword` targets the second; `all` targets every eligible item (where supported by the command). Matching is case-insensitive and works against the item's display name — so unidentified items can be referenced by their mystery name.
+**#### Corpse Interaction
+
+|Command                  |Alias|Description                                                        |
+|-------------------------|-----|-------------------------------------------------------------------|
+|`loot [corpse] [item]` |—    |Loot a corpse; bare `loot` takes everything from the most recent kill|
+
+**Corpse noun syntax:** `loot` targets the most recently created corpse in the room. `loot 2.corpse` targets the second most recent. `loot goblin` targets the first corpse whose name contains “goblin”. An item noun may follow: `loot 2.corpse sword` loots the first sword from the second corpse. Only the killing character may loot items. Currency is always transferred on first loot of a corpse regardless of item noun. Bare `loot` after a corpse is emptied automatically targets the next most recent corpse in the room.
+
+Item noun syntax:** Classic MUD convention applies to all item commands. `sword` targets the first item whose name contains "sword"; `2.sword` targets the second; `all` targets every eligible item (where supported by the command). Matching is case-insensitive and works against the item's display name — so unidentified items can be referenced by their mystery name.
 
 The `help` output is context-aware — it shows only the exits that actually exist in the current room, not a fixed list of all possible directions.
 
@@ -1303,7 +1319,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**The Robotic Helper NPC**             |Partially designed. Unique, unreliable, mobile vendor. Full design TBD.                                                            |
 |**Courier Bag / Hip Slot**             |Bags that occupy a hip slot instead of BACK, trading carry capacity for weapon slot access. Planned but not yet designed in detail.|
 |**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — fields and display logic are in place; trigger mechanism not yet implemented.|
-|**Loot System**                        |NPC loot tables and drop logic not yet implemented. Item models exist.                                                             |
+|**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. NPC AI, respawn logic, and corpse decay sweep deferred to tick engine.|
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
 |**Durability Degradation Tick**        |Model field exists; tick logic not yet implemented.                                                                                |
 |**Repair Mechanic**                    |Repair vendors and crafting-based repair not yet implemented.                                                                      |
@@ -1314,12 +1330,12 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Colorblind / High Contrast Mode**    |Deferred to post-v1 accessibility pass.                                                                                            |
 |**Guild Hall Content**                 |Guild hall exists in v1 as a space. Additional guild hall content (mini-quests, guild bosses) is future scope.                     |
 |**Party, Guild, Quest Systems**        |Full implementation deferred. Models and design exist; no in-game commands yet.                                                    |
-|**NPC System and Dialogue**            |Full implementation deferred.                                                                                                      |
+|**NPC System and Dialogue**            |NPC models (`NpcDefinition`, `NpcInstance`, `Corpse`) implemented. `examine` shows live NPCs and corpses. AI, aggro, wandering, respawn, and dialogue deferred.|
 |**Combat System**                      |Tick engine and full combat loop not yet implemented.                                                                              |
 |**PvP Flagging and Bounty System**     |Not yet implemented.                                                                                                               |
 |**The Wastelands Scaling Logic**       |Dynamic content scaling at spawn time not yet implemented.                                                                         |
 
 -----
 
-*Document version 7.0 — Shyland Working Draft*
+*Document version 8.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
