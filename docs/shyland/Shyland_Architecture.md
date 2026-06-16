@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 7757ddc (item system branch).  
+> Authoritative technical reference as of commit 5f450b5 (item interaction commands + identification system).  
 > Describes what is built. For design intent see `Shyland_GDD_v5.md`.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, and query who is online. The item system is built: EffectDefinition, ItemDefinition, ItemInstance, and EffectInstance models exist; items can be generated, assigned to characters, and viewed via the `inventory` command. Currency storage and the display utility are implemented. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, query who is online, and fully interact with items. Item interaction commands are implemented: `pickup` / `p`, `drop`, `equip` / `eq`, `unequip` / `uneq`, `use`, and `examine` / `ex`. The soulbind model is in place (items bind on equip, not pickup). The item identification system is in place (items can be mysterious; identification is per-character knowledge; display uses `get_display_name()` / `get_display_description()` throughout). Currency storage and the display utility are implemented. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
 
 ---
 
@@ -306,6 +306,14 @@ secondary_stat_pool  JSONField(default=list)   — same format; instances draw f
 # Effect (consumables and cursed items)
 effect               FK → EffectDefinition (null, SET_NULL)
 is_cursed_template   BooleanField(default=False)
+
+# Identification (mystery items)
+mystery_name         CharField(200, blank)
+                     — name shown before identification; e.g. "an unknown sword"
+                     Falls back to "an unidentified <item_type>" if blank.
+mystery_description  TextField(blank)
+                     — description shown on examine before identification.
+                     Falls back to "You can't determine anything about this item." if blank.
 ```
 
 #### ItemInstance
@@ -348,10 +356,25 @@ curse_identified     BooleanField(default=False)
 active_curse         FK → EffectInstance (null, SET_NULL), related_name='cursed_item'
 
 is_artifact          BooleanField(default=False)
+
+# Identification
+is_identified        BooleanField(default=True)
+                     — whether this item's true nature is known to its current holder.
+                     Builders set False on items they want to be mysterious.
+                     Resets to False when the item is dropped (unless is_unidentifiable=True).
+is_unidentifiable    BooleanField(default=False)
+                     — if True, no in-game mechanism can ever identify this item.
+                     Set by super users only on specific instances.
+                     Intended for one-of-a-kind mystery Artifacts.
+
 created_at           DateTimeField(auto_now_add=True)
 ```
 
-`is_soulbound` flips to `True` the moment a character picks up an item. Items cannot be traded between players. `generate_item_instance()` sets `is_soulbound=True` and `soulbound_to=owner` when an owner is supplied.
+`is_soulbound` is set to `True` when a character equips an item — not on pickup. Picking up an item sets `owner` but leaves `is_soulbound = False`. The character may still drop the item at this point. The moment an item is equipped, it becomes permanently soulbound (`is_soulbound = True`, `soulbound_to = character`). Unequipping does not unbind. Admin-gifted items are immediately soulbound via `generate_item_instance(gift=True)`. There is no unsoulbind operation for regular players.
+
+`is_identified` (default `True`) — whether this item's true nature is known to its current holder. Builders set this to `False` on items that should be mysterious. Resets to `False` when the item is dropped (unless `is_unidentifiable = True`). Identification is per-character knowledge, not a property of the object.
+
+`is_unidentifiable` (default `False`) — if `True`, no in-game mechanism can ever identify this item. Set by super users only on specific instances. Intended for one-of-a-kind mystery Artifacts.
 
 #### EffectInstance
 
@@ -456,6 +479,13 @@ The text is stripped, split on whitespace into `verb` + optional `args`. Dispatc
 | `say` | `cmd_say(args)` |
 | `who` | `cmd_who()` |
 | `inventory` / `inv` | `cmd_inventory()` |
+| `pickup` / `p` | `cmd_pickup(args)` |
+| `drop` | `cmd_drop(args)` |
+| `equip` / `eq` | `cmd_equip(args)` |
+| `unequip` / `uneq` | `cmd_unequip(args)` |
+| `use` | `cmd_use(args)` |
+| `examine` / `ex` | `cmd_examine(args)` |
+| `help` / `?` | `cmd_help()` |
 | anything else | unknown command message |
 
 #### Commands
@@ -490,6 +520,66 @@ Suffix rules:
 - All other items (rings, accessories without durability): no suffix
 
 Curse status is never revealed for items where `curse_identified=False`.
+
+**Item noun syntax (all item commands)** — classic MUD noun syntax is implemented in `parse_item_noun()` in `item_utils.py`:
+- `sword` — first item in the relevant list whose display name contains "sword" (case-insensitive)
+- `2.sword` — second item whose display name contains "sword"
+- `all` — every item (where the command supports it)
+- Matching uses `get_display_name(item)`, so unidentified items can be referred to by their mystery name.
+
+**`pickup` / `p`** — pick up a loose item from the room floor.
+- Eligible: `ItemInstance` objects where `current_room = character's room` and `owner is null`.
+- Supports `all` (picks up all matching items one by one until carry limit is hit).
+- Carry limit: `stat_str × 10 + sum of equipped bag carry_bonus`. If at limit: `"You can't carry any more. (N/max items)"`.
+- On success: sets `owner = character`, `current_room = None`. Does NOT set `is_soulbound` (items bind on equip, not pickup).
+- Broadcasts `"{name} picks up {display_name}."` to room (excluding picker).
+- Errors: `"Pick up what?"` (no noun), `"You don't see that here."` (not found), `"There aren't that many of those here."` (index out of range).
+
+**`drop`** — drop a carried, non-soulbound item onto the room floor.
+- Eligible for drop: `is_equipped = False` AND `is_soulbound = False`.
+- Supports `all` (iterates all carried items; skips ineligible ones with per-item messages).
+- Per-item checks: if equipped → `"You'll need to unequip your {name} before dropping it."`; if soulbound → `"Your {name} is bound to you and cannot be dropped."`.
+- On success: sets `current_room = character's room`, `owner = None`. Resets `is_identified = False` unless `is_unidentifiable = True`. Display name is captured before the reset so the drop message reflects the name the character knew.
+- Broadcasts `"{name} drops {display_name}."` to room.
+- Errors: `"Drop what?"` (no noun), `"You aren't carrying that."`, `"You don't have that many of those."`
+
+**`equip` / `eq`** — equip a carried, unequipped item into an equipment slot.
+- Does not support `all`.
+- Validates: `definition.valid_slots` must not be empty.
+- Slot selection: iterates `definition.valid_slots` in order; uses the first unoccupied slot. Two-handed weapons (`is_two_handed = True`) additionally require `OFF_HAND` to be free even if only `MAIN_HAND` is in `valid_slots`.
+- Slot-occupied messages:
+  - Single slot blocked: `"Your {Slot} slot is occupied by your {item}. Unequip it first."`
+  - 2H, both blocked: `"Your Main Hand ({item}) and Off Hand ({item}) slots are both occupied. Unequip them first."`
+- On success: sets `is_equipped = True`, `equipped_slot = target_slot`, `is_soulbound = True`, `soulbound_to = character`. **This is when soulbind occurs.**
+- Errors: `"Equip what?"`, `"You aren't carrying that."`, `"You don't have that many of those."`, `"That item cannot be equipped."`
+
+**`unequip` / `uneq`** — move an equipped item back to carried inventory.
+- Does not support `all`.
+- Checks: if `is_cursed = True` → `"Your {name} is cursed and cannot be removed."`.
+- Bag check: if the item is a bag, verify that removing its `carry_bonus` would not leave the character over capacity. New limit = `stat_str × 10 + other equipped bags' bonuses`. If `(unequipped_count + 1) > new_limit` → `"You're carrying too many items to remove your {name}."`.
+- On success: sets `is_equipped = False`, `equipped_slot = ''`. `is_soulbound` is NOT changed (once bound, always bound).
+- Errors: `"Unequip what?"`, `"You don't have that equipped."`, `"You don't have that many of those equipped."`
+
+**`use`** — use a consumable item.
+- Eligible: carried, unequipped items where `definition.item_type = 'consumable'`.
+- Does not support `all`.
+- If `definition.effect is None`: `"Nothing happens."` Item is NOT consumed.
+- If `effect_type = 'durability_restore'`: `"You attempt a repair, but the repair system isn't implemented yet."` Item is NOT consumed.
+- Otherwise: magnitude = `random.uniform(magnitude_min, magnitude_max)`; duration = `random.uniform(duration_min, duration_max)` if both are non-null, else `None`.
+- Immediate effects: `restore_vitality` / `restore_acuity` / `restore_longevity` / `shift_acuity_high` / `shift_acuity_low` apply their stat change immediately with clamping. Duration-only effects (`dot_*`, `stat_bonus`, `stat_penalty`, `curse_generic`) create only an `EffectInstance` — no immediate stat change (tick engine not yet built).
+- If duration is non-null: an `EffectInstance` is created before the item is deleted.
+- Item is deleted after all effects are applied.
+- Sends feedback message (category `system`). Sends a `status` update message after any immediate stat change.
+- Errors: `"Use what?"`, `"You aren't carrying that."`, `"You don't have that many of those."`
+
+**`examine` / `ex`** — inspect an item in detail.
+- Scope: searches carried items (equipped and unequipped) first, then loose room items.
+- Does not support `all`.
+- **Unidentified items** (`is_identified = False`): shows mystery name (or `"an unidentified {item_type}"` fallback), mystery description (or `"You can't determine anything about this item."` fallback), and `"(You cannot determine anything further about this item.)"`. If `is_unidentifiable = True`, adds `"No known method of identification will reveal its true nature."`. No stats, rarity, Mk tier, damage, or durability revealed.
+- **Identified items**: shows full stat block — rarity, name, Mk tier; description; item_type and genre_tag; damage range (weapons); durability (items with `takes_durability_loss`); carry bonus (bags); primary and secondary stats (labels from `STAT_LABELS`, with title-case fallback for unlabelled keys); equipped slot; soulbind status; curse notice if `curse_identified = True`; note if not yet bound.
+- Errors: `"Examine what?"`, `"You don't see that here."`, `"There aren't that many of those."`
+
+**Inventory display changes (v2):** All item names use `get_display_name()`. Unidentified items show only their mystery name with no rarity column or Mk tier. A `[bound]` or `[drop]` indicator is appended to every line based on `is_soulbound`.
 
 #### Output format
 
@@ -529,9 +619,9 @@ All ORM operations are in `@database_sync_to_async` methods. The consumer corout
 
 Not yet called from any command, but available for future use (looting, vendors, `inventory`). Returns `display_for_zone(character.copper, zone_slug)`, using the zone of the character's current room.
 
-### 4.4 Item generation (`item_utils.py`)
+### 4.4 Item generation and utilities (`item_utils.py`)
 
-`generate_item_instance(definition, mk_tier, rarity, owner=None, room=None)` — generates but does not save an `ItemInstance`. The caller decides when to call `.save()`.
+`generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, gift=False)` — generates but does not save an `ItemInstance`. The caller decides when to call `.save()`.
 
 **Parameters:**
 - `definition` — an `ItemDefinition` instance
@@ -539,6 +629,7 @@ Not yet called from any command, but available for future use (looting, vendors,
 - `rarity` — one of `common | uncommon | rare | epic | legendary` (never `artifact` — those are hand-authored)
 - `owner` — a `Character` instance, or `None` if placing in a room
 - `room` — a `Room` instance, or `None` if assigning to a character
+- `gift=False` — if `True`, the item is immediately soulbound to `owner` (admin gifting flow). If `False` (default), `is_soulbound` remains `False` even if `owner` is set; the item soulbinds when the character equips it.
 
 **Stat scaling:**
 
@@ -574,9 +665,33 @@ Stats are drawn without replacement via `random.sample`. The same spread multipl
 - `damage_midpoint = definition.scaling_base + (definition.scaling_factor × mk_tier)`, then rarity spread applied
 - `damage_spread` copied directly from definition — not affected by rarity
 
-**Soulbind:** `is_soulbound=True` and `soulbound_to=owner` when an owner is provided; `False` when placing in a room.
+**Soulbind:** `is_soulbound = True` and `soulbound_to = owner` only when `gift=True`. Otherwise `is_soulbound` remains `False`; soulbind occurs on equip.
 
 **Durability helper:** `get_durability_penalty(item)` walks `item.definition.durability_table` to return the active performance penalty multiplier for an instance.
+
+**Display helpers:**
+
+| Function | Description |
+|----------|-------------|
+| `get_display_name(item)` | Returns the name to show a player. Identified → `definition.name`. Unidentified → `mystery_name` (or `"an unidentified {item_type}"` fallback). |
+| `get_display_description(item)` | Returns the description to show a player. Identified → `definition.description`. Unidentified → `mystery_description` (or default fallback). |
+
+Always use these helpers when displaying item names or descriptions to players. Never access `definition.name` or `definition.description` directly in player-facing output.
+
+**Noun parser:** `parse_item_noun(noun_str, item_list)` — parses classic MUD noun syntax against a list of `ItemInstance` objects. Returns a `(result_code, item_or_None)` tuple: `('all', None)`, `('single', item)`, `('not_found', None)`, or `('bad_index', None)`. Matching is performed against `get_display_name(item)`.
+
+**Slot utilities:**
+
+| Name | Description |
+|------|-------------|
+| `SLOT_DISPLAY_NAMES` | Dict mapping slot keys (e.g. `'MAIN_HAND'`) to human-readable strings (e.g. `'Main Hand'`). |
+| `format_slot_name(slot_str)` | Returns the human-readable slot name; falls back to `slot_str.title()` for unknown slots. |
+
+**Stat display:**
+
+| Name | Description |
+|------|-------------|
+| `STAT_LABELS` | Dict mapping core stat keys (`'str'`, `'dex'`, `'end'`, `'int'`, `'wis'`, `'per'`) to display labels (`'Strength'`, etc.). Used in `cmd_examine` for identified item stat blocks. Unknown stat keys fall back to `key.replace('_', ' ').title()`. |
 
 ### 4.5 Views and URLs
 
@@ -601,8 +716,8 @@ The `game` view is a single `@login_required` function view that renders `shylan
 | `Character` | `CharacterAdmin` | `list_select_related = ('user__profile',)` (avoids N+1 on name property); `readonly_fields = ('wallet_display',)` (human-readable copper via `currency.display()`); `raw_id_fields` for current_room/recall_room |
 | `RoomVisit` | `RoomVisitAdmin` | Basic list: character, room, visited_at |
 | `EffectDefinition` | `EffectDefinitionAdmin` | list_display: name, effect_type, scales_with_mk; `prepopulated_fields` slug from name |
-| `ItemDefinition` | `ItemDefinitionAdmin` | list_display: name, item_type, genre_tag, takes_durability_loss; list_filter on item_type, genre_tag; `prepopulated_fields` slug from name |
-| `ItemInstance` | `ItemInstanceAdmin` | list_display: definition, owner, mk_tier, rarity, is_equipped, is_broken, is_soulbound; list_filter on rarity, is_equipped, is_broken; `raw_id_fields` for owner, current_room, soulbound_to, active_curse |
+| `ItemDefinition` | `ItemDefinitionAdmin` | list_display: name, item_type, genre_tag, takes_durability_loss; list_filter on item_type, genre_tag; `prepopulated_fields` slug from name; fieldsets include `mystery_name` and `mystery_description` in an Identification group |
+| `ItemInstance` | `ItemInstanceAdmin` | list_display adds `is_identified`, `is_unidentifiable`; list_filter adds `is_unidentifiable`; fieldsets include Identification group with `is_identified` and `is_unidentifiable`; `raw_id_fields` for owner, current_room, soulbound_to, active_curse |
 | `EffectInstance` | `EffectInstanceAdmin` | list_display: definition, target, is_active, applied_at, expires_at; list_filter on is_active |
 
 ### 4.7 Seed data (`management/commands/seed_world.py`)
@@ -759,7 +874,9 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Character name from `user.profile.gamer_tag`.** No standalone name field on Character (removed in migration `0002_remove_character_name`). Reuses the platform-wide gamer tag system. Changing your tag renames you in Shyland immediately. Always `select_related('user__profile')` before accessing `.name`.
 
-**Items soulbound on pickup.** No player-to-player item trading ever. Items cannot leave the character who picked them up. Super user gifting flow sets soulbind on write. `is_soulbound` flips to `True` the moment a character picks up an item; `generate_item_instance()` sets it when `owner` is provided. There is no unsoulbind operation for regular players. Every code path where an item changes hands must enforce this.
+**Items soulbound on equip, not on pickup.** Picking up an item transfers ownership but does not soulbind it — the character can still drop it. The moment an item is equipped into a slot, it becomes permanently soulbound (`is_soulbound = True`, `soulbound_to = character`). Unequipping does not unbind. Soulbound items cannot be dropped but can be sold to vendors (future system). Admin-gifted items are immediately soulbound at the time of gifting via `generate_item_instance(gift=True)`. There is no unsoulbind operation for regular players. Every code path where an item changes hands must enforce this.
+
+**Item identification is per-character knowledge.** Items default to identified (`is_identified = True`). Builders explicitly set `is_identified = False` on items they want to be mysterious. `is_unidentifiable = True` (set by super users on specific instances) marks items that can never be identified by any in-game mechanism. Dropping an item resets `is_identified` to `False` (unless `is_unidentifiable`). All player-facing display uses `get_display_name()` and `get_display_description()` — never `definition.name` or `definition.description` directly. The identification trigger (NPC sage, Warden ability, scroll) is not yet implemented.
 
 **ItemDefinition / ItemInstance split.** One `ItemDefinition` per item type (not per Mk tier). `ItemInstance` stores the generated stats, durability state, and equipped/owner state. This avoids duplicating template data across items. `generate_item_instance()` applies Mk tier and rarity spread at generation time and stores the rolled stats on the instance.
 
@@ -787,12 +904,12 @@ Future sessions should check this list before assuming a system exists.
 
 - Tick engine and combat system (including the fixed 1-second tick / 3-tick combat round)
 - In-game character creation flow (admin creation works)
-- Item pickup, drop, and equip/unequip commands (models exist; no player-facing commands yet)
-- Consumable use command (`use` / `consume`)
+- Item identification trigger — NPC sage, Warden ability, and identification scrolls (fields and display logic are in place; trigger mechanism deferred)
+- Durability degradation on equip/combat use (model field exists; no tick logic yet)
+- `durability_restore` consumable effect (placeholder response implemented; full repair system deferred)
+- Duration-based effect ticking (EffectInstance records created; expiry processing requires tick engine)
 - Loot system (NPC drops, room loot tables)
 - Super user in-game item gifting flow
-- Durability degradation tick (model field exists; no tick logic yet)
-- Repair mechanic
 - `brief` toggle (first visit shows full description; repeat visits show `brief_description`)
 - Minimap and fog-of-war rendering in the client (`RoomVisit` records exist but are not rendered)
 - Party system

@@ -310,6 +310,24 @@ class ItemDefinition(models.Model):
     )
     is_cursed_template = models.BooleanField(default=False)
 
+    mystery_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=(
+            "Name shown to players before identification. "
+            "e.g. 'an unknown sword', 'a fragment of something'. "
+            "If blank, falls back to 'an unidentified <item_type>'."
+        )
+    )
+    mystery_description = models.TextField(
+        blank=True,
+        help_text=(
+            "Description shown on examine before identification. "
+            "Can contain lore, atmosphere, or deliberate misdirection. "
+            "If blank, falls back to 'You can't determine anything about this item.'"
+        )
+    )
+
     def __str__(self):
         return self.name
 
@@ -381,6 +399,24 @@ class ItemInstance(models.Model):
     )
 
     is_artifact = models.BooleanField(default=False)
+
+    is_identified = models.BooleanField(
+        default=True,
+        help_text=(
+            "Whether this item's true nature is known to its current holder. "
+            "Defaults True — set False on items that should be mysterious. "
+            "Resets to False when the item is dropped."
+        )
+    )
+    is_unidentifiable = models.BooleanField(
+        default=False,
+        help_text=(
+            "If True, no in-game mechanism can ever identify this item. "
+            "Set by super users only on specific instances. "
+            "Intended for one-of-a-kind mystery Artifacts."
+        )
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):

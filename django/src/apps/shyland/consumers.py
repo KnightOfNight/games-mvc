@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
@@ -6,7 +7,11 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.utils import timezone
 
 from .currency import display_for_zone
-from .models import Character, ItemInstance, Room, RoomVisit
+from .item_utils import (
+    format_slot_name, get_display_name, get_display_description,
+    parse_item_noun, STAT_LABELS,
+)
+from .models import Character, EffectInstance, ItemInstance, Room, RoomVisit
 
 SLOT_ORDER = [
     'HEAD', 'NECK', 'SHOULDERS', 'CHEST', 'HANDS', 'WAIST',
@@ -105,15 +110,27 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if verb in DIRECTIONS:
             await self.cmd_move(verb)
-        elif verb == 'look' or verb == 'l':
+        elif verb in ('look', 'l'):
             await self.cmd_look()
         elif verb == 'say':
             await self.cmd_say(args)
         elif verb == 'who':
             await self.cmd_who()
-        elif verb == 'inventory' or verb == 'inv':
+        elif verb in ('inventory', 'inv'):
             await self.cmd_inventory()
-        elif verb == 'help' or verb == '?':
+        elif verb in ('pickup', 'p'):
+            await self.cmd_pickup(args)
+        elif verb == 'drop':
+            await self.cmd_drop(args)
+        elif verb in ('equip', 'eq'):
+            await self.cmd_equip(args)
+        elif verb in ('unequip', 'uneq'):
+            await self.cmd_unequip(args)
+        elif verb == 'use':
+            await self.cmd_use(args)
+        elif verb in ('examine', 'ex'):
+            await self.cmd_examine(args)
+        elif verb in ('help', '?'):
             await self.cmd_help()
         else:
             await self.output("Unknown command. Type 'help' for a list of commands.", 'system')
@@ -214,9 +231,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             lines.append('Equipment:')
             for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
                 defn = item.definition
-                name_str = f'{item.rarity.capitalize()} {defn.name} Mk {item.mk_tier}'
+                if item.is_identified:
+                    name_str = f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}'
+                else:
+                    name_str = get_display_name(item)
                 suffix = _item_suffix(item, defn)
-                lines.append(f'  [{item.equipped_slot}]  {name_str}{suffix}')
+                bind_tag = '[bound]' if item.is_soulbound else '[drop]'
+                lines.append(f'  [{item.equipped_slot}]  {name_str}{suffix}  {bind_tag}')
             lines.append('')
 
         lines.append(f'Inventory ({current_carry}/{max_carry} items):')
@@ -232,8 +253,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         while idx < len(unequipped_sorted):
             item = unequipped_sorted[idx]
             defn = item.definition
-            rarity_label = item.rarity.capitalize()
-            name_str = f'{defn.name} Mk {item.mk_tier}'
+            bind_tag = '[bound]' if item.is_soulbound else '[drop]'
 
             if defn.item_type == 'consumable':
                 count = 1
@@ -248,11 +268,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     else:
                         break
                 count_str = f'   x{count}' if count > 1 else ''
-                lines.append(f'  {rarity_label:<9} {name_str}{count_str}')
+                if item.is_identified:
+                    rarity_label = item.rarity.capitalize()
+                    name_str = f'{get_display_name(item)} Mk {item.mk_tier}'
+                    lines.append(f'  {rarity_label:<9} {name_str}{count_str}  {bind_tag}')
+                else:
+                    name_str = get_display_name(item)
+                    lines.append(f'             {name_str}{count_str}  {bind_tag}')
                 idx = j
             else:
                 suffix = _item_suffix(item, defn)
-                lines.append(f'  {rarity_label:<9} {name_str}{suffix}')
+                if item.is_identified:
+                    rarity_label = item.rarity.capitalize()
+                    name_str = f'{get_display_name(item)} Mk {item.mk_tier}'
+                    lines.append(f'  {rarity_label:<9} {name_str}{suffix}  {bind_tag}')
+                else:
+                    name_str = get_display_name(item)
+                    lines.append(f'             {name_str}  {bind_tag}')
                 idx += 1
 
         await self.output('\n'.join(lines), 'system')
@@ -267,13 +299,428 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'Movement: {movement}\n'
             '\n'
             'Commands:\n'
-            '  look / l        — describe this room\n'
-            '  say <text>      — speak to players here\n'
-            '  who             — list players online\n'
-            '  inventory / inv — show carried items and equipment\n'
-            '  help / ?        — show this list'
+            '  look / l              — describe this room\n'
+            '  say <text>            — speak to players here\n'
+            '  who                   — list players online\n'
+            '  inventory / inv       — show carried items and equipment\n'
+            '  pickup (p) <item>     — pick up an item from the room\n'
+            '  drop <item>           — drop a carried item (unbound items only)\n'
+            '  equip (eq) <item>     — equip a carried item\n'
+            '  unequip (uneq) <item> — unequip an equipped item\n'
+            '  use <item>            — use a consumable\n'
+            '  examine (ex) <item>   — inspect an item in detail\n'
+            '  help / ?              — show this list\n'
+            '\n'
+            "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
         )
         await self.output(help_text, 'system')
+
+    async def cmd_pickup(self, args):
+        if not args:
+            await self.output("Pick up what? (look to see what's here)", 'system')
+            return
+
+        char = self.character
+        room = await self.get_current_room()
+        room_items = await self.get_room_items(room)
+
+        noun_result, matched = parse_item_noun(args, room_items)
+
+        if noun_result == 'not_found':
+            await self.output("You don't see that here.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("There aren't that many of those here.", 'system')
+            return
+
+        items_to_pick_up = room_items if noun_result == 'all' else [matched]
+        current_count, max_capacity = await self.get_carry_capacity(char)
+
+        for item in items_to_pick_up:
+            if current_count >= max_capacity:
+                await self.output(
+                    f"You can't carry any more. ({current_count}/{max_capacity} items)",
+                    'system',
+                )
+                break
+
+            display_name = get_display_name(item)
+            await self.transfer_to_character(item, char)
+            current_count += 1
+
+            await self.output(f"You pick up {display_name}.", 'system')
+            await self.channel_layer.group_send(self.room_group, {
+                'type': 'room_message',
+                'text': f'{char.name} picks up {display_name}.',
+                'category': 'room',
+                'exclude': self.channel_name,
+            })
+
+    async def cmd_drop(self, args):
+        if not args:
+            await self.output("Drop what?", 'system')
+            return
+
+        char = self.character
+        room = await self.get_current_room()
+        carried_items = await self.get_carried_items(char)
+
+        noun_result, matched = parse_item_noun(args, carried_items)
+
+        if noun_result == 'not_found':
+            await self.output("You aren't carrying that.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("You don't have that many of those.", 'system')
+            return
+
+        items_to_drop = carried_items if noun_result == 'all' else [matched]
+
+        for item in items_to_drop:
+            display_name = get_display_name(item)
+            if item.is_equipped:
+                await self.output(
+                    f"You'll need to unequip your {display_name} before dropping it.",
+                    'system',
+                )
+                continue
+            if item.is_soulbound:
+                await self.output(
+                    f"Your {display_name} is bound to you and cannot be dropped.",
+                    'system',
+                )
+                continue
+
+            await self.transfer_to_room(item, room)
+
+            await self.output(f"You drop {display_name}.", 'system')
+            await self.channel_layer.group_send(self.room_group, {
+                'type': 'room_message',
+                'text': f'{char.name} drops {display_name}.',
+                'category': 'room',
+                'exclude': self.channel_name,
+            })
+
+    async def cmd_equip(self, args):
+        if not args:
+            await self.output("Equip what?", 'system')
+            return
+
+        char = self.character
+        unequipped_items = await self.get_carried_unequipped_items(char)
+
+        noun_result, matched = parse_item_noun(args, unequipped_items)
+
+        if noun_result == 'not_found':
+            await self.output("You aren't carrying that.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("You don't have that many of those.", 'system')
+            return
+        if noun_result == 'all':
+            await self.output("You can't equip everything at once.", 'system')
+            return
+
+        item = matched
+        defn = item.definition
+
+        if not defn.valid_slots:
+            await self.output("That item cannot be equipped.", 'system')
+            return
+
+        equipped_items = await self.get_equipped_items(char)
+        equipped_by_slot = {i.equipped_slot: i for i in equipped_items}
+        occupied_slots = set(equipped_by_slot.keys())
+
+        if defn.is_two_handed:
+            main_item = equipped_by_slot.get('MAIN_HAND')
+            off_item = equipped_by_slot.get('OFF_HAND')
+
+            if main_item and off_item:
+                msg = (
+                    f"Your Main Hand ({get_display_name(main_item)}) and "
+                    f"Off Hand ({get_display_name(off_item)}) slots are both occupied. "
+                    f"Unequip them first."
+                )
+                await self.output(msg, 'system')
+                return
+            elif main_item:
+                await self.output(
+                    f"Your Main Hand slot is occupied by your {get_display_name(main_item)}. "
+                    f"Unequip it first.",
+                    'system',
+                )
+                return
+            elif off_item:
+                await self.output(
+                    f"Your Off Hand slot is occupied by your {get_display_name(off_item)}. "
+                    f"Unequip it first.",
+                    'system',
+                )
+                return
+
+            target_slot = defn.valid_slots[0]
+        else:
+            target_slot = None
+            for slot in defn.valid_slots:
+                if slot not in occupied_slots:
+                    target_slot = slot
+                    break
+
+            if target_slot is None:
+                first_slot = defn.valid_slots[0]
+                blocking = equipped_by_slot.get(first_slot)
+                if blocking:
+                    msg = (
+                        f"Your {format_slot_name(first_slot)} slot is occupied by your "
+                        f"{get_display_name(blocking)}. Unequip it first."
+                    )
+                else:
+                    msg = f"No suitable slot available for that item."
+                await self.output(msg, 'system')
+                return
+
+        await self.equip_item(item, target_slot, char)
+        display_name = get_display_name(item)
+        await self.output(
+            f"You equip {display_name} in your {format_slot_name(target_slot)}.",
+            'system',
+        )
+
+    async def cmd_unequip(self, args):
+        if not args:
+            await self.output("Unequip what?", 'system')
+            return
+
+        char = self.character
+        equipped_items = await self.get_equipped_items(char)
+
+        noun_result, matched = parse_item_noun(args, equipped_items)
+
+        if noun_result == 'not_found':
+            await self.output("You don't have that equipped.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("You don't have that many of those equipped.", 'system')
+            return
+        if noun_result == 'all':
+            await self.output("You can't unequip everything at once.", 'system')
+            return
+
+        item = matched
+        defn = item.definition
+        display_name = get_display_name(item)
+
+        if item.is_cursed:
+            await self.output(f"Your {display_name} is cursed and cannot be removed.", 'system')
+            return
+
+        if defn.item_type == 'bag':
+            other_bag_bonus = sum(
+                i.definition.carry_bonus for i in equipped_items
+                if i.definition.item_type == 'bag' and i.pk != item.pk
+            )
+            new_limit = char.stat_str * 10 + other_bag_bonus
+            unequipped_count = await self.count_unequipped_items(char)
+            if (unequipped_count + 1) > new_limit:
+                await self.output(
+                    f"You're carrying too many items to remove your {display_name}.",
+                    'system',
+                )
+                return
+
+        await self.unequip_item(item)
+        await self.output(
+            f"You unequip your {display_name} and stow it in your inventory.",
+            'system',
+        )
+
+    async def cmd_use(self, args):
+        if not args:
+            await self.output("Use what?", 'system')
+            return
+
+        char = self.character
+        consumables = await self.get_carried_consumables(char)
+
+        noun_result, matched = parse_item_noun(args, consumables)
+
+        if noun_result == 'not_found':
+            await self.output("You aren't carrying that.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("You don't have that many of those.", 'system')
+            return
+        if noun_result == 'all':
+            await self.output("You can't use everything at once.", 'system')
+            return
+
+        item = matched
+        effect_def = item.definition.effect
+
+        if effect_def is None:
+            await self.output("Nothing happens.", 'system')
+            return
+
+        if effect_def.effect_type == 'durability_restore':
+            await self.output(
+                "You attempt a repair, but the repair system isn't implemented yet.",
+                'system',
+            )
+            return
+
+        magnitude = random.uniform(effect_def.magnitude_min, effect_def.magnitude_max)
+
+        has_duration = (
+            effect_def.duration_min is not None and effect_def.duration_max is not None
+        )
+        duration = (
+            random.uniform(effect_def.duration_min, effect_def.duration_max)
+            if has_duration else None
+        )
+
+        effect_type = effect_def.effect_type
+        stat_changed = False
+
+        if effect_type == 'restore_vitality':
+            char.vitality_current = min(
+                char.vitality_current + magnitude, char.vitality_max
+            )
+            await self.apply_character_stat_change(char)
+            stat_changed = True
+            msg = f"You feel your wounds closing. (+{round(magnitude)} vitality)"
+        elif effect_type == 'restore_acuity':
+            char.acuity_current = min(char.acuity_current + magnitude, 100)
+            await self.apply_character_stat_change(char)
+            stat_changed = True
+            msg = f"Your thoughts sharpen and settle. (+{round(magnitude)} acuity)"
+        elif effect_type == 'restore_longevity':
+            char.longevity_current = min(
+                char.longevity_current + magnitude, char.longevity_max
+            )
+            await self.apply_character_stat_change(char)
+            stat_changed = True
+            msg = f"A wave of renewed endurance washes over you. (+{round(magnitude)} longevity)"
+        elif effect_type == 'shift_acuity_high':
+            char.acuity_current = min(char.acuity_current + magnitude, 100)
+            await self.apply_character_stat_change(char)
+            stat_changed = True
+            msg = f"Your senses narrow to a razor edge. (+{round(magnitude)} acuity)"
+        elif effect_type == 'shift_acuity_low':
+            char.acuity_current = max(char.acuity_current - magnitude, 0)
+            await self.apply_character_stat_change(char)
+            stat_changed = True
+            msg = f"Your mind diffuses, thoughts spreading wide. (-{round(magnitude)} acuity)"
+        else:
+            msg = "You feel a strange effect take hold."
+
+        if duration is not None:
+            await self.create_effect_instance(effect_def, char, item, magnitude, duration)
+
+        await self.consume_item(item)
+        await self.output(msg, 'system')
+
+        if stat_changed:
+            room = await self.get_current_room()
+            await self.send_json({
+                'type': 'status',
+                'vitality': char.vitality_current,
+                'acuity': char.acuity_current,
+                'longevity': char.longevity_current,
+                'room_name': room.name,
+                'area_name': room.area.name if room.area else None,
+            })
+
+    async def cmd_examine(self, args):
+        if not args:
+            await self.output("Examine what?", 'system')
+            return
+
+        char = self.character
+        room = await self.get_current_room()
+        carried_items = await self.get_carried_items(char)
+        room_items = await self.get_room_items(room)
+        combined = carried_items + room_items
+
+        noun_result, matched = parse_item_noun(args, combined)
+
+        if noun_result == 'not_found':
+            await self.output("You don't see that here.", 'system')
+            return
+        if noun_result == 'bad_index':
+            await self.output("There aren't that many of those.", 'system')
+            return
+        if noun_result == 'all':
+            await self.output("You can't examine everything at once.", 'system')
+            return
+
+        item = matched
+        defn = item.definition
+        lines = []
+
+        if not item.is_identified:
+            lines.append(get_display_name(item))
+            lines.append('')
+            lines.append(f'  {get_display_description(item)}')
+            lines.append('')
+            lines.append('  (You cannot determine anything further about this item.)')
+            if item.is_unidentifiable:
+                lines.append('  No known method of identification will reveal its true nature.')
+        else:
+            lines.append(
+                f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}'
+            )
+            lines.append(f'  {defn.description}')
+            lines.append('')
+            lines.append(f'  Type:       {defn.item_type.title()}')
+            lines.append(f'  Genre:      {defn.genre_tag.title()}')
+
+            if (defn.item_type == 'weapon'
+                    and item.damage_midpoint is not None
+                    and item.damage_spread is not None):
+                dmg_lo = int(item.damage_midpoint - item.damage_spread)
+                dmg_hi = int(item.damage_midpoint + item.damage_spread)
+                lines.append(f'  Damage:     {dmg_lo} – {dmg_hi}')
+
+            if defn.takes_durability_loss:
+                dur_str = f'  Durability: {int(item.durability_current)}%'
+                if item.is_broken:
+                    dur_str += ' (BROKEN)'
+                lines.append(dur_str)
+
+            if defn.item_type == 'bag':
+                lines.append(f'  Carry bonus: +{defn.carry_bonus}')
+
+            if item.rolled_primary_stats:
+                lines.append('')
+                for entry in item.rolled_primary_stats:
+                    label = STAT_LABELS.get(
+                        entry['stat'], entry['stat'].replace('_', ' ').title()
+                    )
+                    lines.append(f'  {label}: {entry["value"]}')
+
+            if item.rolled_secondary_stats:
+                if not item.rolled_primary_stats:
+                    lines.append('')
+                for entry in item.rolled_secondary_stats:
+                    label = STAT_LABELS.get(
+                        entry['stat'], entry['stat'].replace('_', ' ').title()
+                    )
+                    lines.append(f'  {label}: {entry["value"]}')
+
+            if item.is_equipped:
+                lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
+
+            if item.is_soulbound:
+                lines.append('  Bound:      This item is bound to you.')
+
+            if item.is_cursed and item.curse_identified:
+                lines.append('  Curse:      This item carries a curse.')
+
+            if not item.is_equipped and not item.is_soulbound:
+                lines.append('  Note:       This item is not yet bound — you may drop it.')
+
+        await self.output('\n'.join(lines), 'system')
 
     # ------------------------------------------------------------------
     # Channel layer event handlers
@@ -392,4 +839,110 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             .select_related('user__profile')
         )
         return [c.name for c in chars]
+
+    @database_sync_to_async
+    def get_room_items(self, room):
+        return list(
+            ItemInstance.objects.filter(current_room=room, owner__isnull=True)
+            .select_related('definition')
+        )
+
+    @database_sync_to_async
+    def get_carried_items(self, character):
+        return list(
+            ItemInstance.objects.filter(owner=character)
+            .select_related('definition')
+        )
+
+    @database_sync_to_async
+    def get_carried_unequipped_items(self, character):
+        return list(
+            ItemInstance.objects.filter(owner=character, is_equipped=False)
+            .select_related('definition')
+        )
+
+    @database_sync_to_async
+    def get_equipped_items(self, character):
+        return list(
+            ItemInstance.objects.filter(owner=character, is_equipped=True)
+            .select_related('definition')
+        )
+
+    @database_sync_to_async
+    def get_carried_consumables(self, character):
+        return list(
+            ItemInstance.objects.filter(
+                owner=character,
+                is_equipped=False,
+                definition__item_type='consumable',
+            )
+            .select_related('definition', 'definition__effect')
+        )
+
+    @database_sync_to_async
+    def get_carry_capacity(self, character):
+        from django.db.models import Sum
+        items = ItemInstance.objects.filter(owner=character)
+        current_count = items.count()
+        bag_bonus = items.filter(
+            is_equipped=True,
+            definition__item_type='bag',
+        ).aggregate(total=Sum('definition__carry_bonus'))['total'] or 0
+        max_capacity = character.stat_str * 10 + bag_bonus
+        return (current_count, max_capacity)
+
+    @database_sync_to_async
+    def count_unequipped_items(self, character):
+        return ItemInstance.objects.filter(owner=character, is_equipped=False).count()
+
+    @database_sync_to_async
+    def transfer_to_character(self, item, character):
+        item.owner = character
+        item.current_room = None
+        item.save()
+
+    @database_sync_to_async
+    def transfer_to_room(self, item, room):
+        item.current_room = room
+        item.owner = None
+        if not item.is_unidentifiable:
+            item.is_identified = False
+        item.save()
+
+    @database_sync_to_async
+    def equip_item(self, item, slot, character):
+        item.is_equipped = True
+        item.equipped_slot = slot
+        item.is_soulbound = True
+        item.soulbound_to = character
+        item.save()
+
+    @database_sync_to_async
+    def unequip_item(self, item):
+        item.is_equipped = False
+        item.equipped_slot = ''
+        item.save()
+
+    @database_sync_to_async
+    def apply_character_stat_change(self, character):
+        character.save()
+
+    @database_sync_to_async
+    def create_effect_instance(self, effect_def, character, item, magnitude, duration):
+        from datetime import timedelta
+        from django.utils import timezone
+        expires = timezone.now() + timedelta(seconds=duration) if duration else None
+        return EffectInstance.objects.create(
+            definition=effect_def,
+            target=character,
+            source_item=item,
+            magnitude=magnitude,
+            duration=duration,
+            expires_at=expires,
+            is_active=True,
+        )
+
+    @database_sync_to_async
+    def consume_item(self, item):
+        item.delete()
 

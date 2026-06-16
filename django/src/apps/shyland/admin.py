@@ -77,13 +77,39 @@ class ItemDefinitionAdmin(admin.ModelAdmin):
     list_display = ('name', 'item_type', 'genre_tag', 'takes_durability_loss')
     list_filter = ('item_type', 'genre_tag')
     prepopulated_fields = {'slug': ('name',)}
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'item_type', 'genre_tag', 'description')}),
+        ('Identification', {'fields': ('mystery_name', 'mystery_description')}),
+        ('Scaling', {'fields': ('scaling_base', 'scaling_factor')}),
+        ('Weapon', {'fields': ('damage_spread', 'is_ranged')}),
+        ('Equipment', {'fields': ('valid_slots', 'is_two_handed')}),
+        ('Durability', {'fields': ('takes_durability_loss', 'durability_table')}),
+        ('Carry', {'fields': ('carry_bonus',)}),
+        ('Stats', {'fields': ('primary_stats', 'secondary_stat_pool')}),
+        ('Effect / Curse', {'fields': ('effect', 'is_cursed_template')}),
+    )
 
 
 @admin.register(ItemInstance)
 class ItemInstanceAdmin(admin.ModelAdmin):
-    list_display = ('definition', 'owner', 'mk_tier', 'rarity', 'is_equipped', 'is_broken', 'is_soulbound')
-    list_filter = ('rarity', 'is_equipped', 'is_broken')
+    list_display = (
+        'definition', 'owner', 'mk_tier', 'rarity',
+        'is_equipped', 'is_broken', 'is_soulbound',
+        'is_identified', 'is_unidentifiable',
+    )
+    list_filter = ('rarity', 'is_equipped', 'is_broken', 'is_unidentifiable')
     raw_id_fields = ('owner', 'current_room', 'soulbound_to', 'active_curse')
+    fieldsets = (
+        (None, {'fields': ('definition', 'owner', 'current_room', 'mk_tier', 'rarity')}),
+        ('Stats', {'fields': ('rolled_primary_stats', 'rolled_secondary_stats')}),
+        ('Combat', {'fields': ('damage_midpoint', 'damage_spread')}),
+        ('Durability', {'fields': ('durability_current', 'is_broken')}),
+        ('Equipment', {'fields': ('is_equipped', 'equipped_slot')}),
+        ('Soulbind', {'fields': ('is_soulbound', 'soulbound_to')}),
+        ('Identification', {'fields': ('is_identified', 'is_unidentifiable')}),
+        ('Curse', {'fields': ('is_cursed', 'curse_identified', 'active_curse')}),
+        ('Flags', {'fields': ('is_artifact',)}),
+    )
 
 
 @admin.register(EffectInstance)

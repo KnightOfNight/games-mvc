@@ -2,6 +2,31 @@ import random
 
 from .models import ItemInstance
 
+SLOT_DISPLAY_NAMES = {
+    'MAIN_HAND':  'Main Hand',
+    'OFF_HAND':   'Off Hand',
+    'RANGED':     'Ranged',
+    'HEAD':       'Head',
+    'NECK':       'Neck',
+    'SHOULDERS':  'Shoulders',
+    'CHEST':      'Chest',
+    'HANDS':      'Hands',
+    'WAIST':      'Waist',
+    'LEGS':       'Legs',
+    'FEET':       'Feet',
+    'RING':       'Ring',
+    'BACK':       'Back',
+}
+
+STAT_LABELS = {
+    'str': 'Strength',
+    'dex': 'Dexterity',
+    'end': 'Endurance',
+    'int': 'Intelligence',
+    'wis': 'Wisdom',
+    'per': 'Perception',
+}
+
 RARITY_SPREAD = {
     'common':    (0.85, 1.00),
     'uncommon':  (0.90, 1.05),
@@ -26,11 +51,12 @@ def _roll_stat(base, factor, mk_tier, rarity):
     return round(random.uniform(midpoint * lo, midpoint * hi))
 
 
-def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None):
+def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, gift=False):
     """
     Generate (but do not save) an ItemInstance from a definition at a given Mk tier and rarity.
     Call .save() on the returned instance to persist it.
     Artifact instances must not be passed through this function — create them manually.
+    Pass gift=True when an admin is deliberately giving an item — soulbinds immediately.
     """
     rolled_primary = [
         {'stat': s['stat'], 'value': _roll_stat(s['base'], s['factor'], mk_tier, rarity)}
@@ -59,6 +85,9 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None):
         damage_midpoint = random.uniform(raw_midpoint * lo, raw_midpoint * hi)
         damage_spread = definition.damage_spread
 
+    is_soulbound = bool(owner and gift)
+    soulbound_to = owner if (owner and gift) else None
+
     return ItemInstance(
         definition=definition,
         owner=owner,
@@ -69,9 +98,77 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None):
         rolled_secondary_stats=rolled_secondary,
         damage_midpoint=damage_midpoint,
         damage_spread=damage_spread,
-        is_soulbound=owner is not None,
-        soulbound_to=owner if owner is not None else None,
+        is_soulbound=is_soulbound,
+        soulbound_to=soulbound_to,
     )
+
+
+def format_slot_name(slot_str):
+    return SLOT_DISPLAY_NAMES.get(slot_str.upper(), slot_str.title())
+
+
+def get_display_name(item):
+    """
+    Return the name to show a player for this item instance.
+    Identified items show the real definition name; unidentified show mystery name or fallback.
+    """
+    if item.is_identified:
+        return item.definition.name
+    mystery = item.definition.mystery_name.strip()
+    if mystery:
+        return mystery
+    return f"an unidentified {item.definition.item_type}"
+
+
+def get_display_description(item):
+    """
+    Return the description to show a player for this item instance.
+    Identified items show the real description; unidentified show mystery description or fallback.
+    """
+    if item.is_identified:
+        return item.definition.description
+    mystery = item.definition.mystery_description.strip()
+    if mystery:
+        return mystery
+    return "You can't determine anything about this item."
+
+
+def parse_item_noun(noun_str, item_list):
+    """
+    Parse a classic MUD item noun against a list of ItemInstance objects.
+
+    Returns:
+        ('all', None)              if noun_str == 'all'
+        ('single', ItemInstance)   if a match is found
+        ('not_found', None)        if no match
+        ('bad_index', None)        if N.keyword has N out of range
+
+    Matching is against get_display_name(item) so mystery names work.
+    """
+    noun_str = noun_str.strip().lower()
+
+    if noun_str == 'all':
+        return ('all', None)
+
+    index = 1
+    keyword = noun_str
+    if '.' in noun_str:
+        parts = noun_str.split('.', 1)
+        if parts[0].isdigit():
+            index = int(parts[0])
+            keyword = parts[1]
+
+    matches = [
+        item for item in item_list
+        if keyword in get_display_name(item).lower()
+    ]
+
+    if not matches:
+        return ('not_found', None)
+    if index > len(matches):
+        return ('bad_index', None)
+
+    return ('single', matches[index - 1])
 
 
 def get_durability_penalty(item):
