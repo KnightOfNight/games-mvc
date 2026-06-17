@@ -1,7 +1,7 @@
 # Shyland Architecture
 
 > Authoritative technical reference as of commit 83de30b (tick engine).  
-> Describes what is built. For design intent see `Shyland_GDD_v8.md`.
+> Describes what is built. For design intent see `Shyland_GDD_v9.md`.
 
 ---
 
@@ -1098,8 +1098,6 @@ Future sessions should check this list before assuming a system exists.
 - Duration-based effect ticking — expiry implemented in tick engine; DoT/HoT stat application deferred to combat brief
 - Loot system — loot table models and loot command implemented; NPC AI deferred
 - NPC aggro, AI behavior, and wandering
-- NPC respawn logic — implemented in tick engine
-- Corpse decay sweep — implemented in tick engine
 - Monitoring container — future work; tracks health of all containers
 - `examine` on NPCs — dialogue tree integration (description shown; no dialogue yet)
 - Super user in-game item gifting flow
