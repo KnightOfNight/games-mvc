@@ -9,7 +9,7 @@ DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
-.PHONY: setup init build start stop restart logs shell \
+.PHONY: setup init build start stop restart logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
         new-app _nginx-conf help
 
@@ -61,6 +61,10 @@ restart: stop start
 ## logs: follow all container logs
 logs:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) logs -f
+
+## tick-logs: follow ticker container logs only
+tick-logs:
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) logs -f ticker
 
 # ---------------------------------------------------------------------------
 # Django management
@@ -161,6 +165,7 @@ help:
 	@echo "  stop                   Stop all containers"
 	@echo "  restart                stop + start"
 	@echo "  logs                   Follow all container logs"
+	@echo "  tick-logs              Follow ticker container logs only"
 	@echo ""
 	@echo "Django:"
 	@echo "  shell                  Django shell in the container"

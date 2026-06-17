@@ -142,9 +142,9 @@ class NpcDefinitionAdmin(admin.ModelAdmin):
 
 @admin.register(NpcInstance)
 class NpcInstanceAdmin(admin.ModelAdmin):
-    list_display = ('definition', 'mk_tier', 'current_room', 'is_alive', 'vitality_current', 'vitality_max', 'spawned_at')
+    list_display = ('definition', 'mk_tier', 'current_room', 'spawn_room', 'is_alive', 'vitality_current', 'vitality_max', 'spawned_at')
     list_filter = ('is_alive', 'mk_tier')
-    raw_id_fields = ('current_room',)
+    raw_id_fields = ('current_room', 'spawn_room')
 
 
 @admin.register(Corpse)

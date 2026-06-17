@@ -526,6 +526,7 @@ class Command(BaseCommand):
             definition=goblin_def,
             defaults={
                 'current_room': fracture_point,
+                'spawn_room': fracture_point,
                 'mk_tier': 1,
                 'vitality_current': goblin_def.base_vitality,
                 'vitality_max': goblin_def.base_vitality,

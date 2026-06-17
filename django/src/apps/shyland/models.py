@@ -544,6 +544,11 @@ class NpcDefinition(models.Model):
 class NpcInstance(models.Model):
     definition       = models.ForeignKey(NpcDefinition, on_delete=models.CASCADE, related_name='instances')
     current_room     = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL, related_name='npcs')
+    spawn_room       = models.ForeignKey(
+        'Room', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='npc_spawns',
+        help_text="The room this NPC spawns into. Used for respawn. Set at creation time.",
+    )
     mk_tier          = models.IntegerField(default=1)
     vitality_current = models.IntegerField()
     vitality_max     = models.IntegerField()

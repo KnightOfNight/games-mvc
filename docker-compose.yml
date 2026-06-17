@@ -15,6 +15,7 @@ services:
     build:
       context: ./django
       dockerfile: Dockerfile
+    image: shyland-django
     container_name: game-mvc-django
     restart: unless-stopped
     environment:
@@ -49,6 +50,25 @@ services:
   redis:
     image: redis:7-alpine
     container_name: game-mvc-redis
+    restart: unless-stopped
+
+  ticker:
+    build:
+      context: ./django
+    image: shyland-django
+    command: python manage.py run_tick_engine
+    environment:
+      - DJANGO_SETTINGS_MODULE=game_mvc.settings.production
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DOMAIN=${DOMAIN}
+      - HOST_PORT=${HOST_PORT:-40443}
+      - SITE_TITLE=${SITE_TITLE:-game-mvc}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

@@ -75,6 +75,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.room_group = f'room_{room.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
 
+        self.player_group = f'player_{self.character_pk}'
+        await self.channel_layer.group_add(self.player_group, self.channel_name)
+
         self.redis = aioredis.from_url("redis://redis:6379")
         await self.redis.set(
             f"shyland:online:{self.character_pk}",
@@ -90,6 +93,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             self.heartbeat_task.cancel()
         if hasattr(self, 'character_pk') and hasattr(self, 'redis'):
             await self.redis.delete(f"shyland:online:{self.character_pk}")
+        if hasattr(self, 'player_group'):
+            await self.channel_layer.group_discard(self.player_group, self.channel_name)
         if hasattr(self, 'room_group'):
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
         if hasattr(self, 'character'):
@@ -865,6 +870,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if event.get('exclude') == self.channel_name:
             return
         await self.output(event['text'], event.get('category', 'system'))
+
+    async def player_message(self, event):
+        """Handle messages sent directly to this player (e.g. effect expiry from tick engine)."""
+        await self.send_json({
+            'type': 'output',
+            'text': event['text'],
+            'category': event.get('category', 'system'),
+        })
+        if 'status' in event:
+            await self.send_json(event['status'])
 
     # ------------------------------------------------------------------
     # Helpers

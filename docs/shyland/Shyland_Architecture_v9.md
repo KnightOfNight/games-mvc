@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 13df906 (NPC model, corpse model, and loot system).  
+> Authoritative technical reference as of commit {new_hash} (tick engine).  
 > Describes what is built. For design intent see `Shyland_GDD_v8.md`.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, query who is online, and fully interact with items. Item interaction commands are implemented: `pickup` / `p`, `drop`, `equip` / `eq`, `unequip` / `uneq`, `use`, and `examine` / `ex`. The soulbind model is in place (items bind on equip, not pickup). The item identification system is in place (items can be mysterious; identification is per-character knowledge; display uses `get_display_name()` / `get_display_description()` throughout). Currency storage and the display utility are implemented. NPC and corpse models are in place. The `loot` command is implemented. The `examine` command covers items, live NPCs, and corpses. The `pickup` command excludes corpse contents. Loot table infrastructure (`LootTable`, `LootTableEntry`) is implemented. Actual NPC AI, combat, respawn logic, and corpse decay sweep are not yet built. Combat, character creation, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, the game loop is complete: a player can connect, move between rooms, chat, query who is online, and fully interact with items. Item interaction commands are implemented: `pickup` / `p`, `drop`, `equip` / `eq`, `unequip` / `uneq`, `use`, and `examine` / `ex`. The soulbind model is in place (items bind on equip, not pickup). The item identification system is in place (items can be mysterious; identification is per-character knowledge; display uses `get_display_name()` / `get_display_description()` throughout). Currency storage and the display utility are implemented. NPC and corpse models are in place. The `loot` command is implemented. The `examine` command covers items, live NPCs, and corpses. The `pickup` command excludes corpse contents. Loot table infrastructure (`LootTable`, `LootTableEntry`) is implemented. The tick engine is implemented as a Django management command (`run_tick_engine`) running as a fifth Docker container (`ticker`). It runs a 1-second loop processing corpse decay, NPC respawn, and EffectInstance expiry. The tick engine communicates with connected players via the Django Channels channel layer using personal player groups (`player_{character_pk}`). Actual NPC AI, combat, and all other game systems have not yet been built — see [Section 7](#7-what-is-not-yet-built).
 
 ---
 
@@ -16,12 +16,13 @@ Shyland is a free, browser-based Multi-User Dungeon. The primary interface is te
 ### 2.1 Docker Compose stack
 
 ```
-docker-compose.yml defines four containers:
+docker-compose.yml defines five containers:
 
   nginx      nginx:alpine          SSL termination; WebSocket proxy at /ws/
   django     python:3.12-slim      Daphne ASGI server; Django 5 + Channels
   postgres   postgres:16-alpine    Primary database; persistent volume pgdata
   redis      redis:7-alpine        Django Channels layer for WebSocket routing
+  ticker     shyland-django image  Tick engine; run_tick_engine management command
 ```
 
 **Network flow:**
@@ -40,7 +41,7 @@ Daphne (Django ASGI)
         └── reads from / writes to PostgreSQL (ORM)
 ```
 
-Only `nginx` exposes a host port. `django`, `postgres`, and `redis` are internal to the Docker network. `postgres` has a healthcheck; `django` depends on it being healthy before starting.
+Only `nginx` exposes a host port. `django`, `postgres`, `redis`, and `ticker` are internal to the Docker network. `postgres` has a healthcheck; `django` and `ticker` both depend on it being healthy before starting. `ticker` uses the same `shyland-django` image as `django` — no separate build step.
 
 ### 2.2 Makefile workflow
 
@@ -50,6 +51,7 @@ Only `nginx` exposes a host port. `django`, `postgres`, and `redis` are internal
 | `make build` | Rebuild Docker image and recreate containers — **required after any Python/template/settings change** (source is baked into the image, not volume-mounted) |
 | `make start` / `make stop` / `make restart` | Container lifecycle |
 | `make logs` | Follow all container logs |
+| `make tick-logs` | Follow ticker container logs only |
 | `make migrate` | Run `python manage.py migrate` inside the container |
 | `make makemigrations [APP=name]` | Generate migrations **and automatically sync the generated files back to the local filesystem** (the container has an ephemeral filesystem; without the sync the files are lost on the next build) |
 | `make shell` | Django shell inside the container |
@@ -457,6 +459,8 @@ A single live (or recently dead) NPC in the world.
 ```
 definition       FK → NpcDefinition (CASCADE), related_name='instances'
 current_room     FK → Room (null, SET_NULL), related_name='npcs'
+spawn_room       FK → Room (null, SET_NULL), related_name='npc_spawns'
+                 — the room this NPC spawns into; used for respawn; set at creation time; never changes
 mk_tier          IntegerField(default=1)
 vitality_current IntegerField
 vitality_max     IntegerField
@@ -465,7 +469,7 @@ spawned_at       DateTimeField(auto_now_add=True)
 respawn_at       DateTimeField(null)           — set on death; null while alive
 ```
 
-`name` is a Python property returning `self.definition.name`. `is_alive=True` is the discriminator for querying live NPCs in the consumer. On death, the `NpcInstance` row is updated (`is_alive=False`, `respawn_at` set) and a `Corpse` row is created by `create_corpse()` in `item_utils.py`. The NPC row is not deleted — it is reused on respawn (not yet implemented).
+`name` is a Python property returning `self.definition.name`. `is_alive=True` is the discriminator for querying live NPCs in the consumer. On death, the `NpcInstance` row is updated (`is_alive=False`, `respawn_at` set) and a `Corpse` row is created by `create_corpse()` in `item_utils.py`. On respawn, the dead row is deleted and a fresh `NpcInstance` is created in `spawn_room` — rows are never reused.
 
 #### Corpse
 
@@ -545,15 +549,17 @@ Platinum has no alias in either zone (too rare to need one at this stage).
 6. If `current_room_id` is `None`: sends error, returns (connection stays open but idle).
 7. Calls `get_current_room()` (full select_related on all exits).
 8. Joins `room_{room.id}` channel group.
-9. Creates an `aioredis` client (`redis://redis:6379`); writes `shyland:online:{character_pk}` with the character's display name and a 90-second TTL.
-10. Starts `presence_heartbeat` background task.
-11. Sends room description + status message to client.
+9. Joins `player_{character_pk}` personal group (used by tick engine to deliver per-player notifications).
+10. Creates an `aioredis` client (`redis://redis:6379`); writes `shyland:online:{character_pk}` with the character's display name and a 90-second TTL.
+11. Starts `presence_heartbeat` background task.
+12. Sends room description + status message to client.
 
 **`disconnect(code)`**
 1. Cancels `presence_heartbeat` task if started.
 2. Deletes `shyland:online:{character_pk}` from Redis if the presence key was written.
-3. Leaves room channel group if joined.
-4. Updates `character.last_seen` via `touch_last_seen()`.
+3. Leaves `player_{character_pk}` personal group if joined.
+4. Leaves room channel group if joined.
+5. Updates `character.last_seen` via `touch_last_seen()`.
 
 #### Redis presence system
 
@@ -891,7 +897,68 @@ The command uses `get_or_create` throughout and is safe to run multiple times (i
 | `focus-tonic` | consumable | fantasy | — | — (effect: acuity-shift-high) |
 | `repair-kit` | consumable | wasteland | — | — (effect: durability-restore) |
 
-### 4.8 Client template (`templates/shyland/game.html`)
+### 4.8 Tick Engine (`management/commands/run_tick_engine.py`)
+
+`python manage.py run_tick_engine` — a long-running Django management command that drives all time-based world events. Runs as the `ticker` Docker container.
+
+#### Structure
+
+```python
+Command.handle()        → asyncio.run(tick_loop())
+tick_loop()             → while True: process_tick(tick_number); asyncio.sleep(1)
+process_tick()          → calls all three processors sequentially
+```
+
+All ORM calls use `@database_sync_to_async` (from `channels.db`). Channel layer calls are plain `async` awaits.
+
+#### Processors
+
+**`process_corpse_decay()`**
+- Queries `Corpse.decay_at <= now`.
+- For each expired corpse: captures name and room, deletes the row (Django's `CASCADE` on `ItemInstance.corpse` clears contents automatically), broadcasts the decay message to `room_{room_id}` via the channel layer.
+- Logs: `"Corpse decayed: {name} in room {room_id}"`.
+
+**`process_npc_respawn()`**
+- Queries `NpcInstance` where `is_alive=False`, `respawn_at <= now`, `definition.is_unique=False`, `spawn_room is not null`.
+- For each due respawn: deletes the dead row, creates a new `NpcInstance` in `spawn_room` with full vitality. No room broadcast — the NPC silently appears.
+- Logs: `"NPC respawned: {name} (Mk {tier}) in room {room_id}"`.
+- NPCs do not move rooms. `spawn_room` is set at creation time and is the respawn destination. `current_room` tracks live position (relevant when wandering NPCs are implemented).
+
+**`process_effect_expiry()`**
+- Queries `EffectInstance` where `is_active=True`, `expires_at <= now`, `expires_at is not null`.
+- For each expired effect: marks `is_active=False`, `removed_by='timeout'`, looks up an expiry message by `effect_type`, and (if the message is non-null) sends to the player's personal group with a `status` update.
+- Logs: `"Effect expired: {slug} on {char_name}"` (only when an expiry message is sent — silent types are not logged).
+
+#### Expiry messages by effect type
+
+| `effect_type` | Expiry message |
+|---|---|
+| `restore_vitality` | *(instantaneous — skip silently)* |
+| `restore_acuity` | *(instantaneous — skip silently)* |
+| `restore_longevity` | *(instantaneous — skip silently)* |
+| `shift_acuity_high` | `"Your heightened focus fades. Your mind settles."` |
+| `shift_acuity_low` | `"The fog lifts from your mind. Your thoughts sharpen."` |
+| `dot_vitality` | `"The pain subsides."` |
+| `dot_acuity` | `"The mental static clears."` |
+| `dot_longevity` | `"The draining sensation fades."` |
+| `stat_bonus` | `"The {effect_name} fades. Your body returns to normal."` |
+| `stat_penalty` | `"The {effect_name} lifts."` |
+| `curse_generic` | *(handled by curse removal — skip silently)* |
+| *(unrecognised)* | `"An effect has worn off."` |
+
+#### Logging policy
+
+- Log meaningful activity only: decayed corpses, respawned NPCs, expired effects.
+- Never log empty ticks (ticks where nothing happened).
+- Never log a heartbeat.
+
+#### Channel layer helpers
+
+**`broadcast_to_room(room_id, text, category='room')`** — sends to `room_{room_id}` group with `type: room_message`. The consumer's existing `room_message` handler delivers it to all players in the room.
+
+**`send_to_player(character_pk, text, category, status)`** — sends to `player_{character_pk}` group with `type: player_message`. The consumer's `player_message` handler forwards the text output and, if present, the `status` dict as a second JSON message.
+
+### 4.9 Client template (`templates/shyland/game.html`)
 
 Extends `base.html`. Pure vanilla JS — no framework.
 
@@ -1003,6 +1070,8 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Room Groups as the broadcast primitive.** Every player in room X is in channel group `room_{X.id}`. Movement = leave old group + join new group. No per-player fan-out needed for room-scoped events.
 
+**Personal player groups for direct notification.** Each connected player also joins `player_{character_pk}` on connect and leaves it on disconnect. The tick engine sends effect expiry messages and status updates to this group. The consumer handles the `player_message` event type, which forwards the text to the client and optionally sends a `status` update if one is included in the event payload. Group name pattern: `player_{character_pk}`.
+
 **Server is the authority; client is a dumb terminal.** Client sends text strings. Server sends JSON output. No game state is trusted from the client.
 
 **Redis presence for `who`, not a DB flag.** Online players are tracked via `shyland:online:{character_pk}` keys in Redis (90-second TTL, 60-second heartbeat refresh). The value is the character's display name, so `who` needs no DB call — it scans keys and fetches values in two Redis round-trips. A separate `aioredis` client is created per consumer connection, independent of the Channels channel layer. The key prefix `shyland:online:` namespaces presence away from all other Redis data in the shared instance.
@@ -1021,16 +1090,17 @@ These are settled. Do not revisit without deliberate consideration.
 
 Future sessions should check this list before assuming a system exists.
 
-- Tick engine and combat system (including the fixed 1-second tick / 3-tick combat round)
+- Combat system (tick engine is implemented; combat loop is not yet built)
 - In-game character creation flow (admin creation works)
 - Item identification trigger — NPC sage, Warden ability, and identification scrolls (fields and display logic are in place; trigger mechanism deferred)
 - Durability degradation on equip/combat use (model field exists; no tick logic yet)
 - `durability_restore` consumable effect (placeholder response implemented; full repair system deferred)
-- Duration-based effect ticking (EffectInstance records created; expiry processing requires tick engine)
-- Loot system — loot table models and loot command implemented; NPC AI, respawn logic, and corpse decay sweep deferred to tick engine
+- Duration-based effect ticking — expiry implemented in tick engine; DoT/HoT stat application deferred to combat brief
+- Loot system — loot table models and loot command implemented; NPC AI deferred
 - NPC aggro, AI behavior, and wandering
-- NPC respawn logic
-- Corpse decay sweep (`CORPSE_DECAY_MINUTES` constant and `decay_at` field are in place; sweep requires tick engine)
+- NPC respawn logic — implemented in tick engine
+- Corpse decay sweep — implemented in tick engine
+- Monitoring container — future work; tracks health of all containers
 - `examine` on NPCs — dialogue tree integration (description shown; no dialogue yet)
 - Super user in-game item gifting flow
 - `brief` toggle (first visit shows full description; repeat visits show `brief_description`)
@@ -1059,4 +1129,4 @@ Future sessions should check this list before assuming a system exists.
 
 **`create_corpse()` is synchronous.** It is a sync function in `item_utils.py` — it must be called from within a `@database_sync_to_async` wrapper in the consumer when combat is implemented.
 
-**Corpse decay sweep is not implemented.** Corpses with items will persist indefinitely until manually deleted or until the tick engine is built. The `decay_at` field is set correctly on all `Corpse` rows.
+**DoT and HoT effects expire correctly but do not tick.** `EffectInstance` rows are marked inactive and the player is notified when `expires_at` is reached, but per-tick stat changes are not applied. A `dot_vitality` effect will expire without having dealt any damage. Full DoT/HoT application requires the combat brief.
