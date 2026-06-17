@@ -1,6 +1,22 @@
 # Shyland — Game Design Document
 
-**Version 8.0 — Working Draft**
+**Version 9.0 — Working Draft**
+
+-----
+
+## Version History
+
+| Version | Architecture Doc | Summary |
+|---------|-----------------|---------|
+| v1      | —               | Initial document. Vision, world model, character system, combat outline, economy, social systems, quest system, command reference, technical architecture. |
+| v2      | —               | Area model added (Zone → Area → Room hierarchy). Breadcrumb format settled. Room header format defined. |
+| v3      | —               | Item system designed: ItemDefinition/ItemInstance split, Mk tier system, rarity, durability, cursed items, identification system, effect vocabulary, bags, inventory display rules. |
+| v4      | —               | Currency system designed: single copper BigIntegerField, tier table, zone aliases, display rules. |
+| v5      | —               | NPC model placeholder. Loot system stub. |
+| v6      | —               | Soulbind rules clarified (on equip, not pickup). Admin gifting flow added. |
+| v7      | —               | Effect system expanded. EffectDefinition/EffectInstance documented. Consumable use rules. Cursed item interaction with effects. |
+| v8      | v8              | NPC and corpse model designed: NpcDefinition, NpcInstance, Corpse, LootTable, LootTableEntry. Loot command designed and documented. Examine command extended to cover live NPCs and corpses. Currency drop formula (min × mk_tier to max × mk_tier). Corpse decay constant (10 minutes). Section 5.9 substantially expanded. |
+| v9      | v9              | Version bump to match architecture doc. Version history added. No design changes. |
 
 -----
 
@@ -1337,5 +1353,5 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 
 -----
 
-*Document version 8.0 — Shyland Working Draft*
+*Document version 9.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
