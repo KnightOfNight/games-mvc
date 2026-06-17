@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit {new_hash} (tick engine).  
+> Authoritative technical reference as of commit 83de30b (tick engine).  
 > Describes what is built. For design intent see `Shyland_GDD_v8.md`.
 
 ---
