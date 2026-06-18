@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 9.0 — Working Draft**
+**Version 10.0 — Working Draft**
 
 -----
 
@@ -17,6 +17,7 @@
 | v7      | —               | Effect system expanded. EffectDefinition/EffectInstance documented. Consumable use rules. Cursed item interaction with effects. |
 | v8      | v8              | NPC and corpse model designed: NpcDefinition, NpcInstance, Corpse, LootTable, LootTableEntry. Loot command designed and documented. Examine command extended to cover live NPCs and corpses. Currency drop formula (min × mk_tier to max × mk_tier). Corpse decay constant (10 minutes). Section 5.9 substantially expanded. |
 | v9      | v9              | Version bump to match architecture doc. Version history added. No design changes. |
+| v10     | v10             | Combat system v1 implemented. Acuity scale changed to float 0.1–1.9 (the value IS the damage modifier). Death & Resurrection section updated with exact v1 mechanics. Combat initiation updated: NPC aggro on room entry fires after a 3-second warning window; player can queue during window. Flee updated: directional preference (reverse of entry direction), DEX+d20 vs average NPC PER, cooldown after failed attempts. NPC effect system added: `NpcEffect` model links effect definitions to NPC definitions with per-effect probability. Section 5.3 action economy updated to reflect two-path command handling (non-combat commands fire immediately; combat commands queue to DB for tick engine resolution). Section 10.4 tick architecture updated to match actual implementation. Section 10.5 persistence model updated: active combat state moves from Redis to PostgreSQL. Future Systems table updated: Combat System removed; NPC System row updated; new deferred items added. |
 
 -----
 
@@ -368,9 +369,13 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 Death in Shyland is meaningful but not brutal:
 
-- Player reaches 0 Vitality → enters **Dying** state (30-second window where allies can revive)
-- If not revived → **Dead**. Player respawns at their bound recall point (default: The Convergence)
-- On death: 10% XP loss (softcapped — cannot lose a level), equipment durability takes a major hit
+- Player reaches 0 Vitality → enters **Dying** state (30-second window)
+- During Dying state: the character can use revival consumables or abilities on themselves; any other player in the room can also use a revival item or ability on them — no group membership required
+- All commands except `use` are blocked while in Dying state
+- If not revived within 30 seconds → **Dead**. Player respawns at their bound recall point (default: The Convergence) with full bars
+- On death: all active `EffectInstance` rows are cleared; all pending combat actions are cleared; the `CombatSession` ends
+- **XP loss:** 10% of current XP (cannot lose a level). This penalty only applies at level 10 and above — new players below level 10 take no XP penalty on death
+- **Durability loss:** All equipped items with `takes_durability_loss=True` lose 10% durability per death. After 10 deaths without repair, an item breaks (`is_broken=True`). Bags and jewelry are naturally exempt because their definitions have `takes_durability_loss=False`. The flag on `ItemDefinition` is the only gate — any item type with the flag set takes the penalty.
 - In PvP zones only: chance to drop one non-equipped carried item
 - A **Death Shard** item is left at the death location; player can retrieve it within 30 minutes to recover any dropped item
 
@@ -403,6 +408,30 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 
 **There is no universally “correct” Acuity value.** Each Origin has a natural baseline and a tolerance band. Characters are most effective when operating within their band.
 
+**Acuity scale:** Acuity is stored as a float in the range **0.1 to 1.9**, in 0.1 increments. The stored value IS the damage modifier applied in combat — 1.0 is neutral, above 1.0 is a bonus, below 1.0 is a penalty. Per-origin baseline and band values are defined in `_ACUITY_DEFAULTS` in `models.py`.
+
+| Value | State | Effect |
+|---|---|---|
+| 1.9 | Maximum focus | +90% damage (single-target only) |
+| 1.1–1.8 | Focused | Proportional damage bonus |
+| 1.0 | Optimal | No modifier |
+| 0.2–0.9 | Scattered | Proportional damage penalty |
+| 0.1 | Minimum | −90% damage |
+
+**AoE rule:** When a character hits multiple targets with an area-of-effect attack, the Acuity bonus (above 1.0) applies to exactly one focus target. The penalty (below 1.0) applies to all targets regardless.
+
+**Per-Origin defaults:**
+
+| Origin | Baseline | Band low | Band high |
+|---|---|---|---|
+| Highborn | 1.0 | 0.85 | 1.15 |
+| Feral | 0.95 | 0.80 | 1.10 |
+| Streetborn | 1.0 | 0.85 | 1.15 |
+| Irradiated | 0.90 | 0.75 | 1.05 |
+| Undying | 0.80 | 0.65 | 1.00 |
+| Machinekind | 1.05 | 0.90 | 1.20 |
+| Voidtouched | 0.70 | 0.40 | 1.30 |
+
 **Effects of Acuity too LOW (distracted, scattered, overwhelmed):**
 
 - Spell effectiveness degrades — spells may fizzle, truncate, or misfire
@@ -425,7 +454,7 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 - Stress effects from combat, particularly losing allies or taking massive damage, can spike or crash it
 - Consumables and spells can deliberately shift Acuity in either direction — a “focus” potion before a boss fight is a legitimate tactical choice, with the flanking blindness risk as the tradeoff
 - The Warden archetype has party-wide Acuity management tools
-- Rest and time naturally return Acuity toward a character’s baseline
+- Rest and time naturally return Acuity toward a character’s baseline (Acuity drift — not yet implemented)
 
 **Manipulation:** Players can actively shift their own Acuity intentionally. Pushing it high before a single-target duel, then managing the aftermath, is a valid play style. The system rewards players who understand their character’s band and manage it actively.
 
@@ -467,44 +496,52 @@ The client displays a visual tick bar. Combat ticks are fixed — there is no op
 
 Combat begins via:
 
-- `kill <target>` or `attack <target>` command
-- An NPC aggro trigger (entering their aggro radius while flagged as a valid target)
+- `kill <target>` or `attack <target>` command (aliases: `k`)
+- An NPC aggro trigger (entering a room containing an NPC with `is_aggressive=True`)
 - A skill that implicitly initiates combat
+
+**Aggro on room entry:** When a player moves into a room with aggressive NPCs, the room description is suppressed. Instead, each aggressive NPC sends an announce message (e.g. `"A Fracture Wraith snarls and moves to attack!"`). The player has the duration of one full combat round (3 seconds) before the NPC's first attack fires. During this window the player can queue an attack of their own — if they are fast enough, they act first in round 1.
 
 Once combat begins, all participants are locked in until one side flees, dies, or combat ends naturally.
 
+**`CombatSession`:** Each fight is represented by a `CombatSession` row in the database (not in Redis). A session tracks which characters and NPCs are participating, the room, and round state. In v1, one character fights alone; the session model is future-ready for group combat via an M2M relationship. One character can fight multiple NPCs simultaneously — additional NPCs can be added to an existing session via `kill`/`attack`.
+
 ### 5.3 The Action Economy
 
-Each combat tick (default: 3 seconds, modified by haste/slow effects), a character may:
+Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary Action** — attack, use an ability, use an item, or flee.
 
-- **1 Primary Action** — attack, cast a spell, use an ability
-- **1 Reaction** (passive, triggers on conditions) — parry, counter, shield block
-- Movement within combat costs a Primary Action
+**Two-path command handling:** Non-combat commands (`look`, `say`, movement, inventory, etc.) execute immediately and synchronously when typed. Combat commands typed during an active fight are written to a DB queue (`CombatAction`); the tick engine processes all queued actions at each round boundary. This keeps non-combat interactions instant while ensuring combat resolution is synchronized and auditable. The consumer checks whether the character is in an active `CombatSession` and routes accordingly.
 
-Auto-attack fires automatically each tick if no manual command is given. Players can queue commands ahead of the tick.
+**Auto-attack:** If no player action is queued when a round fires, the tick engine creates an auto-attack action targeting the first NPC in the session. Players are never idle.
+
+**Initiative (rounds 2+):** Each round after the first, initiative is rolled for all participants: `d10 + DEX + PER`. Highest total acts first; ties go to the player. In round 1, whoever initiated combat acts first (player if they used `kill`/`attack`; NPC if they aggro’d on room entry).
 
 ### 5.4 Attack Resolution
 
 ```
 1. Hit check:
-   d100 + attacker DEX modifier vs. target dodge rating
-   → Miss: no damage
-   → Graze (within 10 of miss threshold): 50% damage
-   → Hit: full damage
-   → Critical (exceeds threshold by 20+): 150% damage + bonus effect
+   d100 + attacker DEX vs. target dodge (target DEX)
+   → Miss:     roll < target_dodge
+   → Graze:    target_dodge ≤ roll < target_dodge + 10  (50% damage)
+   → Hit:      target_dodge + 10 ≤ roll < target_dodge + 30  (100% damage)
+   → Critical: roll ≥ target_dodge + 30  (150% damage)
 
 2. Damage calculation:
-   base_damage  = weapon damage roll (midpoint ± spread, adjusted by rarity and Mk tier)
-   stat_bonus   = relevant stat modifier (STR melee / DEX ranged / INT spells)
-   skill_bonus  = active skill modifiers
-   acuity_mod   = multiplier based on attacker's current Acuity vs. their optimal band
-   durability_mod = performance penalty based on weapon's current durability (see 6.5)
-   raw_damage   = (base_damage + stat_bonus + skill_bonus) × acuity_mod × durability_mod
+   base_damage    = weapon damage roll (random within midpoint ± spread)
+   stat_bonus     = relevant stat value (STR melee / DEX ranged / INT spells)
+   acuity_mod     = character's current Acuity value (0.1–1.9 float; IS the modifier)
+                    Bonus (>1.0) applies to the focus target only in AoE.
+                    Penalty (<1.0) applies to all targets.
+   durability_mod = performance multiplier from weapon's durability table (1.0 = no penalty)
+   raw_damage     = (base_damage + stat_bonus) × acuity_mod × durability_mod
 
-3. Mitigation:
-   final_damage = raw_damage - target defense value (minimum 1)
+3. Hit multiplier applied:
+   final_damage = raw_damage × hit_multiplier (0.5 graze / 1.0 hit / 1.5 critical), minimum 1
 
-4. Elemental/type resistances apply as percentage reduction after armor
+4. Mitigation (future):
+   final_damage = final_damage - target defense value (minimum 1)
+
+5. Elemental/type resistances apply as percentage reduction after armor (future)
 ```
 
 All numbers are visible in the combat log. Verbose mode exposes the full calculation chain.
@@ -550,7 +587,21 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 
 ### 5.7 Flee & Escape
 
-`flee` command. Success based on DEX vs. pursuer PER. On success: moved to a random adjacent room. On failure: tick lost. Boss encounters apply an additional flee penalty.
+`flee` command. Success roll: **player DEX + d20 vs. average PER of all NPCs in the session**.
+
+**Flee direction:** On success, the character exits via the reverse of the direction they entered the room (the way they came in). If that exit is not available, a random adjacent exit is chosen. If no exits exist, flee fails automatically regardless of the roll (`"There is nowhere to run!"`).
+
+**Cooldown:** A failed flee attempt sets a cooldown of `FLEE_COOLDOWN_TICKS × COMBAT_ROUND_TICKS` seconds before another attempt is allowed. Cooldown is tracked per character per session. Successfully fleeing ends the session with no cooldown.
+
+**On success:** The combat session ends. NPCs remain in the room at their current Vitality (no reset). The player enters the destination room and the normal aggro check fires — if that room also has aggressive NPCs, a new combat begins.
+
+**Messages:**
+- Player (success): `"You have successfully fled from your enemies."`
+- Room (success): `"{Name} fled the room leaving the enemies looking confused."`
+- Player (failure): `"You tried to flee but your enemies are too strong."`
+- Room (failure): `"{Name} tried to flee combat but could not slip away."`
+
+Boss encounters may apply additional flee penalties in future content.
 
 ### 5.8 Group Combat
 
@@ -562,7 +613,7 @@ Enemies have:
 
 - A **combat tier** (Normal, Elite, Champion, Boss, World Boss)
 - **Archetype flags** governing tactics
-- **Special abilities** telegraphed in combat log before firing
+- **Effects list** — each NPC definition carries a list of `NpcEffect` entries. Each entry links to an `EffectDefinition` and has a per-entry `effect_chance` (0.0–1.0). On each NPC attack, every entry is rolled independently; those that fire are applied via the shared `EffectInstance` system and appended to the attack message. An NPC with no effects is a pure auto-attacker. Higher-Mk NPC definitions can carry longer effect lists or higher-magnitude effects to increase difficulty. Telegraph and phase-change mechanics are deferred to later content work
 - **Loot tables** — normalized `LootTable` and `LootTableEntry` models; one table can be shared across multiple NPC definitions
 
 NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one.
@@ -1185,18 +1236,18 @@ The `who` command queries Redis directly — no DB call. This means only players
 
 ### 10.4 Server / Tick Architecture
 
-The game server runs a **tick engine** implemented as a Django Channels consumer or a background async worker:
+The game server runs a **tick engine** implemented as a Django management command (`run_tick_engine`) running as a fifth Docker container (`ticker`). It loops every 1 second and calls four processors in order:
 
-1. Process all queued player commands
-1. Advance all NPC AI states
-1. Apply all DoT/HoT effects (duration modified by Longevity)
-1. Fire all pending combat ticks
-1. Process Acuity drift (all characters’ Acuity moves incrementally toward their Origin baseline each tick when not under active effects)
-1. Process EffectInstance expirations (check `expires_at`, deactivate expired effects, send removal messages)
-1. Process zone events
-1. Broadcast state changes to affected clients via WebSocket
+1. **`process_combat()`** — resolves combat rounds for all active `CombatSession` rows; handles dying-state expiry and stale-session cleanup
+1. **`process_corpse_decay()`** — deletes corpses whose `decay_at` has passed
+1. **`process_npc_respawn()`** — creates fresh `NpcInstance` rows for dead NPCs whose `respawn_at` has passed
+1. **`process_effect_expiry()`** — deactivates `EffectInstance` rows whose `expires_at` has passed and notifies the player
 
-**Global tick rate:** 1 second. Combat round = 3 ticks. Fixed — not adjustable per player.
+Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
+
+**Global tick rate:** 1 second. Combat round = 3 ticks (`COMBAT_ROUND_TICKS = 3`). Fixed — not adjustable per player or per NPC.
+
+**Planned but not yet implemented:** Acuity drift (characters’ Acuity drifting toward their Origin baseline each tick), DoT/HoT per-tick stat application, zone events.
 
 NPC AI runs server-side. No game state is trusted from the client.
 
@@ -1219,11 +1270,10 @@ NPC AI runs server-side. No game state is trusted from the client.
 
 #### In-memory only (Redis):
 
-- Active combat state
-- Online presence keys (`shyland:online:*`)
-- Active session data
-- NPC positions and states (rebuilt from templates on server restart)
-- Acuity drift calculations between ticks
+- Online presence keys (`shyland:online:*`) — self-healing on reconnect; TTL 90s
+- Django Channels channel layer (WebSocket group routing)
+
+**Redis is not used for combat state, effect state, or any game data where loss would affect player experience or require recovery logic.** All combat state (`CombatSession`, `CombatAction`) lives in PostgreSQL.
 
 #### Never persisted:
 
@@ -1335,7 +1385,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**The Robotic Helper NPC**             |Partially designed. Unique, unreliable, mobile vendor. Full design TBD.                                                            |
 |**Courier Bag / Hip Slot**             |Bags that occupy a hip slot instead of BACK, trading carry capacity for weapon slot access. Planned but not yet designed in detail.|
 |**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — fields and display logic are in place; trigger mechanism not yet implemented.|
-|**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. NPC AI, respawn logic, and corpse decay sweep deferred to tick engine.|
+|**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. Corpse decay sweep and NPC respawn implemented in tick engine. Full NPC AI deferred.|
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
 |**Durability Degradation Tick**        |Model field exists; tick logic not yet implemented.                                                                                |
 |**Repair Mechanic**                    |Repair vendors and crafting-based repair not yet implemented.                                                                      |
@@ -1346,12 +1396,17 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Colorblind / High Contrast Mode**    |Deferred to post-v1 accessibility pass.                                                                                            |
 |**Guild Hall Content**                 |Guild hall exists in v1 as a space. Additional guild hall content (mini-quests, guild bosses) is future scope.                     |
 |**Party, Guild, Quest Systems**        |Full implementation deferred. Models and design exist; no in-game commands yet.                                                    |
-|**NPC System and Dialogue**            |NPC models (`NpcDefinition`, `NpcInstance`, `Corpse`) implemented. `examine` shows live NPCs and corpses. AI, aggro, wandering, respawn, and dialogue deferred.|
-|**Combat System**                      |Tick engine and full combat loop not yet implemented.                                                                              |
+|**NPC System and Dialogue**            |NPC models (`NpcDefinition`, `NpcInstance`, `Corpse`, `NpcEffect`) implemented. `examine` shows live NPCs and corpses. Combat aggro on room entry implemented. Wandering, dialogue, and patrol AI deferred.|
 |**PvP Flagging and Bounty System**     |Not yet implemented.                                                                                                               |
 |**The Wastelands Scaling Logic**       |Dynamic content scaling at spawn time not yet implemented.                                                                         |
+|**Acuity Drift**                       |Acuity does not yet drift toward the character’s Origin baseline between combat rounds. Planned as a tick engine processor addition.|
+|**DoT/HoT Per-Tick Application**       |`EffectInstance` rows expire correctly but do not apply per-tick stat changes. A `dot_vitality` effect currently expires without dealing damage.|
+|**Durability Degradation in Combat**   |Death penalty (10% per death) implemented. Per-hit weapon degradation during combat not yet implemented.|
+|**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.|
+|**Level-Up Trigger**                   |XP accrual on kill implemented. No level-up trigger, stat distribution, or XP threshold table yet.|
+|**Room Spawn Configuration**           |No builder tool yet for configuring NPC spawns in rooms. NPCs are placed via seed command or Django admin.|
 
 -----
 
-*Document version 9.0 — Shyland Working Draft*
+*Document version 10.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
