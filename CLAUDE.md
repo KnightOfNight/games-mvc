@@ -189,7 +189,7 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 {"type": "status", "vitality": N, "acuity": N, "longevity": N, "room_name": "..."}
 ```
 
-**Architecture reference:** `docs/shyland/Shyland_Architecture_v9.md`
+**Architecture reference:** `docs/shyland/Shyland_Architecture_v10.md`
 **Game design reference:** `docs/shyland/Shyland_GDD_v3.md`
 
 ---

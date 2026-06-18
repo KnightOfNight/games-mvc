@@ -2,6 +2,28 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 
+COMBAT_ROUND_TICKS    = 3
+DYING_DURATION_SECS   = 30
+FLEE_COOLDOWN_TICKS   = 3
+STALE_SESSION_SECS    = 30
+XP_PENALTY_MIN_LEVEL  = 10
+DEATH_DURABILITY_LOSS = 10.0
+
+_ACUITY_DEFAULTS = {
+    'highborn':    (1.0,  0.85, 1.15),
+    'feral':       (0.95, 0.80, 1.10),
+    'streetborn':  (1.0,  0.85, 1.15),
+    'irradiated':  (0.90, 0.75, 1.05),
+    'undying':     (0.80, 0.65, 1.00),
+    'machinekind': (1.05, 0.90, 1.20),
+    'voidtouched': (0.70, 0.40, 1.30),
+}
+
+
+def get_acuity_defaults(origin):
+    """Return (baseline, band_low, band_high) for a given origin string."""
+    return _ACUITY_DEFAULTS.get(origin, (1.0, 0.8, 1.2))
+
 
 class Zone(models.Model):
     DANGER_BEGINNER = 'beginner'
@@ -165,10 +187,10 @@ class Character(models.Model):
 
     vitality_current = models.IntegerField(default=100)
     vitality_max = models.IntegerField(default=100)
-    acuity_current = models.IntegerField(default=50)
-    acuity_baseline = models.IntegerField(default=50)
-    acuity_band_low = models.IntegerField(default=35)
-    acuity_band_high = models.IntegerField(default=65)
+    acuity_current  = models.FloatField(default=1.0)
+    acuity_baseline = models.FloatField(default=1.0)
+    acuity_band_low = models.FloatField(default=0.8)
+    acuity_band_high = models.FloatField(default=1.2)
     longevity_current = models.IntegerField(default=100)
     longevity_max = models.IntegerField(default=100)
 
@@ -176,6 +198,8 @@ class Character(models.Model):
 
     is_hardcore = models.BooleanField(default=False)
     is_dead = models.BooleanField(default=False)
+    is_dying    = models.BooleanField(default=False)
+    dying_since = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
@@ -585,3 +609,65 @@ class Corpse(models.Model):
 
     def __str__(self):
         return f"Corpse of {self.npc_name_snapshot} (room {self.current_room_id})"
+
+
+class NpcEffect(models.Model):
+    npc_definition    = models.ForeignKey(NpcDefinition, on_delete=models.CASCADE, related_name='effects')
+    effect_definition = models.ForeignKey(EffectDefinition, on_delete=models.CASCADE)
+    effect_chance     = models.FloatField(default=1.0)
+
+    def __str__(self):
+        return f"{self.npc_definition.name} → {self.effect_definition.name} ({self.effect_chance * 100:.0f}%)"
+
+    class Meta:
+        ordering = ['npc_definition', 'effect_definition']
+
+
+class CombatSession(models.Model):
+    characters          = models.ManyToManyField('Character', related_name='combat_sessions', blank=True)
+    npcs                = models.ManyToManyField('NpcInstance', related_name='combat_sessions', blank=True)
+    room                = models.ForeignKey('Room', on_delete=models.SET_NULL, null=True, related_name='combat_sessions')
+    started_at          = models.DateTimeField(auto_now_add=True)
+    last_tick_at        = models.DateTimeField(null=True, blank=True)
+    tick_counter        = models.IntegerField(default=0)
+    is_active           = models.BooleanField(default=True)
+    first_attacker      = models.CharField(max_length=20, default='character')
+    last_flee_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_flee_character  = models.ForeignKey(
+        'Character', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+',
+    )
+
+    def __str__(self):
+        return f"CombatSession {self.pk} (room={self.room_id}, active={self.is_active})"
+
+    class Meta:
+        ordering = ['-started_at']
+
+
+class CombatAction(models.Model):
+    ACTION_ATTACK = 'attack'
+    ACTION_USE    = 'use'
+    ACTION_FLEE   = 'flee'
+    ACTION_TYPE_CHOICES = [
+        (ACTION_ATTACK, 'Attack'),
+        (ACTION_USE,    'Use Item'),
+        (ACTION_FLEE,   'Flee'),
+    ]
+
+    combat_session   = models.ForeignKey(CombatSession, on_delete=models.CASCADE, related_name='actions')
+    character        = models.ForeignKey('Character', on_delete=models.CASCADE, null=True, blank=True, related_name='combat_actions')
+    npc              = models.ForeignKey('NpcInstance', on_delete=models.CASCADE, null=True, blank=True, related_name='combat_actions')
+    action_type      = models.CharField(max_length=20, choices=ACTION_TYPE_CHOICES, default=ACTION_ATTACK)
+    target_character = models.ForeignKey('Character', on_delete=models.SET_NULL, null=True, blank=True, related_name='targeted_by_actions')
+    target_npc       = models.ForeignKey('NpcInstance', on_delete=models.SET_NULL, null=True, blank=True, related_name='targeted_by_actions')
+    item             = models.ForeignKey('ItemInstance', on_delete=models.SET_NULL, null=True, blank=True, related_name='combat_actions')
+    queued_at        = models.DateTimeField(auto_now_add=True)
+    is_processed     = models.BooleanField(default=False)
+
+    def __str__(self):
+        actor = self.character or self.npc
+        return f"CombatAction {self.pk} ({self.action_type} by {actor})"
+
+    class Meta:
+        ordering = ['queued_at']

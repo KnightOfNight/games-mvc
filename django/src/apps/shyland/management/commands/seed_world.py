@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from apps.shyland.models import (
     Area, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
-    NpcDefinition, NpcInstance, Room, Zone,
+    NpcDefinition, NpcEffect, NpcInstance, Room, Zone,
 )
 
 WEAPON_DUR = [
@@ -198,13 +198,19 @@ class Command(BaseCommand):
             defaults={
                 'name': 'Acuity Shift High',
                 'effect_type': EffectDefinition.SHIFT_ACUITY_HIGH,
-                'magnitude_min': 15.0,
-                'magnitude_max': 25.0,
+                'magnitude_min': 0.3,
+                'magnitude_max': 0.5,
                 'duration_min': 15.0,
                 'duration_max': 30.0,
                 'scales_with_mk': False,
             },
         )
+        if not created:
+            # Update magnitudes to new float scale if they still have old integer values
+            if acuity_shift.magnitude_min >= 1.0:
+                acuity_shift.magnitude_min = 0.3
+                acuity_shift.magnitude_max = 0.5
+                acuity_shift.save(update_fields=['magnitude_min', 'magnitude_max'])
         self.stdout.write(f'  EffectDefinition "{acuity_shift.name}" {"created" if created else "exists"}.')
 
         dur_restore, created = EffectDefinition.objects.get_or_create(
@@ -535,6 +541,102 @@ class Command(BaseCommand):
         )
         self.stdout.write(
             f'  NpcInstance goblin-scout in The Fracture Point {"created" if created else "exists"}.'
+        )
+
+        # --- Training Dummy ---
+        dummy_def, created = NpcDefinition.objects.get_or_create(
+            slug='training-dummy',
+            defaults={
+                'name': 'Training Dummy',
+                'description': 'A battered wooden dummy used for combat practice. It does not fight back.',
+                'genre_tag': 'fantasy',
+                'is_aggressive': False,
+                'is_unique': False,
+                'wanders': False,
+                'base_vitality': 20,
+                'base_str': 1,
+                'base_dex': 1,
+                'base_end': 1,
+                'base_int': 1,
+                'base_wis': 1,
+                'base_per': 1,
+                'scaling_factor': 1.0,
+                'currency_drop_min': 0,
+                'currency_drop_max': 0,
+                'respawn_minutes': 1,
+            },
+        )
+        self.stdout.write(f'  NpcDefinition "Training Dummy" {"created" if created else "exists"}.')
+
+        _, created = NpcInstance.objects.get_or_create(
+            definition=dummy_def,
+            spawn_room=fracture_point,
+            defaults={
+                'current_room': fracture_point,
+                'mk_tier': 1,
+                'vitality_current': dummy_def.base_vitality,
+                'vitality_max': dummy_def.base_vitality,
+                'is_alive': True,
+            },
+        )
+        self.stdout.write(
+            f'  NpcInstance training-dummy in The Fracture Point {"created" if created else "exists"}.'
+        )
+
+        # --- Fracture Wraith ---
+        eastern_bazaar = Room.objects.get(name='The Eastern Bazaar', zone__slug='the-convergence')
+        acuity_shift = EffectDefinition.objects.filter(slug='acuity-shift-high').first()
+
+        wraith_def, created = NpcDefinition.objects.get_or_create(
+            slug='fracture-wraith',
+            defaults={
+                'name': 'Fracture Wraith',
+                'description': (
+                    'A ghostly remnant of the Fracture, drawn to the residual energy of the plaza. '
+                    'Its touch chills the soul.'
+                ),
+                'genre_tag': 'gothic',
+                'is_aggressive': True,
+                'is_unique': False,
+                'wanders': False,
+                'base_vitality': 15,
+                'base_str': 4,
+                'base_dex': 6,
+                'base_end': 3,
+                'base_int': 5,
+                'base_wis': 3,
+                'base_per': 4,
+                'scaling_factor': 1.0,
+                'currency_drop_min': 2,
+                'currency_drop_max': 8,
+                'respawn_minutes': 5,
+            },
+        )
+        self.stdout.write(f'  NpcDefinition "Fracture Wraith" {"created" if created else "exists"}.')
+
+        if acuity_shift:
+            _, created = NpcEffect.objects.get_or_create(
+                npc_definition=wraith_def,
+                effect_definition=acuity_shift,
+                defaults={'effect_chance': 0.30},
+            )
+            self.stdout.write(
+                f'  NpcEffect Fracture Wraith → Acuity Shift High {"created" if created else "exists"}.'
+            )
+
+        _, created = NpcInstance.objects.get_or_create(
+            definition=wraith_def,
+            spawn_room=eastern_bazaar,
+            defaults={
+                'current_room': eastern_bazaar,
+                'mk_tier': 1,
+                'vitality_current': wraith_def.base_vitality,
+                'vitality_max': wraith_def.base_vitality,
+                'is_alive': True,
+            },
+        )
+        self.stdout.write(
+            f'  NpcInstance fracture-wraith in The Eastern Bazaar {"created" if created else "exists"}.'
         )
 
         self.stdout.write(self.style.SUCCESS('NPC seed complete.'))

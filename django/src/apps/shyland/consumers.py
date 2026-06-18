@@ -11,7 +11,11 @@ from .item_utils import (
     format_slot_name, get_display_name, get_display_description,
     parse_item_noun, parse_corpse_noun, STAT_LABELS,
 )
-from .models import Character, EffectInstance, ItemInstance, Room, RoomVisit
+from .models import (
+    Character, CombatSession, EffectInstance, ItemInstance,
+    NpcInstance, Room, RoomVisit,
+    COMBAT_ROUND_TICKS, FLEE_COOLDOWN_TICKS,
+)
 
 SLOT_ORDER = [
     'HEAD', 'NECK', 'SHOULDERS', 'CHEST', 'HANDS', 'WAIST',
@@ -32,6 +36,21 @@ DIRECTIONS = {
     'west': 'exit_west',  'w': 'exit_west',
     'up': 'exit_up',      'u': 'exit_up',
     'down': 'exit_down',  'd': 'exit_down',
+}
+
+DIRECTION_CANONICAL = {
+    'north': 'north', 'n': 'north',
+    'south': 'south', 's': 'south',
+    'east': 'east',   'e': 'east',
+    'west': 'west',   'w': 'west',
+    'up': 'up',       'u': 'up',
+    'down': 'down',   'd': 'down',
+}
+
+REVERSE_DIRECTIONS = {
+    'north': 'south', 'south': 'north',
+    'east': 'west',   'west': 'east',
+    'up': 'down',     'down': 'up',
 }
 
 
@@ -65,6 +84,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         self.character_pk = self.character.pk
+        self.last_direction = None
+        self._character_is_dying = self.character.is_dying
         await self.accept()
 
         if self.character.current_room_id is None:
@@ -113,6 +134,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         verb = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ''
 
+        if self._character_is_dying and verb not in ('use',):
+            await self.send_output(
+                "You are dying! Use a revival item or wait for another player to revive you.",
+                'error',
+            )
+            return
+
         if verb in DIRECTIONS:
             await self.cmd_move(verb)
         elif verb in ('look', 'l'):
@@ -137,6 +165,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_examine(args)
         elif verb == 'loot':
             await self.cmd_loot(args)
+        elif verb in ('kill', 'attack', 'k'):
+            await self.cmd_attack(args)
+        elif verb == 'flee':
+            await self.cmd_flee()
         elif verb in ('help', '?'):
             await self.cmd_help()
         else:
@@ -176,6 +208,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
 
         await self.move_character(destination)
+        self.last_direction = DIRECTION_CANONICAL[direction]
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
 
@@ -188,7 +221,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # Re-fetch with full select_related (destination from exit FK lacks area pre-fetch)
         destination = await self.get_current_room()
-        await self.send_room_description(destination, entering=True)
+
+        aggro_npcs = await self.get_aggro_npcs_in_room(destination)
+        if aggro_npcs:
+            for npc in aggro_npcs:
+                await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
+            await self.start_combat(aggro_npcs, first_attacker='npc')
+        else:
+            await self.send_room_description(destination, entering=True)
 
     async def cmd_say(self, text):
         if not text:
@@ -317,6 +357,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  use <item>                 — use a consumable\n'
             '  examine (ex) <item>        — inspect an item, NPC, or corpse in detail\n'
             '  loot [corpse] [item]       — loot a corpse; bare \'loot\' takes everything from your most recent kill\n'
+            '  kill / attack (k) <npc>   — attack an NPC in the room\n'
+            '  flee                       — attempt to escape from combat\n'
             '  help / ?                   — show this list\n'
             '\n'
             "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
@@ -598,10 +640,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             stat_changed = True
             msg = f"You feel your wounds closing. (+{round(magnitude)} vitality)"
         elif effect_type == 'restore_acuity':
-            char.acuity_current = min(char.acuity_current + magnitude, 100)
+            char.acuity_current = min(char.acuity_current + magnitude, 1.9)
             await self.apply_character_stat_change(char)
             stat_changed = True
-            msg = f"Your thoughts sharpen and settle. (+{round(magnitude)} acuity)"
+            msg = f"Your thoughts sharpen and settle. (+{round(magnitude, 2)} acuity)"
         elif effect_type == 'restore_longevity':
             char.longevity_current = min(
                 char.longevity_current + magnitude, char.longevity_max
@@ -610,15 +652,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             stat_changed = True
             msg = f"A wave of renewed endurance washes over you. (+{round(magnitude)} longevity)"
         elif effect_type == 'shift_acuity_high':
-            char.acuity_current = min(char.acuity_current + magnitude, 100)
+            char.acuity_current = min(char.acuity_current + magnitude, 1.9)
             await self.apply_character_stat_change(char)
             stat_changed = True
-            msg = f"Your senses narrow to a razor edge. (+{round(magnitude)} acuity)"
+            msg = f"Your senses narrow to a razor edge. (+{round(magnitude, 2)} acuity)"
         elif effect_type == 'shift_acuity_low':
-            char.acuity_current = max(char.acuity_current - magnitude, 0)
+            char.acuity_current = max(char.acuity_current - magnitude, 0.1)
             await self.apply_character_stat_change(char)
             stat_changed = True
-            msg = f"Your mind diffuses, thoughts spreading wide. (-{round(magnitude)} acuity)"
+            msg = f"Your mind diffuses, thoughts spreading wide. (-{round(magnitude, 2)} acuity)"
         else:
             msg = "You feel a strange effect take hold."
 
@@ -863,6 +905,94 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             })
 
     # ------------------------------------------------------------------
+    # Combat commands
+    # ------------------------------------------------------------------
+
+    async def cmd_attack(self, args):
+        if not args:
+            await self.send_output("Attack what?", 'error')
+            return
+
+        character = await self.get_character_fresh()
+        room = await self.get_current_room()
+
+        npcs = await self.get_live_npcs_in_room(room)
+        npc = await self.parse_npc_noun(args, npcs)
+
+        if npc is None:
+            await self.send_output("You don't see that here.", 'error')
+            return
+
+        await self.send_output(f"You attack the {npc.definition.name}!", 'combat')
+        await self.broadcast_to_room_exclude(
+            f"{character.name} attacks the {npc.definition.name}!", 'combat'
+        )
+        await self.start_combat([npc], first_attacker='character')
+
+    async def cmd_flee(self):
+        character = await self.get_character_fresh()
+
+        session = await self.get_active_combat_session(character)
+        if not session:
+            await self.send_output("You are not in combat.", 'error')
+            return
+
+        if character.is_dying:
+            await self.send_output("You are too close to death to flee!", 'error')
+            return
+
+        on_cooldown = await self.check_flee_cooldown(character, session)
+        if on_cooldown:
+            await self.send_output("You are still recovering from your last flee attempt.", 'error')
+            return
+
+        npcs = await self.get_session_npcs(session)
+        if not npcs:
+            await self.end_combat_session(session)
+            return
+
+        avg_per = sum(
+            npc.definition.base_per * npc.definition.scaling_factor * npc.mk_tier
+            for npc in npcs
+        ) / len(npcs)
+
+        success = (character.stat_dex + random.randint(1, 20)) > avg_per
+
+        if success:
+            result = await self.get_flee_destination(character)
+            if result is None:
+                await self.send_output("There is nowhere to run!", 'error')
+                await self.record_flee_attempt(character, session)
+                return
+
+            destination, flee_dir = result
+            await self.send_output("You have successfully fled from your enemies.", 'combat')
+            await self.broadcast_to_room_exclude(
+                f"{character.name} fled the room leaving the enemies looking confused.", 'combat'
+            )
+            await self.end_combat_session(session)
+            await self.channel_layer.group_discard(self.room_group, self.channel_name)
+            await self.move_character(destination)
+            self.last_direction = flee_dir
+            self.room_group = f"room_{destination.id}"
+            await self.channel_layer.group_add(self.room_group, self.channel_name)
+
+            aggro_npcs = await self.get_aggro_npcs_in_room(destination)
+            if aggro_npcs:
+                for npc in aggro_npcs:
+                    await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
+                await self.start_combat(aggro_npcs, first_attacker='npc')
+            else:
+                destination_full = await self.get_current_room()
+                await self.send_room_description(destination_full, entering=True)
+        else:
+            await self.send_output("You tried to flee but your enemies are too strong.", 'combat')
+            await self.broadcast_to_room_exclude(
+                f"{character.name} tried to flee combat but could not slip away.", 'combat'
+            )
+            await self.record_flee_attempt(character, session)
+
+    # ------------------------------------------------------------------
     # Channel layer event handlers
     # ------------------------------------------------------------------
 
@@ -885,6 +1015,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # Helpers
     # ------------------------------------------------------------------
 
+    async def send_output(self, text, category='system'):
+        await self.send_json({'type': 'output', 'text': text, 'category': category})
+
+    async def broadcast_to_room_exclude(self, text, category='room'):
+        await self.channel_layer.group_send(self.room_group, {
+            'type': 'room_message',
+            'text': text,
+            'category': category,
+            'exclude': self.channel_name,
+        })
+
     def format_wallet(self, character):
         zone_slug = character.current_room.zone.slug if character.current_room_id else None
         return display_for_zone(character.copper, zone_slug)
@@ -896,7 +1037,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = self.character
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
-        others = await self.get_others_in_room(room)
+        others_db = await self.get_others_in_room(room)
+        # Filter to only characters who are actively connected (have a Redis presence key)
+        online_names = set()
+        if others_db:
+            keys = await self.redis.keys("shyland:online:*")
+            if keys:
+                values = await self.redis.mget(*keys)
+                online_names = {v.decode() for v in values if v}
+        others = [name for name in others_db if name in online_names]
         npcs = await self.get_npcs_in_room(room)
         corpses = await self.get_corpses_in_room(room)
 
@@ -1162,4 +1311,121 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         bag_bonus = sum(b.definition.carry_bonus for b in equipped_bags)
         max_carry = character.stat_str * 10 + bag_bonus
         return current, max_carry
+
+    # ------------------------------------------------------------------
+    # Combat DB helpers
+    # ------------------------------------------------------------------
+
+    @database_sync_to_async
+    def get_character_fresh(self):
+        char = Character.objects.select_related(
+            'current_room__zone', 'recall_room', 'user__profile'
+        ).get(pk=self.character_pk)
+        self.character = char
+        self._character_is_dying = char.is_dying
+        return char
+
+    @database_sync_to_async
+    def get_aggro_npcs_in_room(self, room):
+        return list(NpcInstance.objects.filter(
+            current_room=room,
+            is_alive=True,
+            definition__is_aggressive=True,
+        ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
+
+    @database_sync_to_async
+    def get_live_npcs_in_room(self, room):
+        return list(NpcInstance.objects.filter(
+            current_room=room,
+            is_alive=True,
+        ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
+
+    @database_sync_to_async
+    def parse_npc_noun(self, noun_str, npcs):
+        noun_str = noun_str.strip().lower()
+        index = 1
+        keyword = noun_str
+        if '.' in noun_str:
+            parts = noun_str.split('.', 1)
+            if parts[0].isdigit():
+                index = int(parts[0])
+                keyword = parts[1]
+        matches = [n for n in npcs if keyword in n.definition.name.lower()]
+        if not matches or index > len(matches):
+            return None
+        return matches[index - 1]
+
+    @database_sync_to_async
+    def start_combat(self, npcs, first_attacker='character'):
+        existing = CombatSession.objects.filter(
+            is_active=True,
+            characters=self.character,
+        ).first()
+        if existing:
+            session = existing
+        else:
+            session = CombatSession.objects.create(
+                room_id=self.character.current_room_id,
+                first_attacker=first_attacker,
+            )
+            session.characters.add(self.character)
+        for npc in npcs:
+            session.npcs.add(npc)
+        session.save()
+        return session
+
+    @database_sync_to_async
+    def get_active_combat_session(self, character):
+        return CombatSession.objects.filter(is_active=True, characters=character).first()
+
+    @database_sync_to_async
+    def get_session_npcs(self, session):
+        return list(session.npcs.select_related('definition').all())
+
+    @database_sync_to_async
+    def end_combat_session(self, session):
+        session.is_active = False
+        session.save(update_fields=['is_active'])
+        session.npcs.clear()
+
+    @database_sync_to_async
+    def get_flee_destination(self, character):
+        room = Room.objects.select_related(
+            'exit_north', 'exit_south', 'exit_east', 'exit_west', 'exit_up', 'exit_down'
+        ).get(pk=character.current_room_id)
+        exits = room.exits()
+
+        reverse = REVERSE_DIRECTIONS.get(self.last_direction)
+        if reverse and reverse in exits:
+            destination = getattr(room, f'exit_{reverse}')
+            if destination is not None:
+                return destination, reverse
+
+        available = list(exits.keys())
+        if available:
+            direction = random.choice(available)
+            destination = getattr(room, f'exit_{direction}')
+            if destination is not None:
+                return destination, direction
+
+        return None
+
+    @database_sync_to_async
+    def check_flee_cooldown(self, character, session):
+        from django.utils import timezone
+        from datetime import timedelta
+        if session.last_flee_attempt_at is None:
+            return False
+        if session.last_flee_character_id != character.pk:
+            return False
+        cooldown_secs = FLEE_COOLDOWN_TICKS * COMBAT_ROUND_TICKS
+        cutoff = timezone.now() - timedelta(seconds=cooldown_secs)
+        return session.last_flee_attempt_at > cutoff
+
+    @database_sync_to_async
+    def record_flee_attempt(self, character, session):
+        from django.utils import timezone
+        session.last_flee_attempt_at = timezone.now()
+        session.last_flee_character = character
+        session.save(update_fields=['last_flee_attempt_at', 'last_flee_character'])
 

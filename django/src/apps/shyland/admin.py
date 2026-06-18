@@ -1,9 +1,10 @@
 from django.contrib import admin
 from .currency import display as currency_display
 from .models import (
-    Area, Character, Corpse, EffectDefinition, EffectInstance,
+    Area, Character, CombatAction, CombatSession, Corpse,
+    EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry,
-    NpcDefinition, NpcInstance, Room, RoomVisit, Zone,
+    NpcDefinition, NpcEffect, NpcInstance, Room, RoomVisit, Zone,
 )
 
 
@@ -71,6 +72,7 @@ class RoomVisitAdmin(admin.ModelAdmin):
 class EffectDefinitionAdmin(admin.ModelAdmin):
     list_display = ('name', 'effect_type', 'scales_with_mk')
     prepopulated_fields = {'slug': ('name',)}
+    search_fields = ['name', 'slug']
 
 
 @admin.register(ItemDefinition)
@@ -132,12 +134,20 @@ class LootTableAdmin(admin.ModelAdmin):
     inlines = [LootTableEntryInline]
 
 
+class NpcEffectInline(admin.TabularInline):
+    model = NpcEffect
+    extra = 1
+    fields = ['effect_definition', 'effect_chance']
+    autocomplete_fields = ['effect_definition']
+
+
 @admin.register(NpcDefinition)
 class NpcDefinitionAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'genre_tag', 'is_aggressive', 'is_unique', 'respawn_minutes')
     list_filter = ('genre_tag', 'is_aggressive', 'is_unique')
     prepopulated_fields = {'slug': ('name',)}
     raw_id_fields = ('loot_table',)
+    inlines = [NpcEffectInline]
 
 
 @admin.register(NpcInstance)
@@ -152,3 +162,28 @@ class CorpseAdmin(admin.ModelAdmin):
     list_display = ('npc_name_snapshot', 'current_room', 'killed_by', 'copper_drop', 'created_at', 'decay_at')
     list_filter = ('current_room',)
     raw_id_fields = ('npc_definition', 'current_room', 'killed_by')
+
+
+@admin.register(NpcEffect)
+class NpcEffectAdmin(admin.ModelAdmin):
+    list_display  = ['npc_definition', 'effect_definition', 'effect_chance']
+    list_filter   = ['npc_definition']
+    raw_id_fields = ['npc_definition', 'effect_definition']
+
+
+@admin.register(CombatSession)
+class CombatSessionAdmin(admin.ModelAdmin):
+    list_display    = ['pk', 'room', 'is_active', 'first_attacker', 'started_at', 'last_tick_at', 'tick_counter']
+    list_filter     = ['is_active', 'first_attacker']
+    readonly_fields = ['started_at', 'last_tick_at', 'tick_counter', 'characters', 'npcs']
+    raw_id_fields   = ['room']
+    ordering        = ['-started_at']
+
+
+@admin.register(CombatAction)
+class CombatActionAdmin(admin.ModelAdmin):
+    list_display    = ['pk', 'combat_session', 'action_type', 'character', 'npc', 'is_processed', 'queued_at']
+    list_filter     = ['action_type', 'is_processed']
+    readonly_fields = ['queued_at']
+    raw_id_fields   = ['combat_session', 'character', 'npc', 'target_character', 'target_npc', 'item']
+    ordering        = ['-queued_at']
