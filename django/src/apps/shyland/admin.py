@@ -52,11 +52,20 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(Character)
 class CharacterAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'level', 'origin', 'archetype', 'current_room', 'last_seen')
+    list_display = ('name', 'user', 'level', 'unspent_stat_points', 'origin', 'archetype', 'current_room', 'last_seen')
     list_filter = ('origin', 'archetype', 'is_hardcore', 'is_dead')
     raw_id_fields = ('current_room', 'recall_room')
     readonly_fields = ('wallet_display',)
     list_select_related = ('user__profile',)
+    fieldsets = (
+        (None, {'fields': ('user', 'origin', 'archetype', 'current_room', 'recall_room')}),
+        ('Progression', {'fields': ('level', 'xp', 'unspent_stat_points')}),
+        ('Primary Stats', {'fields': ('stat_str', 'stat_dex', 'stat_end', 'stat_int', 'stat_wis', 'stat_per')}),
+        ('Bars', {'fields': ('vitality_current', 'vitality_max', 'longevity_current', 'longevity_max',
+                             'acuity_current', 'acuity_baseline', 'acuity_band_low', 'acuity_band_high')}),
+        ('Economy', {'fields': ('copper', 'wallet_display')}),
+        ('Flags', {'fields': ('is_hardcore', 'is_dead', 'is_dying', 'dying_since')}),
+    )
 
     def wallet_display(self, obj):
         return currency_display(obj.copper)
@@ -70,9 +79,15 @@ class RoomVisitAdmin(admin.ModelAdmin):
 
 @admin.register(EffectDefinition)
 class EffectDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'effect_type', 'scales_with_mk')
+    list_display = ('name', 'slug', 'effect_type', 'target_stat', 'scales_with_mk')
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ['name', 'slug']
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'effect_type', 'target_stat', 'description')}),
+        ('Magnitude', {'fields': ('magnitude_min', 'magnitude_max')}),
+        ('Duration', {'fields': ('duration_min', 'duration_max')}),
+        ('Scaling', {'fields': ('scales_with_mk', 'scaling_base', 'scaling_factor')}),
+    )
 
 
 @admin.register(ItemDefinition)

@@ -169,6 +169,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_attack(args)
         elif verb == 'flee':
             await self.cmd_flee()
+        elif verb == 'spend':
+            await self.cmd_spend(args)
+        elif verb == 'stats':
+            await self.cmd_stats()
         elif verb in ('help', '?'):
             await self.cmd_help()
         else:
@@ -359,6 +363,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  loot [corpse] [item]       — loot a corpse; bare \'loot\' takes everything from your most recent kill\n'
             '  kill / attack (k) <npc>   — attack an NPC in the room\n'
             '  flee                       — attempt to escape from combat\n'
+            '  stats                      — show your character stats and XP\n'
+            '  spend <stat> <amount>      — spend stat points (e.g. spend dex 2)\n'
             '  help / ?                   — show this list\n'
             '\n'
             "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
@@ -993,6 +999,125 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.record_flee_attempt(character, session)
 
     # ------------------------------------------------------------------
+    # Stat commands
+    # ------------------------------------------------------------------
+
+    async def cmd_stats(self):
+        character = await self.get_character_fresh()
+        await self._send_stats(character)
+
+    async def _send_stats(self, character):
+        from .combat_utils import xp_for_next_level
+        lines = [
+            f"[ Character Stats — {character.name} (Level {character.level}) ]",
+            f"  Strength     (STR): {character.stat_str}",
+            f"  Dexterity    (DEX): {character.stat_dex}",
+            f"  Endurance    (END): {character.stat_end}",
+            f"  Intelligence (INT): {character.stat_int}",
+            f"  Wisdom       (WIS): {character.stat_wis}",
+            f"  Perception   (PER): {character.stat_per}",
+            f"",
+            f"  Vitality:   {character.vitality_current} / {character.vitality_max}",
+            f"  Longevity:  {character.longevity_current} / {character.longevity_max}",
+            f"  Acuity:     {character.acuity_current:.1f} (baseline {character.acuity_baseline:.1f})",
+            f"",
+            f"  XP: {character.xp} / {xp_for_next_level(character.level)} (next level)",
+            f"  Unspent stat points: {character.unspent_stat_points}",
+        ]
+        if character.unspent_stat_points > 0:
+            lines.append(f"  Type 'spend <stat> <amount>' to allocate. (e.g. 'spend str 2')")
+        await self.send_output('\n'.join(lines), 'system')
+
+    async def cmd_spend(self, args):
+        VALID_STATS = {
+            'str': 'Strength',
+            'dex': 'Dexterity',
+            'end': 'Endurance',
+            'int': 'Intelligence',
+            'wis': 'Wisdom',
+            'per': 'Perception',
+        }
+
+        character = await self.get_character_fresh()
+
+        if not args:
+            await self._send_stats(character)
+            return
+
+        parts = args.lower().split()
+        if len(parts) != 2:
+            await self.send_output(
+                "Usage: spend <stat> <amount>  (e.g. 'spend dex 2')  |  "
+                "Valid stats: str dex end int wis per", 'error'
+            )
+            return
+
+        stat_name, amount_str = parts
+
+        if stat_name not in VALID_STATS:
+            await self.send_output(
+                f"Unknown stat '{stat_name}'. Valid stats: {', '.join(VALID_STATS.keys())}", 'error'
+            )
+            return
+
+        try:
+            amount = int(amount_str)
+        except ValueError:
+            await self.send_output(f"'{amount_str}' is not a valid number.", 'error')
+            return
+
+        if amount <= 0:
+            await self.send_output("Amount must be greater than zero.", 'error')
+            return
+
+        if character.unspent_stat_points <= 0:
+            await self.send_output("You have no unspent stat points.", 'error')
+            return
+
+        if amount > character.unspent_stat_points:
+            pts = character.unspent_stat_points
+            await self.send_output(
+                f"You only have {pts} unspent stat point{'s' if pts != 1 else ''}.", 'error'
+            )
+            return
+
+        @database_sync_to_async
+        def apply_spend(char, stat, pts):
+            from .combat_utils import recalculate_bars
+            attr = f'stat_{stat}'
+            current = getattr(char, attr)
+            setattr(char, attr, current + pts)
+            char.unspent_stat_points -= pts
+            if stat in ('end', 'str', 'wis'):
+                recalculate_bars(char)
+                char.save(update_fields=[
+                    attr, 'unspent_stat_points',
+                    'vitality_max', 'vitality_current',
+                    'longevity_max', 'longevity_current',
+                ])
+            else:
+                char.save(update_fields=[attr, 'unspent_stat_points'])
+            return getattr(char, attr)
+
+        new_value = await apply_spend(character, stat_name, amount)
+        remaining = character.unspent_stat_points
+
+        await self.send_output(
+            f"{VALID_STATS[stat_name]} increased to {new_value}. "
+            f"{'No' if remaining == 0 else remaining} stat point{'s' if remaining != 1 else ''} remaining.",
+            'system'
+        )
+
+        await self.send_json({
+            'type': 'status',
+            'vitality': character.vitality_current,
+            'acuity': character.acuity_current,
+            'longevity': character.longevity_current,
+            'room_name': '',
+            'area_name': None,
+        })
+
+    # ------------------------------------------------------------------
     # Channel layer event handlers
     # ------------------------------------------------------------------
 
@@ -1002,13 +1127,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.output(event['text'], event.get('category', 'system'))
 
     async def player_message(self, event):
-        """Handle messages sent directly to this player (e.g. effect expiry from tick engine)."""
-        await self.send_json({
-            'type': 'output',
-            'text': event['text'],
-            'category': event.get('category', 'system'),
-        })
-        if 'status' in event:
+        """Handle messages sent directly to this player (e.g. effect ticks from tick engine)."""
+        if event.get('text'):
+            await self.send_json({
+                'type': 'output',
+                'text': event['text'],
+                'category': event.get('category', 'system'),
+            })
+        if event.get('status') is not None:
             await self.send_json(event['status'])
 
     # ------------------------------------------------------------------
@@ -1238,8 +1364,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def create_effect_instance(self, effect_def, character, item, magnitude, duration):
         from datetime import timedelta
         from django.utils import timezone
+        from .combat_utils import apply_stat_effect
         expires = timezone.now() + timedelta(seconds=duration) if duration else None
-        return EffectInstance.objects.create(
+        instance = EffectInstance.objects.create(
             definition=effect_def,
             target=character,
             source_item=item,
@@ -1248,6 +1375,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             expires_at=expires,
             is_active=True,
         )
+        if effect_def.effect_type in ('stat_bonus', 'stat_penalty'):
+            apply_stat_effect(character, instance, reverse=False)
+        return instance
 
     @database_sync_to_async
     def consume_item(self, item):

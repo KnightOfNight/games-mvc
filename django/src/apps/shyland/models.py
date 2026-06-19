@@ -8,6 +8,8 @@ FLEE_COOLDOWN_TICKS   = 3
 STALE_SESSION_SECS    = 30
 XP_PENALTY_MIN_LEVEL  = 10
 DEATH_DURABILITY_LOSS = 10.0
+ACUITY_DRIFT_RATE     = 0.01
+STAT_POINTS_PER_LEVEL = 5
 
 _ACUITY_DEFAULTS = {
     'highborn':    (1.0,  0.85, 1.15),
@@ -195,6 +197,7 @@ class Character(models.Model):
     longevity_max = models.IntegerField(default=100)
 
     copper = models.BigIntegerField(default=0)
+    unspent_stat_points = models.IntegerField(default=0)
 
     is_hardcore = models.BooleanField(default=False)
     is_dead = models.BooleanField(default=False)
@@ -257,6 +260,18 @@ class EffectDefinition(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
     effect_type = models.CharField(max_length=30, choices=EFFECT_TYPE_CHOICES)
+    target_stat = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=[
+            ('str', 'Strength'),
+            ('dex', 'Dexterity'),
+            ('end', 'Endurance'),
+            ('int', 'Intelligence'),
+            ('wis', 'Wisdom'),
+            ('per', 'Perception'),
+        ],
+    )
     magnitude_min = models.FloatField()
     magnitude_max = models.FloatField()
     duration_min = models.FloatField(null=True, blank=True)

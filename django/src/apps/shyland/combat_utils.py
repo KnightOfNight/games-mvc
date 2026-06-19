@@ -99,6 +99,33 @@ def apply_death_penalties(character):
     return broken_items
 
 
+def apply_stat_effect(character, effect_instance, reverse=False):
+    """
+    Apply or reverse a stat_bonus / stat_penalty effect.
+    reverse=True negates the magnitude (used on expiry).
+    Returns (stat_name, new_value) or (None, None) if target_stat is blank.
+    Synchronous — call from within @database_sync_to_async.
+    """
+    stat_name = effect_instance.definition.target_stat
+    if not stat_name:
+        return None, None
+
+    attr = f'stat_{stat_name}'
+    if not hasattr(character, attr):
+        return None, None
+
+    delta = effect_instance.magnitude
+    if reverse:
+        delta = -delta
+
+    current = getattr(character, attr)
+    new_value = max(1, int(current + delta))
+    setattr(character, attr, new_value)
+    character.save(update_fields=[attr])
+
+    return stat_name, new_value
+
+
 def apply_npc_effects(npc_instance, target_character):
     """
     Roll each NpcEffect for the given NPC and apply those that fire.
@@ -125,7 +152,7 @@ def apply_npc_effects(npc_instance, target_character):
             duration = random.uniform(ed.duration_min, ed.duration_max)
             expires_at = timezone.now() + timedelta(seconds=duration)
 
-        EffectInstance.objects.create(
+        effect_instance = EffectInstance.objects.create(
             definition=ed,
             target=target_character,
             magnitude=magnitude,
@@ -133,6 +160,8 @@ def apply_npc_effects(npc_instance, target_character):
             expires_at=expires_at,
             is_active=True,
         )
+        if ed.effect_type in ('stat_bonus', 'stat_penalty'):
+            apply_stat_effect(target_character, effect_instance, reverse=False)
         messages.append(ed.name)
 
     return messages
@@ -141,3 +170,25 @@ def apply_npc_effects(npc_instance, target_character):
 def xp_for_kill(npc_instance, character):
     """Return XP awarded for killing an NPC."""
     return int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor)
+
+
+def xp_for_next_level(level):
+    """XP required to reach (level + 1). Formula: level² × 100."""
+    return level * level * 100
+
+
+def recalculate_bars(character):
+    """
+    Recalculate vitality_max and longevity_max from stats + level.
+    Sets current bars to new maximums (full bars on level-up).
+    Returns (new_vitality_max, new_longevity_max).
+    """
+    new_vitality_max  = (character.stat_end * 10) + (character.stat_str * 3) + (character.level * 5)
+    new_longevity_max = (character.stat_end * 8)  + (character.stat_wis * 5) + (character.level * 5)
+
+    character.vitality_max      = new_vitality_max
+    character.vitality_current  = new_vitality_max
+    character.longevity_max     = new_longevity_max
+    character.longevity_current = new_longevity_max
+
+    return new_vitality_max, new_longevity_max

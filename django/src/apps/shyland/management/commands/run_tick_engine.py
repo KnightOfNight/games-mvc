@@ -25,7 +25,7 @@ class Command(BaseCommand):
         await self.process_combat(tick_number)
         await self.process_corpse_decay()
         await self.process_npc_respawn()
-        await self.process_effect_expiry()
+        await self.process_effects(tick_number)
 
     # ------------------------------------------------------------------
     # Combat
@@ -223,11 +223,12 @@ class Command(BaseCommand):
                 from datetime import timedelta as _td
                 from django.utils import timezone as _tz
                 from apps.shyland.models import (
-                    CombatAction, ItemInstance, DYING_DURATION_SECS,
+                    CombatAction, ItemInstance, DYING_DURATION_SECS, STAT_POINTS_PER_LEVEL,
                 )
                 from apps.shyland.combat_utils import (
                     get_npc_stats, resolve_hit, calculate_damage,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
+                    xp_for_next_level, recalculate_bars,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -305,6 +306,24 @@ class Command(BaseCommand):
                             xp = xp_for_kill(npc, character)
                             character.xp += xp
                             character.save(update_fields=['xp'])
+
+                            while character.xp >= xp_for_next_level(character.level):
+                                character.level += 1
+                                character.unspent_stat_points += STAT_POINTS_PER_LEVEL
+                                new_vit_max, new_lon_max = recalculate_bars(character)
+                                character.save(update_fields=[
+                                    'level', 'unspent_stat_points',
+                                    'vitality_max', 'vitality_current',
+                                    'longevity_max', 'longevity_current',
+                                ])
+                                pts = character.unspent_stat_points
+                                messages.append((character.pk,
+                                    f"*** You have reached level {character.level}! "
+                                    f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}. "
+                                    f"You have {pts} unspent stat point{'s' if pts != 1 else ''}. "
+                                    f"Type 'spend' to allocate them.",
+                                    'system'
+                                ))
 
                             create_corpse(npc, character)
 
@@ -466,83 +485,198 @@ class Command(BaseCommand):
         )
 
     # ------------------------------------------------------------------
-    # Effect expiry
+    # Effects: per-tick DoT/HoT, Acuity drift, expiry
     # ------------------------------------------------------------------
 
-    async def process_effect_expiry(self):
+    async def process_effects(self, tick_number):
         from django.utils import timezone
+        from django.db.models import F
+        from apps.shyland.models import (
+            EffectInstance, Character,
+            COMBAT_ROUND_TICKS, ACUITY_DRIFT_RATE,
+        )
+        from apps.shyland.combat_utils import apply_stat_effect
+
         now = timezone.now()
-        expired = await self.get_expired_effects(now)
+        is_round_boundary = (tick_number % COMBAT_ROUND_TICKS == 0)
 
-        for effect in expired:
-            character = effect.target
-            effect_type = effect.definition.effect_type
-            effect_name = effect.definition.name
-            char_name = character.name
-            slug = effect.definition.slug
+        # ---- Phase 1: Per-tick DoT/HoT and Acuity shift (round boundaries only) ----
+        if is_round_boundary:
+            @database_sync_to_async
+            def get_active_ticking_effects():
+                return list(EffectInstance.objects.filter(
+                    is_active=True,
+                    expires_at__isnull=False,
+                    expires_at__gt=now,
+                    definition__effect_type__in=[
+                        'dot_vitality', 'dot_acuity', 'dot_longevity',
+                        'shift_acuity_high', 'shift_acuity_low',
+                    ],
+                ).select_related('definition', 'target__user__profile'))
 
-            msg = self.get_expiry_message(effect_type, effect_name)
-            await self.expire_effect(effect.pk)
+            @database_sync_to_async
+            def save_char_fields(char, fields):
+                char.save(update_fields=fields)
 
-            if msg:
-                status = await self.get_character_status(character.pk)
-                await self.send_to_player(character.pk, msg, 'system', status)
-                logger.info(f"Effect expired: {slug} on {char_name}")
+            @database_sync_to_async
+            def set_dying_state(char):
+                from django.utils import timezone as tz
+                char.is_dying = True
+                char.dying_since = tz.now()
+                char.save(update_fields=['is_dying', 'dying_since'])
 
-    def get_expiry_message(self, effect_type, effect_name):
-        messages = {
+            ticking_effects = await get_active_ticking_effects()
+
+            for effect in ticking_effects:
+                character = effect.target
+                effect_type = effect.definition.effect_type
+                magnitude = effect.magnitude
+
+                if effect_type == 'dot_vitality':
+                    damage = max(1, int(magnitude))
+                    character.vitality_current = max(0, character.vitality_current - damage)
+                    await save_char_fields(character, ['vitality_current'])
+                    msg = f"You take {damage} damage from {effect.definition.name}."
+                    await self.send_to_player(
+                        character.pk, msg, 'system',
+                        {'vitality': character.vitality_current}
+                    )
+                    if character.vitality_current <= 0:
+                        await set_dying_state(character)
+                        await self.send_to_player(
+                            character.pk,
+                            f"The {effect.definition.name} has brought you to the brink of death! "
+                            f"You have 30 seconds to be revived.",
+                            'combat', None
+                        )
+
+                elif effect_type == 'dot_acuity':
+                    character.acuity_current = round(
+                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
+                    )
+                    await save_char_fields(character, ['acuity_current'])
+                    msg = f"{effect.definition.name} disrupts your focus."
+                    await self.send_to_player(
+                        character.pk, msg, 'system',
+                        {'acuity': character.acuity_current}
+                    )
+
+                elif effect_type == 'dot_longevity':
+                    drain = max(1, int(magnitude))
+                    character.longevity_current = max(0, character.longevity_current - drain)
+                    await save_char_fields(character, ['longevity_current'])
+                    msg = f"{effect.definition.name} drains your endurance."
+                    await self.send_to_player(
+                        character.pk, msg, 'system',
+                        {'longevity': character.longevity_current}
+                    )
+
+                elif effect_type == 'shift_acuity_high':
+                    character.acuity_current = round(
+                        min(1.9, character.acuity_current + magnitude), 1
+                    )
+                    await save_char_fields(character, ['acuity_current'])
+                    await self.send_to_player(
+                        character.pk, '', 'system', {'acuity': character.acuity_current}
+                    )
+
+                elif effect_type == 'shift_acuity_low':
+                    character.acuity_current = round(
+                        max(0.1, character.acuity_current - magnitude), 1
+                    )
+                    await save_char_fields(character, ['acuity_current'])
+                    await self.send_to_player(
+                        character.pk, '', 'system', {'acuity': character.acuity_current}
+                    )
+
+        # ---- Phase 2: Passive Acuity drift (every tick) ----
+        @database_sync_to_async
+        def get_characters_needing_drift():
+            candidates = list(Character.objects.exclude(
+                acuity_current=F('acuity_baseline')
+            ).select_related('user__profile').prefetch_related('active_effects__definition'))
+
+            acuity_effect_types = {'shift_acuity_high', 'shift_acuity_low'}
+            result = []
+            for char in candidates:
+                has_active_acuity_effect = any(
+                    e.is_active and e.definition.effect_type in acuity_effect_types
+                    for e in char.active_effects.all()
+                )
+                if not has_active_acuity_effect:
+                    result.append(char)
+            return result
+
+        @database_sync_to_async
+        def save_acuity(char, val):
+            char.acuity_current = val
+            char.save(update_fields=['acuity_current'])
+
+        drift_characters = await get_characters_needing_drift()
+
+        for character in drift_characters:
+            baseline = character.acuity_baseline
+            current = character.acuity_current
+            diff = baseline - current
+
+            if abs(diff) <= ACUITY_DRIFT_RATE:
+                new_acuity = baseline
+            elif diff > 0:
+                new_acuity = round(current + ACUITY_DRIFT_RATE, 2)
+            else:
+                new_acuity = round(current - ACUITY_DRIFT_RATE, 2)
+
+            new_acuity = round(max(0.1, min(1.9, new_acuity)), 2)
+            await save_acuity(character, new_acuity)
+            await self.send_to_player(character.pk, '', 'system', {'acuity': new_acuity})
+
+        # ---- Phase 3: Effect expiry (every tick) ----
+        @database_sync_to_async
+        def get_expired_effects_now():
+            return list(EffectInstance.objects.filter(
+                is_active=True,
+                expires_at__isnull=False,
+                expires_at__lte=now,
+            ).select_related('definition', 'target__user__profile'))
+
+        @database_sync_to_async
+        def expire_and_reverse(effect, char):
+            if effect.definition.effect_type in ('stat_bonus', 'stat_penalty'):
+                apply_stat_effect(char, effect, reverse=True)
+            effect.is_active = False
+            effect.removed_by = 'timeout'
+            effect.save(update_fields=['is_active', 'removed_by'])
+
+        EXPIRY_MESSAGES = {
             'shift_acuity_high': "Your heightened focus fades. Your mind settles.",
             'shift_acuity_low':  "The fog lifts from your mind. Your thoughts sharpen.",
             'dot_vitality':      "The pain subsides.",
             'dot_acuity':        "The mental static clears.",
             'dot_longevity':     "The draining sensation fades.",
-            'stat_bonus':        f"The {effect_name} fades. Your body returns to normal.",
-            'stat_penalty':      f"The {effect_name} lifts.",
         }
-        silent = {'restore_vitality', 'restore_acuity', 'restore_longevity', 'curse_generic'}
-        if effect_type in silent:
-            return None
-        return messages.get(effect_type, "An effect has worn off.")
+        SILENT_TYPES = {'restore_vitality', 'restore_acuity', 'restore_longevity', 'curse_generic'}
 
-    @database_sync_to_async
-    def get_expired_effects(self, now):
-        from apps.shyland.models import EffectInstance
-        return list(
-            EffectInstance.objects.filter(
-                is_active=True,
-                expires_at__lte=now,
-                expires_at__isnull=False,
-            ).select_related(
-                'definition',
-                'target__user__profile',
-                'target__current_room__zone',
-                'target__current_room__area',
-            )
-        )
+        expired = await get_expired_effects_now()
 
-    @database_sync_to_async
-    def expire_effect(self, pk):
-        from apps.shyland.models import EffectInstance
-        EffectInstance.objects.filter(pk=pk).update(
-            is_active=False,
-            removed_by='timeout',
-        )
+        for effect in expired:
+            character = effect.target
+            effect_type = effect.definition.effect_type
 
-    @database_sync_to_async
-    def get_character_status(self, character_pk):
-        from apps.shyland.models import Character
-        char = Character.objects.select_related(
-            'current_room__zone', 'current_room__area'
-        ).get(pk=character_pk)
-        room = char.current_room
-        return {
-            'type': 'status',
-            'vitality':  char.vitality_current,
-            'acuity':    char.acuity_current,
-            'longevity': char.longevity_current,
-            'room_name': room.name if room else '',
-            'area_name': room.area.name if room and room.area_id else None,
-        }
+            await expire_and_reverse(effect, character)
+
+            if effect_type in SILENT_TYPES:
+                logger.info(f"Effect expired (silent): {effect.definition.slug} on {character.name}")
+                continue
+
+            if effect_type == 'stat_bonus':
+                msg = f"The {effect.definition.name} fades. Your body returns to normal."
+            elif effect_type == 'stat_penalty':
+                msg = f"The {effect.definition.name} lifts."
+            else:
+                msg = EXPIRY_MESSAGES.get(effect_type, "An effect has worn off.")
+
+            await self.send_to_player(character.pk, msg, 'system', None)
+            logger.info(f"Effect expired: {effect.definition.slug} on {character.name}")
 
     async def send_to_player(self, character_pk, text, category, status):
         from channels.layers import get_channel_layer
