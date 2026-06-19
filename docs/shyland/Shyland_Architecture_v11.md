@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit cf0c371 (v11: effects ticking, level-up, stat spending).  
+> Authoritative technical reference as of commit d0ce3c4 (v11: effects ticking, level-up, stat spending).  
 > Describes what is built. For design intent see `Shyland_GDD_v3.md`.
 
 ---
