@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 10.0 — Working Draft**
+**Version 11.0 — Working Draft**
 
 -----
 
@@ -18,6 +18,7 @@
 | v8      | v8              | NPC and corpse model designed: NpcDefinition, NpcInstance, Corpse, LootTable, LootTableEntry. Loot command designed and documented. Examine command extended to cover live NPCs and corpses. Currency drop formula (min × mk_tier to max × mk_tier). Corpse decay constant (10 minutes). Section 5.9 substantially expanded. |
 | v9      | v9              | Version bump to match architecture doc. Version history added. No design changes. |
 | v10     | v10             | Combat system v1 implemented. Acuity scale changed to float 0.1–1.9 (the value IS the damage modifier). Death & Resurrection section updated with exact v1 mechanics. Combat initiation updated: NPC aggro on room entry fires after a 3-second warning window; player can queue during window. Flee updated: directional preference (reverse of entry direction), DEX+d20 vs average NPC PER, cooldown after failed attempts. NPC effect system added: `NpcEffect` model links effect definitions to NPC definitions with per-effect probability. Section 5.3 action economy updated to reflect two-path command handling (non-combat commands fire immediately; combat commands queue to DB for tick engine resolution). Section 10.4 tick architecture updated to match actual implementation. Section 10.5 persistence model updated: active combat state moves from Redis to PostgreSQL. Future Systems table updated: Combat System removed; NPC System row updated; new deferred items added. |
+| v11     | v11             | Effects ticking, level-up, and stat spending implemented. Section 3.5 updated: XP threshold formula (`level² × 100`) now implemented; `spend <stat> <amount>` and `stats` commands live; bar recalculation formula confirmed (`vitality_max = END×10 + STR×3 + level×5`; `longevity_max = END×8 + WIS×5 + level×5`). Section 4.2 Acuity drift note updated: passive drift toward Origin baseline is now implemented. Section 9.1 implemented commands updated: `kill`/`attack`, `flee`, `stats`, `spend` added. Section 9.2 planned commands updated: `kill`/`attack` and `flee` removed. Section 10.4 tick architecture updated: `process_effect_expiry()` replaced by `process_effects()` with three phases (effect ticking, passive Acuity drift, expiry). Section 12 Future Systems updated: Level-Up Trigger, Acuity Drift, and DoT/HoT Per-Tick Application rows removed. |
 
 -----
 
@@ -327,12 +328,18 @@ Six primary stats, each 1–100 (starting range 8–18 based on origin/archetype
 - Crafting milestones
 - PvP kills in PvP zones (reduced rate, separate PvP XP track)
 
+**XP Threshold:** `level² × 100`. Level 1→2 costs 100 XP; level 10→11 costs 10,000 XP. The formula extends infinitely. Multiple levels from a single kill are each resolved and announced separately.
+
 **On Level Up:**
 
-- +5 stat points to distribute freely
-- +1 skill point
-- Vitality/Longevity/Mana recalculated
-- New abilities may unlock at certain level thresholds
+- **+5 unspent stat points** (`STAT_POINTS_PER_LEVEL = 5`), accumulated on `Character.unspent_stat_points`. Never expire.
+- Vitality and Longevity maximums recalculate and current values are set to the new maximums (level-up fully restores both bars):
+  - `vitality_max = (END × 10) + (STR × 3) + (level × 5)`
+  - `longevity_max = (END × 8) + (WIS × 5) + (level × 5)`
+- +1 skill point (deferred — skill tree not yet implemented)
+- New abilities may unlock at certain level thresholds (deferred)
+
+**Spending stat points:** `spend <stat> <amount>` allocates unspent points. Valid stats: `str`, `dex`, `end`, `int`, `wis`, `per`. Spending `end`, `str`, or `wis` immediately triggers bar recalculation. `stats` shows the full stat block with current XP, XP to next level, and unspent points.
 
 **At the content frontier (no higher zone yet published):** XP trickles in from any content. The Wastelands provides the best return. A secondary **Mastery track** activates past the frontier — Mastery points incrementally improve existing skills rather than unlocking new ones. This is progression without power creep.
 
@@ -1095,6 +1102,15 @@ If no exit exists in the requested direction, the server responds with a message
 |Command    |Alias|Description                              |
 |-----------|-----|-----------------------------------------|
 |`inventory`|`inv`|Show equipped items and carried inventory|
+|`stats`    |—    |Show full stat block with XP progress and unspent stat points|
+|`spend <stat> <amount>`|—|Allocate unspent stat points to a primary stat (str, dex, end, int, wis, per)|
+
+#### Combat
+
+|Command                            |Alias|Description                  |
+|-----------------------------------|-----|-----------------------------|
+|`kill <target>` / `attack <target>`|`k`  |Initiate combat with a target|
+|`flee`                             |—    |Attempt to escape combat     |
 
 #### Item Interaction
 
@@ -1147,12 +1163,9 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 |`salvage`             |Disassemble items or gather tech components       |
 |`harvest`             |Gather zone-specific resources                    |
 
-#### Combat (Section 5)
+#### Combat
 
-|Command                            |Description                  |
-|-----------------------------------|-----------------------------|
-|`kill <target>` / `attack <target>`|Initiate combat with a target|
-|`flee`                             |Attempt to escape combat     |
+*(All combat commands are now implemented — see Section 9.1.)*
 
 #### Character & Inventory
 
@@ -1241,13 +1254,11 @@ The game server runs a **tick engine** implemented as a Django management comman
 1. **`process_combat()`** — resolves combat rounds for all active `CombatSession` rows; handles dying-state expiry and stale-session cleanup
 1. **`process_corpse_decay()`** — deletes corpses whose `decay_at` has passed
 1. **`process_npc_respawn()`** — creates fresh `NpcInstance` rows for dead NPCs whose `respawn_at` has passed
-1. **`process_effect_expiry()`** — deactivates `EffectInstance` rows whose `expires_at` has passed and notifies the player
+1. **`process_effects()`** — three phases per tick: (1) effect ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — applies DoT damage and Acuity/Longevity shifts for all active `EffectInstance` rows; (2) passive Acuity drift every tick — moves characters’ `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no shift effect is active, snapping to baseline when within the drift step; (3) effect expiry every tick — deactivates `EffectInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` types via `apply_stat_effect(reverse=True)`, and notifies the player
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
 
 **Global tick rate:** 1 second. Combat round = 3 ticks (`COMBAT_ROUND_TICKS = 3`). Fixed — not adjustable per player or per NPC.
-
-**Planned but not yet implemented:** Acuity drift (characters’ Acuity drifting toward their Origin baseline each tick), DoT/HoT per-tick stat application, zone events.
 
 NPC AI runs server-side. No game state is trusted from the client.
 
@@ -1399,14 +1410,11 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**NPC System and Dialogue**            |NPC models (`NpcDefinition`, `NpcInstance`, `Corpse`, `NpcEffect`) implemented. `examine` shows live NPCs and corpses. Combat aggro on room entry implemented. Wandering, dialogue, and patrol AI deferred.|
 |**PvP Flagging and Bounty System**     |Not yet implemented.                                                                                                               |
 |**The Wastelands Scaling Logic**       |Dynamic content scaling at spawn time not yet implemented.                                                                         |
-|**Acuity Drift**                       |Acuity does not yet drift toward the character’s Origin baseline between combat rounds. Planned as a tick engine processor addition.|
-|**DoT/HoT Per-Tick Application**       |`EffectInstance` rows expire correctly but do not apply per-tick stat changes. A `dot_vitality` effect currently expires without dealing damage.|
 |**Durability Degradation in Combat**   |Death penalty (10% per death) implemented. Per-hit weapon degradation during combat not yet implemented.|
 |**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.|
-|**Level-Up Trigger**                   |XP accrual on kill implemented. No level-up trigger, stat distribution, or XP threshold table yet.|
 |**Room Spawn Configuration**           |No builder tool yet for configuring NPC spawns in rooms. NPCs are placed via seed command or Django admin.|
 
 -----
 
-*Document version 10.0 — Shyland Working Draft*
+*Document version 11.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
