@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 11.0 — Working Draft**
+**Version 12.0 — Working Draft**
 
 -----
 
@@ -19,6 +19,7 @@
 | v9      | v9              | Version bump to match architecture doc. Version history added. No design changes. |
 | v10     | v10             | Combat system v1 implemented. Acuity scale changed to float 0.1–1.9 (the value IS the damage modifier). Death & Resurrection section updated with exact v1 mechanics. Combat initiation updated: NPC aggro on room entry fires after a 3-second warning window; player can queue during window. Flee updated: directional preference (reverse of entry direction), DEX+d20 vs average NPC PER, cooldown after failed attempts. NPC effect system added: `NpcEffect` model links effect definitions to NPC definitions with per-effect probability. Section 5.3 action economy updated to reflect two-path command handling (non-combat commands fire immediately; combat commands queue to DB for tick engine resolution). Section 10.4 tick architecture updated to match actual implementation. Section 10.5 persistence model updated: active combat state moves from Redis to PostgreSQL. Future Systems table updated: Combat System removed; NPC System row updated; new deferred items added. |
 | v11     | v11             | Effects ticking, level-up, and stat spending implemented. Section 3.5 updated: XP threshold formula (`level² × 100`) now implemented; `spend <stat> <amount>` and `stats` commands live; bar recalculation formula confirmed (`vitality_max = END×10 + STR×3 + level×5`; `longevity_max = END×8 + WIS×5 + level×5`). Section 4.2 Acuity drift note updated: passive drift toward Origin baseline is now implemented. Section 9.1 implemented commands updated: `kill`/`attack`, `flee`, `stats`, `spend` added. Section 9.2 planned commands updated: `kill`/`attack` and `flee` removed. Section 10.4 tick architecture updated: `process_effect_expiry()` replaced by `process_effects()` with three phases (effect ticking, passive Acuity drift, expiry). Section 12 Future Systems updated: Level-Up Trigger, Acuity Drift, and DoT/HoT Per-Tick Application rows removed. |
+| v12     | v12             | Effect system redesign. `EffectDefinition` is now a pure container; all behavior lives in child `EffectComponent` rows. `EffectInstance` is now a container with child `EffectComponentInstance` rows storing per-component magnitude, expiry, and lifecycle state. New `effect_utils.py` centralizes all effect application logic. Mk tier scaling: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)`; `duration = duration_base + (duration_scaling × mk_tier)`. Instantaneous components have `duration_base=0`, `duration_scaling=0` — no `EffectComponentInstance` row created. Reapplication: same or higher Mk tier resets; lower Mk tier ignored silently. Expiry messages: one per parent `EffectInstance` if all components expire together; one per component if staggered. `make db-reset` Makefile target added. Section 6.9 rewritten to reflect new model structure. Section 10.4 tick architecture updated: `process_effects()` now queries `EffectComponentInstance` rows. Section 12 Future Systems: effect system redesign row removed. |
 
 -----
 
@@ -880,38 +881,71 @@ An unidentified item may also be cursed. Identifying the item reveals both its t
 
 ### 6.9 The Effect System
 
-All temporary and persistent effects in Shyland — consumable effects, curse effects, combat ability effects — use a shared vocabulary:
+All temporary and persistent effects in Shyland — consumable effects, curse effects, combat ability effects — use a shared vocabulary. The same effect types apply whether the source is a potion, an NPC attack, a cursed item, or a future combat ability. This consistency is a core design tenet.
 
-**EffectDefinition** — the template for an effect type. Defines what kind of effect it is, the valid magnitude range, the valid duration range, and whether it scales with Mk tier.
+#### Model Structure
 
-**EffectInstance** — a specific application of an effect to a character. Stores the actual magnitude and duration rolled at application time, when it was applied, when it expires, and what removed it.
+**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds).
 
-#### Effect Types
+**EffectComponent** — defines one behavioral unit within an `EffectDefinition`. Each component has a type, optional stat target (for `stat_bonus`/`stat_penalty`), and scaling parameters:
 
-|Type                |Description                                |
-|--------------------|-------------------------------------------|
-|`restore_vitality`  |Immediate or over-time Vitality restoration|
-|`restore_acuity`    |Nudges Acuity toward baseline              |
-|`restore_longevity` |Longevity restoration                      |
-|`dot_vitality`      |Vitality damage over time                  |
-|`dot_acuity`        |Acuity disruption over time                |
-|`dot_longevity`     |Longevity drain over time                  |
-|`shift_acuity_high` |Pushes Acuity upward (focus effect)        |
-|`shift_acuity_low`  |Pushes Acuity downward (scatter effect)    |
-|`stat_bonus`        |Temporary stat increase                    |
-|`stat_penalty`      |Temporary stat reduction                   |
-|`durability_restore`|Restores item durability                   |
-|`curse_generic`     |Persistent curse effect                    |
+- `magnitude_base` + `magnitude_scaling` — scales with source Mk tier at application time
+- `duration_base` + `duration_scaling` — scales with source Mk tier at application time
+- `order` — controls application order within a definition
 
-The vocabulary grows as content grows — new effect types are additive.
+Scaling formula: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)` and `duration = duration_base + (duration_scaling × mk_tier)`. The Mk tier is always the source's (the item or NPC applying the effect) — never the target's.
+
+**EffectInstance** — a container linking an `EffectDefinition` application to a target character. Stores the source Mk tier, active state, and removal reason. One `EffectInstance` is created per application regardless of how many components the definition has.
+
+**EffectComponentInstance** — per-component runtime state. Stores the computed magnitude, expiry time, and lifecycle state. Created for duration-based components only — instantaneous components fire immediately and produce no persistent row.
+
+#### Instantaneous vs. Duration-Based Components
+
+A component with `duration_base=0` and `duration_scaling=0` is **instantaneous**: it fires once at application time, no `EffectComponentInstance` row is created, and the parent `EffectInstance` is immediately closed (`is_active=False`, `removed_by='timeout'`).
+
+Any non-zero duration produces a duration-based component with a persistent `EffectComponentInstance` row that the tick engine acts on each round.
+
+A single `EffectDefinition` can mix instantaneous and duration-based components.
+
+#### Component Type Vocabulary
+
+|Type                |Category           |Description                                          |
+|--------------------|-------------------|-----------------------------------------------------|
+|`restore_vitality`  |Instantaneous      |Adds to `vitality_current`, clamped at max           |
+|`restore_acuity`    |Instantaneous      |Nudges `acuity_current` toward baseline              |
+|`restore_longevity` |Instantaneous      |Adds to `longevity_current`, clamped at max          |
+|`dot_vitality`      |Duration, ticking  |Vitality damage per combat round                     |
+|`dot_acuity`        |Duration, ticking  |Acuity disruption per combat round                   |
+|`dot_longevity`     |Duration, ticking  |Longevity drain per combat round                     |
+|`hot_vitality`      |Duration, ticking  |Vitality healing per combat round                    |
+|`hot_acuity`        |Duration, ticking  |Acuity restoration per combat round                  |
+|`hot_longevity`     |Duration, ticking  |Longevity restoration per combat round               |
+|`shift_acuity_high` |Duration, ticking  |Pushes Acuity upward per combat round                |
+|`shift_acuity_low`  |Duration, ticking  |Pushes Acuity downward per combat round              |
+|`stat_bonus`        |Duration, once     |Applies stat delta on creation; reverses on expiry   |
+|`stat_penalty`      |Duration, once     |Applies stat delta on creation; reverses on expiry   |
+|`curse_generic`     |Duration, state    |Blocks unequip until removed                         |
+|`durability_restore`|Instantaneous      |Deferred — placeholder response only                 |
+
+The vocabulary grows as content grows — new component types are additive.
+
+#### Reapplication
+
+When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
+
+- Incoming Mk tier ≥ existing Mk tier → reset: deactivate the existing instance and all its component instances, then create fresh ones at the new Mk tier
+- Incoming Mk tier < existing Mk tier → silently ignored; no message sent
+
+#### Expiry Messages
+
+- If all components on a parent `EffectInstance` expire in the same tick: one message for the whole effect
+- If components have staggered durations: one message per component as each falls off
+
+This means single-component effects always produce one message. Multi-component effects with matched durations produce one message. Multi-component effects with different durations produce one message per component.
 
 #### Application Context
 
-The same EffectDefinition can be applied with different magnitude and duration depending on source:
-
-- A consumable applies it once with fixed parameters for that item type
-- A combat ability applies it with parameters scaled to the caster’s level and stats
-- A cursed item applies it with parameters appropriate for hours or days of wear
+The same `EffectDefinition` can be applied from different sources. The Mk tier at application time determines magnitude and duration — a Mk 1 healing potion restores less than a Mk 3 healing potion of the same definition. Source context does not otherwise change behavior.
 
 ### 6.10 Bags and Carry Capacity
 
@@ -1254,7 +1288,7 @@ The game server runs a **tick engine** implemented as a Django management comman
 1. **`process_combat()`** — resolves combat rounds for all active `CombatSession` rows; handles dying-state expiry and stale-session cleanup
 1. **`process_corpse_decay()`** — deletes corpses whose `decay_at` has passed
 1. **`process_npc_respawn()`** — creates fresh `NpcInstance` rows for dead NPCs whose `respawn_at` has passed
-1. **`process_effects()`** — three phases per tick: (1) effect ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — applies DoT damage and Acuity/Longevity shifts for all active `EffectInstance` rows; (2) passive Acuity drift every tick — moves characters’ `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no shift effect is active, snapping to baseline when within the drift step; (3) effect expiry every tick — deactivates `EffectInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` types via `apply_stat_effect(reverse=True)`, and notifies the player
+1. **`process_effects()`** — three phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
 
@@ -1416,5 +1450,5 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 
 -----
 
-*Document version 11.0 — Shyland Working Draft*
+*Document version 12.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
