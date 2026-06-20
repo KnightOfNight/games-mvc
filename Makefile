@@ -11,7 +11,7 @@ PROJECT_DIR     := $(shell pwd)
 
 .PHONY: setup init build start stop restart logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app _nginx-conf help
+        new-app _nginx-conf db-reset help
 
 # ---------------------------------------------------------------------------
 # First-time setup
@@ -142,6 +142,15 @@ gen-certs:
 	@echo ""
 	@echo "NOTE: Browsers will show a security warning for self-signed certs."
 	@echo "      Use your vendor certs for a trusted connection."
+
+## db-reset: drop all volumes, rebuild, migrate, and reseed
+db-reset:
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
+	$(MAKE) build
+	$(MAKE) start
+	sleep 5
+	$(MAKE) migrate
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) exec django python manage.py seed_world
 
 ## check-secrets: verify .env and cert files exist before allowing start
 check-secrets:

@@ -92,6 +92,11 @@ class Command(BaseCommand):
                 'is_dying', 'dying_since', 'is_dead', 'current_room',
                 'vitality_current', 'acuity_current', 'longevity_current',
             ])
+            active_instances = list(character.active_effects.filter(is_active=True))
+            for ei in active_instances:
+                ei.component_instances.filter(is_active=True).update(
+                    is_active=False, removed_by='death'
+                )
             character.active_effects.filter(is_active=True).update(
                 is_active=False, removed_by='death'
             )
@@ -489,104 +494,151 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     async def process_effects(self, tick_number):
+        from collections import defaultdict
         from django.utils import timezone
         from django.db.models import F
         from apps.shyland.models import (
-            EffectInstance, Character,
+            EffectComponentInstance, Character,
             COMBAT_ROUND_TICKS, ACUITY_DRIFT_RATE,
         )
-        from apps.shyland.combat_utils import apply_stat_effect
+        from apps.shyland.effect_utils import apply_stat_effect, _expiry_message_for_effect, _expiry_message_for_component
 
         now = timezone.now()
         is_round_boundary = (tick_number % COMBAT_ROUND_TICKS == 0)
 
-        # ---- Phase 1: Per-tick DoT/HoT and Acuity shift (round boundaries only) ----
+        TICKING_TYPES = {
+            'dot_vitality', 'dot_acuity', 'dot_longevity',
+            'hot_vitality', 'hot_acuity', 'hot_longevity',
+            'shift_acuity_high', 'shift_acuity_low',
+        }
+
+        # ---- Phase 1: Component ticking (round boundaries only) ----
         if is_round_boundary:
             @database_sync_to_async
-            def get_active_ticking_effects():
-                return list(EffectInstance.objects.filter(
+            def get_ticking_component_instances():
+                return list(EffectComponentInstance.objects.filter(
                     is_active=True,
-                    expires_at__isnull=False,
-                    expires_at__gt=now,
-                    definition__effect_type__in=[
-                        'dot_vitality', 'dot_acuity', 'dot_longevity',
-                        'shift_acuity_high', 'shift_acuity_low',
-                    ],
-                ).select_related('definition', 'target__user__profile'))
+                    component__component_type__in=TICKING_TYPES,
+                ).select_related(
+                    'component',
+                    'effect_instance__target__user__profile',
+                    'effect_instance__definition',
+                ))
 
-            @database_sync_to_async
-            def save_char_fields(char, fields):
-                char.save(update_fields=fields)
+            ticking = await get_ticking_component_instances()
 
-            @database_sync_to_async
-            def set_dying_state(char):
-                from django.utils import timezone as tz
-                char.is_dying = True
-                char.dying_since = tz.now()
-                char.save(update_fields=['is_dying', 'dying_since'])
+            for ci in ticking:
+                character = ci.effect_instance.target
+                definition = ci.effect_instance.definition
+                ctype = ci.component.component_type
+                magnitude = ci.magnitude
 
-            ticking_effects = await get_active_ticking_effects()
-
-            for effect in ticking_effects:
-                character = effect.target
-                effect_type = effect.definition.effect_type
-                magnitude = effect.magnitude
-
-                if effect_type == 'dot_vitality':
-                    damage = max(1, int(magnitude))
-                    character.vitality_current = max(0, character.vitality_current - damage)
-                    await save_char_fields(character, ['vitality_current'])
-                    msg = f"You take {damage} damage from {effect.definition.name}."
-                    await self.send_to_player(
-                        character.pk, msg, 'system',
-                        {'vitality': character.vitality_current}
-                    )
+                if ctype == 'dot_vitality':
+                    character.vitality_current = max(0, character.vitality_current - magnitude)
                     if character.vitality_current <= 0:
-                        await set_dying_state(character)
+                        character.vitality_current = 0
+                        character.is_dying = True
+                        character.dying_since = now
+                        await database_sync_to_async(character.save)(
+                            update_fields=['vitality_current', 'is_dying', 'dying_since']
+                        )
                         await self.send_to_player(
                             character.pk,
-                            f"The {effect.definition.name} has brought you to the brink of death! "
-                            f"You have 30 seconds to be revived.",
-                            'combat', None
+                            "You are critically wounded and dying!", 'combat'
                         )
+                    else:
+                        await database_sync_to_async(character.save)(update_fields=['vitality_current'])
+                    status = self._build_status(character)
+                    await self.send_to_player(
+                        character.pk,
+                        f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
+                        status,
+                    )
 
-                elif effect_type == 'dot_acuity':
+                elif ctype == 'dot_longevity':
+                    character.longevity_current = max(0, character.longevity_current - magnitude)
+                    await database_sync_to_async(character.save)(update_fields=['longevity_current'])
+                    status = self._build_status(character)
+                    await self.send_to_player(
+                        character.pk,
+                        f"Your stamina drains from {definition.name}. (-{int(magnitude)} Longevity)",
+                        'combat', status,
+                    )
+
+                elif ctype == 'dot_acuity':
                     character.acuity_current = round(
                         max(0.1, min(1.9, character.acuity_current - magnitude)), 1
                     )
-                    await save_char_fields(character, ['acuity_current'])
-                    msg = f"{effect.definition.name} disrupts your focus."
+                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                    status = self._build_status(character)
                     await self.send_to_player(
-                        character.pk, msg, 'system',
-                        {'acuity': character.acuity_current}
+                        character.pk,
+                        f"Your focus is disrupted by {definition.name}. "
+                        f"(Acuity {character.acuity_current:.1f})",
+                        'combat', status,
                     )
 
-                elif effect_type == 'dot_longevity':
-                    drain = max(1, int(magnitude))
-                    character.longevity_current = max(0, character.longevity_current - drain)
-                    await save_char_fields(character, ['longevity_current'])
-                    msg = f"{effect.definition.name} drains your endurance."
+                elif ctype == 'hot_vitality':
+                    character.vitality_current = min(
+                        character.vitality_current + magnitude, character.vitality_max
+                    )
+                    await database_sync_to_async(character.save)(update_fields=['vitality_current'])
+                    status = self._build_status(character)
                     await self.send_to_player(
-                        character.pk, msg, 'system',
-                        {'longevity': character.longevity_current}
+                        character.pk,
+                        f"You recover {int(magnitude)} Vitality from {definition.name}.",
+                        'system', status,
                     )
 
-                elif effect_type == 'shift_acuity_high':
+                elif ctype == 'hot_longevity':
+                    character.longevity_current = min(
+                        character.longevity_current + magnitude, character.longevity_max
+                    )
+                    await database_sync_to_async(character.save)(update_fields=['longevity_current'])
+                    status = self._build_status(character)
+                    await self.send_to_player(
+                        character.pk,
+                        f"You recover {int(magnitude)} Longevity from {definition.name}.",
+                        'system', status,
+                    )
+
+                elif ctype == 'hot_acuity':
+                    diff = character.acuity_baseline - character.acuity_current
+                    step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
                     character.acuity_current = round(
-                        min(1.9, character.acuity_current + magnitude), 1
+                        max(0.1, min(1.9, character.acuity_current + step)), 1
                     )
-                    await save_char_fields(character, ['acuity_current'])
+                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                    status = self._build_status(character)
                     await self.send_to_player(
-                        character.pk, '', 'system', {'acuity': character.acuity_current}
+                        character.pk,
+                        f"Your mind clears from {definition.name}. "
+                        f"(Acuity {character.acuity_current:.1f})",
+                        'system', status,
                     )
 
-                elif effect_type == 'shift_acuity_low':
+                elif ctype == 'shift_acuity_high':
                     character.acuity_current = round(
-                        max(0.1, character.acuity_current - magnitude), 1
+                        max(0.1, min(1.9, character.acuity_current + magnitude)), 1
                     )
-                    await save_char_fields(character, ['acuity_current'])
+                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                    status = self._build_status(character)
                     await self.send_to_player(
-                        character.pk, '', 'system', {'acuity': character.acuity_current}
+                        character.pk,
+                        f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
+                        'system', status,
+                    )
+
+                elif ctype == 'shift_acuity_low':
+                    character.acuity_current = round(
+                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
+                    )
+                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                    status = self._build_status(character)
+                    await self.send_to_player(
+                        character.pk,
+                        f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
+                        'system', status,
                     )
 
         # ---- Phase 2: Passive Acuity drift (every tick) ----
@@ -594,16 +646,17 @@ class Command(BaseCommand):
         def get_characters_needing_drift():
             candidates = list(Character.objects.exclude(
                 acuity_current=F('acuity_baseline')
-            ).select_related('user__profile').prefetch_related('active_effects__definition'))
+            ).select_related('user__profile'))
 
-            acuity_effect_types = {'shift_acuity_high', 'shift_acuity_low'}
+            acuity_shift_types = {'shift_acuity_high', 'shift_acuity_low'}
             result = []
             for char in candidates:
-                has_active_acuity_effect = any(
-                    e.is_active and e.definition.effect_type in acuity_effect_types
-                    for e in char.active_effects.all()
-                )
-                if not has_active_acuity_effect:
+                has_shift = EffectComponentInstance.objects.filter(
+                    effect_instance__target=char,
+                    is_active=True,
+                    component__component_type__in=acuity_shift_types,
+                ).exists()
+                if not has_shift:
                     result.append(char)
             return result
 
@@ -628,55 +681,87 @@ class Command(BaseCommand):
 
             new_acuity = round(max(0.1, min(1.9, new_acuity)), 2)
             await save_acuity(character, new_acuity)
-            await self.send_to_player(character.pk, '', 'system', {'acuity': new_acuity})
 
-        # ---- Phase 3: Effect expiry (every tick) ----
+        # ---- Phase 3: Component expiry (every tick) ----
         @database_sync_to_async
-        def get_expired_effects_now():
-            return list(EffectInstance.objects.filter(
+        def get_expiring_component_instances():
+            return list(EffectComponentInstance.objects.filter(
                 is_active=True,
-                expires_at__isnull=False,
                 expires_at__lte=now,
-            ).select_related('definition', 'target__user__profile'))
+            ).select_related(
+                'component',
+                'effect_instance__target__user__profile',
+                'effect_instance__definition',
+            ))
 
         @database_sync_to_async
-        def expire_and_reverse(effect, char):
-            if effect.definition.effect_type in ('stat_bonus', 'stat_penalty'):
-                apply_stat_effect(char, effect, reverse=True)
-            effect.is_active = False
-            effect.removed_by = 'timeout'
-            effect.save(update_fields=['is_active', 'removed_by'])
+        def count_active_cis_on_instance(parent):
+            return EffectComponentInstance.objects.filter(
+                effect_instance=parent, is_active=True
+            ).count()
 
-        EXPIRY_MESSAGES = {
-            'shift_acuity_high': "Your heightened focus fades. Your mind settles.",
-            'shift_acuity_low':  "The fog lifts from your mind. Your thoughts sharpen.",
-            'dot_vitality':      "The pain subsides.",
-            'dot_acuity':        "The mental static clears.",
-            'dot_longevity':     "The draining sensation fades.",
+        @database_sync_to_async
+        def expire_ci(ci):
+            ci.is_active = False
+            ci.removed_by = 'timeout'
+            ci.save(update_fields=['is_active', 'removed_by'])
+
+        @database_sync_to_async
+        def close_instance(parent):
+            parent.is_active = False
+            parent.removed_by = 'timeout'
+            parent.save(update_fields=['is_active', 'removed_by'])
+
+        @database_sync_to_async
+        def reverse_stat_ci(character, ci):
+            apply_stat_effect(character, ci, reverse=True)
+
+        expiring = await get_expiring_component_instances()
+
+        by_instance = defaultdict(list)
+        for ci in expiring:
+            by_instance[ci.effect_instance_id].append(ci)
+
+        for effect_instance_id, cis in by_instance.items():
+            parent = cis[0].effect_instance
+            total_active = await count_active_cis_on_instance(parent)
+            all_expiring_now = (total_active == len(cis))
+
+            for ci in cis:
+                character = parent.target
+                ctype = ci.component.component_type
+
+                if ctype in ('stat_bonus', 'stat_penalty'):
+                    await reverse_stat_ci(character, ci)
+
+                await expire_ci(ci)
+
+                if not all_expiring_now:
+                    msg = _expiry_message_for_component(ci, parent.definition.name)
+                    if msg:
+                        await self.send_to_player(character.pk, msg, 'system', None)
+
+            if all_expiring_now:
+                msg = _expiry_message_for_effect(parent)
+                if msg:
+                    await self.send_to_player(parent.target.pk, msg, 'system', None)
+
+            remaining = await count_active_cis_on_instance(parent)
+            if remaining == 0:
+                await close_instance(parent)
+                logger.info(
+                    f"EffectInstance closed: {parent.definition.slug} on {parent.target.name}"
+                )
+
+    def _build_status(self, character):
+        return {
+            'type': 'status',
+            'vitality': character.vitality_current,
+            'acuity': character.acuity_current,
+            'longevity': character.longevity_current,
+            'room_name': '',
+            'area_name': None,
         }
-        SILENT_TYPES = {'restore_vitality', 'restore_acuity', 'restore_longevity', 'curse_generic'}
-
-        expired = await get_expired_effects_now()
-
-        for effect in expired:
-            character = effect.target
-            effect_type = effect.definition.effect_type
-
-            await expire_and_reverse(effect, character)
-
-            if effect_type in SILENT_TYPES:
-                logger.info(f"Effect expired (silent): {effect.definition.slug} on {character.name}")
-                continue
-
-            if effect_type == 'stat_bonus':
-                msg = f"The {effect.definition.name} fades. Your body returns to normal."
-            elif effect_type == 'stat_penalty':
-                msg = f"The {effect.definition.name} lifts."
-            else:
-                msg = EXPIRY_MESSAGES.get(effect_type, "An effect has worn off.")
-
-            await self.send_to_player(character.pk, msg, 'system', None)
-            logger.info(f"Effect expired: {effect.definition.slug} on {character.name}")
 
     async def send_to_player(self, character_pk, text, category, status):
         from channels.layers import get_channel_layer

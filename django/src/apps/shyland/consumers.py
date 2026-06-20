@@ -12,7 +12,7 @@ from .item_utils import (
     parse_item_noun, parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
-    Character, CombatSession, EffectInstance, ItemInstance,
+    Character, CombatSession, ItemInstance,
     NpcInstance, Room, RoomVisit,
     COMBAT_ROUND_TICKS, FLEE_COOLDOWN_TICKS,
 )
@@ -618,74 +618,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output("Nothing happens.", 'system')
             return
 
-        if effect_def.effect_type == 'durability_restore':
-            await self.output(
-                "You attempt a repair, but the repair system isn't implemented yet.",
-                'system',
-            )
-            return
-
-        magnitude = random.uniform(effect_def.magnitude_min, effect_def.magnitude_max)
-
-        has_duration = (
-            effect_def.duration_min is not None and effect_def.duration_max is not None
-        )
-        duration = (
-            random.uniform(effect_def.duration_min, effect_def.duration_max)
-            if has_duration else None
-        )
-
-        effect_type = effect_def.effect_type
-        stat_changed = False
-
-        if effect_type == 'restore_vitality':
-            char.vitality_current = min(
-                char.vitality_current + magnitude, char.vitality_max
-            )
-            await self.apply_character_stat_change(char)
-            stat_changed = True
-            msg = f"You feel your wounds closing. (+{round(magnitude)} vitality)"
-        elif effect_type == 'restore_acuity':
-            char.acuity_current = min(char.acuity_current + magnitude, 1.9)
-            await self.apply_character_stat_change(char)
-            stat_changed = True
-            msg = f"Your thoughts sharpen and settle. (+{round(magnitude, 2)} acuity)"
-        elif effect_type == 'restore_longevity':
-            char.longevity_current = min(
-                char.longevity_current + magnitude, char.longevity_max
-            )
-            await self.apply_character_stat_change(char)
-            stat_changed = True
-            msg = f"A wave of renewed endurance washes over you. (+{round(magnitude)} longevity)"
-        elif effect_type == 'shift_acuity_high':
-            char.acuity_current = min(char.acuity_current + magnitude, 1.9)
-            await self.apply_character_stat_change(char)
-            stat_changed = True
-            msg = f"Your senses narrow to a razor edge. (+{round(magnitude, 2)} acuity)"
-        elif effect_type == 'shift_acuity_low':
-            char.acuity_current = max(char.acuity_current - magnitude, 0.1)
-            await self.apply_character_stat_change(char)
-            stat_changed = True
-            msg = f"Your mind diffuses, thoughts spreading wide. (-{round(magnitude, 2)} acuity)"
-        else:
-            msg = "You feel a strange effect take hold."
-
-        if duration is not None:
-            await self.create_effect_instance(effect_def, char, item, magnitude, duration)
+        mk_tier = item.mk_tier
+        msgs = await self.do_apply_effect(effect_def, char, mk_tier)
 
         await self.consume_item(item)
-        await self.output(msg, 'system')
 
-        if stat_changed:
-            room = await self.get_current_room()
-            await self.send_json({
-                'type': 'status',
-                'vitality': char.vitality_current,
-                'acuity': char.acuity_current,
-                'longevity': char.longevity_current,
-                'room_name': room.name,
-                'area_name': room.area.name if room.area else None,
-            })
+        for msg in msgs:
+            await self.output(msg, 'system')
+
+        room = await self.get_current_room()
+        char_fresh = await self.get_character_fresh()
+        await self.send_json({
+            'type': 'status',
+            'vitality': char_fresh.vitality_current,
+            'acuity': char_fresh.acuity_current,
+            'longevity': char_fresh.longevity_current,
+            'room_name': room.name,
+            'area_name': room.area.name if room.area else None,
+        })
 
     def _format_identified_item_lines(self, item):
         defn = item.definition
@@ -1361,23 +1311,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         character.save()
 
     @database_sync_to_async
-    def create_effect_instance(self, effect_def, character, item, magnitude, duration):
-        from datetime import timedelta
-        from django.utils import timezone
-        from .combat_utils import apply_stat_effect
-        expires = timezone.now() + timedelta(seconds=duration) if duration else None
-        instance = EffectInstance.objects.create(
-            definition=effect_def,
-            target=character,
-            source_item=item,
-            magnitude=magnitude,
-            duration=duration,
-            expires_at=expires,
-            is_active=True,
-        )
-        if effect_def.effect_type in ('stat_bonus', 'stat_penalty'):
-            apply_stat_effect(character, instance, reverse=False)
-        return instance
+    def do_apply_effect(self, effect_def, character, mk_tier):
+        from .effect_utils import apply_effect_definition
+        return apply_effect_definition(effect_def, character, mk_tier, removed_by_label='consumable')
 
     @database_sync_to_async
     def consume_item(self, item):

@@ -230,59 +230,69 @@ class RoomVisit(models.Model):
 
 
 class EffectDefinition(models.Model):
-    RESTORE_VITALITY = 'restore_vitality'
-    RESTORE_ACUITY = 'restore_acuity'
-    RESTORE_LONGEVITY = 'restore_longevity'
-    DOT_VITALITY = 'dot_vitality'
-    DOT_ACUITY = 'dot_acuity'
-    DOT_LONGEVITY = 'dot_longevity'
-    SHIFT_ACUITY_HIGH = 'shift_acuity_high'
-    SHIFT_ACUITY_LOW = 'shift_acuity_low'
-    STAT_BONUS = 'stat_bonus'
-    STAT_PENALTY = 'stat_penalty'
-    DURABILITY_RESTORE = 'durability_restore'
-    CURSE_GENERIC = 'curse_generic'
-    EFFECT_TYPE_CHOICES = [
-        (RESTORE_VITALITY, 'Restore Vitality'),
-        (RESTORE_ACUITY, 'Restore Acuity'),
-        (RESTORE_LONGEVITY, 'Restore Longevity'),
-        (DOT_VITALITY, 'DoT Vitality'),
-        (DOT_ACUITY, 'DoT Acuity'),
-        (DOT_LONGEVITY, 'DoT Longevity'),
-        (SHIFT_ACUITY_HIGH, 'Shift Acuity High'),
-        (SHIFT_ACUITY_LOW, 'Shift Acuity Low'),
-        (STAT_BONUS, 'Stat Bonus'),
-        (STAT_PENALTY, 'Stat Penalty'),
-        (DURABILITY_RESTORE, 'Durability Restore'),
-        (CURSE_GENERIC, 'Curse Generic'),
-    ]
-
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
-    effect_type = models.CharField(max_length=30, choices=EFFECT_TYPE_CHOICES)
-    target_stat = models.CharField(
-        max_length=10,
-        blank=True,
-        choices=[
-            ('str', 'Strength'),
-            ('dex', 'Dexterity'),
-            ('end', 'Endurance'),
-            ('int', 'Intelligence'),
-            ('wis', 'Wisdom'),
-            ('per', 'Perception'),
-        ],
-    )
-    magnitude_min = models.FloatField()
-    magnitude_max = models.FloatField()
-    duration_min = models.FloatField(null=True, blank=True)
-    duration_max = models.FloatField(null=True, blank=True)
-    scales_with_mk = models.BooleanField(default=False)
-    scaling_base = models.FloatField(null=True, blank=True)
-    scaling_factor = models.FloatField(null=True, blank=True)
+    name        = models.CharField(max_length=200)
+    slug        = models.SlugField(unique=True)
     description = models.TextField(blank=True)
 
     def __str__(self):
         return self.name
+
+
+COMPONENT_TYPE_CHOICES = [
+    ('restore_vitality',   'Restore Vitality'),
+    ('restore_acuity',     'Restore Acuity'),
+    ('restore_longevity',  'Restore Longevity'),
+    ('dot_vitality',       'DoT Vitality'),
+    ('dot_acuity',         'DoT Acuity'),
+    ('dot_longevity',      'DoT Longevity'),
+    ('hot_vitality',       'HoT Vitality'),
+    ('hot_acuity',         'HoT Acuity'),
+    ('hot_longevity',      'HoT Longevity'),
+    ('shift_acuity_high',  'Shift Acuity High'),
+    ('shift_acuity_low',   'Shift Acuity Low'),
+    ('stat_bonus',         'Stat Bonus'),
+    ('stat_penalty',       'Stat Penalty'),
+    ('curse_generic',      'Curse Generic'),
+    ('durability_restore', 'Durability Restore'),
+]
+
+STAT_TARGET_CHOICES = [
+    ('str', 'STR'),
+    ('dex', 'DEX'),
+    ('end', 'END'),
+    ('int', 'INT'),
+    ('wis', 'WIS'),
+    ('per', 'PER'),
+]
+
+
+class EffectComponent(models.Model):
+    definition        = models.ForeignKey(
+                            'EffectDefinition', on_delete=models.CASCADE,
+                            related_name='components')
+    component_type    = models.CharField(max_length=30, choices=COMPONENT_TYPE_CHOICES)
+    target_stat       = models.CharField(max_length=10, blank=True,
+                            choices=STAT_TARGET_CHOICES)
+    magnitude_base    = models.FloatField()
+    magnitude_scaling = models.FloatField(default=0.0)
+    duration_base     = models.FloatField(default=0.0)
+    duration_scaling  = models.FloatField(default=0.0)
+    order             = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.definition.name} — {self.component_type}"
+
+    def is_instantaneous(self):
+        return self.duration_base == 0.0 and self.duration_scaling == 0.0
+
+    def computed_magnitude(self, mk_tier):
+        return self.magnitude_base + (self.magnitude_scaling * mk_tier)
+
+    def computed_duration(self, mk_tier):
+        return self.duration_base + (self.duration_scaling * mk_tier)
 
 
 class ItemDefinition(models.Model):
@@ -493,22 +503,29 @@ class EffectInstance(models.Model):
         on_delete=models.CASCADE,
         related_name='active_effects',
     )
-    source_item = models.ForeignKey(
-        'ItemInstance',
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='applied_effects',
-    )
-    source_ability = models.CharField(max_length=100, blank=True)
-    magnitude = models.FloatField()
-    duration = models.FloatField(null=True, blank=True)
+    mk_tier    = models.IntegerField(default=1)
+    is_active  = models.BooleanField(default=True)
     applied_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
     removed_by = models.CharField(max_length=50, blank=True)
 
     def __str__(self):
         return f'{self.definition.name} on {self.target}'
+
+
+class EffectComponentInstance(models.Model):
+    effect_instance = models.ForeignKey(
+                          'EffectInstance', on_delete=models.CASCADE,
+                          related_name='component_instances')
+    component       = models.ForeignKey(
+                          'EffectComponent', on_delete=models.CASCADE)
+    magnitude       = models.FloatField()
+    expires_at      = models.DateTimeField(null=True, blank=True)
+    is_active       = models.BooleanField(default=True)
+    removed_by      = models.CharField(max_length=50, blank=True)
+
+    def __str__(self):
+        return (f"{self.effect_instance.definition.name} / "
+                f"{self.component.component_type}")
 
 
 class LootTable(models.Model):

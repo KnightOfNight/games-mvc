@@ -99,42 +99,14 @@ def apply_death_penalties(character):
     return broken_items
 
 
-def apply_stat_effect(character, effect_instance, reverse=False):
-    """
-    Apply or reverse a stat_bonus / stat_penalty effect.
-    reverse=True negates the magnitude (used on expiry).
-    Returns (stat_name, new_value) or (None, None) if target_stat is blank.
-    Synchronous — call from within @database_sync_to_async.
-    """
-    stat_name = effect_instance.definition.target_stat
-    if not stat_name:
-        return None, None
-
-    attr = f'stat_{stat_name}'
-    if not hasattr(character, attr):
-        return None, None
-
-    delta = effect_instance.magnitude
-    if reverse:
-        delta = -delta
-
-    current = getattr(character, attr)
-    new_value = max(1, int(current + delta))
-    setattr(character, attr, new_value)
-    character.save(update_fields=[attr])
-
-    return stat_name, new_value
-
-
 def apply_npc_effects(npc_instance, target_character):
     """
     Roll each NpcEffect for the given NPC and apply those that fire.
     Returns a list of effect names to append to the attack line.
     Synchronous — call from within @database_sync_to_async.
     """
-    from datetime import timedelta
-    from django.utils import timezone
-    from .models import NpcEffect, EffectInstance
+    from .models import NpcEffect
+    from .effect_utils import apply_effect_definition
 
     messages = []
     effects = NpcEffect.objects.filter(
@@ -144,25 +116,14 @@ def apply_npc_effects(npc_instance, target_character):
     for npc_effect in effects:
         if random.random() > npc_effect.effect_chance:
             continue
-        ed = npc_effect.effect_definition
-        magnitude = random.uniform(ed.magnitude_min, ed.magnitude_max)
-        duration = None
-        expires_at = None
-        if ed.duration_min is not None and ed.duration_max is not None:
-            duration = random.uniform(ed.duration_min, ed.duration_max)
-            expires_at = timezone.now() + timedelta(seconds=duration)
-
-        effect_instance = EffectInstance.objects.create(
-            definition=ed,
+        msgs = apply_effect_definition(
+            definition=npc_effect.effect_definition,
             target=target_character,
-            magnitude=magnitude,
-            duration=duration,
-            expires_at=expires_at,
-            is_active=True,
+            mk_tier=npc_instance.mk_tier,
+            removed_by_label='npc_service',
         )
-        if ed.effect_type in ('stat_bonus', 'stat_penalty'):
-            apply_stat_effect(target_character, effect_instance, reverse=False)
-        messages.append(ed.name)
+        messages.extend(msgs)
+        messages.append(npc_effect.effect_definition.name)
 
     return messages
 

@@ -2,7 +2,7 @@ from django.contrib import admin
 from .currency import display as currency_display
 from .models import (
     Area, Character, CombatAction, CombatSession, Corpse,
-    EffectDefinition, EffectInstance,
+    EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry,
     NpcDefinition, NpcEffect, NpcInstance, Room, RoomVisit, Zone,
 )
@@ -77,17 +77,27 @@ class RoomVisitAdmin(admin.ModelAdmin):
     list_display = ('character', 'room', 'visited_at')
 
 
+class EffectComponentInline(admin.TabularInline):
+    model = EffectComponent
+    extra = 1
+    fields = ['component_type', 'target_stat', 'magnitude_base', 'magnitude_scaling',
+              'duration_base', 'duration_scaling', 'order']
+
+
 @admin.register(EffectDefinition)
 class EffectDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'effect_type', 'target_stat', 'scales_with_mk')
-    prepopulated_fields = {'slug': ('name',)}
+    list_display  = ['name', 'slug']
     search_fields = ['name', 'slug']
-    fieldsets = (
-        (None, {'fields': ('name', 'slug', 'effect_type', 'target_stat', 'description')}),
-        ('Magnitude', {'fields': ('magnitude_min', 'magnitude_max')}),
-        ('Duration', {'fields': ('duration_min', 'duration_max')}),
-        ('Scaling', {'fields': ('scales_with_mk', 'scaling_base', 'scaling_factor')}),
-    )
+    prepopulated_fields = {'slug': ('name',)}
+    inlines = [EffectComponentInline]
+
+
+@admin.register(EffectComponent)
+class EffectComponentAdmin(admin.ModelAdmin):
+    list_display  = ['definition', 'component_type', 'target_stat',
+                     'magnitude_base', 'magnitude_scaling',
+                     'duration_base', 'duration_scaling', 'order']
+    list_filter   = ['component_type']
 
 
 @admin.register(ItemDefinition)
@@ -130,10 +140,28 @@ class ItemInstanceAdmin(admin.ModelAdmin):
     )
 
 
+class EffectComponentInstanceInline(admin.TabularInline):
+    model = EffectComponentInstance
+    extra = 0
+    readonly_fields = ['component', 'magnitude', 'expires_at', 'is_active', 'removed_by']
+    can_delete = False
+
+
 @admin.register(EffectInstance)
 class EffectInstanceAdmin(admin.ModelAdmin):
-    list_display = ('definition', 'target', 'is_active', 'applied_at', 'expires_at')
-    list_filter = ('is_active',)
+    list_display  = ['definition', 'target', 'mk_tier', 'is_active', 'applied_at']
+    list_filter   = ['is_active']
+    readonly_fields = ['applied_at']
+    inlines = [EffectComponentInstanceInline]
+
+
+@admin.register(EffectComponentInstance)
+class EffectComponentInstanceAdmin(admin.ModelAdmin):
+    list_display  = ['effect_instance', 'component', 'magnitude',
+                     'expires_at', 'is_active', 'removed_by']
+    list_filter   = ['is_active']
+    readonly_fields = ['effect_instance', 'component', 'magnitude',
+                       'expires_at', 'is_active', 'removed_by']
 
 
 class LootTableEntryInline(admin.TabularInline):

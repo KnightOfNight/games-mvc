@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from apps.shyland.models import (
-    Area, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
+    Area, EffectComponent, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
     NpcDefinition, NpcEffect, NpcInstance, Room, Zone,
 )
 
@@ -177,60 +177,70 @@ class Command(BaseCommand):
         self._seed_items()
 
     def _seed_effects(self):
-        vitality_restore, created = EffectDefinition.objects.get_or_create(
-            slug='vitality-restore',
+        # --- Healing Draught ---
+        healing_draught, created = EffectDefinition.objects.get_or_create(
+            slug='healing-draught',
             defaults={
-                'name': 'Vitality Restore',
-                'effect_type': EffectDefinition.RESTORE_VITALITY,
-                'magnitude_min': 20.0,
-                'magnitude_max': 20.0,
-                'duration_min': None,
-                'duration_max': None,
-                'scales_with_mk': True,
-                'scaling_base': 10.0,
-                'scaling_factor': 5.0,
+                'name': 'Healing Draught',
+                'description': 'Restores Vitality immediately.',
             },
         )
-        self.stdout.write(f'  EffectDefinition "{vitality_restore.name}" {"created" if created else "exists"}.')
+        healing_draught.components.all().delete()
+        EffectComponent.objects.create(
+            definition=healing_draught,
+            component_type='restore_vitality',
+            magnitude_base=20.0,
+            magnitude_scaling=5.0,
+            duration_base=0.0,
+            duration_scaling=0.0,
+            order=0,
+        )
+        self.stdout.write(f'  EffectDefinition "{healing_draught.name}" {"created" if created else "exists"}.')
 
-        acuity_shift, created = EffectDefinition.objects.get_or_create(
-            slug='acuity-shift-high',
+        # --- Focus Tonic ---
+        focus_tonic, created = EffectDefinition.objects.get_or_create(
+            slug='focus-tonic',
             defaults={
-                'name': 'Acuity Shift High',
-                'effect_type': EffectDefinition.SHIFT_ACUITY_HIGH,
-                'magnitude_min': 0.3,
-                'magnitude_max': 0.5,
-                'duration_min': 15.0,
-                'duration_max': 30.0,
-                'scales_with_mk': False,
+                'name': 'Focus Tonic',
+                'description': 'Sharpens Acuity upward over time.',
             },
         )
-        if not created:
-            # Update magnitudes to new float scale if they still have old integer values
-            if acuity_shift.magnitude_min >= 1.0:
-                acuity_shift.magnitude_min = 0.3
-                acuity_shift.magnitude_max = 0.5
-                acuity_shift.save(update_fields=['magnitude_min', 'magnitude_max'])
-        self.stdout.write(f'  EffectDefinition "{acuity_shift.name}" {"created" if created else "exists"}.')
+        focus_tonic.components.all().delete()
+        EffectComponent.objects.create(
+            definition=focus_tonic,
+            component_type='shift_acuity_high',
+            magnitude_base=0.1,
+            magnitude_scaling=0.05,
+            duration_base=30.0,
+            duration_scaling=5.0,
+            order=0,
+        )
+        self.stdout.write(f'  EffectDefinition "{focus_tonic.name}" {"created" if created else "exists"}.')
 
-        dur_restore, created = EffectDefinition.objects.get_or_create(
-            slug='durability-restore',
+        # --- Fracture Wraith Poison ---
+        wraith_poison, created = EffectDefinition.objects.get_or_create(
+            slug='fracture-wraith-poison',
             defaults={
-                'name': 'Durability Restore',
-                'effect_type': EffectDefinition.DURABILITY_RESTORE,
-                'magnitude_min': 25.0,
-                'magnitude_max': 25.0,
-                'duration_min': None,
-                'duration_max': None,
-                'scales_with_mk': False,
+                'name': 'Fracture Wraith Poison',
+                'description': 'Vitality damage over time from the Fracture Wraith.',
             },
         )
-        self.stdout.write(f'  EffectDefinition "{dur_restore.name}" {"created" if created else "exists"}.')
+        wraith_poison.components.all().delete()
+        EffectComponent.objects.create(
+            definition=wraith_poison,
+            component_type='dot_vitality',
+            magnitude_base=3.0,
+            magnitude_scaling=2.0,
+            duration_base=15.0,
+            duration_scaling=3.0,
+            order=0,
+        )
+        self.stdout.write(f'  EffectDefinition "{wraith_poison.name}" {"created" if created else "exists"}.')
 
         self._effects = {
-            'vitality-restore': vitality_restore,
-            'acuity-shift-high': acuity_shift,
-            'durability-restore': dur_restore,
+            'healing-draught': healing_draught,
+            'focus-tonic': focus_tonic,
+            'fracture-wraith-poison': wraith_poison,
         }
 
     def _seed_items(self):
@@ -413,7 +423,7 @@ class Command(BaseCommand):
                 'durability_table': [],
                 'primary_stats': [],
                 'secondary_stat_pool': [],
-                'effect': effects['vitality-restore'],
+                'effect': effects['healing-draught'],
                 'description': 'A bitter herbal infusion in a stoppered vial. Works fast.',
             },
             {
@@ -428,7 +438,7 @@ class Command(BaseCommand):
                 'durability_table': [],
                 'primary_stats': [],
                 'secondary_stat_pool': [],
-                'effect': effects['acuity-shift-high'],
+                'effect': effects['focus-tonic'],
                 'description': 'Clear liquid with a sharp chemical smell. Narrows the world to a point.',
             },
             {
@@ -443,7 +453,7 @@ class Command(BaseCommand):
                 'durability_table': [],
                 'primary_stats': [],
                 'secondary_stat_pool': [],
-                'effect': effects['durability-restore'],
+                'effect': None,
                 'description': 'Patches, adhesive, and a small wrench. Enough to hold things together.',
             },
         ]
@@ -585,7 +595,7 @@ class Command(BaseCommand):
 
         # --- Fracture Wraith ---
         eastern_bazaar = Room.objects.get(name='The Eastern Bazaar', zone__slug='the-convergence')
-        acuity_shift = EffectDefinition.objects.filter(slug='acuity-shift-high').first()
+        wraith_poison_effect = EffectDefinition.objects.filter(slug='fracture-wraith-poison').first()
 
         wraith_def, created = NpcDefinition.objects.get_or_create(
             slug='fracture-wraith',
@@ -614,14 +624,14 @@ class Command(BaseCommand):
         )
         self.stdout.write(f'  NpcDefinition "Fracture Wraith" {"created" if created else "exists"}.')
 
-        if acuity_shift:
+        if wraith_poison_effect:
             _, created = NpcEffect.objects.get_or_create(
                 npc_definition=wraith_def,
-                effect_definition=acuity_shift,
+                effect_definition=wraith_poison_effect,
                 defaults={'effect_chance': 0.30},
             )
             self.stdout.write(
-                f'  NpcEffect Fracture Wraith → Acuity Shift High {"created" if created else "exists"}.'
+                f'  NpcEffect Fracture Wraith → Fracture Wraith Poison {"created" if created else "exists"}.'
             )
 
         _, created = NpcInstance.objects.get_or_create(
