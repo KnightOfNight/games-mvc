@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit {NEW_COMMIT_HASH} (v12: effect system redesign).
+> Authoritative technical reference as of commit 0ba36ef (v12: effect system redesign).
 > Describes what is built. For design intent see the current GDD.
 
 ---
