@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit PENDING (v13b: Origin/Archetype models, unarmed combat messaging).
+> Authoritative technical reference as of commit 67889e2 (v13b: Origin/Archetype models, unarmed combat messaging).
 > Describes what is built. For design intent see the current GDD.
 
 ---
