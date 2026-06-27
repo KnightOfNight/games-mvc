@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 12.0 — Working Draft**
+**Version 13.0 — Working Draft**
 
 -----
 
@@ -20,6 +20,7 @@
 | v10     | v10             | Combat system v1 implemented. Acuity scale changed to float 0.1–1.9 (the value IS the damage modifier). Death & Resurrection section updated with exact v1 mechanics. Combat initiation updated: NPC aggro on room entry fires after a 3-second warning window; player can queue during window. Flee updated: directional preference (reverse of entry direction), DEX+d20 vs average NPC PER, cooldown after failed attempts. NPC effect system added: `NpcEffect` model links effect definitions to NPC definitions with per-effect probability. Section 5.3 action economy updated to reflect two-path command handling (non-combat commands fire immediately; combat commands queue to DB for tick engine resolution). Section 10.4 tick architecture updated to match actual implementation. Section 10.5 persistence model updated: active combat state moves from Redis to PostgreSQL. Future Systems table updated: Combat System removed; NPC System row updated; new deferred items added. |
 | v11     | v11             | Effects ticking, level-up, and stat spending implemented. Section 3.5 updated: XP threshold formula (`level² × 100`) now implemented; `spend <stat> <amount>` and `stats` commands live; bar recalculation formula confirmed (`vitality_max = END×10 + STR×3 + level×5`; `longevity_max = END×8 + WIS×5 + level×5`). Section 4.2 Acuity drift note updated: passive drift toward Origin baseline is now implemented. Section 9.1 implemented commands updated: `kill`/`attack`, `flee`, `stats`, `spend` added. Section 9.2 planned commands updated: `kill`/`attack` and `flee` removed. Section 10.4 tick architecture updated: `process_effect_expiry()` replaced by `process_effects()` with three phases (effect ticking, passive Acuity drift, expiry). Section 12 Future Systems updated: Level-Up Trigger, Acuity Drift, and DoT/HoT Per-Tick Application rows removed. |
 | v12     | v12             | Effect system redesign. `EffectDefinition` is now a pure container; all behavior lives in child `EffectComponent` rows. `EffectInstance` is now a container with child `EffectComponentInstance` rows storing per-component magnitude, expiry, and lifecycle state. New `effect_utils.py` centralizes all effect application logic. Mk tier scaling: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)`; `duration = duration_base + (duration_scaling × mk_tier)`. Instantaneous components have `duration_base=0`, `duration_scaling=0` — no `EffectComponentInstance` row created. Reapplication: same or higher Mk tier resets; lower Mk tier ignored silently. Expiry messages: one per parent `EffectInstance` if all components expire together; one per component if staggered. `make db-reset` Makefile target added. Section 6.9 rewritten to reflect new model structure. Section 10.4 tick architecture updated: `process_effects()` now queries `EffectComponentInstance` rows. Section 12 Future Systems: effect system redesign row removed. |
+| v13     | v13             | Three bug fixes (status bar maximums added to payload, `format_wallet()` select_related corrected, combat status `room_name` fixed) plus four features: `brief` toggle implemented; `Origin` and `Archetype` promoted from CharField choices to full models; `UnarmedMessagePool` and `UnarmedMessage` models introduced; unarmed combat wired as an explicit feature with random flavor messaging. Section 3.2 updated: Origin is now a model owning Acuity baseline and band values. Section 3.3 updated: Archetype is now a model owning primary stats and unarmed message pool FK. Section 4.2 updated: Acuity defaults now read from `Origin` model; `_ACUITY_DEFAULTS` dict removed. Section 5.2 updated: room description on combat entry is intentionally suppressed — design decision, not a bug. Section 5.4 updated: unarmed combat documented explicitly. Section 9.1 updated: `brief` command added. Section 9.3 updated: boolean command rule added. Section 10.4 updated: status payload now includes bar maximums and Acuity band bounds. Section 12 Future Systems: Brief Toggle row removed; unarmed pool customization rows added. |
 
 -----
 
@@ -108,12 +109,12 @@ World
 |Z02    |Ashenveil Cathedral|Dark gothic horror                              |Intermediate|
 |Z03    |The Neon Sprawl    |Cyberpunk megacity                              |Intermediate|
 |Z04    |The Blasted Flats  |Post-apocalyptic wasteland                      |Advanced    |
-|Z05    |The Convergence    |All genres collide — the world’s central hub    |Sanctuary   |
+|Z05    |The Convergence    |All genres collide — the world's central hub    |Sanctuary   |
 |Z06    |The Iron Deeps     |Steampunk underground                           |Advanced    |
 |Z07    |The Pale Shore     |Cosmic horror / lovecraftian ocean              |Endgame     |
 |Z08    |The Wastelands     |Infinite scaling zone — always level-appropriate|All levels  |
 
-**The Convergence (Z05)** is the game’s social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. Lore-wise, it is the epicenter of The Fracture. It is also the default logout and recall destination.
+**The Convergence (Z05)** is the game's social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. Lore-wise, it is the epicenter of The Fracture. It is also the default logout and recall destination.
 
 **The Wastelands (Z08)** is a special infinite scaling zone — see Section 2.7.
 
@@ -129,7 +130,7 @@ Areas are **optional** — a room does not have to belong to an area. Standalone
 
 #### What an Area Contains
 
-- **Name** — the location name players see as part of their room header (e.g., “The Eastern Bazaar”)
+- **Name** — the location name players see as part of their room header (e.g., "The Eastern Bazaar")
 - **Area description** — shared ambient prose that applies to all rooms in the area. Describes the general atmosphere: sounds, smells, lighting, the feel of the place. Written once, displayed in every room that belongs to the area.
 
 #### How Areas Appear to Players
@@ -175,8 +176,8 @@ Rooms belonging to the same area are visually clustered on the minimap. The area
 Each room is the atomic unit of the world. Rooms contain:
 
 - **Short name** — displayed in the room header alongside the area name if present (e.g., `[ The Eastern Bazaar — Stall 3: The Armorer ]`)
-- **Long description** — the room-specific prose a player reads on entering or using the `look` command
-- **Brief description** — one-line version shown when the player has visited before (toggleable)
+- **Long description** — the room-specific prose a player reads on entering (first visit) or using the `look` command
+- **Brief description** — required on every room; shown on repeat visits or when `brief_mode` is on (see Section 9.3). Non-null, non-blank — no fallback path exists
 - **Area** — optional parent area providing shared ambient context (see 2.3)
 - **Exit list** — directional links to adjacent rooms (N, S, E, W, U, D, and custom named exits)
 - **Flags** — booleans that modify room behavior (see below)
@@ -186,16 +187,16 @@ Each room is the atomic unit of the world. Rooms contain:
 
 |Flag        |Effect                                                             |
 |------------|-------------------------------------------------------------------|
-|`SAFE`      |No combat allowed, NPCs won’t aggro                                |
+|`SAFE`      |No combat allowed, NPCs won't aggro                                |
 |`PVP`       |PvP is enabled in this room                                        |
 |`DARK`      |Players need a light source to see descriptions                    |
-|`INDOORS`   |Weather effects don’t apply                                        |
+|`INDOORS`   |Weather effects don't apply                                        |
 |`WATER`     |Swimming/drowning rules apply                                      |
 |`NO_RECALL` |Players cannot use recall/teleport abilities                       |
 |`RADIATION` |Periodic radiation damage (wasteland zones)                        |
 |`HOLY`      |Undead and demonic entities take passive damage                    |
 |`MAGIC_DEAD`|Spell and tech abilities disabled                                  |
-|`SCALED`    |Room and its contents scale to entering player’s level (Wastelands)|
+|`SCALED`    |Room and its contents scale to entering player's level (Wastelands)|
 
 ### 2.5 The Visual Map Layer
 
@@ -224,11 +225,11 @@ Mounts are deferred to a future version.
 
 ### 2.7 The Wastelands — Infinite Scaling Zone
 
-The Wastelands is a post-apocalyptic expanse that serves as the game’s permanent endgame safety valve. It has no fixed difficulty — the zone scales to match any entering character’s level.
+The Wastelands is a post-apocalyptic expanse that serves as the game's permanent endgame safety valve. It has no fixed difficulty — the zone scales to match any entering character's level.
 
 **Scaling rules:**
 
-- Enemy stats, HP, and damage scale to the entering player’s level
+- Enemy stats, HP, and damage scale to the entering player's level
 - Loot scales to match — a level 200 character finds level 200 loot (using the Mk system — see Section 6.3)
 - In a party, the zone scales to the highest level member
 - XP rewards scale appropriately — The Wastelands always provides meaningful XP regardless of player level
@@ -259,6 +260,8 @@ New players choose:
 
 Origins define where a character came from — which fragment of reality they were pulled from. They provide flavor, starting bonuses, and passive traits. They do not lock players out of any Archetype.
 
+Origin is a full model (`Origin`) with its own name, slug, description, and Acuity parameters. The seven Origins and their Acuity baseline/band values are stored in the database and configurable via Django admin.
+
 |Origin     |Genre Flavor                  |Passive Trait                                                                    |
 |-----------|------------------------------|---------------------------------------------------------------------------------|
 |Highborn   |Classic fantasy noble         |+10% XP from quest completion                                                    |
@@ -269,13 +272,25 @@ Origins define where a character came from — which fragment of reality they we
 |Machinekind|Steampunk construct           |Cannot be poisoned; cannot be healed by magic (repairs only)                     |
 |Voidtouched|Cosmic horror survivor        |Bonus to eldritch damage; natural Acuity resistance at both extremes of the scale|
 
-Each Origin has a distinct **Acuity baseline** — the natural resting point their Acuity gravitates toward when no external forces are acting on it. A Voidtouched character’s baseline is shifted toward the lower end of the scale; they are accustomed to the strange. A Highborn’s baseline sits in the mid-range.
+Each Origin has a distinct **Acuity baseline** — the natural resting point their Acuity gravitates toward when no external forces are acting on it. These values live on the `Origin` model:
+
+| Origin | Baseline | Band low | Band high |
+|---|---|---|---|
+| Highborn | 1.0 | 0.85 | 1.15 |
+| Feral | 0.95 | 0.80 | 1.10 |
+| Streetborn | 1.0 | 0.85 | 1.15 |
+| Irradiated | 0.90 | 0.75 | 1.05 |
+| Undying | 0.80 | 0.65 | 1.00 |
+| Machinekind | 1.05 | 0.90 | 1.20 |
+| Voidtouched | 0.70 | 0.40 | 1.30 |
 
 Origins can have social/narrative consequences — some NPCs react differently to Machinekind in a fantasy village, or to an Irradiated in a pristine elven glade.
 
 ### 3.3 Archetypes
 
 Archetypes define combat role and skill access. Each spans genre — a Blade is equally a swordsman, a street samurai, or a wasteland knife-fighter depending on equipment and flavor choices.
+
+Archetype is a full model (`Archetype`) with its own name, slug, description, primary stats, and unarmed message pool FK. The seven Archetypes are stored in the database and configurable via Django admin.
 
 |Archetype    |Role                    |Primary Stats|Genre Range                  |
 |-------------|------------------------|-------------|-----------------------------|
@@ -289,7 +304,7 @@ Archetypes define combat role and skill access. Each spans genre — a Blade is 
 
 Archetypes are not rigid. A skill tree system (see 3.5) allows cross-archetype dabbling at a cost — every point spent outside your primary tree is slightly less efficient.
 
-The **Warden** archetype has expanded responsibility in Shyland — beyond healing Vitality, Wardens have tools to actively manage party members’ Acuity, nudging allies toward their optimal range when combat stress or eldritch exposure has shifted them too far in either direction.
+The **Warden** archetype has expanded responsibility in Shyland — beyond healing Vitality, Wardens have tools to actively manage party members' Acuity, nudging allies toward their optimal range when combat stress or eldritch exposure has shifted them too far in either direction.
 
 ### 3.4 Core Stats
 
@@ -319,7 +334,7 @@ Six primary stats, each 1–100 (starting range 8–18 based on origin/archetype
 
 ### 3.5 Progression & Leveling
 
-**No hard level cap.** Progression is continuous. In practice, a soft cap exists at the frontier of published content — XP return diminishes sharply below a character’s level, so grinding low-level content eventually becomes inefficient. The Wastelands always provides a level-appropriate alternative.
+**No hard level cap.** Progression is continuous. In practice, a soft cap exists at the frontier of published content — XP return diminishes sharply below a character's level, so grinding low-level content eventually becomes inefficient. The Wastelands always provides a level-appropriate alternative.
 
 **XP Sources:**
 
@@ -393,11 +408,11 @@ Death in Shyland is meaningful but not brutal:
 
 ## 4. The Three Bars — Vitality, Acuity, Longevity
 
-This is one of Shyland’s most distinctive systems. All characters have three resource bars, each governing a different dimension of their condition. They are not separate — they interact and influence each other. The separation into three bars is a mechanical convenience, not a philosophical statement that mind and body are distinct.
+This is one of Shyland's most distinctive systems. All characters have three resource bars, each governing a different dimension of their condition. They are not separate — they interact and influence each other. The separation into three bars is a mechanical convenience, not a philosophical statement that mind and body are distinct.
 
 ### 4.1 Vitality
 
-**What it is:** The body’s immediate physical condition.
+**What it is:** The body's immediate physical condition.
 
 **Mechanical effects:**
 
@@ -408,15 +423,15 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 
 **Recovery:** Healing spells, medkits, potions, natural regen (slow, out of combat only).
 
-**Machinekind note:** Machinekind characters cannot be healed by magic. Their Vitality is restored only through repair items and the Machinist archetype’s self-repair abilities.
+**Machinekind note:** Machinekind characters cannot be healed by magic. Their Vitality is restored only through repair items and the Machinist archetype's self-repair abilities.
 
 ### 4.2 Acuity
 
-**What it is:** The mind’s dynamic state. Not a scale from broken to perfect — a spectrum with a sweet zone that varies by Origin. Being too high or too low are both problems.
+**What it is:** The mind's dynamic state. Not a scale from broken to perfect — a spectrum with a sweet zone that varies by Origin. Being too high or too low are both problems.
 
-**There is no universally “correct” Acuity value.** Each Origin has a natural baseline and a tolerance band. Characters are most effective when operating within their band.
+**There is no universally "correct" Acuity value.** Each Origin has a natural baseline and a tolerance band. Characters are most effective when operating within their band.
 
-**Acuity scale:** Acuity is stored as a float in the range **0.1 to 1.9**, in 0.1 increments. The stored value IS the damage modifier applied in combat — 1.0 is neutral, above 1.0 is a bonus, below 1.0 is a penalty. Per-origin baseline and band values are defined in `_ACUITY_DEFAULTS` in `models.py`.
+**Acuity scale:** Acuity is stored as a float in the range **0.1 to 1.9**, in 0.1 increments. The stored value IS the damage modifier applied in combat — 1.0 is neutral, above 1.0 is a bonus, below 1.0 is a penalty. Per-origin baseline and band values are stored on the `Origin` model and read via `character.origin.acuity_baseline`, `character.origin.acuity_band_low`, `character.origin.acuity_band_high`.
 
 | Value | State | Effect |
 |---|---|---|
@@ -428,17 +443,7 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 
 **AoE rule:** When a character hits multiple targets with an area-of-effect attack, the Acuity bonus (above 1.0) applies to exactly one focus target. The penalty (below 1.0) applies to all targets regardless.
 
-**Per-Origin defaults:**
-
-| Origin | Baseline | Band low | Band high |
-|---|---|---|---|
-| Highborn | 1.0 | 0.85 | 1.15 |
-| Feral | 0.95 | 0.80 | 1.10 |
-| Streetborn | 1.0 | 0.85 | 1.15 |
-| Irradiated | 0.90 | 0.75 | 1.05 |
-| Undying | 0.80 | 0.65 | 1.00 |
-| Machinekind | 1.05 | 0.90 | 1.20 |
-| Voidtouched | 0.70 | 0.40 | 1.30 |
+**Per-Origin defaults:** See Section 3.2 table.
 
 **Effects of Acuity too LOW (distracted, scattered, overwhelmed):**
 
@@ -452,7 +457,7 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 - Devastating against a single target — bonus damage and accuracy on focused attacks
 - Flanking enemies and ambushes from outside the focus cone are not detected
 - Peripheral combat events (an ally taking damage, an enemy arriving) may be missed
-- A Shade’s dream scenario to exploit against opponents
+- A Shade's dream scenario to exploit against opponents
 
 **The sweet zone:** The range between too-low and too-high where the character operates optimally. Wider for some Origins (Voidtouched are accustomed to extremes), narrower for others.
 
@@ -460,11 +465,11 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 
 - Eldritch damage and prolonged exposure to Pale Shore zone pushes Acuity toward extremes
 - Stress effects from combat, particularly losing allies or taking massive damage, can spike or crash it
-- Consumables and spells can deliberately shift Acuity in either direction — a “focus” potion before a boss fight is a legitimate tactical choice, with the flanking blindness risk as the tradeoff
+- Consumables and spells can deliberately shift Acuity in either direction — a "focus" potion before a boss fight is a legitimate tactical choice, with the flanking blindness risk as the tradeoff
 - The Warden archetype has party-wide Acuity management tools
-- Rest and time naturally return Acuity toward a character’s baseline (Acuity drift — not yet implemented)
+- Rest and time naturally return Acuity toward a character's baseline (passive Acuity drift is implemented)
 
-**Manipulation:** Players can actively shift their own Acuity intentionally. Pushing it high before a single-target duel, then managing the aftermath, is a valid play style. The system rewards players who understand their character’s band and manage it actively.
+**Manipulation:** Players can actively shift their own Acuity intentionally. Pushing it high before a single-target duel, then managing the aftermath, is a valid play style. The system rewards players who understand their character's band and manage it actively.
 
 ### 4.3 Longevity
 
@@ -473,7 +478,7 @@ This is one of Shyland’s most distinctive systems. All characters have three r
 **Mechanical effects:**
 
 - Controls stamina duration — how long a character can sprint, sustain effort, or maintain concentration
-- Governs duration of sustained effects: a character’s own damage-over-time effects last longer at high Longevity; enemy DoTs applied to them expire faster
+- Governs duration of sustained effects: a character's own damage-over-time effects last longer at high Longevity; enemy DoTs applied to them expire faster
 - Controls the window of long-lasting buffs and debuffs
 - At low Longevity: sustained spells collapse early, long fights become increasingly punishing
 
@@ -508,7 +513,7 @@ Combat begins via:
 - An NPC aggro trigger (entering a room containing an NPC with `is_aggressive=True`)
 - A skill that implicitly initiates combat
 
-**Aggro on room entry:** When a player moves into a room with aggressive NPCs, the room description is suppressed. Instead, each aggressive NPC sends an announce message (e.g. `"A Fracture Wraith snarls and moves to attack!"`). The player has the duration of one full combat round (3 seconds) before the NPC's first attack fires. During this window the player can queue an attack of their own — if they are fast enough, they act first in round 1.
+**Aggro on room entry:** When a player moves into a room with aggressive NPCs, the room description is suppressed — this is intentional design. The player does not have time to read it; they are immediately in danger. Each aggressive NPC sends an announce message instead (e.g. `"A Fracture Wraith snarls and moves to attack!"`). The player has the duration of one full combat round (3 seconds) before the NPC's first attack fires. During this window the player can queue an attack of their own — if they are fast enough, they act first in round 1.
 
 Once combat begins, all participants are locked in until one side flees, dies, or combat ends naturally.
 
@@ -522,7 +527,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 
 **Auto-attack:** If no player action is queued when a round fires, the tick engine creates an auto-attack action targeting the first NPC in the session. Players are never idle.
 
-**Initiative (rounds 2+):** Each round after the first, initiative is rolled for all participants: `d10 + DEX + PER`. Highest total acts first; ties go to the player. In round 1, whoever initiated combat acts first (player if they used `kill`/`attack`; NPC if they aggro’d on room entry).
+**Initiative (rounds 2+):** Each round after the first, initiative is rolled for all participants: `d10 + DEX + PER`. Highest total acts first; ties go to the player. In round 1, whoever initiated combat acts first (player if they used `kill`/`attack`; NPC if they aggro'd on room entry).
 
 ### 5.4 Attack Resolution
 
@@ -536,11 +541,13 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 
 2. Damage calculation:
    base_damage    = weapon damage roll (random within midpoint ± spread)
+                    If no weapon is equipped, base_damage = 0 (only stat_bonus applies)
    stat_bonus     = relevant stat value (STR melee / DEX ranged / INT spells)
    acuity_mod     = character's current Acuity value (0.1–1.9 float; IS the modifier)
                     Bonus (>1.0) applies to the focus target only in AoE.
                     Penalty (<1.0) applies to all targets.
-   durability_mod = performance multiplier from weapon's durability table (1.0 = no penalty)
+   durability_mod = performance multiplier from weapon's durability table (1.0 = no penalty;
+                    1.0 if no weapon equipped)
    raw_damage     = (base_damage + stat_bonus) × acuity_mod × durability_mod
 
 3. Hit multiplier applied:
@@ -551,6 +558,8 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 
 5. Elemental/type resistances apply as percentage reduction after armor (future)
 ```
+
+**Unarmed combat:** A character with no weapon equipped can still attack. `base_damage` is 0 — there is no weapon damage roll — but `stat_bonus` and `acuity_mod` still apply, making unarmed attacks weaker but functional. This is intentional design, not a fallback. Attack flavor text for unarmed combat is drawn from the attacker's `UnarmedMessagePool` (configured on the `Archetype` model, falling back to the default pool). NPCs without a weapon also resolve unarmed attacks the same way, drawing from their `NpcDefinition.unarmed_message_pool`.
 
 All numbers are visible in the combat log. Verbose mode exposes the full calculation chain.
 
@@ -566,7 +575,7 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |Radiation|Wasteland hazards, rad weapons          |Stacks; high stacks = stat penalties, Acuity disruption |
 |Eldritch |Cosmic horror abilities                 |Bypasses most resistances; disrupts Acuity significantly|
 |Holy     |Clerical abilities                      |Extra damage vs. undead/demonic                         |
-|Shadow   |Shade abilities, dark magic             |Reduces target’s defense temporarily                    |
+|Shadow   |Shade abilities, dark magic             |Reduces target's defense temporarily                    |
 
 ### 5.6 Status Effects
 
@@ -622,17 +631,18 @@ Enemies have:
 - A **combat tier** (Normal, Elite, Champion, Boss, World Boss)
 - **Archetype flags** governing tactics
 - **Effects list** — each NPC definition carries a list of `NpcEffect` entries. Each entry links to an `EffectDefinition` and has a per-entry `effect_chance` (0.0–1.0). On each NPC attack, every entry is rolled independently; those that fire are applied via the shared `EffectInstance` system and appended to the attack message. An NPC with no effects is a pure auto-attacker. Higher-Mk NPC definitions can carry longer effect lists or higher-magnitude effects to increase difficulty. Telegraph and phase-change mechanics are deferred to later content work
+- **Unarmed message pool** — an optional FK on `NpcDefinition` to an `UnarmedMessagePool`. If null, falls back to the default pool. Used when the NPC has no weapon equipped
 - **Loot tables** — normalized `LootTable` and `LootTableEntry` models; one table can be shared across multiple NPC definitions
 
 NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one.
 
 **On death:** a `Corpse` is created from the `NpcInstance`. The `NpcInstance` row is deleted; a new row is created when the respawn timer fires. Dead NPCs are never reused — respawn always creates a fresh instance.
 
-**Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep (deferred to tick engine).
+**Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep.
 
 **Currency drops** are rolled at death using the formula: `random.randint(currency_drop_min × mk_tier, currency_drop_max × mk_tier)`. Currency display respects zone aliases via `display_for_zone()`.
 
-Bosses have multi-phase fights with behavioral changes at HP thresholds. Some boss abilities specifically target Acuity — a screaming eldritch horror doesn’t just deal damage, it pushes the entire party’s Acuity toward an extreme.
+Bosses have multi-phase fights with behavioral changes at HP thresholds. Some boss abilities specifically target Acuity — a screaming eldritch horror doesn't just deal damage, it pushes the entire party's Acuity toward an extreme.
 
 -----
 
@@ -651,9 +661,9 @@ Bosses have multi-phase fights with behavioral changes at HP thresholds. Some bo
 
 #### Engine-side (internal representation)
 
-All currency is stored as a single `bigint` in the database representing the total amount in **copper** — the base unit. Display and conversion are purely presentational. Python’s arbitrary-precision integers mean there is no practical ceiling.
+All currency is stored as a single `bigint` in the database representing the total amount in **copper** — the base unit. Display and conversion are purely presentational. Python's arbitrary-precision integers mean there is no practical ceiling.
 
-The tier system follows an escalating-multiplier pattern: each tier’s conversion factor is an order of magnitude larger than the previous tier’s.
+The tier system follows an escalating-multiplier pattern: each tier's conversion factor is an order of magnitude larger than the previous tier's.
 
 |Tier|Engine Name |Multiplier from Previous|Value in Copper|
 |----|------------|------------------------|---------------|
@@ -665,7 +675,7 @@ The tier system follows an escalating-multiplier pattern: each tier’s conversi
 
 The multiplier between tiers is itself multiplied by 10 at each step. High-tier currency is genuinely rare — not just a bigger number with the same feel.
 
-**Conversion is automatic.** When a player’s copper total crosses a tier threshold, the display rolls up. Players never manually convert.
+**Conversion is automatic.** When a player's copper total crosses a tier threshold, the display rolls up. Players never manually convert.
 
 **Display format:** Show the minimum denominations needed. Examples:
 
@@ -679,7 +689,7 @@ In standard zones, players see the engine names: Copper, Silver, Gold, Platinum.
 
 #### Local Currency (zone-specific display aliases)
 
-Some zones use local currency names for flavor — the math is identical, only the display strings differ. A ghost dropping “Soul Tokens” is giving the player copper under the hood. The zone or enemy definition carries a `currency_display` config that maps the four tier names to local equivalents.
+Some zones use local currency names for flavor — the math is identical, only the display strings differ. A ghost dropping "Soul Tokens" is giving the player copper under the hood. The zone or enemy definition carries a `currency_display` config that maps the four tier names to local equivalents.
 
 |Zone               |Copper alias|Silver alias|Gold alias |Platinum alias|
 |-------------------|------------|------------|-----------|--------------|
@@ -687,7 +697,7 @@ Some zones use local currency names for flavor — the math is identical, only t
 |Ashenveil Cathedral|Soul Token  |Grave Mark  |Death Crown|*(rare)*      |
 |The Neon Sprawl    |Credit      |Kilocredit  |Megacredit |*(rare)*      |
 
-Local currency received is converted to the player’s copper total immediately on pickup.
+Local currency received is converted to the player's copper total immediately on pickup.
 
 #### Currency sinks
 
@@ -738,7 +748,7 @@ Item stats use a hybrid formula-plus-spread model:
 |Epic     |1.00 – 1.15     |
 |Legendary|1.05 – 1.20     |
 
-A higher rarity item of the same Mk tier always rolls higher stats on average — and can roll higher than a lower rarity item’s ceiling.
+A higher rarity item of the same Mk tier always rolls higher stats on average — and can roll higher than a lower rarity item's ceiling.
 
 #### Primary and Secondary Stats
 
@@ -785,7 +795,7 @@ As durability drops, item performance degrades in threshold steps:
 |1–25%       |50%                    |
 |0%          |Non-functional (broken)|
 
-The performance penalty applies to the item’s stat contributions and weapon damage output. At 0%, the item stops functioning entirely until repaired.
+The performance penalty applies to the item's stat contributions and weapon damage output. At 0%, the item stops functioning entirely until repaired.
 
 #### Degradation Rate
 
@@ -814,7 +824,7 @@ Legendary and Artifact items cannot be crafted — only found (Legendary) or gra
 
 ### 6.7 Cursed Items
 
-Some items carry a hidden curse. The curse is not visible in the item’s description — nothing reveals it before the item is equipped, unless:
+Some items carry a hidden curse. The curse is not visible in the item's description — nothing reveals it before the item is equipped, unless:
 
 - A player has a curse-detection skill (available in the Cross-Origin utility tree)
 - A player pays an NPC service to identify the item (a sage, a tech-scanner, a witch doctor depending on genre)
@@ -1024,7 +1034,7 @@ All channels are logged server-side for moderation.
 
 - 2–6 players
 - Shared XP with party bonus multiplier (6-player party: ~70% of solo XP each — worthwhile for harder content)
-- Party members’ Vitality, Acuity, and Longevity visible in side panel UI
+- Party members' Vitality, Acuity, and Longevity visible in side panel UI
 
 ### 7.3 Guilds
 
@@ -1069,9 +1079,9 @@ Quests have: journal entry, tracked objectives, completion trigger, and branchin
 
 ### 8.3 NPC Dialogue System
 
-NPCs respond to `talk`, `ask <topic>`, `say <keyword>`. Conditional responses based on reputation, quest state, Origin, Archetype. NPCs remember if you’ve helped or harmed them.
+NPCs respond to `talk`, `ask <topic>`, `say <keyword>`. Conditional responses based on reputation, quest state, Origin, Archetype. NPCs remember if you've helped or harmed them.
 
-Genre collision is reflected in NPC dialogue: *“I’ve never seen armor like that. What did you say it’s made of? ‘Kevlar’?”*
+Genre collision is reflected in NPC dialogue: *"I've never seen armor like that. What did you say it's made of? 'Kevlar'?"*
 
 ### 8.4 Lore Delivery
 
@@ -1116,7 +1126,7 @@ If no exit exists in the requested direction, the server responds with a message
 
 |Command|Alias|Description                                                                  |
 |-------|-----|-----------------------------------------------------------------------------|
-|`look` |`l`  |Display the current room’s full description, exits, and other players present|
+|`look` |`l`  |Display the current room's full description, exits, and other players present. Always shows long description regardless of brief mode.|
 
 #### Communication
 
@@ -1139,6 +1149,13 @@ If no exit exists in the requested direction, the server responds with a message
 |`stats`    |—    |Show full stat block with XP progress and unspent stat points|
 |`spend <stat> <amount>`|—|Allocate unspent stat points to a primary stat (str, dex, end, int, wis, per)|
 
+#### Settings
+
+|Command      |Alias|Description                                                              |
+|-------------|-----|-------------------------------------------------------------------------|
+|`brief on`   |—    |Enable brief mode: always show brief room description on movement        |
+|`brief off`  |—    |Disable brief mode: show long description on first visit, brief on repeat|
+
 #### Combat
 
 |Command                            |Alias|Description                  |
@@ -1157,19 +1174,19 @@ If no exit exists in the requested direction, the server responds with a message
 |`use <item>`    |—    |Use a consumable item                               |
 |`examine <item>`|`ex` |Inspect an item, live NPC, or corpse in detail      |
 
-**#### Corpse Interaction
+#### Corpse Interaction
 
-|Command                  |Alias|Description                                                        |
-|-------------------------|-----|-------------------------------------------------------------------|
-|`loot [corpse] [item]` |—    |Loot a corpse; bare `loot` takes everything from the most recent kill|
+|Command               |Alias|Description                                                          |
+|----------------------|-----|---------------------------------------------------------------------|
+|`loot [corpse] [item]`|—    |Loot a corpse; bare `loot` takes everything from the most recent kill|
 
-**Corpse noun syntax:** `loot` targets the most recently created corpse in the room. `loot 2.corpse` targets the second most recent. `loot goblin` targets the first corpse whose name contains “goblin”. An item noun may follow: `loot 2.corpse sword` loots the first sword from the second corpse. Only the killing character may loot items. Currency is always transferred on first loot of a corpse regardless of item noun. Bare `loot` after a corpse is emptied automatically targets the next most recent corpse in the room.
+**Corpse noun syntax:** `loot` targets the most recently created corpse in the room. `loot 2.corpse` targets the second most recent. `loot goblin` targets the first corpse whose name contains "goblin". An item noun may follow: `loot 2.corpse sword` loots the first sword from the second corpse. Only the killing character may loot items. Currency is always transferred on first loot of a corpse regardless of item noun. Bare `loot` after a corpse is emptied automatically targets the next most recent corpse in the room.
 
-Item noun syntax:** Classic MUD convention applies to all item commands. `sword` targets the first item whose name contains "sword"; `2.sword` targets the second; `all` targets every eligible item (where supported by the command). Matching is case-insensitive and works against the item's display name — so unidentified items can be referenced by their mystery name.
+**Item noun syntax:** Classic MUD convention applies to all item commands. `sword` targets the first item whose name contains "sword"; `2.sword` targets the second; `all` targets every eligible item (where supported by the command). Matching is case-insensitive and works against the item's display name — so unidentified items can be referenced by their mystery name.
 
 The `help` output is context-aware — it shows only the exits that actually exist in the current room, not a fixed list of all possible directions.
 
-The unknown command response directs players to `help`: *“Unknown command. Type ‘help’ for a list of commands.”*
+The unknown command response directs players to `help`: *"Unknown command. Type 'help' for a list of commands."*
 
 ### 9.2 Planned Commands (not yet implemented)
 
@@ -1219,8 +1236,9 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 
 - Every command must work via keyboard input only — no mouse-only interactions. Screen reader users must be able to access all functionality through the input line.
 - Commands should be short, memorable, and consistent with classic MUD conventions where possible.
-- Every unrecognised command gets a helpful redirect, not a bare error. Currently: *“Unknown command. Type ‘help’ for a list of commands.”*
+- Every unrecognised command gets a helpful redirect, not a bare error. Currently: *"Unknown command. Type 'help' for a list of commands."*
 - `help` output must stay current as new commands are added. When a new command is implemented, update both this section of the GDD and the `cmd_help()` method in `consumers.py`.
+- **Boolean commands always require an explicit value.** Never a bare toggle. `brief on` / `brief off`, not bare `brief`. This rule applies to all future boolean-setting commands.
 
 -----
 
@@ -1262,7 +1280,7 @@ Web-only. Responsive down to phone screen size. No native app.
 
 **Accessibility:** Semantic HTML throughout. ARIA live regions on the output pane (`aria-live="polite"` for normal output, `aria-live="assertive"` for combat/urgent events). All functionality accessible via keyboard. Screen reader compatible from day one.
 
-**Status bar:** Displays all three bars — Vitality (V), Acuity (A), Longevity (L) — with visual indication of the Acuity “sweet zone” band for the current character’s Origin.
+**Status bar:** Displays all three bars — Vitality (V), Acuity (A), Longevity (L) — with current and maximum values. Vitality shows `current / max`; Longevity shows `current / max`; Acuity shows current float value. The status payload includes Acuity baseline and band bounds for future UI use. The visual band indicator on the Acuity bar is deferred.
 
 **Phone layout:** Side panel collapses to a bottom drawer. Minimap collapses to an icon that expands on tap. Input line remains always accessible.
 
@@ -1291,6 +1309,8 @@ The game server runs a **tick engine** implemented as a Django management comman
 1. **`process_effects()`** — three phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
+
+**Status payload:** The status message sent to clients on every relevant event includes: `vitality`, `vitality_max`, `acuity`, `acuity_baseline`, `acuity_band_low`, `acuity_band_high`, `longevity`, `longevity_max`, `room_name`, `area_name`. All consumer and tick engine status sends use this same expanded shape.
 
 **Global tick rate:** 1 second. Combat round = 3 ticks (`COMBAT_ROUND_TICKS = 3`). Fixed — not adjustable per player or per NPC.
 
@@ -1344,7 +1364,7 @@ Required v1 admin capabilities:
 - Teleport to any room by ID or name
 - Spawn any NPC or item in current room
 - Observe any room invisibly
-- Adjust any character’s stats, bars, currency, or position
+- Adjust any character's stats, bars, currency, or position
 - Gift items to players (items become immediately soulbound on gift; gifted Artifact items are hand-authored)
 - Mute, kick, ban players
 - Force-reset dungeon instances
@@ -1434,8 +1454,8 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
 |**Durability Degradation Tick**        |Model field exists; tick logic not yet implemented.                                                                                |
 |**Repair Mechanic**                    |Repair vendors and crafting-based repair not yet implemented.                                                                      |
-|**Brief Toggle**                       |First visit shows full room description; repeat visits show `brief_description`. Not yet implemented.                              |
 |**Minimap**                            |`RoomVisit` fog-of-war records exist but minimap rendering not yet built.                                                          |
+|**Acuity Bar Band Indicator**          |Acuity band and baseline values are now in the status payload; UI rendering of the band on the Acuity bar is deferred.            |
 |**Sanity / Acuity Edge Cases**         |Full design of Voidtouched Acuity immunity edges, eldritch stacking caps, and Warden party tools needs a dedicated design session. |
 |**Prestige / Post-Frontier Mastery**   |Mastery track outlined but not fully designed. Needs a dedicated session.                                                          |
 |**Colorblind / High Contrast Mode**    |Deferred to post-v1 accessibility pass.                                                                                            |
@@ -1444,11 +1464,15 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**NPC System and Dialogue**            |NPC models (`NpcDefinition`, `NpcInstance`, `Corpse`, `NpcEffect`) implemented. `examine` shows live NPCs and corpses. Combat aggro on room entry implemented. Wandering, dialogue, and patrol AI deferred.|
 |**PvP Flagging and Bounty System**     |Not yet implemented.                                                                                                               |
 |**The Wastelands Scaling Logic**       |Dynamic content scaling at spawn time not yet implemented.                                                                         |
-|**Durability Degradation in Combat**   |Death penalty (10% per death) implemented. Per-hit weapon degradation during combat not yet implemented.|
-|**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.|
-|**Room Spawn Configuration**           |No builder tool yet for configuring NPC spawns in rooms. NPCs are placed via seed command or Django admin.|
+|**Durability Degradation in Combat**   |Death penalty (10% per death) implemented. Per-hit weapon degradation during combat not yet implemented.                           |
+|**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.            |
+|**Room Spawn Configuration**           |No builder tool yet for configuring NPC spawns in rooms. NPCs are placed via seed command or Django admin.                         |
+|**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
+|**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
+|**Origin and Archetype Descriptions**  |Description fields exist on both models but are seeded blank. Content deferred to character creation version.                      |
+|**In-game Character Creation**         |Admin creation works. In-game flow (web form, Origin/Archetype selection, name entry, portrait selection) not yet implemented.     |
 
 -----
 
-*Document version 12.0 — Shyland Working Draft*
+*Document version 13.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
