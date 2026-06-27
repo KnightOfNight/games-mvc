@@ -217,10 +217,14 @@
         }
       }
     } else if (msg.type === 'status') {
-      roomName.textContent = msg.room_name || '';
-      barV.textContent = msg.vitality;
+      if (msg.room_name) roomName.textContent = msg.room_name;
+      barV.textContent = msg.vitality_max !== undefined
+        ? `${msg.vitality} / ${msg.vitality_max}`
+        : `${msg.vitality}`;
       barA.textContent = msg.acuity;
-      barL.textContent = msg.longevity;
+      barL.textContent = msg.longevity_max !== undefined
+        ? `${msg.longevity} / ${msg.longevity_max}`
+        : `${msg.longevity}`;
     }
   });
 

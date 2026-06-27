@@ -169,6 +169,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_attack(args)
         elif verb == 'flee':
             await self.cmd_flee()
+        elif verb == 'brief':
+            await self.cmd_brief(args)
         elif verb == 'spend':
             await self.cmd_spend(args)
         elif verb == 'stats':
@@ -184,7 +186,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_look(self):
         room = await self.get_current_room()
-        await self.send_room_description(room, entering=True)
+        await self.send_room_description(room, entering=True, force_long=True)
 
     async def cmd_move(self, direction):
         exit_field = DIRECTIONS[direction]
@@ -631,10 +633,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'status',
             'vitality': char_fresh.vitality_current,
-            'acuity': char_fresh.acuity_current,
+            'vitality_max': char_fresh.vitality_max,
+            'acuity': round(char_fresh.acuity_current, 2),
+            'acuity_baseline': round(char_fresh.acuity_baseline, 2),
+            'acuity_band_low': round(char_fresh.acuity_band_low, 2),
+            'acuity_band_high': round(char_fresh.acuity_band_high, 2),
             'longevity': char_fresh.longevity_current,
+            'longevity_max': char_fresh.longevity_max,
             'room_name': room.name,
-            'area_name': room.area.name if room.area else None,
+            'area_name': room.area.name if room.area_id else None,
         })
 
     def _format_identified_item_lines(self, item):
@@ -1058,14 +1065,31 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'system'
         )
 
+        room = character.current_room
         await self.send_json({
             'type': 'status',
             'vitality': character.vitality_current,
-            'acuity': character.acuity_current,
+            'vitality_max': character.vitality_max,
+            'acuity': round(character.acuity_current, 2),
+            'acuity_baseline': round(character.acuity_baseline, 2),
+            'acuity_band_low': round(character.acuity_band_low, 2),
+            'acuity_band_high': round(character.acuity_band_high, 2),
             'longevity': character.longevity_current,
-            'room_name': '',
-            'area_name': None,
+            'longevity_max': character.longevity_max,
+            'room_name': room.name if room else '',
+            'area_name': room.area.name if room and room.area_id else None,
         })
+
+    async def cmd_brief(self, args):
+        arg = args.strip().lower() if args else ''
+        if arg not in ('on', 'off'):
+            await self.send_output('Usage: brief on | brief off', category='error')
+            return
+        value = (arg == 'on')
+        await self._set_brief_mode(value)
+        self.character.brief_mode = value
+        state = 'on' if value else 'off'
+        await self.send_output(f'Brief mode is now {state}.', category='system')
 
     # ------------------------------------------------------------------
     # Channel layer event handlers
@@ -1109,7 +1133,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category})
 
-    async def send_room_description(self, room, entering=False):
+    async def send_room_description(self, room, entering=False, force_long=False):
         char = self.character
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
@@ -1134,10 +1158,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if room.area and room.area.area_description:
             area_context = f'{room.area.area_description}\n\n'
 
+        if force_long:
+            description_text = room.description
+            await self._record_visit(char, room)
+        else:
+            show_brief = await self._check_and_record_visit(char, room)
+            description_text = room.brief_description if show_brief else room.description
+
         text = (
             f'{location_header}\n'
             f'{area_context}'
-            f'{room.description}'
+            f'{description_text}'
         )
 
         await self.send_json({
@@ -1155,16 +1186,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         for corpse in corpses:
             await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room')
 
-        v = char.vitality_current
-        a = char.acuity_current
-        l = char.longevity_current
         await self.send_json({
             'type': 'status',
-            'vitality': v,
-            'acuity': a,
-            'longevity': l,
+            'vitality': char.vitality_current,
+            'vitality_max': char.vitality_max,
+            'acuity': round(char.acuity_current, 2),
+            'acuity_baseline': round(char.acuity_baseline, 2),
+            'acuity_band_low': round(char.acuity_band_low, 2),
+            'acuity_band_high': round(char.acuity_band_high, 2),
+            'longevity': char.longevity_current,
+            'longevity_max': char.longevity_max,
             'room_name': room.name,
-            'area_name': room.area.name if room.area else None,
+            'area_name': room.area.name if room.area_id else None,
         })
 
     # ------------------------------------------------------------------
@@ -1199,11 +1232,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         Character.objects.filter(pk=self.character.pk).update(current_room=destination)
         self.character.current_room = destination
         self.character.current_room_id = destination.pk
-        RoomVisit.objects.get_or_create(character=self.character, room=destination)
 
     @database_sync_to_async
     def touch_last_seen(self, character):
         Character.objects.filter(pk=character.pk).update(last_seen=timezone.now())
+
+    @database_sync_to_async
+    def _set_brief_mode(self, value):
+        Character.objects.filter(pk=self.character_pk).update(brief_mode=value)
+
+    @database_sync_to_async
+    def _check_and_record_visit(self, character, room):
+        _, created = RoomVisit.objects.get_or_create(character=character, room=room)
+        if character.brief_mode:
+            return True
+        return not created
+
+    @database_sync_to_async
+    def _record_visit(self, character, room):
+        RoomVisit.objects.get_or_create(character=character, room=room)
 
     @database_sync_to_async
     def get_inventory(self):
@@ -1385,7 +1432,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_character_fresh(self):
         char = Character.objects.select_related(
-            'current_room__zone', 'recall_room', 'user__profile'
+            'current_room__zone', 'current_room__area', 'recall_room', 'user__profile'
         ).get(pk=self.character_pk)
         self.character = char
         self._character_is_dying = char.is_dying

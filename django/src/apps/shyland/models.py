@@ -203,6 +203,7 @@ class Character(models.Model):
     is_dead = models.BooleanField(default=False)
     is_dying    = models.BooleanField(default=False)
     dying_since = models.DateTimeField(null=True, blank=True)
+    brief_mode = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 

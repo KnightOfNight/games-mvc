@@ -119,8 +119,13 @@ class Command(BaseCommand):
             await self.send_to_player(character.pk, msg, 'system', {
                 'type': 'status',
                 'vitality': character.vitality_current,
-                'acuity': character.acuity_current,
+                'vitality_max': character.vitality_max,
+                'acuity': round(character.acuity_current, 2),
+                'acuity_baseline': round(character.acuity_baseline, 2),
+                'acuity_band_low': round(character.acuity_band_low, 2),
+                'acuity_band_high': round(character.acuity_band_high, 2),
                 'longevity': character.longevity_current,
+                'longevity_max': character.longevity_max,
                 'room_name': recall.name if recall else '',
                 'area_name': None,
             })
@@ -152,7 +157,9 @@ class Command(BaseCommand):
 
             @_dsa
             def load_participants(session):
-                chars = list(session.characters.select_related('user__profile').all())
+                chars = list(session.characters.select_related(
+                    'user__profile', 'current_room__area'
+                ).all())
                 npcs = list(session.npcs.select_related('definition').prefetch_related(
                     'definition__effects__effect_definition'
                 ).all())
@@ -392,14 +399,7 @@ class Command(BaseCommand):
                         else:
                             character.save(update_fields=['vitality_current'])
 
-                        statuses.append((character.pk, {
-                            'type': 'status',
-                            'vitality': character.vitality_current,
-                            'acuity': character.acuity_current,
-                            'longevity': character.longevity_current,
-                            'room_name': '',
-                            'area_name': None,
-                        }))
+                        statuses.append((character.pk, self._build_status(character)))
 
                 return messages, statuses, room_messages
 
@@ -522,6 +522,7 @@ class Command(BaseCommand):
                 ).select_related(
                     'component',
                     'effect_instance__target__user__profile',
+                    'effect_instance__target__current_room__area',
                     'effect_instance__definition',
                 ))
 
@@ -757,10 +758,15 @@ class Command(BaseCommand):
         return {
             'type': 'status',
             'vitality': character.vitality_current,
-            'acuity': character.acuity_current,
+            'vitality_max': character.vitality_max,
+            'acuity': round(character.acuity_current, 2),
+            'acuity_baseline': round(character.acuity_baseline, 2),
+            'acuity_band_low': round(character.acuity_band_low, 2),
+            'acuity_band_high': round(character.acuity_band_high, 2),
             'longevity': character.longevity_current,
-            'room_name': '',
-            'area_name': None,
+            'longevity_max': character.longevity_max,
+            'room_name': character.current_room.name if character.current_room else '',
+            'area_name': character.current_room.area.name if character.current_room and character.current_room.area_id else None,
         }
 
     async def send_to_player(self, character_pk, text, category, status):

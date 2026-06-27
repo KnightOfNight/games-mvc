@@ -49,7 +49,7 @@ class Command(BaseCommand):
             },
         )
 
-        center, _ = Room.objects.get_or_create(
+        center, _ = Room.objects.update_or_create(
             zone=zone,
             name='The Fracture Point',
             defaults={
@@ -67,7 +67,7 @@ class Command(BaseCommand):
             },
         )
 
-        north, _ = Room.objects.get_or_create(
+        north, _ = Room.objects.update_or_create(
             zone=zone,
             name='The Northern Arcade',
             defaults={
@@ -83,7 +83,7 @@ class Command(BaseCommand):
             },
         )
 
-        south, _ = Room.objects.get_or_create(
+        south, _ = Room.objects.update_or_create(
             zone=zone,
             name='The Southern Docks',
             defaults={
@@ -99,7 +99,7 @@ class Command(BaseCommand):
             },
         )
 
-        east, _ = Room.objects.get_or_create(
+        east, _ = Room.objects.update_or_create(
             zone=zone,
             name='The Eastern Bazaar',
             defaults={
@@ -115,7 +115,7 @@ class Command(BaseCommand):
             },
         )
 
-        west, _ = Room.objects.get_or_create(
+        west, _ = Room.objects.update_or_create(
             zone=zone,
             name='The Western Gate',
             defaults={
