@@ -11,22 +11,6 @@ DEATH_DURABILITY_LOSS = 10.0
 ACUITY_DRIFT_RATE     = 0.01
 STAT_POINTS_PER_LEVEL = 5
 
-_ACUITY_DEFAULTS = {
-    'highborn':    (1.0,  0.85, 1.15),
-    'feral':       (0.95, 0.80, 1.10),
-    'streetborn':  (1.0,  0.85, 1.15),
-    'irradiated':  (0.90, 0.75, 1.05),
-    'undying':     (0.80, 0.65, 1.00),
-    'machinekind': (1.05, 0.90, 1.20),
-    'voidtouched': (0.70, 0.40, 1.30),
-}
-
-
-def get_acuity_defaults(origin):
-    """Return (baseline, band_low, band_high) for a given origin string."""
-    return _ACUITY_DEFAULTS.get(origin, (1.0, 0.8, 1.2))
-
-
 class Zone(models.Model):
     DANGER_BEGINNER = 'beginner'
     DANGER_INTERMEDIATE = 'intermediate'
@@ -137,44 +121,75 @@ class Room(models.Model):
         return f'{self.name} ({self.zone.name})'
 
 
+class UnarmedMessagePool(models.Model):
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class UnarmedMessage(models.Model):
+    pool = models.ForeignKey(UnarmedMessagePool, on_delete=models.CASCADE, related_name='messages')
+    template = models.TextField(
+        help_text='Python format string. Use {target} for the target name. Example: "You punch {target}."'
+    )
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f'{self.pool.name}: {self.template[:60]}'
+
+
+class Origin(models.Model):
+    name             = models.CharField(max_length=100)
+    slug             = models.SlugField(unique=True)
+    description      = models.TextField(blank=True)
+    acuity_baseline  = models.FloatField()
+    acuity_band_low  = models.FloatField()
+    acuity_band_high = models.FloatField()
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Archetype(models.Model):
+    STAT_CHOICES = [
+        ('str', 'STR'), ('dex', 'DEX'), ('end', 'END'),
+        ('int', 'INT'), ('wis', 'WIS'), ('per', 'PER'),
+    ]
+
+    name                 = models.CharField(max_length=100)
+    slug                 = models.SlugField(unique=True)
+    description          = models.TextField(blank=True)
+    primary_stat_1       = models.CharField(max_length=3, choices=STAT_CHOICES)
+    primary_stat_2       = models.CharField(max_length=3, choices=STAT_CHOICES)
+    unarmed_message_pool = models.ForeignKey(
+        UnarmedMessagePool,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='archetypes',
+    )
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Character(models.Model):
-    ORIGIN_HIGHBORN = 'highborn'
-    ORIGIN_FERAL = 'feral'
-    ORIGIN_STREETBORN = 'streetborn'
-    ORIGIN_IRRADIATED = 'irradiated'
-    ORIGIN_UNDYING = 'undying'
-    ORIGIN_MACHINEKIND = 'machinekind'
-    ORIGIN_VOIDTOUCHED = 'voidtouched'
-    ORIGIN_CHOICES = [
-        (ORIGIN_HIGHBORN, 'Highborn'),
-        (ORIGIN_FERAL, 'Feral'),
-        (ORIGIN_STREETBORN, 'Streetborn'),
-        (ORIGIN_IRRADIATED, 'Irradiated'),
-        (ORIGIN_UNDYING, 'Undying'),
-        (ORIGIN_MACHINEKIND, 'Machinekind'),
-        (ORIGIN_VOIDTOUCHED, 'Voidtouched'),
-    ]
-
-    ARCHETYPE_BLADE = 'blade'
-    ARCHETYPE_BULWARK = 'bulwark'
-    ARCHETYPE_SHADE = 'shade'
-    ARCHETYPE_CONDUIT = 'conduit'
-    ARCHETYPE_WARDEN = 'warden'
-    ARCHETYPE_GUNNER = 'gunner'
-    ARCHETYPE_MACHINIST = 'machinist'
-    ARCHETYPE_CHOICES = [
-        (ARCHETYPE_BLADE, 'Blade'),
-        (ARCHETYPE_BULWARK, 'Bulwark'),
-        (ARCHETYPE_SHADE, 'Shade'),
-        (ARCHETYPE_CONDUIT, 'Conduit'),
-        (ARCHETYPE_WARDEN, 'Warden'),
-        (ARCHETYPE_GUNNER, 'Gunner'),
-        (ARCHETYPE_MACHINIST, 'Machinist'),
-    ]
-
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='shyland_character')
-    origin = models.CharField(max_length=20, choices=ORIGIN_CHOICES)
-    archetype = models.CharField(max_length=20, choices=ARCHETYPE_CHOICES)
+    origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='characters')
+    archetype = models.ForeignKey(Archetype, on_delete=models.PROTECT, related_name='characters')
     level = models.IntegerField(default=1)
     xp = models.IntegerField(default=0)
     current_room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name='characters')
@@ -588,6 +603,12 @@ class NpcDefinition(models.Model):
     loot_table          = models.ForeignKey(
         LootTable, null=True, blank=True, on_delete=models.SET_NULL,
         help_text="Loot table rolled on death. Null = no item drops."
+    )
+    unarmed_message_pool = models.ForeignKey(
+        'UnarmedMessagePool',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='npc_definitions',
     )
     currency_drop_min   = models.IntegerField(default=0, help_text="Minimum copper drop (before Mk scaling).")
     currency_drop_max   = models.IntegerField(default=0, help_text="Maximum copper drop (before Mk scaling).")

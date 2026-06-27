@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 1f7496d (v13a: status bar maximums, combat room_name, brief toggle).
+> Authoritative technical reference as of commit PENDING (v13b: Origin/Archetype models, unarmed combat messaging).
 > Describes what is built. For design intent see the current GDD.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v13a delivers three bug fixes and one new feature: status payloads now include bar maximums (`vitality_max`, `longevity_max`, Acuity band bounds); combat status updates populate `room_name` from the character's current room; `format_wallet()` is defended with a correct `select_related` chain; and a `brief` command lets players toggle between always-short and first-visit-long room descriptions. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v13b promotes `Origin` and `Archetype` from CharField choices to full models, introduces the unarmed combat message system (`UnarmedMessagePool`, `UnarmedMessage`), and wires random unarmed flavor text into combat rounds for both player and NPC attacks. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -133,15 +133,67 @@ ACUITY_DRIFT_RATE     = 0.01  # Acuity movement per tick toward baseline
 STAT_POINTS_PER_LEVEL = 5     # unspent stat points awarded per level-up
 ```
 
+#### `UnarmedMessagePool`
+
+```
+name   CharField(100)
+slug   SlugField(unique)
+```
+
+Ordering: `['name']`.
+
+#### `UnarmedMessage`
+
+```
+pool      ForeignKey(UnarmedMessagePool, CASCADE, related_name='messages')
+template  TextField  — Python format string; use {target} for target name
+order     IntegerField(default=0)
+```
+
+Ordering: `['order']`. Runtime selection is always random from the pool; `order` is for admin display only. `template` is rendered at runtime via `chosen.template.format(target=target_name)`.
+
+#### `Origin`
+
+```
+name             CharField(100)
+slug             SlugField(unique)
+description      TextField(blank)
+acuity_baseline  FloatField
+acuity_band_low  FloatField
+acuity_band_high FloatField
+```
+
+Ordering: `['name']`. Owns the three Acuity parameters previously held in the `_ACUITY_DEFAULTS` dict. `_ACUITY_DEFAULTS` and `get_acuity_defaults()` have been removed from `models.py`.
+
+#### `Archetype`
+
+```
+name                 CharField(100)
+slug                 SlugField(unique)
+description          TextField(blank)
+primary_stat_1       CharField(3, choices=STAT_CHOICES)
+primary_stat_2       CharField(3, choices=STAT_CHOICES)
+unarmed_message_pool ForeignKey(UnarmedMessagePool, SET_NULL, null, blank, related_name='archetypes')
+```
+
+Ordering: `['name']`. `STAT_CHOICES` covers all six stats: str, dex, end, int, wis, per.
+
 #### `Zone`, `Area`, `Room`, `RoomVisit`
 
-*(unchanged from v12)*
+*(unchanged from v13a)*
 
 `Room.brief_description` is `CharField(500, blank=False)` — non-null, non-blank. Required on all rooms. No fallback path exists.
 
 #### `Character`
 
-Core stats, bars, currency, and flags fields. All from v12 plus one new flag:
+`origin` and `archetype` are now ForeignKey fields (PROTECT), not CharFields. Both are non-nullable.
+
+```
+origin     ForeignKey(Origin, PROTECT, related_name='characters')
+archetype  ForeignKey(Archetype, PROTECT, related_name='characters')
+```
+
+All other fields unchanged from v13a. Acuity defaults are now read from `character.origin.acuity_baseline`, `character.origin.acuity_band_low`, `character.origin.acuity_band_high`.
 
 **Flags block:**
 
@@ -155,15 +207,29 @@ brief_mode   BooleanField(default=False)   — if True, always show brief room d
 
 #### `EffectDefinition`, `EffectComponent`, `ItemDefinition`, `ItemInstance`
 
-*(unchanged from v12)*
+*(unchanged from v13a)*
 
 #### `EffectInstance`, `EffectComponentInstance`
 
-*(unchanged from v12)*
+*(unchanged from v13a)*
 
-#### `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `CombatSession`, `CombatAction`
+#### `LootTable`, `LootTableEntry`
 
-*(unchanged from v12)*
+*(unchanged from v13a)*
+
+#### `NpcDefinition`
+
+Added one field:
+
+```
+unarmed_message_pool  ForeignKey(UnarmedMessagePool, SET_NULL, null, blank, related_name='npc_definitions')
+```
+
+All other `NpcDefinition` fields unchanged.
+
+#### `NpcEffect`, `NpcInstance`, `Corpse`, `CombatSession`, `CombatAction`
+
+*(unchanged from v13a)*
 
 ### 4.2 Currency system (`currency.py`)
 
@@ -226,6 +292,8 @@ Assembles and sends room output. Description selection logic:
 
 All character fetch helpers include `current_room__zone` in their `select_related` chain, ensuring `format_wallet()` can access `character.current_room.zone.slug` without a synchronous query.
 
+`get_character_fresh()` and `get_character()` both include `archetype__unarmed_message_pool` in their `select_related` chain so that unarmed message resolution in combat can access the pool without a synchronous query.
+
 `get_character_fresh()` also includes `current_room__area` so that `cmd_spend`'s status payload can populate `area_name`.
 
 ### 4.4 `effect_utils.py`
@@ -234,7 +302,18 @@ All character fetch helpers include `current_room__zone` in their `select_relate
 
 ### 4.5 Combat utilities (`combat_utils.py`)
 
-*(unchanged from v12)*
+#### `get_unarmed_message(attacker_pool, target_name) → str`
+
+Selects a random `UnarmedMessage` from `attacker_pool`. Falls back to the `default` pool if `attacker_pool` is `None` or has no messages. If no messages are found at all, returns `"You strike {target_name}."`. Substitutes `{target}` with `target_name` using Python `.format()`. Caller is responsible for prefetching `pool.messages` before calling — this function is synchronous and must be called from within a `@database_sync_to_async` wrapper in async context, or directly in the synchronous tick engine.
+
+#### Unarmed attack message injection
+
+When the tick engine processes a combat round:
+
+- **Player → NPC:** if the player has no non-broken weapon equipped (`ItemInstance.is_equipped=True, definition__item_type='weapon', is_broken=False`), `get_unarmed_message` is called with `character.archetype.unarmed_message_pool` (may be `None`) and the NPC's display name as `target_name`. The returned flavor (with trailing period stripped) replaces the "You hit / You land a critical hit on" prefix. Damage calculation is unchanged.
+- **NPC → player:** `get_unarmed_message` is called with `npc.definition.unarmed_message_pool` (may be `None`) and the character's name as `target_name`. The flavor replaces the "The {npc} hits / lands a critical hit" prefix.
+
+All other functions unchanged from v13a.
 
 ### 4.6 Item generation and utilities (`item_utils.py`)
 
@@ -242,15 +321,59 @@ All character fetch helpers include `current_room__zone` in their `select_relate
 
 ### 4.7 Admin
 
-*(unchanged from v12)*
+| Model | Admin class | Notes |
+|-------|-------------|-------|
+| `UnarmedMessagePool` | `UnarmedMessagePoolAdmin` | Inline: `UnarmedMessageInline` (tabular, fields: template, order) |
+| `Origin` | `OriginAdmin` | list_display: name, slug, acuity_baseline, acuity_band_low, acuity_band_high |
+| `Archetype` | `ArchetypeAdmin` | list_display: name, slug, primary_stat_1, primary_stat_2, unarmed_message_pool; raw_id_fields: unarmed_message_pool |
+
+`CharacterAdmin` updated: `origin` and `archetype` moved to `raw_id_fields` (they are now FKs). `list_filter` on `origin` removed (FK filters require select; archetype retained).
+
+`NpcDefinitionAdmin` updated: `unarmed_message_pool` added to `raw_id_fields`.
+
+All other admin registrations unchanged from v13a.
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
 
 Idempotent. Room creation uses `update_or_create` (not `get_or_create`) to ensure `brief_description` is written on existing records after migration. All five Convergence rooms have non-empty `brief_description` values.
 
+**Seeded `UnarmedMessagePool`:**
+
+| slug | name | messages |
+|------|------|---------|
+| `default` | Default | 10 (delete-and-recreate on each seed run) |
+
+Default pool messages (templates with `{target}` placeholder): "You punch {target}.", "You kick {target}.", "You shove {target} hard.", "You swing at {target}.", "You lunge at {target}.", "You jab {target}.", "You strike {target}.", "You slam into {target}.", "You drive your shoulder into {target}.", "You throw a wild hit at {target}."
+
+**Seeded `Origin` rows (7):**
+
+| slug | name | acuity_baseline | acuity_band_low | acuity_band_high |
+|------|------|-----------------|-----------------|------------------|
+| `highborn` | Highborn | 1.0 | 0.85 | 1.15 |
+| `feral` | Feral | 0.95 | 0.80 | 1.10 |
+| `streetborn` | Streetborn | 1.0 | 0.85 | 1.15 |
+| `irradiated` | Irradiated | 0.90 | 0.75 | 1.05 |
+| `undying` | Undying | 0.80 | 0.65 | 1.00 |
+| `machinekind` | Machinekind | 1.05 | 0.90 | 1.20 |
+| `voidtouched` | Voidtouched | 0.70 | 0.40 | 1.30 |
+
+**Seeded `Archetype` rows (7):**
+
+| slug | name | primary_stat_1 | primary_stat_2 | unarmed_message_pool |
+|------|------|----------------|----------------|----------------------|
+| `blade` | Blade | str | dex | null |
+| `bulwark` | Bulwark | str | end | null |
+| `shade` | Shade | dex | int | null |
+| `conduit` | Conduit | int | wis | null |
+| `warden` | Warden | wis | end | null |
+| `gunner` | Gunner | dex | per | null |
+| `machinist` | Machinist | int | dex | null |
+
+All archetypes fall back to the default pool.
+
 **Seeded `EffectDefinition` entries:**
 
-*(unchanged from v12)*
+*(unchanged from v13a)*
 
 ### 4.9 Tick Engine (`management/commands/run_tick_engine.py`)
 
@@ -260,9 +383,11 @@ Idempotent. Room creation uses `update_or_create` (not `get_or_create`) to ensur
 
 #### `process_combat(tick_number)`
 
-Characters are loaded in `load_participants` with `select_related('user__profile', 'current_room__area')` so that `_build_status` can populate `room_name` and `area_name` without extra queries.
+Characters are loaded in `load_participants` with `select_related('user__profile', 'current_room__area', 'archetype__unarmed_message_pool')` and `prefetch_related('archetype__unarmed_message_pool__messages')` so that unarmed message resolution and `_build_status` work without extra queries.
 
-Death handling (`execute_death`) unchanged from v12.
+NPCs are loaded with `select_related('definition', 'definition__unarmed_message_pool')` and `prefetch_related('definition__effects__effect_definition', 'definition__unarmed_message_pool__messages')`.
+
+Death handling (`execute_death`) unchanged from v13a.
 
 #### `process_effects(tick_number)`
 
@@ -364,12 +489,23 @@ These are settled. Do not revisit without deliberate consideration.
 
 **`look` always shows the long description.** Bypasses `brief_mode` entirely.
 
+**`Origin` and `Archetype` are full models.** Both were promoted from CharField choices in v13b. `Origin` owns the Acuity baseline and band bounds. `Archetype` owns primary stats and the unarmed message pool FK.
+
+**`_ACUITY_DEFAULTS` dict and `get_acuity_defaults()` removed.** Acuity defaults are now read from `character.origin.acuity_baseline / .acuity_band_low / .acuity_band_high`.
+
+**Unarmed combat is explicit, not a fallback.** No weapon equipped means no weapon damage component — the formula is unchanged. Flavor messaging comes from the attacker's `UnarmedMessagePool`, falling back to the default pool.
+
+**`UnarmedMessage.template` uses Python `.format(target=name)`.** This is the established pattern for all configurable message templates going forward.
+
 ---
 
 ## 7. What Is Not Yet Built
 
 Future sessions should check this list before assuming a system exists.
 
+- Per-archetype unarmed message pools (all archetypes currently fall back to the default pool)
+- Per-NPC unarmed message pools (all NPCs currently fall back to the default pool)
+- Origin and Archetype description fields are seeded blank (content deferred to character creation version)
 - In-game character creation flow (admin creation works)
 - Item identification trigger — NPC sage, Warden ability, identification scrolls
 - Durability degradation on combat use (model field and death-penalty logic exist; per-hit degradation deferred)

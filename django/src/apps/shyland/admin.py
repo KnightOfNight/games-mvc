@@ -1,11 +1,38 @@
 from django.contrib import admin
 from .currency import display as currency_display
 from .models import (
-    Area, Character, CombatAction, CombatSession, Corpse,
+    Area, Archetype, Character, CombatAction, CombatSession, Corpse,
     EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry,
-    NpcDefinition, NpcEffect, NpcInstance, Room, RoomVisit, Zone,
+    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomVisit, Zone,
+    UnarmedMessage, UnarmedMessagePool,
 )
+
+
+class UnarmedMessageInline(admin.TabularInline):
+    model = UnarmedMessage
+    extra = 1
+    fields = ('template', 'order')
+
+
+@admin.register(UnarmedMessagePool)
+class UnarmedMessagePoolAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug')
+    prepopulated_fields = {'slug': ('name',)}
+    inlines = [UnarmedMessageInline]
+
+
+@admin.register(Origin)
+class OriginAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'acuity_baseline', 'acuity_band_low', 'acuity_band_high')
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(Archetype)
+class ArchetypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'primary_stat_1', 'primary_stat_2', 'unarmed_message_pool')
+    prepopulated_fields = {'slug': ('name',)}
+    raw_id_fields = ('unarmed_message_pool',)
 
 
 class AreaInline(admin.TabularInline):
@@ -53,8 +80,8 @@ class RoomAdmin(admin.ModelAdmin):
 @admin.register(Character)
 class CharacterAdmin(admin.ModelAdmin):
     list_display = ('name', 'user', 'level', 'unspent_stat_points', 'origin', 'archetype', 'current_room', 'last_seen')
-    list_filter = ('origin', 'archetype', 'is_hardcore', 'is_dead')
-    raw_id_fields = ('current_room', 'recall_room')
+    list_filter = ('archetype', 'is_hardcore', 'is_dead')
+    raw_id_fields = ('origin', 'archetype', 'current_room', 'recall_room')
     readonly_fields = ('wallet_display',)
     list_select_related = ('user__profile',)
     fieldsets = (
@@ -189,7 +216,7 @@ class NpcDefinitionAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'genre_tag', 'is_aggressive', 'is_unique', 'respawn_minutes')
     list_filter = ('genre_tag', 'is_aggressive', 'is_unique')
     prepopulated_fields = {'slug': ('name',)}
-    raw_id_fields = ('loot_table',)
+    raw_id_fields = ('loot_table', 'unarmed_message_pool')
     inlines = [NpcEffectInline]
 
 

@@ -1209,7 +1209,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         try:
             char = (
                 Character.objects
-                .select_related('current_room__zone', 'recall_room', 'user__profile')
+                .select_related(
+                    'current_room__zone', 'recall_room', 'user__profile',
+                    'archetype__unarmed_message_pool',
+                )
                 .get(user=user)
             )
             return char
@@ -1432,7 +1435,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_character_fresh(self):
         char = Character.objects.select_related(
-            'current_room__zone', 'current_room__area', 'recall_room', 'user__profile'
+            'current_room__zone', 'current_room__area', 'recall_room', 'user__profile',
+            'archetype__unarmed_message_pool',
         ).get(pk=self.character_pk)
         self.character = char
         self._character_is_dying = char.is_dying

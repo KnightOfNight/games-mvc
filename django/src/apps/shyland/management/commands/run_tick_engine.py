@@ -158,10 +158,17 @@ class Command(BaseCommand):
             @_dsa
             def load_participants(session):
                 chars = list(session.characters.select_related(
-                    'user__profile', 'current_room__area'
+                    'user__profile', 'current_room__area',
+                    'archetype__unarmed_message_pool',
+                ).prefetch_related(
+                    'archetype__unarmed_message_pool__messages',
                 ).all())
-                npcs = list(session.npcs.select_related('definition').prefetch_related(
-                    'definition__effects__effect_definition'
+                npcs = list(session.npcs.select_related(
+                    'definition',
+                    'definition__unarmed_message_pool',
+                ).prefetch_related(
+                    'definition__effects__effect_definition',
+                    'definition__unarmed_message_pool__messages',
                 ).all())
                 return chars, npcs
 
@@ -240,7 +247,7 @@ class Command(BaseCommand):
                 from apps.shyland.combat_utils import (
                     get_npc_stats, resolve_hit, calculate_damage,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
-                    xp_for_next_level, recalculate_bars,
+                    xp_for_next_level, recalculate_bars, get_unarmed_message,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -300,11 +307,19 @@ class Command(BaseCommand):
                         npc.vitality_current = max(0, npc.vitality_current - damage_int)
                         npc.save(update_fields=['vitality_current'])
 
-                        if hit_result == 'critical':
-                            msg = f"You land a critical hit on the {npc.definition.name} for {damage_int} damage!"
+                        if weapon_item:
+                            if hit_result == 'critical':
+                                flavor = f"You land a critical hit on the {npc.definition.name}"
+                            else:
+                                flavor = f"You hit the {npc.definition.name}"
                         else:
-                            msg = f"You hit the {npc.definition.name} for {damage_int} damage."
+                            pool = character.archetype.unarmed_message_pool if character.archetype_id else None
+                            raw = get_unarmed_message(pool, f"the {npc.definition.name}")
+                            flavor = raw.rstrip('.')
+                            if hit_result == 'critical':
+                                flavor = f"[Critical] {flavor}"
 
+                        msg = f"{flavor} for {damage_int} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" The {npc.definition.name} {health_desc}."
                         messages.append((character.pk, msg, 'combat'))
@@ -375,10 +390,13 @@ class Command(BaseCommand):
 
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 
+                        npc_pool = npc.definition.unarmed_message_pool
+                        raw = get_unarmed_message(npc_pool, character.name)
+                        flavor = raw.rstrip('.')
                         if hit_result == 'critical':
-                            msg = f"The {npc.definition.name} lands a critical hit on you for {damage_int} damage!"
+                            msg = f"[Critical] {flavor} for {damage_int} damage!"
                         else:
-                            msg = f"The {npc.definition.name} hits you for {damage_int} damage."
+                            msg = f"{flavor} for {damage_int} damage."
 
                         effect_msgs = apply_npc_effects(npc, character)
                         if effect_msgs:

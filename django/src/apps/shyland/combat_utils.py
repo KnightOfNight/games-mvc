@@ -128,6 +128,27 @@ def apply_npc_effects(npc_instance, target_character):
     return messages
 
 
+def get_unarmed_message(attacker_pool, target_name):
+    """
+    Select a random unarmed attack message from the given pool.
+    Falls back to the 'default' pool if attacker_pool is None or has no messages.
+    Returns a formatted string with target_name substituted.
+    Caller is responsible for prefetching pool.messages before calling.
+    """
+    import random
+    messages = list(attacker_pool.messages.all()) if attacker_pool else []
+    if not messages:
+        from apps.shyland.models import UnarmedMessagePool
+        try:
+            default_pool = UnarmedMessagePool.objects.prefetch_related('messages').get(slug='default')
+            messages = list(default_pool.messages.all())
+        except UnarmedMessagePool.DoesNotExist:
+            return f"You strike {target_name}."
+    if not messages:
+        return f"You strike {target_name}."
+    return random.choice(messages).template.format(target=target_name)
+
+
 def xp_for_kill(npc_instance, character):
     """Return XP awarded for killing an NPC."""
     return int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor)

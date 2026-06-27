@@ -1,7 +1,8 @@
 from django.core.management.base import BaseCommand
 from apps.shyland.models import (
-    Area, EffectComponent, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
-    NpcDefinition, NpcEffect, NpcInstance, Room, Zone,
+    Area, Archetype, EffectComponent, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
+    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, Zone,
+    UnarmedMessage, UnarmedMessagePool,
 )
 
 WEAPON_DUR = [
@@ -173,8 +174,80 @@ class Command(BaseCommand):
         self.stdout.write(f'  Set new characters\' current_room to pk={center.pk}.')
         self.stdout.write(f'  Area "{convergence_area.name}" assigned to all {zone.name} rooms.')
 
+        self._seed_unarmed_pools()
+        self._seed_origins()
+        self._seed_archetypes()
         self._seed_effects()
         self._seed_items()
+
+    def _seed_unarmed_pools(self):
+        default_pool, created = UnarmedMessagePool.objects.get_or_create(
+            slug='default',
+            defaults={'name': 'Default'},
+        )
+        self.stdout.write(f'  UnarmedMessagePool "Default" {"created" if created else "exists"}.')
+
+        UnarmedMessage.objects.filter(pool=default_pool).delete()
+        messages = [
+            "You punch {target}.",
+            "You kick {target}.",
+            "You shove {target} hard.",
+            "You swing at {target}.",
+            "You lunge at {target}.",
+            "You jab {target}.",
+            "You strike {target}.",
+            "You slam into {target}.",
+            "You drive your shoulder into {target}.",
+            "You throw a wild hit at {target}.",
+        ]
+        for i, template in enumerate(messages):
+            UnarmedMessage.objects.create(pool=default_pool, template=template, order=i)
+        self.stdout.write(f'  Seeded {len(messages)} UnarmedMessages in "Default" pool.')
+
+    def _seed_origins(self):
+        origins = [
+            {'slug': 'highborn',    'name': 'Highborn',    'acuity_baseline': 1.0,  'acuity_band_low': 0.85, 'acuity_band_high': 1.15},
+            {'slug': 'feral',       'name': 'Feral',       'acuity_baseline': 0.95, 'acuity_band_low': 0.80, 'acuity_band_high': 1.10},
+            {'slug': 'streetborn',  'name': 'Streetborn',  'acuity_baseline': 1.0,  'acuity_band_low': 0.85, 'acuity_band_high': 1.15},
+            {'slug': 'irradiated',  'name': 'Irradiated',  'acuity_baseline': 0.90, 'acuity_band_low': 0.75, 'acuity_band_high': 1.05},
+            {'slug': 'undying',     'name': 'Undying',     'acuity_baseline': 0.80, 'acuity_band_low': 0.65, 'acuity_band_high': 1.00},
+            {'slug': 'machinekind', 'name': 'Machinekind', 'acuity_baseline': 1.05, 'acuity_band_low': 0.90, 'acuity_band_high': 1.20},
+            {'slug': 'voidtouched', 'name': 'Voidtouched', 'acuity_baseline': 0.70, 'acuity_band_low': 0.40, 'acuity_band_high': 1.30},
+        ]
+        for data in origins:
+            _, created = Origin.objects.get_or_create(
+                slug=data['slug'],
+                defaults={
+                    'name': data['name'],
+                    'description': '',
+                    'acuity_baseline': data['acuity_baseline'],
+                    'acuity_band_low': data['acuity_band_low'],
+                    'acuity_band_high': data['acuity_band_high'],
+                },
+            )
+            self.stdout.write(f'  Origin "{data["name"]}" {"created" if created else "exists"}.')
+
+    def _seed_archetypes(self):
+        archetypes = [
+            {'slug': 'blade',     'name': 'Blade',     'primary_stat_1': 'str', 'primary_stat_2': 'dex'},
+            {'slug': 'bulwark',   'name': 'Bulwark',   'primary_stat_1': 'str', 'primary_stat_2': 'end'},
+            {'slug': 'shade',     'name': 'Shade',     'primary_stat_1': 'dex', 'primary_stat_2': 'int'},
+            {'slug': 'conduit',   'name': 'Conduit',   'primary_stat_1': 'int', 'primary_stat_2': 'wis'},
+            {'slug': 'warden',    'name': 'Warden',    'primary_stat_1': 'wis', 'primary_stat_2': 'end'},
+            {'slug': 'gunner',    'name': 'Gunner',    'primary_stat_1': 'dex', 'primary_stat_2': 'per'},
+            {'slug': 'machinist', 'name': 'Machinist', 'primary_stat_1': 'int', 'primary_stat_2': 'dex'},
+        ]
+        for data in archetypes:
+            _, created = Archetype.objects.get_or_create(
+                slug=data['slug'],
+                defaults={
+                    'name': data['name'],
+                    'description': '',
+                    'primary_stat_1': data['primary_stat_1'],
+                    'primary_stat_2': data['primary_stat_2'],
+                },
+            )
+            self.stdout.write(f'  Archetype "{data["name"]}" {"created" if created else "exists"}.')
 
     def _seed_effects(self):
         # --- Healing Draught ---
