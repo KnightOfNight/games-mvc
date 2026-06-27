@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 13.0 — Working Draft**
+**Version 14.0 — Working Draft**
 
 -----
 
@@ -21,6 +21,7 @@
 | v11     | v11             | Effects ticking, level-up, and stat spending implemented. Section 3.5 updated: XP threshold formula (`level² × 100`) now implemented; `spend <stat> <amount>` and `stats` commands live; bar recalculation formula confirmed (`vitality_max = END×10 + STR×3 + level×5`; `longevity_max = END×8 + WIS×5 + level×5`). Section 4.2 Acuity drift note updated: passive drift toward Origin baseline is now implemented. Section 9.1 implemented commands updated: `kill`/`attack`, `flee`, `stats`, `spend` added. Section 9.2 planned commands updated: `kill`/`attack` and `flee` removed. Section 10.4 tick architecture updated: `process_effect_expiry()` replaced by `process_effects()` with three phases (effect ticking, passive Acuity drift, expiry). Section 12 Future Systems updated: Level-Up Trigger, Acuity Drift, and DoT/HoT Per-Tick Application rows removed. |
 | v12     | v12             | Effect system redesign. `EffectDefinition` is now a pure container; all behavior lives in child `EffectComponent` rows. `EffectInstance` is now a container with child `EffectComponentInstance` rows storing per-component magnitude, expiry, and lifecycle state. New `effect_utils.py` centralizes all effect application logic. Mk tier scaling: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)`; `duration = duration_base + (duration_scaling × mk_tier)`. Instantaneous components have `duration_base=0`, `duration_scaling=0` — no `EffectComponentInstance` row created. Reapplication: same or higher Mk tier resets; lower Mk tier ignored silently. Expiry messages: one per parent `EffectInstance` if all components expire together; one per component if staggered. `make db-reset` Makefile target added. Section 6.9 rewritten to reflect new model structure. Section 10.4 tick architecture updated: `process_effects()` now queries `EffectComponentInstance` rows. Section 12 Future Systems: effect system redesign row removed. |
 | v13     | v13             | Three bug fixes (status bar maximums added to payload, `format_wallet()` select_related corrected, combat status `room_name` fixed) plus four features: `brief` toggle implemented; `Origin` and `Archetype` promoted from CharField choices to full models; `UnarmedMessagePool` and `UnarmedMessage` models introduced; unarmed combat wired as an explicit feature with random flavor messaging. Section 3.2 updated: Origin is now a model owning Acuity baseline and band values. Section 3.3 updated: Archetype is now a model owning primary stats and unarmed message pool FK. Section 4.2 updated: Acuity defaults now read from `Origin` model; `_ACUITY_DEFAULTS` dict removed. Section 5.2 updated: room description on combat entry is intentionally suppressed — design decision, not a bug. Section 5.4 updated: unarmed combat documented explicitly. Section 9.1 updated: `brief` command added. Section 9.3 updated: boolean command rule added. Section 10.4 updated: status payload now includes bar maximums and Acuity band bounds. Section 12 Future Systems: Brief Toggle row removed; unarmed pool customization rows added. |
+| v14     | v14             | Passive out-of-combat regeneration implemented for Vitality and Longevity. Section 4.1 updated: Vitality recovery description now specifies the regen formula and gate conditions; Machinekind note updated (passive regen applies via nanomachine narrative). Section 4.3 updated: Longevity recovery description updated to reflect passive regen now implemented, with its 30× slower rate noted. Section 10.4 updated: `process_effects()` now has four phases; Phase 4 (passive bar regeneration) documented. |
 
 -----
 
@@ -421,9 +422,9 @@ This is one of Shyland's most distinctive systems. All characters have three res
 - Physical resistance degrades at low Vitality
 - Reaching 0 Vitality triggers the Dying state
 
-**Recovery:** Healing spells, medkits, potions, natural regen (slow, out of combat only).
+**Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. Formula: `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` per tick, minimum 1 point per tick when any healing is due. At the default constant of 120 seconds, a character at zero Vitality reaches full in at most 120 seconds; a character missing one point heals in a single tick. Regen is silent — no message is sent; players observe recovery through the status bar.
 
-**Machinekind note:** Machinekind characters cannot be healed by magic. Their Vitality is restored only through repair items and the Machinist archetype's self-repair abilities.
+**Machinekind note:** Machinekind characters cannot be healed by magic. However, passive regeneration applies to Machinekind via nanomachine self-repair — the narrative framing differs, the mechanic is identical.
 
 ### 4.2 Acuity
 
@@ -482,7 +483,7 @@ This is one of Shyland's most distinctive systems. All characters have three res
 - Controls the window of long-lasting buffs and debuffs
 - At low Longevity: sustained spells collapse early, long fights become increasingly punishing
 
-**Recovery:** Longevity recovers slowly — much slower than Vitality. Short rests help slightly. Full recovery requires extended downtime or specific Warden abilities. It is the hardest bar to restore and the one players are most likely to mismanage over a long dungeon run.
+**Recovery:** Longevity recovers passively out of combat using the same formula as Vitality but with a much slower time constant (`LONGEVITY_REGEN_SECS = 3600`): `ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)` per tick, minimum 1 point per tick when any healing is due. At 3600 seconds, full Longevity recovery from zero takes at most one hour — 30× slower than Vitality. Warden abilities can accelerate this. It is the hardest bar to restore and the one players are most likely to mismanage over a long dungeon run.
 
 **Design intent:** Longevity is the dungeon stamina resource. A player might enter a dungeon with full Vitality and Acuity but low Longevity from previous fights, and feel it immediately in their sustained performance. It rewards planning and discourages endless grinding without rest.
 
@@ -1306,7 +1307,7 @@ The game server runs a **tick engine** implemented as a Django management comman
 1. **`process_combat()`** — resolves combat rounds for all active `CombatSession` rows; handles dying-state expiry and stale-session cleanup
 1. **`process_corpse_decay()`** — deletes corpses whose `decay_at` has passed
 1. **`process_npc_respawn()`** — creates fresh `NpcInstance` rows for dead NPCs whose `respawn_at` has passed
-1. **`process_effects()`** — three phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive
+1. **`process_effects()`** — four phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive; (4) passive bar regeneration every tick — for all characters not in an active `CombatSession` and not `is_dying`, heals Vitality by `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` and Longevity by `ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)`, skipping bars already at max; sends a silent status update to the player's personal group when any bar changes; all Origins including Machinekind receive Phase 4 regen
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
 
@@ -1474,5 +1475,5 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 
 -----
 
-*Document version 13.0 — Shyland Working Draft*
+*Document version 14.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
