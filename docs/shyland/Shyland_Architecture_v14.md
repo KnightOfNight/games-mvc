@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 67889e2 (v13b: Origin/Archetype models, unarmed combat messaging).
+> Authoritative technical reference as of commit f4d212e (v14: passive out-of-combat regeneration).
 > Describes what is built. For design intent see the current GDD.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v13b promotes `Origin` and `Archetype` from CharField choices to full models, introduces the unarmed combat message system (`UnarmedMessagePool`, `UnarmedMessage`), and wires random unarmed flavor text into combat rounds for both player and NPC attacks. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v14 adds passive out-of-combat Vitality and Longevity regeneration to the tick engine. Regen is silent — no message is sent to the player; the status bar update is the only signal. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -131,6 +131,8 @@ DEATH_DURABILITY_LOSS = 10.0  # durability % lost per equipped item on death
 CORPSE_DECAY_MINUTES  = 10    # minutes until a corpse is deleted by the tick engine
 ACUITY_DRIFT_RATE     = 0.01  # Acuity movement per tick toward baseline
 STAT_POINTS_PER_LEVEL = 5     # unspent stat points awarded per level-up
+VITALITY_REGEN_SECS   = 120   # seconds to regen full Vitality from zero out of combat
+LONGEVITY_REGEN_SECS  = 3600  # seconds to regen full Longevity from zero out of combat
 ```
 
 #### `UnarmedMessagePool`
@@ -393,7 +395,16 @@ Death handling (`execute_death`) unchanged from v13a.
 
 `get_ticking_component_instances` includes `effect_instance__target__current_room__area` in its `select_related` chain so that `_build_status` works correctly for effect-tick status updates.
 
-All other phases unchanged from v12.
+Phases 1–3 unchanged from v12.
+
+**Phase 4 — Passive bar regeneration (every tick)**
+
+Queries all `Character` rows where `is_dying=False` and at least one bar is below max. Excludes any character with an active `CombatSession`. For each eligible character:
+
+- `vitality_heal = ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` if below max, else 0
+- `longevity_heal = ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)` if below max, else 0
+
+Applies heals, caps at max, saves only changed fields, then sends a `_build_status()` payload to the character's personal group. No message text is sent — the status update is the only signal. All Origins including Machinekind receive passive regen (nanomachine narrative).
 
 #### `_build_status(character) → dict`
 
@@ -496,6 +507,8 @@ These are settled. Do not revisit without deliberate consideration.
 **Unarmed combat is explicit, not a fallback.** No weapon equipped means no weapon damage component — the formula is unchanged. Flavor messaging comes from the attacker's `UnarmedMessagePool`, falling back to the default pool.
 
 **`UnarmedMessage.template` uses Python `.format(target=name)`.** This is the established pattern for all configurable message templates going forward.
+
+**Passive regen is silent and gate-only.** No combat session + not dying = regen fires. No delay, no Origin exceptions, no player notification. Formula: `ceil((max - current) / ticks_to_full)`. Minimum effective heal of 1 per tick prevents stall. Both bars covered; Longevity recovers 30× slower than Vitality.
 
 ---
 
