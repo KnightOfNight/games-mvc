@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit TBD (v13a: status bar maximums, combat room_name, brief toggle).
+> Authoritative technical reference as of commit 1f7496d (v13a: status bar maximums, combat room_name, brief toggle).
 > Describes what is built. For design intent see the current GDD.
 
 ---
