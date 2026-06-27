@@ -112,7 +112,7 @@ games-mvc/
 ├── docs/
 │   └── shyland/                 ← Shyland documentation
 │       ├── Shyland_GDD_v3.md    ← full game design document
-│       └── Shyland_Architecture_v13.md ← technical architecture reference
+│       └── Shyland_Architecture_v14.md ← technical architecture reference
 ├── scripts/
 │   ├── init.py                  ← setup wizard (writes .env)
 │   └── check_secrets.py         ← pre-start validation
@@ -189,7 +189,7 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 {"type": "status", "vitality": N, "acuity": N, "longevity": N, "room_name": "..."}
 ```
 
-**Architecture reference:** `docs/shyland/Shyland_Architecture_v13.md`
+**Architecture reference:** `docs/shyland/Shyland_Architecture_v14.md`
 **Game design reference:** `docs/shyland/Shyland_GDD_v3.md`
 
 ---
