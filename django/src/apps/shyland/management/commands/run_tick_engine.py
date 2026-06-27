@@ -772,6 +772,61 @@ class Command(BaseCommand):
                     f"EffectInstance closed: {parent.definition.slug} on {parent.target.name}"
                 )
 
+        # ---- Phase 4: Passive bar regeneration (every tick) ----
+        import math
+        from apps.shyland.models import VITALITY_REGEN_SECS, LONGEVITY_REGEN_SECS
+
+        @database_sync_to_async
+        def get_regen_candidates():
+            from django.db.models import Q, F
+            candidates = list(Character.objects.filter(
+                is_dying=False,
+            ).filter(
+                Q(vitality_current__lt=F('vitality_max')) |
+                Q(longevity_current__lt=F('longevity_max'))
+            ).select_related(
+                'current_room__area',
+                'origin',
+            ))
+            result = []
+            for char in candidates:
+                if not char.combat_sessions.filter(is_active=True).exists():
+                    result.append(char)
+            return result
+
+        @database_sync_to_async
+        def save_regen(char, fields):
+            char.save(update_fields=fields)
+
+        regen_candidates = await get_regen_candidates()
+
+        for character in regen_candidates:
+            changed_fields = []
+
+            if character.vitality_current < character.vitality_max:
+                heal = math.ceil(
+                    (character.vitality_max - character.vitality_current) / VITALITY_REGEN_SECS
+                )
+                character.vitality_current = min(
+                    character.vitality_current + heal, character.vitality_max
+                )
+                changed_fields.append('vitality_current')
+
+            if character.longevity_current < character.longevity_max:
+                heal = math.ceil(
+                    (character.longevity_max - character.longevity_current) / LONGEVITY_REGEN_SECS
+                )
+                character.longevity_current = min(
+                    character.longevity_current + heal, character.longevity_max
+                )
+                changed_fields.append('longevity_current')
+
+            if changed_fields:
+                await save_regen(character, changed_fields)
+                await self.send_to_player(
+                    character.pk, '', 'status', self._build_status(character)
+                )
+
     def _build_status(self, character):
         return {
             'type': 'status',

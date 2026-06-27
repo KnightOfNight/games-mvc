@@ -10,6 +10,8 @@ XP_PENALTY_MIN_LEVEL  = 10
 DEATH_DURABILITY_LOSS = 10.0
 ACUITY_DRIFT_RATE     = 0.01
 STAT_POINTS_PER_LEVEL = 5
+VITALITY_REGEN_SECS   = 120   # seconds to regen full Vitality from zero out of combat
+LONGEVITY_REGEN_SECS  = 3600  # seconds to regen full Longevity from zero out of combat
 
 class Zone(models.Model):
     DANGER_BEGINNER = 'beginner'
