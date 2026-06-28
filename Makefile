@@ -13,6 +13,10 @@ PROJECT_DIR     := $(shell pwd)
         migrate makemigrations createsuperuser gen-certs check-secrets \
         new-app _nginx-conf db-reset help
 
+# flist
+flist:
+	@find `ls` | egrep -v -e '__pycache__/' -e '^ssl' > docs/shyland/flist
+
 # ---------------------------------------------------------------------------
 # First-time setup
 # ---------------------------------------------------------------------------
