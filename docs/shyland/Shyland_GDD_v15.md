@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 14.0 — Working Draft**
+**Version 15.0 — Working Draft**
 
 -----
 
@@ -22,6 +22,7 @@
 | v12     | v12             | Effect system redesign. `EffectDefinition` is now a pure container; all behavior lives in child `EffectComponent` rows. `EffectInstance` is now a container with child `EffectComponentInstance` rows storing per-component magnitude, expiry, and lifecycle state. New `effect_utils.py` centralizes all effect application logic. Mk tier scaling: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)`; `duration = duration_base + (duration_scaling × mk_tier)`. Instantaneous components have `duration_base=0`, `duration_scaling=0` — no `EffectComponentInstance` row created. Reapplication: same or higher Mk tier resets; lower Mk tier ignored silently. Expiry messages: one per parent `EffectInstance` if all components expire together; one per component if staggered. `make db-reset` Makefile target added. Section 6.9 rewritten to reflect new model structure. Section 10.4 tick architecture updated: `process_effects()` now queries `EffectComponentInstance` rows. Section 12 Future Systems: effect system redesign row removed. |
 | v13     | v13             | Three bug fixes (status bar maximums added to payload, `format_wallet()` select_related corrected, combat status `room_name` fixed) plus four features: `brief` toggle implemented; `Origin` and `Archetype` promoted from CharField choices to full models; `UnarmedMessagePool` and `UnarmedMessage` models introduced; unarmed combat wired as an explicit feature with random flavor messaging. Section 3.2 updated: Origin is now a model owning Acuity baseline and band values. Section 3.3 updated: Archetype is now a model owning primary stats and unarmed message pool FK. Section 4.2 updated: Acuity defaults now read from `Origin` model; `_ACUITY_DEFAULTS` dict removed. Section 5.2 updated: room description on combat entry is intentionally suppressed — design decision, not a bug. Section 5.4 updated: unarmed combat documented explicitly. Section 9.1 updated: `brief` command added. Section 9.3 updated: boolean command rule added. Section 10.4 updated: status payload now includes bar maximums and Acuity band bounds. Section 12 Future Systems: Brief Toggle row removed; unarmed pool customization rows added. |
 | v14     | v14             | Passive out-of-combat regeneration implemented for Vitality and Longevity. Section 4.1 updated: Vitality recovery description now specifies the regen formula and gate conditions; Machinekind note updated (passive regen applies via nanomachine narrative). Section 4.3 updated: Longevity recovery description updated to reflect passive regen now implemented, with its 30× slower rate noted. Section 10.4 updated: `process_effects()` now has four phases; Phase 4 (passive bar regeneration) documented. |
+| v15     | v15             | World-building schema additions. `NpcDefinition` gains `combat_tier` field (Normal/Elite/Champion/Boss/World Boss). `RoomSpawn` model introduced as the authoritative source of truth for NPC population; tick engine `process_npc_respawn()` rewritten to use it. `VendorEntry` model introduced linking NPC definitions to items with explicit copper prices, enabling vendor authoring before buy/sell commands exist. `ZoneGate` model introduced for fast-travel configuration, enabling gate authoring before the travel command exists. Per-direction blocked exit messages added to `Room` — six optional fields allowing builders to override the generic "no exit" response per direction. Section 2.4 updated: blocked exit messages documented. Section 2.6 updated: zone gates now have a schema backing. Section 5.9 updated: `combat_tier` documented; `RoomSpawn` documented; respawn description updated. Section 6.12 updated: `VendorEntry` model noted. Section 10.4 updated: `process_npc_respawn()` now `RoomSpawn`-driven. Section 12 updated: Room Spawn Configuration row removed; new deferred rows added for buy/sell commands, zone gate travel command, and combat tier behavior. |
 
 -----
 
@@ -181,6 +182,7 @@ Each room is the atomic unit of the world. Rooms contain:
 - **Brief description** — required on every room; shown on repeat visits or when `brief_mode` is on (see Section 9.3). Non-null, non-blank — no fallback path exists
 - **Area** — optional parent area providing shared ambient context (see 2.3)
 - **Exit list** — directional links to adjacent rooms (N, S, E, W, U, D, and custom named exits)
+- **Blocked exit messages** — six optional per-direction fields (`no_exit_north_msg`, `no_exit_south_msg`, `no_exit_east_msg`, `no_exit_west_msg`, `no_exit_up_msg`, `no_exit_down_msg`). When a player attempts to move in a direction with no exit, the room's custom message for that direction is sent if set; otherwise the hardcoded default is used. Defaults: cardinals → `"There is no exit in that direction."`; up → `"There is nothing above you."`; down → `"You'd have to dig to go that way."` All six fields are optional; a room with none set uses all defaults.
 - **Flags** — booleans that modify room behavior (see below)
 - **Contents** — current list of players, NPCs, and items present
 
@@ -220,7 +222,7 @@ Players move using directional commands: `north`, `south`, `east`, `west`, `up`,
 Special travel options:
 
 - **Recall scroll** — teleports player to their bound recall point (default: The Convergence)
-- **Zone gates** — fixed fast-travel points between zones, requiring discovery first
+- **Zone gates** — fixed fast-travel points between zones, requiring discovery first. The `ZoneGate` model is now in place: each gate links a source room to a destination room, with optional bidirectionality and a discovery requirement (the character must have previously visited the source room before using the gate from elsewhere). The travel command is not yet implemented; gate configurations can be authored in Django admin.
 
 Mounts are deferred to a future version.
 
@@ -629,15 +631,17 @@ Parties of up to 6 players. Enemies maintain a threat table — highest threat c
 
 Enemies have:
 
-- A **combat tier** (Normal, Elite, Champion, Boss, World Boss)
+- A **combat tier** — one of: Normal, Elite, Champion, Boss, World Boss. Stored as `NpcDefinition.combat_tier`. All existing NPCs default to Normal. The field exists for display, content authoring, and future AI/balance differentiation; no tier-specific behavior is implemented yet.
 - **Archetype flags** governing tactics
 - **Effects list** — each NPC definition carries a list of `NpcEffect` entries. Each entry links to an `EffectDefinition` and has a per-entry `effect_chance` (0.0–1.0). On each NPC attack, every entry is rolled independently; those that fire are applied via the shared `EffectInstance` system and appended to the attack message. An NPC with no effects is a pure auto-attacker. Higher-Mk NPC definitions can carry longer effect lists or higher-magnitude effects to increase difficulty. Telegraph and phase-change mechanics are deferred to later content work
 - **Unarmed message pool** — an optional FK on `NpcDefinition` to an `UnarmedMessagePool`. If null, falls back to the default pool. Used when the NPC has no weapon equipped
 - **Loot tables** — normalized `LootTable` and `LootTableEntry` models; one table can be shared across multiple NPC definitions
 
-NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one.
+NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer, combat tier) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one.
 
-**On death:** a `Corpse` is created from the `NpcInstance`. The `NpcInstance` row is deleted; a new row is created when the respawn timer fires. Dead NPCs are never reused — respawn always creates a fresh instance.
+**Room population is configured via `RoomSpawn`.** Each `RoomSpawn` row declares that a specific room should contain a specific count of a specific NpcDefinition at a specific Mk tier. The tick engine uses this as the sole source of truth for NPC population — it does not infer spawn configuration from existing instance rows. Fields: `room`, `npc_definition`, `mk_tier`, `count` (desired live instances), `is_active`. Unique on `(room, npc_definition, mk_tier)`.
+
+**Respawn mechanics:** When an NPC dies, the `NpcInstance` row is marked dead (`is_alive=False`) with a `respawn_at` timestamp set based on `NpcDefinition.respawn_minutes`. Each tick, the engine clears dead instances whose `respawn_at` has passed, then fills any gap between the current live count and the configured `count`, subject to a total cap of `count × 2` instances (live + dead combined). This cap prevents unbounded dead-instance accumulation while still allowing the respawn timer to control when replacements appear.
 
 **Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep.
 
@@ -993,6 +997,8 @@ Display rules:
 - **Repair vendor** — restores equipment durability
 - **Skill trainer** — sells skill books for cross-tree skills
 
+Vendor inventory is configured via the **`VendorEntry`** model. Each row links an `NpcDefinition` to an `ItemDefinition` with a Mk tier and an explicit copper price. An NPC with one or more `VendorEntry` rows is a vendor — no flag is needed on `NpcDefinition` itself. Stock can be unlimited (`stock_limit = null`) or finite (a set integer). The `buy` and `sell` commands are not yet implemented; `VendorEntry` rows can be authored in Django admin in preparation.
+
 **The Robotic Helper NPC:** A unique NPC that can be summoned by players in the field. There is only one. It is not instanced per player. It will not always come when called. It functions as a mobile vendor alternative to stationary vendors in town. Full design TBD.
 
 Vendor inventory refreshes on a timer. Some vendors carry rare rotating stock.
@@ -1121,7 +1127,7 @@ These commands exist in the current codebase and are available to all players.
 |`up`   |`u`  |Move up if an exit exists   |
 |`down` |`d`  |Move down if an exit exists |
 
-If no exit exists in the requested direction, the server responds with a message and no movement occurs. Movement has no action economy cost outside of combat.
+If no exit exists in the requested direction, the server responds with a message and no movement occurs. The message is either a custom per-direction message set on the room (via `no_exit_*_msg` fields) or the hardcoded default for that direction. Movement has no action economy cost outside of combat.
 
 #### Exploration
 
@@ -1306,7 +1312,7 @@ The game server runs a **tick engine** implemented as a Django management comman
 
 1. **`process_combat()`** — resolves combat rounds for all active `CombatSession` rows; handles dying-state expiry and stale-session cleanup
 1. **`process_corpse_decay()`** — deletes corpses whose `decay_at` has passed
-1. **`process_npc_respawn()`** — creates fresh `NpcInstance` rows for dead NPCs whose `respawn_at` has passed
+1. **`process_npc_respawn()`** — `RoomSpawn`-driven. Each tick: (a) loads all active `RoomSpawn` rows; (b) for each spawn, deletes dead `NpcInstance` rows for that definition/room/mk_tier where `respawn_at__lte=now`; (c) counts remaining live and dead instances; (d) computes `to_create = min(spawn.count - live_count, (spawn.count × 2) - (live_count + dead_count))`; (e) creates that many new live `NpcInstance` rows. Dead instances persist until their `respawn_at` passes — this is what controls the respawn delay. The cap at `count × 2` total instances prevents unbounded dead-instance accumulation.
 1. **`process_effects()`** — four phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive; (4) passive bar regeneration every tick — for all characters not in an active `CombatSession` and not `is_dying`, heals Vitality by `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` and Longevity by `ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)`, skipping bars already at max; sends a silent status update to the player's personal group when any bar changes; all Origins including Machinekind receive Phase 4 regen
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
@@ -1395,11 +1401,12 @@ Required v1 admin capabilities:
 
 Web-based builder interface (separate from game client) for authorized staff:
 
-- Create/edit zones, areas, rooms (all fields, flags, exits, coordinates)
-- Create/edit NPCs (stats, loot tables, dialogue trees, Acuity-affecting abilities)
+- Create/edit zones, areas, rooms (all fields, flags, exits, coordinates, blocked exit messages)
+- Create/edit NPCs (stats, loot tables, dialogue trees, Acuity-affecting abilities, combat tier, spawn configuration via RoomSpawn, vendor inventory via VendorEntry)
 - Create/edit ItemDefinitions (all properties, scaling parameters, secondary stat pools, durability tables, effects)
 - Create/edit EffectDefinitions (effect type, magnitude range, duration range, scaling)
 - Create/edit quests (objectives, rewards, branching logic)
+- Create/edit ZoneGates (source room, destination room, discovery requirements)
 - Teleport to any room, spawn items/NPCs for testing
 
 Changes can be staged and reviewed before going live.
@@ -1453,6 +1460,9 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — fields and display logic are in place; trigger mechanism not yet implemented.|
 |**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. Corpse decay sweep and NPC respawn implemented in tick engine. Full NPC AI deferred.|
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
+|**Buy/Sell Commands**                  |`VendorEntry` model exists; vendor inventories can be authored in admin. No `buy` or `sell` commands yet implemented.              |
+|**Zone Gate Travel Command**           |`ZoneGate` model exists; gate configurations can be authored in admin. No travel command yet implemented.                          |
+|**Per-Combat-Tier NPC Behavior**       |`NpcDefinition.combat_tier` field exists (Normal/Elite/Champion/Boss/World Boss). No differentiated AI or balance behavior yet.    |
 |**Durability Degradation Tick**        |Model field exists; tick logic not yet implemented.                                                                                |
 |**Repair Mechanic**                    |Repair vendors and crafting-based repair not yet implemented.                                                                      |
 |**Minimap**                            |`RoomVisit` fog-of-war records exist but minimap rendering not yet built.                                                          |
@@ -1467,7 +1477,6 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**The Wastelands Scaling Logic**       |Dynamic content scaling at spawn time not yet implemented.                                                                         |
 |**Durability Degradation in Combat**   |Death penalty (10% per death) implemented. Per-hit weapon degradation during combat not yet implemented.                           |
 |**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.            |
-|**Room Spawn Configuration**           |No builder tool yet for configuring NPC spawns in rooms. NPCs are placed via seed command or Django admin.                         |
 |**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
 |**Origin and Archetype Descriptions**  |Description fields exist on both models but are seeded blank. Content deferred to character creation version.                      |
@@ -1475,5 +1484,5 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 
 -----
 
-*Document version 14.0 — Shyland Working Draft*
+*Document version 15.0 — Shyland Working Draft*
 *All systems subject to revision during development.*
