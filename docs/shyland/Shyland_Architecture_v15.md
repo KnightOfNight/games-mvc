@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit TBD (v15: world-building schema).
+> Authoritative technical reference as of commit 7847f83 (v15: world-building schema).
 > Describes what is built. For design intent see the current GDD.
 
 ---
