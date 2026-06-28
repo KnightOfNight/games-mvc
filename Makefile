@@ -9,9 +9,9 @@ DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
-.PHONY: setup init build start stop restart logs tick-logs shell \
+.PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app _nginx-conf db-reset help
+        new-app push-certs db-reset help
 
 # flist
 flist:
@@ -22,7 +22,7 @@ flist:
 # ---------------------------------------------------------------------------
 
 ## setup: wizard + build + start (single command for a fresh install)
-setup: init check-secrets _nginx-conf build start
+setup: init check-secrets push-certs build start
 	@echo ""
 	@echo "game-mvc is running at https://$(DOMAIN):$(HOST_PORT)"
 
@@ -31,27 +31,28 @@ init:
 	python3 scripts/init.py
 
 # ---------------------------------------------------------------------------
-# nginx config generation
+# SSL certs
 # ---------------------------------------------------------------------------
 
-_nginx-conf: nginx/conf/default.conf
-
-nginx/conf/default.conf: nginx/conf/default.conf.template .env
-	@set -a && . ./.env && set +a && \
-	    envsubst '$$TLS_CERT_NAME $$DOMAIN' < $< > $@
-	@echo "Generated nginx/conf/default.conf"
+## push-certs: upload local ssl/ certs into the Docker ssl volume (works with DOCKER_HOST)
+push-certs:
+	@test -n "$(TLS_CERT_NAME)" || (echo "Run 'make init' first to set TLS_CERT_NAME" && exit 1)
+	docker run -d --name ssl-tmp -v $(COMPOSE_PROJECT)_ssldata:/ssl alpine tail -f /dev/null
+	docker cp ssl/. ssl-tmp:/ssl/
+	docker rm -f ssl-tmp
+	@echo "SSL certs pushed to volume $(COMPOSE_PROJECT)_ssldata"
 
 # ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
 
 ## build: build Docker images and recreate containers
-build: check-secrets _nginx-conf
+build: check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) build --no-cache
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --force-recreate
 
 ## start: start all containers
-start: check-secrets _nginx-conf
+start: check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d
 
 ## stop: stop all containers
@@ -61,6 +62,12 @@ stop:
 
 ## restart: stop + start
 restart: stop start
+
+## nuke: remove all containers, volumes, and images for this project
+nuke:
+	-$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
+	-docker volume rm $(COMPOSE_PROJECT)_ssldata
+	-docker rmi shyland-django $(COMPOSE_PROJECT)-nginx
 
 ## logs: follow all container logs
 logs:
@@ -146,6 +153,7 @@ gen-certs:
 	@echo ""
 	@echo "NOTE: Browsers will show a security warning for self-signed certs."
 	@echo "      Use your vendor certs for a trusted connection."
+	$(MAKE) push-certs
 
 ## db-reset: drop all volumes, rebuild, migrate, and reseed
 db-reset:

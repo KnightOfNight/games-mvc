@@ -1,13 +1,16 @@
 services:
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./nginx
     container_name: game-mvc-nginx
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-40443}:40443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - TLS_CERT_NAME=${TLS_CERT_NAME}
     volumes:
-      - ./nginx/conf/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      - ssldata:/etc/nginx/ssl:ro
     depends_on:
       - django
 
@@ -53,8 +56,6 @@ services:
     restart: unless-stopped
 
   ticker:
-    build:
-      context: ./django
     image: shyland-django
     command: python manage.py run_tick_engine
     environment:
@@ -73,3 +74,6 @@ services:
 
 volumes:
   pgdata:
+  ssldata:
+    external: true
+    name: game-mvc_ssldata

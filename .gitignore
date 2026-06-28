@@ -1,4 +1,4 @@
-.env
+.env*
 ssl/*.ca
 ssl/*.crt
 ssl/*.key
