@@ -4,8 +4,8 @@ from .models import (
     Area, Archetype, Character, CombatAction, CombatSession, Corpse,
     EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry,
-    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomVisit, Zone,
-    UnarmedMessage, UnarmedMessagePool,
+    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomSpawn, RoomVisit,
+    UnarmedMessage, UnarmedMessagePool, VendorEntry, Zone, ZoneGate,
 )
 
 
@@ -75,6 +75,39 @@ class RoomAdmin(admin.ModelAdmin):
     list_display = ('name', 'zone', 'area', 'coord_x', 'coord_y', 'coord_z', 'flag_safe')
     list_filter = ('zone', 'area', 'flag_safe', 'flag_pvp')
     raw_id_fields = ('area', 'exit_north', 'exit_south', 'exit_east', 'exit_west', 'exit_up', 'exit_down')
+    fieldsets = (
+        (None, {
+            'fields': ('zone', 'area', 'name', 'description', 'brief_description'),
+        }),
+        ('Coordinates', {
+            'fields': ('coord_x', 'coord_y', 'coord_z'),
+        }),
+        ('Exits', {
+            'fields': (
+                'exit_north', 'exit_south',
+                'exit_east', 'exit_west',
+                'exit_up', 'exit_down',
+            ),
+        }),
+        ('Blocked Exit Messages', {
+            'classes': ('collapse',),
+            'fields': (
+                'no_exit_north_msg',
+                'no_exit_south_msg',
+                'no_exit_east_msg',
+                'no_exit_west_msg',
+                'no_exit_up_msg',
+                'no_exit_down_msg',
+            ),
+        }),
+        ('Flags', {
+            'fields': (
+                'flag_safe', 'flag_pvp', 'flag_dark', 'flag_indoors',
+                'flag_water', 'flag_no_recall', 'flag_radiation',
+                'flag_holy', 'flag_magic_dead', 'flag_scaled',
+            ),
+        }),
+    )
 
 
 @admin.register(Character)
@@ -213,7 +246,7 @@ class NpcEffectInline(admin.TabularInline):
 
 @admin.register(NpcDefinition)
 class NpcDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'genre_tag', 'is_aggressive', 'is_unique', 'respawn_minutes')
+    list_display = ('name', 'slug', 'genre_tag', 'combat_tier', 'is_aggressive', 'is_unique', 'respawn_minutes')
     list_filter = ('genre_tag', 'is_aggressive', 'is_unique')
     prepopulated_fields = {'slug': ('name',)}
     raw_id_fields = ('loot_table', 'unarmed_message_pool')
@@ -239,6 +272,30 @@ class NpcEffectAdmin(admin.ModelAdmin):
     list_display  = ['npc_definition', 'effect_definition', 'effect_chance']
     list_filter   = ['npc_definition']
     raw_id_fields = ['npc_definition', 'effect_definition']
+
+
+@admin.register(RoomSpawn)
+class RoomSpawnAdmin(admin.ModelAdmin):
+    list_display        = ('npc_definition', 'mk_tier', 'count', 'room', 'is_active')
+    list_filter         = ('is_active', 'npc_definition')
+    raw_id_fields       = ('room', 'npc_definition')
+    list_select_related = ('room', 'npc_definition')
+
+
+@admin.register(VendorEntry)
+class VendorEntryAdmin(admin.ModelAdmin):
+    list_display        = ('npc_definition', 'item_definition', 'mk_tier', 'price', 'stock_limit', 'is_active')
+    list_filter         = ('is_active', 'npc_definition')
+    raw_id_fields       = ('npc_definition', 'item_definition')
+    list_select_related = ('npc_definition', 'item_definition')
+
+
+@admin.register(ZoneGate)
+class ZoneGateAdmin(admin.ModelAdmin):
+    list_display        = ('name', 'source_room', 'destination_room', 'is_bidirectional', 'requires_discovery', 'is_active')
+    list_filter         = ('is_active', 'is_bidirectional', 'requires_discovery')
+    raw_id_fields       = ('source_room', 'destination_room')
+    list_select_related = ('source_room', 'destination_room')
 
 
 @admin.register(CombatSession)

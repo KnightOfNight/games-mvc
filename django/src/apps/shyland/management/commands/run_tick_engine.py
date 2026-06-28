@@ -469,41 +469,60 @@ class Command(BaseCommand):
     async def process_npc_respawn(self):
         from django.utils import timezone
         now = timezone.now()
-        due = await self.get_due_respawns(now)
+        spawns = await self.get_active_spawns()
 
-        for npc in due:
-            definition = npc.definition
-            mk_tier = npc.mk_tier
-            room_id = npc.spawn_room_id
-            await self.respawn_npc(npc.pk, definition, mk_tier, room_id)
-            logger.info(
-                f"NPC respawned: {definition.name} (Mk {mk_tier}) in room {room_id}"
+        for spawn in spawns:
+            await self.clear_expired_dead(spawn, now)
+            live_count, dead_count = await self.count_instances(spawn)
+            to_create = min(
+                spawn.count - live_count,
+                (spawn.count * 2) - (live_count + dead_count),
             )
+            for _ in range(to_create):
+                await self.create_live_instance(spawn)
+                logger.info(
+                    f"NPC spawned: {spawn.npc_definition.name} "
+                    f"(Mk {spawn.mk_tier}) in room {spawn.room.name}"
+                )
 
     @database_sync_to_async
-    def get_due_respawns(self, now):
+    def get_active_spawns(self):
+        from apps.shyland.models import RoomSpawn
+        return list(RoomSpawn.objects.filter(is_active=True).select_related('npc_definition', 'room'))
+
+    @database_sync_to_async
+    def clear_expired_dead(self, spawn, now):
         from apps.shyland.models import NpcInstance
-        return list(
-            NpcInstance.objects.filter(
-                is_alive=False,
-                respawn_at__lte=now,
-                definition__is_unique=False,
-                spawn_room__isnull=False,
-            ).select_related('definition', 'spawn_room')
-        )
+        NpcInstance.objects.filter(
+            definition=spawn.npc_definition,
+            spawn_room=spawn.room,
+            mk_tier=spawn.mk_tier,
+            is_alive=False,
+            respawn_at__lte=now,
+        ).delete()
 
     @database_sync_to_async
-    def respawn_npc(self, dead_pk, definition, mk_tier, room_id):
-        from apps.shyland.models import NpcInstance, Room
-        NpcInstance.objects.filter(pk=dead_pk).delete()
-        room = Room.objects.get(pk=room_id)
+    def count_instances(self, spawn):
+        from apps.shyland.models import NpcInstance
+        qs = NpcInstance.objects.filter(
+            definition=spawn.npc_definition,
+            spawn_room=spawn.room,
+            mk_tier=spawn.mk_tier,
+        )
+        live_count = qs.filter(is_alive=True).count()
+        dead_count = qs.filter(is_alive=False).count()
+        return live_count, dead_count
+
+    @database_sync_to_async
+    def create_live_instance(self, spawn):
+        from apps.shyland.models import NpcInstance
         NpcInstance.objects.create(
-            definition=definition,
-            current_room=room,
-            spawn_room=room,
-            mk_tier=mk_tier,
-            vitality_current=definition.base_vitality,
-            vitality_max=definition.base_vitality,
+            definition=spawn.npc_definition,
+            current_room=spawn.room,
+            spawn_room=spawn.room,
+            mk_tier=spawn.mk_tier,
+            vitality_current=spawn.npc_definition.base_vitality,
+            vitality_max=spawn.npc_definition.base_vitality,
             is_alive=True,
         )
 

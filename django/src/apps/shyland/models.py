@@ -101,6 +101,13 @@ class Room(models.Model):
     exit_up = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='entrance_from_below')
     exit_down = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='entrance_from_above')
 
+    no_exit_north_msg = models.CharField(max_length=255, blank=True, default='')
+    no_exit_south_msg = models.CharField(max_length=255, blank=True, default='')
+    no_exit_east_msg  = models.CharField(max_length=255, blank=True, default='')
+    no_exit_west_msg  = models.CharField(max_length=255, blank=True, default='')
+    no_exit_up_msg    = models.CharField(max_length=255, blank=True, default='')
+    no_exit_down_msg  = models.CharField(max_length=255, blank=True, default='')
+
     flag_safe = models.BooleanField(default=False)
     flag_pvp = models.BooleanField(default=False)
     flag_dark = models.BooleanField(default=False)
@@ -589,9 +596,24 @@ class NpcDefinition(models.Model):
     description     = models.TextField(help_text="Shown when a player examines the NPC.")
     genre_tag       = models.CharField(max_length=20, choices=GENRE_TAG_CHOICES)
 
+    COMBAT_TIER_CHOICES = [
+        ('normal',     'Normal'),
+        ('elite',      'Elite'),
+        ('champion',   'Champion'),
+        ('boss',       'Boss'),
+        ('world_boss', 'World Boss'),
+    ]
+
     is_aggressive   = models.BooleanField(default=False, help_text="Attacks players on sight.")
     is_unique       = models.BooleanField(default=False, help_text="One instance only; no respawn.")
     wanders         = models.BooleanField(default=False, help_text="Moves between rooms. Not yet implemented.")
+
+    combat_tier = models.CharField(
+        max_length=20,
+        choices=COMBAT_TIER_CHOICES,
+        default='normal',
+        help_text="Combat role tier. Used for display and future AI/balance logic.",
+    )
 
     base_vitality   = models.IntegerField()
     base_str        = models.IntegerField()
@@ -677,6 +699,153 @@ class NpcEffect(models.Model):
 
     class Meta:
         ordering = ['npc_definition', 'effect_definition']
+
+
+class RoomSpawn(models.Model):
+    """
+    Configuration record declaring that a room should contain a certain number
+    of live instances of a given NPC definition at a given Mk tier.
+
+    The tick engine uses this as the source of truth for NPC population.
+    It compares the desired count against the current count of live + dead
+    NpcInstance rows for this definition/room/mk_tier combination and creates
+    new live instances to fill any gap, subject to the 2× cap.
+
+    Cap rule: total instances (live + dead) may not exceed count × 2.
+    This prevents unbounded dead-instance accumulation while still allowing
+    respawn timers to run their course.
+    """
+    room            = models.ForeignKey(
+        'Room', on_delete=models.CASCADE, related_name='spawns',
+    )
+    npc_definition  = models.ForeignKey(
+        NpcDefinition, on_delete=models.CASCADE, related_name='room_spawns',
+    )
+    mk_tier         = models.IntegerField(
+        default=1,
+        help_text="Mk tier at which this NPC spawns in this room.",
+    )
+    count           = models.IntegerField(
+        default=1,
+        help_text="Desired number of live instances of this NPC in this room.",
+    )
+    is_active       = models.BooleanField(
+        default=True,
+        help_text="Inactive spawns are ignored by the tick engine.",
+    )
+
+    class Meta:
+        unique_together = ('room', 'npc_definition', 'mk_tier')
+        ordering = ['room', 'npc_definition', 'mk_tier']
+
+    def __str__(self):
+        return (
+            f"{self.npc_definition.name} (Mk {self.mk_tier}) "
+            f"×{self.count} in {self.room.name}"
+        )
+
+
+class VendorEntry(models.Model):
+    """
+    Declares that an NPC sells a particular item at a particular Mk tier
+    for a specific copper price.
+
+    An NpcDefinition with one or more VendorEntry rows is a vendor.
+    No flag is needed on NpcDefinition itself.
+
+    Buy/sell commands are not yet implemented. This model exists for
+    authoring vendor inventories before those commands are built.
+    """
+    npc_definition  = models.ForeignKey(
+        NpcDefinition, on_delete=models.CASCADE, related_name='vendor_entries',
+    )
+    item_definition = models.ForeignKey(
+        'ItemDefinition', on_delete=models.CASCADE, related_name='vendor_entries',
+    )
+    mk_tier         = models.IntegerField(
+        default=1,
+        help_text="Mk tier of the item being sold.",
+    )
+    price           = models.BigIntegerField(
+        help_text="Price in copper. Always required — no auto-calculation.",
+    )
+    stock_limit     = models.IntegerField(
+        null=True, blank=True,
+        help_text=(
+            "Maximum number of this item available for purchase. "
+            "Null = unlimited stock."
+        ),
+    )
+    is_active       = models.BooleanField(
+        default=True,
+        help_text="Inactive entries are hidden from players.",
+    )
+
+    class Meta:
+        unique_together = ('npc_definition', 'item_definition', 'mk_tier')
+        ordering = ['npc_definition', 'item_definition', 'mk_tier']
+
+    def __str__(self):
+        return (
+            f"{self.npc_definition.name} sells "
+            f"{self.item_definition.name} Mk {self.mk_tier} "
+            f"for {self.price}cp"
+        )
+
+
+class ZoneGate(models.Model):
+    """
+    Fast-travel configuration linking two rooms.
+
+    When is_bidirectional=True, a single ZoneGate row represents travel in
+    both directions. The gate travel command (not yet implemented) will query
+    both source_room and destination_room.
+
+    When requires_discovery=True, a character must have a RoomVisit record
+    for the gate's source room before they can use the gate from elsewhere.
+    The RoomVisit model already tracks this — no additional fields needed.
+
+    ZoneGates are authoring-only in v15. No travel command is implemented.
+    """
+    name                = models.CharField(
+        max_length=100,
+        help_text="Display name shown to players (e.g. 'The Northern Rift Gate').",
+    )
+    source_room         = models.ForeignKey(
+        'Room', on_delete=models.CASCADE, related_name='gates_from',
+    )
+    destination_room    = models.ForeignKey(
+        'Room', on_delete=models.CASCADE, related_name='gates_to',
+    )
+    description         = models.TextField(
+        blank=True,
+        help_text="Flavor text shown when a player examines the gate.",
+    )
+    is_bidirectional    = models.BooleanField(
+        default=True,
+        help_text=(
+            "If True, this gate can be used in both directions. "
+            "The travel command will check both source_room and destination_room."
+        ),
+    )
+    requires_discovery  = models.BooleanField(
+        default=True,
+        help_text=(
+            "If True, character must have visited the source room "
+            "(RoomVisit record exists) before using this gate from elsewhere."
+        ),
+    )
+    is_active           = models.BooleanField(
+        default=True,
+        help_text="Inactive gates are invisible and unusable.",
+    )
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        direction = "↔" if self.is_bidirectional else "→"
+        return f"{self.name}: {self.source_room.name} {direction} {self.destination_room.name}"
 
 
 class CombatSession(models.Model):

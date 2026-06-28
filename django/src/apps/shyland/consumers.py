@@ -53,6 +53,15 @@ REVERSE_DIRECTIONS = {
     'up': 'down',     'down': 'up',
 }
 
+_NO_EXIT_DEFAULTS = {
+    'north': "There is no exit in that direction.",
+    'south': "There is no exit in that direction.",
+    'east':  "There is no exit in that direction.",
+    'west':  "There is no exit in that direction.",
+    'up':    "There is nothing above you.",
+    'down':  "You'd have to dig to go that way.",
+}
+
 
 def _item_suffix(item, defn):
     if defn.item_type == 'bag':
@@ -195,10 +204,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if destination is None:
             exits = room.exits()
+            canonical = DIRECTION_CANONICAL[direction]
+            custom_msg = getattr(room, f'no_exit_{canonical}_msg', '')
+            msg = custom_msg if custom_msg else _NO_EXIT_DEFAULTS[canonical]
             await self.send_json({
                 'type': 'output',
                 'category': 'error',
-                'text': 'There is no exit in that direction.',
+                'text': msg,
                 'hint_exits': ', '.join(exits.keys()) if exits else 'none',
             })
             return

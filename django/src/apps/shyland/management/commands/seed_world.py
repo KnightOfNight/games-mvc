@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from apps.shyland.models import (
     Area, Archetype, EffectComponent, EffectDefinition, ItemDefinition, LootTable, LootTableEntry,
-    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, Zone,
+    NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomSpawn, Zone,
     UnarmedMessage, UnarmedMessagePool,
 )
 
@@ -721,5 +721,29 @@ class Command(BaseCommand):
         self.stdout.write(
             f'  NpcInstance fracture-wraith in The Eastern Bazaar {"created" if created else "exists"}.'
         )
+
+        _, created = RoomSpawn.objects.get_or_create(
+            room=fracture_point,
+            npc_definition=goblin_def,
+            mk_tier=1,
+            defaults={'count': 1, 'is_active': True},
+        )
+        self.stdout.write(f'  RoomSpawn goblin-scout in The Fracture Point {"created" if created else "exists"}.')
+
+        _, created = RoomSpawn.objects.get_or_create(
+            room=fracture_point,
+            npc_definition=dummy_def,
+            mk_tier=1,
+            defaults={'count': 1, 'is_active': True},
+        )
+        self.stdout.write(f'  RoomSpawn training-dummy in The Fracture Point {"created" if created else "exists"}.')
+
+        _, created = RoomSpawn.objects.get_or_create(
+            room=eastern_bazaar,
+            npc_definition=wraith_def,
+            mk_tier=1,
+            defaults={'count': 1, 'is_active': True},
+        )
+        self.stdout.write(f'  RoomSpawn fracture-wraith in The Eastern Bazaar {"created" if created else "exists"}.')
 
         self.stdout.write(self.style.SUCCESS('NPC seed complete.'))

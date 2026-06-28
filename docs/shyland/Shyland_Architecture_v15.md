@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit f4d212e (v14: passive out-of-combat regeneration).
+> Authoritative technical reference as of commit TBD (v15: world-building schema).
 > Describes what is built. For design intent see the current GDD.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v14 adds passive out-of-combat Vitality and Longevity regeneration to the tick engine. Regen is silent — no message is sent to the player; the status bar update is the only signal. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v15 adds five world-building schema changes: `NpcDefinition.combat_tier`, `RoomSpawn`, `VendorEntry`, `ZoneGate`, and per-direction blocked exit messages on `Room`. The tick engine's `process_npc_respawn()` now uses `RoomSpawn` as its source of truth for NPC population. No new player-facing commands are added. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -165,7 +165,7 @@ acuity_band_low  FloatField
 acuity_band_high FloatField
 ```
 
-Ordering: `['name']`. Owns the three Acuity parameters previously held in the `_ACUITY_DEFAULTS` dict. `_ACUITY_DEFAULTS` and `get_acuity_defaults()` have been removed from `models.py`.
+Ordering: `['name']`. Owns the three Acuity parameters previously held in the `_ACUITY_DEFAULTS` dict.
 
 #### `Archetype`
 
@@ -180,253 +180,304 @@ unarmed_message_pool ForeignKey(UnarmedMessagePool, SET_NULL, null, blank, relat
 
 Ordering: `['name']`. `STAT_CHOICES` covers all six stats: str, dex, end, int, wis, per.
 
-#### `Zone`, `Area`, `Room`, `RoomVisit`
+#### `Zone`, `Area`
 
-*(unchanged from v13a)*
+*(unchanged from v14)*
 
-`Room.brief_description` is `CharField(500, blank=False)` — non-null, non-blank. Required on all rooms. No fallback path exists.
+#### `Room`
+
+*(unchanged from v14 except the six new blocked-exit message fields)*
+
+`Room.brief_description` is `CharField(500, blank=False)` — non-null, non-blank. Required on all rooms.
+
+Six new optional `CharField(255, blank=True, default='')` fields placed after the exit FK fields and before the flags block:
+
+```
+no_exit_north_msg  CharField(255, blank=True, default='')
+no_exit_south_msg  CharField(255, blank=True, default='')
+no_exit_east_msg   CharField(255, blank=True, default='')
+no_exit_west_msg   CharField(255, blank=True, default='')
+no_exit_up_msg     CharField(255, blank=True, default='')
+no_exit_down_msg   CharField(255, blank=True, default='')
+```
+
+All six are optional. No field is required. When non-empty, the value overrides the hardcoded default in `_NO_EXIT_DEFAULTS` in `consumers.py`. See Section 4.3.
+
+#### `RoomVisit`
+
+*(unchanged from v14)*
 
 #### `Character`
 
-`origin` and `archetype` are now ForeignKey fields (PROTECT), not CharFields. Both are non-nullable.
-
-```
-origin     ForeignKey(Origin, PROTECT, related_name='characters')
-archetype  ForeignKey(Archetype, PROTECT, related_name='characters')
-```
-
-All other fields unchanged from v13a. Acuity defaults are now read from `character.origin.acuity_baseline`, `character.origin.acuity_band_low`, `character.origin.acuity_band_high`.
-
-**Flags block:**
-
-```
-is_hardcore  BooleanField(default=False)
-is_dead      BooleanField(default=False)
-is_dying     BooleanField(default=False)
-dying_since  DateTimeField(null, blank)
-brief_mode   BooleanField(default=False)   — if True, always show brief room description
-```
+*(unchanged from v14)*
 
 #### `EffectDefinition`, `EffectComponent`, `ItemDefinition`, `ItemInstance`
 
-*(unchanged from v13a)*
+*(unchanged from v14)*
 
 #### `EffectInstance`, `EffectComponentInstance`
 
-*(unchanged from v13a)*
+*(unchanged from v14)*
 
 #### `LootTable`, `LootTableEntry`
 
-*(unchanged from v13a)*
+*(unchanged from v14)*
 
 #### `NpcDefinition`
 
-Added one field:
+One new field added:
 
 ```
-unarmed_message_pool  ForeignKey(UnarmedMessagePool, SET_NULL, null, blank, related_name='npc_definitions')
+combat_tier  CharField(20, choices=COMBAT_TIER_CHOICES, default='normal')
 ```
 
-All other `NpcDefinition` fields unchanged.
+`COMBAT_TIER_CHOICES` is defined as a class attribute on `NpcDefinition`:
 
-#### `NpcEffect`, `NpcInstance`, `Corpse`, `CombatSession`, `CombatAction`
+| value | display |
+|-------|---------|
+| `normal` | Normal |
+| `elite` | Elite |
+| `champion` | Champion |
+| `boss` | Boss |
+| `world_boss` | World Boss |
 
-*(unchanged from v13a)*
+All existing NPCs default to `normal`. The field exists for display and future AI/balance logic; no differentiated behavior is implemented in v15.
+
+All other `NpcDefinition` fields unchanged from v14.
+
+#### `NpcEffect`, `NpcInstance`, `Corpse`
+
+*(unchanged from v14)*
+
+#### `RoomSpawn`
+
+New model. Configuration record declaring that a room should contain a certain number of live instances of a given NPC definition at a given Mk tier. The tick engine uses this as the source of truth for NPC population.
+
+```
+room            ForeignKey(Room, CASCADE, related_name='spawns')
+npc_definition  ForeignKey(NpcDefinition, CASCADE, related_name='room_spawns')
+mk_tier         IntegerField(default=1)
+count           IntegerField(default=1)   — desired live instance count
+is_active       BooleanField(default=True)
+```
+
+`unique_together = ('room', 'npc_definition', 'mk_tier')`. Ordering: `['room', 'npc_definition', 'mk_tier']`.
+
+Cap rule: total instances (live + dead) per spawn slot may not exceed `count × 2`. This prevents unbounded dead-instance accumulation while still allowing respawn timers to run their course.
+
+Inactive (`is_active=False`) spawns are ignored by the tick engine entirely.
+
+#### `VendorEntry`
+
+New model. Declares that an NPC sells a particular item at a particular Mk tier for a specific copper price. An `NpcDefinition` with one or more `VendorEntry` rows is a vendor — no flag is needed on `NpcDefinition` itself. Buy/sell commands are not yet implemented.
+
+```
+npc_definition  ForeignKey(NpcDefinition, CASCADE, related_name='vendor_entries')
+item_definition ForeignKey(ItemDefinition, CASCADE, related_name='vendor_entries')
+mk_tier         IntegerField(default=1)
+price           BigIntegerField          — price in copper; always required
+stock_limit     IntegerField(null, blank) — null = unlimited stock
+is_active       BooleanField(default=True)
+```
+
+`unique_together = ('npc_definition', 'item_definition', 'mk_tier')`. Ordering: `['npc_definition', 'item_definition', 'mk_tier']`.
+
+#### `ZoneGate`
+
+New model. Fast-travel configuration linking two rooms. No travel command is implemented in v15; this model exists for authoring gate configurations before the command is built.
+
+```
+name              CharField(100)
+source_room       ForeignKey(Room, CASCADE, related_name='gates_from')
+destination_room  ForeignKey(Room, CASCADE, related_name='gates_to')
+description       TextField(blank)
+is_bidirectional  BooleanField(default=True)
+requires_discovery BooleanField(default=True)
+is_active         BooleanField(default=True)
+```
+
+Ordering: `['name']`.
+
+When `is_bidirectional=True`, a single row represents travel in both directions; the travel command will check both `source_room` and `destination_room`.
+
+When `requires_discovery=True`, a character must have a `RoomVisit` record for the gate's source room before they can use the gate from elsewhere. No additional fields are needed — `RoomVisit` already tracks this.
+
+#### `CombatSession`, `CombatAction`
+
+*(unchanged from v14)*
 
 ### 4.2 Currency system (`currency.py`)
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 ### 4.3 WebSocket consumer (`consumers.py`)
 
+#### Module-level constants
+
+In addition to `DIRECTIONS`, `DIRECTION_CANONICAL`, and `REVERSE_DIRECTIONS`, a new constant is defined:
+
+```python
+_NO_EXIT_DEFAULTS = {
+    'north': "There is no exit in that direction.",
+    'south': "There is no exit in that direction.",
+    'east':  "There is no exit in that direction.",
+    'west':  "There is no exit in that direction.",
+    'up':    "There is nothing above you.",
+    'down':  "You'd have to dig to go that way.",
+}
+```
+
 #### Command dispatch table
 
-| Command | Handler |
-|---------|---------|
-| direction aliases | `cmd_move(verb)` |
-| `look` / `l` | `cmd_look()` |
-| `say` | `cmd_say(args)` |
-| `who` | `cmd_who()` |
-| `inventory` / `inv` | `cmd_inventory()` |
-| `pickup` / `p` | `cmd_pickup(args)` |
-| `drop` | `cmd_drop(args)` |
-| `equip` / `eq` | `cmd_equip(args)` |
-| `unequip` / `uneq` | `cmd_unequip(args)` |
-| `use` | `cmd_use(args)` |
-| `examine` / `ex` | `cmd_examine(args)` |
-| `loot` | `cmd_loot(args)` |
-| `kill` / `attack` / `k` | `cmd_attack(args)` |
-| `flee` | `cmd_flee()` |
-| `brief` | `cmd_brief(args)` |
-| `spend` | `cmd_spend(args)` |
-| `stats` | `cmd_stats()` |
-| `help` / `?` | `cmd_help()` |
+*(unchanged from v14)*
 
-#### `cmd_brief(args)`
+#### `cmd_move(direction)` — no-exit block
 
-Accepts `on` or `off`; explicit value always required. Sets `Character.brief_mode` via `.update()` (avoids a fetch round-trip) and updates `self.character.brief_mode` in memory. Sends confirmation as category `system`. Bare `brief` (no argument or unrecognised argument) sends `"Usage: brief on | brief off"` as category `error`.
+When `destination is None`, the updated block resolves the raw direction verb (which may be an alias) to its canonical form via `DIRECTION_CANONICAL[direction]`, checks `room.no_exit_{canonical}_msg`, and falls back to `_NO_EXIT_DEFAULTS[canonical]` if the field is empty.
 
-#### `send_room_description(room, entering=False, force_long=False)`
+```python
+if destination is None:
+    exits = room.exits()
+    canonical = DIRECTION_CANONICAL[direction]
+    custom_msg = getattr(room, f'no_exit_{canonical}_msg', '')
+    msg = custom_msg if custom_msg else _NO_EXIT_DEFAULTS[canonical]
+    await self.send_json({
+        'type': 'output',
+        'category': 'error',
+        'text': msg,
+        'hint_exits': ', '.join(exits.keys()) if exits else 'none',
+    })
+    return
+```
 
-Assembles and sends room output. Description selection logic:
+The `hint_exits` key on the payload is preserved. Alias resolution via `DIRECTION_CANONICAL` is required because `cmd_move` receives the raw verb from the dispatch table (`'n'`, `'s'`, etc.) and the `no_exit_*_msg` fields are named after canonical directions.
 
-- If `force_long=True` (used by `look`): always use `room.description`; record visit with `RoomVisit.get_or_create`.
-- Otherwise: call `_check_and_record_visit(character, room)`, which does `get_or_create` in one DB hit and returns `True` if brief should be shown:
-  - Returns `True` if `character.brief_mode` is `True`
-  - Returns `True` if the visit already existed (repeat visit)
-  - Returns `False` if the visit was just created (first visit)
-- Select `room.brief_description` or `room.description` based on the result.
+All other `cmd_move` behavior unchanged.
 
-`look` always uses `room.description` (bypasses `should_show_brief` entirely) and still calls `get_or_create` to record the visit.
+#### All other commands
 
-`RoomVisit` is recorded in `send_room_description`, not in `move_character`. The `move_character` helper only updates the character's `current_room`.
-
-#### `cmd_use(args)`
-
-1. Find item in carried consumables by display name match.
-2. Load `item.definition.effect`. If `None`, send `"Nothing happens."` and return.
-3. Call `do_apply_effect(effect_def, char, item.mk_tier)` — `@database_sync_to_async` around `apply_effect_definition()`.
-4. Consume item (`item.delete()`).
-5. Send each returned message to the player as category `'system'`.
-6. Send expanded status update (see Section 4.9 for payload shape).
-
-#### Character fetch helpers
-
-All character fetch helpers include `current_room__zone` in their `select_related` chain, ensuring `format_wallet()` can access `character.current_room.zone.slug` without a synchronous query.
-
-`get_character_fresh()` and `get_character()` both include `archetype__unarmed_message_pool` in their `select_related` chain so that unarmed message resolution in combat can access the pool without a synchronous query.
-
-`get_character_fresh()` also includes `current_room__area` so that `cmd_spend`'s status payload can populate `area_name`.
+*(unchanged from v14)*
 
 ### 4.4 `effect_utils.py`
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 ### 4.5 Combat utilities (`combat_utils.py`)
 
-#### `get_unarmed_message(attacker_pool, target_name) → str`
-
-Selects a random `UnarmedMessage` from `attacker_pool`. Falls back to the `default` pool if `attacker_pool` is `None` or has no messages. If no messages are found at all, returns `"You strike {target_name}."`. Substitutes `{target}` with `target_name` using Python `.format()`. Caller is responsible for prefetching `pool.messages` before calling — this function is synchronous and must be called from within a `@database_sync_to_async` wrapper in async context, or directly in the synchronous tick engine.
-
-#### Unarmed attack message injection
-
-When the tick engine processes a combat round:
-
-- **Player → NPC:** if the player has no non-broken weapon equipped (`ItemInstance.is_equipped=True, definition__item_type='weapon', is_broken=False`), `get_unarmed_message` is called with `character.archetype.unarmed_message_pool` (may be `None`) and the NPC's display name as `target_name`. The returned flavor (with trailing period stripped) replaces the "You hit / You land a critical hit on" prefix. Damage calculation is unchanged.
-- **NPC → player:** `get_unarmed_message` is called with `npc.definition.unarmed_message_pool` (may be `None`) and the character's name as `target_name`. The flavor replaces the "The {npc} hits / lands a critical hit" prefix.
-
-All other functions unchanged from v13a.
+*(unchanged from v14)*
 
 ### 4.6 Item generation and utilities (`item_utils.py`)
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 ### 4.7 Admin
 
-| Model | Admin class | Notes |
-|-------|-------------|-------|
-| `UnarmedMessagePool` | `UnarmedMessagePoolAdmin` | Inline: `UnarmedMessageInline` (tabular, fields: template, order) |
-| `Origin` | `OriginAdmin` | list_display: name, slug, acuity_baseline, acuity_band_low, acuity_band_high |
-| `Archetype` | `ArchetypeAdmin` | list_display: name, slug, primary_stat_1, primary_stat_2, unarmed_message_pool; raw_id_fields: unarmed_message_pool |
+| Model | Admin class | Notable changes in v15 |
+|-------|-------------|------------------------|
+| `Room` | `RoomAdmin` | Added explicit `fieldsets`; collapsible "Blocked Exit Messages" fieldset containing the six `no_exit_*_msg` fields |
+| `NpcDefinition` | `NpcDefinitionAdmin` | `combat_tier` added to `list_display` |
+| `RoomSpawn` | `RoomSpawnAdmin` | New registration |
+| `VendorEntry` | `VendorEntryAdmin` | New registration |
+| `ZoneGate` | `ZoneGateAdmin` | New registration |
 
-`CharacterAdmin` updated: `origin` and `archetype` moved to `raw_id_fields` (they are now FKs). `list_filter` on `origin` removed (FK filters require select; archetype retained).
+All other admin registrations unchanged from v14.
 
-`NpcDefinitionAdmin` updated: `unarmed_message_pool` added to `raw_id_fields`.
+#### `RoomAdmin` fieldsets
 
-All other admin registrations unchanged from v13a.
+```
+(None)                  — zone, area, name, description, brief_description
+Coordinates             — coord_x, coord_y, coord_z
+Exits                   — exit_north, exit_south, exit_east, exit_west, exit_up, exit_down
+Blocked Exit Messages   — (collapse) no_exit_north_msg, no_exit_south_msg, no_exit_east_msg,
+                          no_exit_west_msg, no_exit_up_msg, no_exit_down_msg
+Flags                   — flag_safe, flag_pvp, flag_dark, flag_indoors, flag_water,
+                          flag_no_recall, flag_radiation, flag_holy, flag_magic_dead, flag_scaled
+```
+
+#### `RoomSpawnAdmin`
+
+```python
+list_display        = ('npc_definition', 'mk_tier', 'count', 'room', 'is_active')
+list_filter         = ('is_active', 'npc_definition')
+raw_id_fields       = ('room', 'npc_definition')
+list_select_related = ('room', 'npc_definition')
+```
+
+#### `VendorEntryAdmin`
+
+```python
+list_display        = ('npc_definition', 'item_definition', 'mk_tier', 'price', 'stock_limit', 'is_active')
+list_filter         = ('is_active', 'npc_definition')
+raw_id_fields       = ('npc_definition', 'item_definition')
+list_select_related = ('npc_definition', 'item_definition')
+```
+
+#### `ZoneGateAdmin`
+
+```python
+list_display        = ('name', 'source_room', 'destination_room', 'is_bidirectional', 'requires_discovery', 'is_active')
+list_filter         = ('is_active', 'is_bidirectional', 'requires_discovery')
+raw_id_fields       = ('source_room', 'destination_room')
+list_select_related = ('source_room', 'destination_room')
+```
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
 
-Idempotent. Room creation uses `update_or_create` (not `get_or_create`) to ensure `brief_description` is written on existing records after migration. All five Convergence rooms have non-empty `brief_description` values.
+*(unchanged from v14 except the three new `RoomSpawn` rows)*
 
-**Seeded `UnarmedMessagePool`:**
+Three `RoomSpawn` rows are seeded at the end of `_seed_npcs()`:
 
-| slug | name | messages |
-|------|------|---------|
-| `default` | Default | 10 (delete-and-recreate on each seed run) |
+| room | npc_definition | mk_tier | count |
+|------|---------------|---------|-------|
+| The Fracture Point | a goblin scout | 1 | 1 |
+| The Fracture Point | Training Dummy | 1 | 1 |
+| The Eastern Bazaar | Fracture Wraith | 1 | 1 |
 
-Default pool messages (templates with `{target}` placeholder): "You punch {target}.", "You kick {target}.", "You shove {target} hard.", "You swing at {target}.", "You lunge at {target}.", "You jab {target}.", "You strike {target}.", "You slam into {target}.", "You drive your shoulder into {target}.", "You throw a wild hit at {target}."
-
-**Seeded `Origin` rows (7):**
-
-| slug | name | acuity_baseline | acuity_band_low | acuity_band_high |
-|------|------|-----------------|-----------------|------------------|
-| `highborn` | Highborn | 1.0 | 0.85 | 1.15 |
-| `feral` | Feral | 0.95 | 0.80 | 1.10 |
-| `streetborn` | Streetborn | 1.0 | 0.85 | 1.15 |
-| `irradiated` | Irradiated | 0.90 | 0.75 | 1.05 |
-| `undying` | Undying | 0.80 | 0.65 | 1.00 |
-| `machinekind` | Machinekind | 1.05 | 0.90 | 1.20 |
-| `voidtouched` | Voidtouched | 0.70 | 0.40 | 1.30 |
-
-**Seeded `Archetype` rows (7):**
-
-| slug | name | primary_stat_1 | primary_stat_2 | unarmed_message_pool |
-|------|------|----------------|----------------|----------------------|
-| `blade` | Blade | str | dex | null |
-| `bulwark` | Bulwark | str | end | null |
-| `shade` | Shade | dex | int | null |
-| `conduit` | Conduit | int | wis | null |
-| `warden` | Warden | wis | end | null |
-| `gunner` | Gunner | dex | per | null |
-| `machinist` | Machinist | int | dex | null |
-
-All archetypes fall back to the default pool.
-
-**Seeded `EffectDefinition` entries:**
-
-*(unchanged from v13a)*
+All three use `get_or_create` (idempotent). The existing `NpcInstance` creations remain as the initial live population; `RoomSpawn` rows allow the tick engine to maintain that population going forward.
 
 ### 4.9 Tick Engine (`management/commands/run_tick_engine.py`)
 
 #### Structure
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 #### `process_combat(tick_number)`
 
-Characters are loaded in `load_participants` with `select_related('user__profile', 'current_room__area', 'archetype__unarmed_message_pool')` and `prefetch_related('archetype__unarmed_message_pool__messages')` so that unarmed message resolution and `_build_status` work without extra queries.
-
-NPCs are loaded with `select_related('definition', 'definition__unarmed_message_pool')` and `prefetch_related('definition__effects__effect_definition', 'definition__unarmed_message_pool__messages')`.
-
-Death handling (`execute_death`) unchanged from v13a.
+*(unchanged from v14)*
 
 #### `process_effects(tick_number)`
 
-`get_ticking_component_instances` includes `effect_instance__target__current_room__area` in its `select_related` chain so that `_build_status` works correctly for effect-tick status updates.
+*(unchanged from v14)*
 
-Phases 1–3 unchanged from v12.
+#### `process_npc_respawn()`
 
-**Phase 4 — Passive bar regeneration (every tick)**
+Replaced in v15. Now driven by `RoomSpawn` configuration rather than dead `NpcInstance` state.
 
-Queries all `Character` rows where `is_dying=False` and at least one bar is below max. Excludes any character with an active `CombatSession`. For each eligible character:
+**Algorithm per tick:**
 
-- `vitality_heal = ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` if below max, else 0
-- `longevity_heal = ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)` if below max, else 0
+1. Load all active `RoomSpawn` rows (`is_active=True`) via `get_active_spawns()`.
+2. For each spawn:
+   a. Call `clear_expired_dead(spawn, now)` — deletes dead `NpcInstance` rows for this definition/room/mk_tier where `respawn_at__lte=now`.
+   b. Call `count_instances(spawn)` — returns `(live_count, dead_count)`.
+   c. Compute `to_create = min(spawn.count - live_count, (spawn.count * 2) - (live_count + dead_count))`.
+   d. If `to_create <= 0`, skip.
+   e. For each instance to create: call `create_live_instance(spawn)` and log.
 
-Applies heals, caps at max, saves only changed fields, then sends a `_build_status()` payload to the character's personal group. No message text is sent — the status update is the only signal. All Origins including Machinekind receive passive regen (nanomachine narrative).
+**Helper methods** (all decorated with `@database_sync_to_async`):
+
+`get_active_spawns()` — returns `list(RoomSpawn.objects.filter(is_active=True).select_related('npc_definition', 'room'))`.
+
+`clear_expired_dead(spawn, now)` — `NpcInstance.objects.filter(definition=spawn.npc_definition, spawn_room=spawn.room, mk_tier=spawn.mk_tier, is_alive=False, respawn_at__lte=now).delete()`.
+
+`count_instances(spawn)` — queries `NpcInstance.objects.filter(definition=spawn.npc_definition, spawn_room=spawn.room, mk_tier=spawn.mk_tier)`; returns `(live_count, dead_count)` as a tuple.
+
+`create_live_instance(spawn)` — `NpcInstance.objects.create(definition=spawn.npc_definition, current_room=spawn.room, spawn_room=spawn.room, mk_tier=spawn.mk_tier, vitality_current=spawn.npc_definition.base_vitality, vitality_max=spawn.npc_definition.base_vitality, is_alive=True)`. Does not set `respawn_at`.
+
+**Removed helpers:** `get_due_respawns` and `respawn_npc` have been removed entirely.
 
 #### `_build_status(character) → dict`
 
-```python
-{
-    'type': 'status',
-    'vitality': character.vitality_current,
-    'vitality_max': character.vitality_max,
-    'acuity': round(character.acuity_current, 2),
-    'acuity_baseline': round(character.acuity_baseline, 2),
-    'acuity_band_low': round(character.acuity_band_low, 2),
-    'acuity_band_high': round(character.acuity_band_high, 2),
-    'longevity': character.longevity_current,
-    'longevity_max': character.longevity_max,
-    'room_name': character.current_room.name if character.current_room else '',
-    'area_name': character.current_room.area.name if character.current_room and character.current_room.area_id else None,
-}
-```
-
-`area_id` (the integer FK column) is checked before accessing `area.name` — avoids an extra query when area is not pre-fetched.
-
-All status payloads in the consumer (`send_room_description`, `cmd_use`, `cmd_spend`) send the same expanded shape.
+*(unchanged from v14)*
 
 ---
 
@@ -434,11 +485,11 @@ All status payloads in the consumer (`send_room_description`, `cmd_use`, `cmd_sp
 
 ### Effect application via `cmd_use`
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 ### Component expiry (Phase 3)
 
-*(unchanged from v12)*
+*(unchanged from v14)*
 
 ---
 
@@ -502,13 +553,19 @@ These are settled. Do not revisit without deliberate consideration.
 
 **`Origin` and `Archetype` are full models.** Both were promoted from CharField choices in v13b. `Origin` owns the Acuity baseline and band bounds. `Archetype` owns primary stats and the unarmed message pool FK.
 
-**`_ACUITY_DEFAULTS` dict and `get_acuity_defaults()` removed.** Acuity defaults are now read from `character.origin.acuity_baseline / .acuity_band_low / .acuity_band_high`.
-
 **Unarmed combat is explicit, not a fallback.** No weapon equipped means no weapon damage component — the formula is unchanged. Flavor messaging comes from the attacker's `UnarmedMessagePool`, falling back to the default pool.
 
 **`UnarmedMessage.template` uses Python `.format(target=name)`.** This is the established pattern for all configurable message templates going forward.
 
 **Passive regen is silent and gate-only.** No combat session + not dying = regen fires. No delay, no Origin exceptions, no player notification. Formula: `ceil((max - current) / ticks_to_full)`. Minimum effective heal of 1 per tick prevents stall. Both bars covered; Longevity recovers 30× slower than Vitality.
+
+**`RoomSpawn` is the source of truth for NPC population.** The tick engine populates rooms from `RoomSpawn` config, not from dead `NpcInstance` state. Dead instances persist until `respawn_at` passes; `clear_expired_dead` deletes them at that point, allowing the fill logic to create replacements. Total instances (live + dead) per spawn slot are capped at `count × 2` to prevent unbounded accumulation.
+
+**`VendorEntry` price is always explicit copper.** No auto-calculation formula. Every row requires a price value.
+
+**`ZoneGate.is_bidirectional` controls travel direction.** When True, a single row covers travel in both directions; the travel command (not yet implemented) checks both `source_room` and `destination_room`. Discovery gating uses the existing `RoomVisit` model — no additional fields needed.
+
+**Per-direction blocked exit messages are optional on `Room`.** Fields `no_exit_{direction}_msg` default to `''`. When non-empty, the custom message overrides the hardcoded default in `_NO_EXIT_DEFAULTS` in `consumers.py`. Direction aliases are resolved to canonical before the field lookup.
 
 ---
 
@@ -516,6 +573,10 @@ These are settled. Do not revisit without deliberate consideration.
 
 Future sessions should check this list before assuming a system exists.
 
+- Buy/sell commands (`VendorEntry` model exists; no commands yet)
+- Zone gate travel command (`ZoneGate` model exists; no command yet)
+- Per-combat-tier behavior differences (`combat_tier` field exists; no differentiated AI yet)
+- Custom blocked exit messages for the `flee` path (flee uses a different room-exit lookup; `no_exit_*_msg` fields only apply to `cmd_move`)
 - Per-archetype unarmed message pools (all archetypes currently fall back to the default pool)
 - Per-NPC unarmed message pools (all NPCs currently fall back to the default pool)
 - Origin and Archetype description fields are seeded blank (content deferred to character creation version)
