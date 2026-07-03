@@ -1,3 +1,7 @@
+from django import forms
+from django.contrib import messages
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.views import PasswordChangeView
 from django.views.generic import TemplateView
 
 _GAME_GROUPS = {
@@ -5,6 +9,26 @@ _GAME_GROUPS = {
     'can_play_shyship': 'players.shyship',
     'can_play_shyland': 'players.shyland',
 }
+
+
+class StrictPasswordChangeForm(PasswordChangeForm):
+    def clean(self):
+        cleaned = super().clean()
+        old = cleaned.get('old_password')
+        new = cleaned.get('new_password1')
+        if old and new and old == new:
+            raise forms.ValidationError('New password must be different from your current password.')
+        return cleaned
+
+
+class SettingsPasswordChangeView(PasswordChangeView):
+    form_class = StrictPasswordChangeForm
+    template_name = 'registration/password_change_form.html'
+    success_url = '/'
+
+    def form_valid(self, form):
+        messages.success(self.request, 'Password changed successfully.')
+        return super().form_valid(form)
 
 
 class HomeView(TemplateView):

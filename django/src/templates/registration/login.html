@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SHYGAMES — Log In</title>
+    <title>SHYGAMES — Login</title>
     <style>
       :root {
         color-scheme: light;
@@ -103,8 +103,9 @@
       }
 
       .login-submit {
-        width: 100%;
+        align-self: center;
         margin-top: 4px;
+        text-transform: uppercase;
         border: 0;
         border-radius: 999px;
         background: var(--primary-dark);
@@ -131,7 +132,7 @@
   <body>
     <div class="login-box">
       <h1 class="app-title">SHYGAMES</h1>
-      <section class="login-shell" aria-label="Log in">
+      <section class="login-shell" aria-label="Login">
         <form method="post" class="login-form">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ next }}" />
@@ -165,7 +166,7 @@
             />
           </div>
 
-          <button type="submit" class="login-submit">LOG IN</button>
+          <button type="submit" class="login-submit">LOGIN</button>
         </form>
       </section>
     </div>

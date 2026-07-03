@@ -187,8 +187,10 @@
     font: inherit;
     font-size: 0.85rem;
     font-weight: 700;
+    letter-spacing: 0.04em;
     padding: 4px 12px;
     text-decoration: none;
+    text-transform: uppercase;
     white-space: nowrap;
     transition: background 120ms ease;
   }
@@ -213,12 +215,13 @@
     <div class="user-pane">
       {% if request.user.is_authenticated %}
         <span class="user-pane-name">{{ request.user|display_name }}</span>
+        <a href="{% url 'password_change' %}" class="user-pane-action">Settings</a>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}
-          <button type="submit" class="user-pane-action">Log out</button>
+          <button type="submit" class="user-pane-action">Logout</button>
         </form>
       {% else %}
-        <a href="/shyship/login/" class="user-pane-action">Log in</a>
+        <a href="/shyship/login/" class="user-pane-action">Login</a>
       {% endif %}
     </div>
   </div>

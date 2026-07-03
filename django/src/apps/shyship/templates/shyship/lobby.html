@@ -16,7 +16,7 @@
           <span class="user-pane-name">{{ request.user|display_name }}</span>
           <form method="post" action="{% url 'shyship:logout' %}" style="margin:0">
             {% csrf_token %}
-            <button type="submit" class="user-pane-action">Log out</button>
+            <button type="submit" class="user-pane-action">Logout</button>
           </form>
         </div>
       </div>
