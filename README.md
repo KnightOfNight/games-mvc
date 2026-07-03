@@ -130,6 +130,8 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | `make stop` | Stops all containers (`docker compose down`). Data in the postgres volume is preserved. |
 | `make restart` | Runs `stop` then `start`. |
 | `make logs` | Follows live log output from all containers. Ctrl-C to stop. |
+| `make tick-logs` | Follows logs from the `ticker` container only. |
+| `make nuke` | Removes all containers, volumes, and images for this project. More destructive than `make stop` — wipes the database and SSL volume entirely. |
 
 ### Django
 
@@ -139,6 +141,7 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | `make migrate` | Runs `manage.py migrate` inside the running Django container. Run this after the initial start and after any model changes. |
 | `make makemigrations` | Runs `manage.py makemigrations`. Pass `APP=<name>` to limit to a specific app: `make makemigrations APP=battleship`. |
 | `make createsuperuser` | Creates a Django admin superuser interactively inside the running Django container. |
+| `make db-reset` | Drops all volumes, rebuilds, starts, runs migrations, and calls `seed_world`. A full database wipe and re-seed in one command. |
 
 ### Games
 
@@ -151,6 +154,7 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | Target | Description |
 |--------|-------------|
 | `make gen-certs` | Generates a self-signed TLS cert (10-year validity) using the `DOMAIN` and `TLS_CERT_NAME` values from `.env`. Writes `ssl/<name>.crt` and `ssl/<name>.key`. Requires `make init` to have run first. |
+| `make push-certs` | Copies local `ssl/` cert files into the Docker `ssldata` volume. Runs automatically as part of `make setup` and `make gen-certs`. Run standalone when deploying with `DOCKER_HOST` pointing at a remote daemon. |
 | `make check-secrets` | Validates that `.env` exists with all required keys and that both SSL cert files are present. Runs automatically before `make start`. Exits with an error and explanation if anything is missing. |
 
 ### Help
