@@ -940,7 +940,10 @@ function openLobbyConfirmModal() {
   const handleCancel = () => { closeModal(); };
   const handleLeave = () => {
     closeModal({ restoreFocus: false });
-    window.location.href = '/';
+    const abandonedWord = secretWord;
+    openRevealModal(abandonedWord, () => {
+      window.location.href = '/';
+    }, "GO TO LOBBY");
   };
 
   openModal({
@@ -955,8 +958,9 @@ function openLobbyConfirmModal() {
   });
 }
 
-function openRevealModal(word, onAcknowledge) {
+function openRevealModal(word, onAcknowledge, buttonLabel = "NEW GAME") {
   revealModalText.textContent = word ? word : "";
+  revealOkButton.textContent = buttonLabel;
 
   const handleAcknowledge = () => {
     closeModal({ restoreFocus: false });
