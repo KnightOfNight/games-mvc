@@ -34,6 +34,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'game_mvc.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'game_mvc.urls'

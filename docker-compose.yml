@@ -43,7 +43,7 @@ services:
       POSTGRES_USER: game_mvc
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_VOLUME:-pgdata}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U game_mvc"]
       interval: 5s

@@ -5,6 +5,12 @@
 
 -include .env
 
+# When DOCKER_HOST is set (remote EC2 daemon), bind-mount the postgres data
+# directory to the pre-mounted EBS volume instead of using a named volume.
+ifdef DOCKER_HOST
+export POSTGRES_DATA_VOLUME := /mnt/postgresqldb
+endif
+
 DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
@@ -20,6 +26,21 @@ flist:
 # ---------------------------------------------------------------------------
 # First-time setup
 # ---------------------------------------------------------------------------
+
+dev: ENV_FILE := .env.dev
+dev:
+	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
+	@cp -v $(ENV_FILE) .env
+	$(MAKE) setup
+	@echo "deployed developer environment"
+
+prod: ENV_FILE := .env.prod
+prod:
+	@test -n "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is not set. 'make prod' requires a remote Docker host." && exit 1)
+	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
+	@cp -v $(ENV_FILE) .env
+	$(MAKE) setup
+	@echo "deployed production environment"
 
 ## setup: wizard + build + start (single command for a fresh install)
 setup: init check-secrets push-certs build start
