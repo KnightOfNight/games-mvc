@@ -129,6 +129,16 @@
     transition: transform 120ms ease, opacity 120ms ease;
   }
 
+  .game-card--locked {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .game-card--locked .play-button {
+    background: #a09ab0;
+  }
+
   .page-header {
     display: flex;
     align-items: flex-start;
@@ -215,21 +225,35 @@
 
   <section class="game-shelf">
     <div class="game-grid">
+      {% if can_play_shydle %}
       <a href="/shydle" class="game-card">
+      {% else %}
+      <div class="game-card game-card--locked">
+      {% endif %}
         <h2 class="game-name">Shydle</h2>
         <p class="game-desc">A Wordle-style word game. Guess the five-letter word.</p>
-        <span class="play-button">Play</span>
-      </a>
+        <span class="play-button">{% if can_play_shydle %}Play{% else %}No Access{% endif %}</span>
+      {% if can_play_shydle %}</a>{% else %}</div>{% endif %}
+
+      {% if can_play_shyship %}
       <a href="/shyship/" class="game-card">
+      {% else %}
+      <div class="game-card game-card--locked">
+      {% endif %}
         <h2 class="game-name">Shyship</h2>
         <p class="game-desc">Multiplayer Battleship. Sink your opponent's fleet in real time.</p>
-        <span class="play-button">Play</span>
-      </a>
+        <span class="play-button">{% if can_play_shyship %}Play{% else %}No Access{% endif %}</span>
+      {% if can_play_shyship %}</a>{% else %}</div>{% endif %}
+
+      {% if can_play_shyland %}
       <a href="/shyland/" class="game-card">
+      {% else %}
+      <div class="game-card game-card--locked">
+      {% endif %}
         <h2 class="game-name">Shyland</h2>
         <p class="game-desc">A text MUD where dimensions collide. Explore a world of genre-crossing chaos.</p>
-        <span class="play-button">Play</span>
-      </a>
+        <span class="play-button">{% if can_play_shyland %}Play{% else %}No Access{% endif %}</span>
+      {% if can_play_shyland %}</a>{% else %}</div>{% endif %}
     </div>
   </section>
 </main>

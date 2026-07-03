@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Access Denied{% endblock %}
+
+{% block head %}
+<style>
+  :root {
+    color-scheme: light;
+    --panel: rgba(255, 242, 241, 0.86);
+    --ink: #2b1110;
+    --muted: #724846;
+    --primary: #b85148;
+    --primary-dark: #8c2e27;
+    --green: #48b851;
+    --blue: #5148b8;
+    --shadow: 0 18px 60px rgba(90, 20, 20, 0.14);
+    --border: rgba(150, 50, 50, 0.16);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(circle at top left, rgba(184, 81, 72, 0.22), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(72, 184, 81, 0.15), transparent 26%),
+      linear-gradient(160deg, #fdf0ee 0%, #fae6e4 44%, #f8ddd9 100%);
+  }
+
+  .app {
+    width: min(100%, 1080px);
+    margin: 0 auto;
+    padding: 48px 20px 60px;
+  }
+
+  .app-title {
+    margin: 0 0 6px;
+    color: var(--primary-dark);
+    font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+    font-size: clamp(4rem, 18vw, 6rem);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 0.95;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .app-subtitle {
+    margin: 0 0 32px;
+    color: var(--muted);
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .error-shelf {
+    backdrop-filter: blur(18px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    box-shadow: var(--shadow);
+    padding: 32px 28px;
+    text-align: center;
+  }
+
+  .error-message {
+    margin: 0 0 28px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  .home-button {
+    display: inline-block;
+    padding: 12px 32px;
+    border-radius: 999px;
+    background: var(--blue);
+    color: #f8f4ff;
+    font-weight: 800;
+    font-size: 0.95rem;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: transform 120ms ease, opacity 120ms ease;
+  }
+
+  .home-button:hover { transform: translateY(-2px); }
+  .home-button:active { transform: translateY(0); }
+
+  @media (max-width: 640px) {
+    .app { padding: 24px 12px 40px; }
+    .error-shelf { padding: 20px 16px; border-radius: 20px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="app">
+  <h1 class="app-title">403</h1>
+  <p class="app-subtitle">access denied</p>
+
+  <section class="error-shelf">
+    <p class="error-message">You don't have permission to access this page.</p>
+    <a href="/" class="home-button">Back to Lobby</a>
+  </section>
+</main>
+{% endblock %}

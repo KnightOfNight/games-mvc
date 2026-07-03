@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'apps.shydle',
     'apps.shyship',
     'apps.shyland',
+    'defender',
 ]
 
 MIDDLEWARE = [
@@ -32,6 +33,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'defender.middleware.FailedLoginMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'game_mvc.middleware.LoginRequiredMiddleware',
@@ -118,6 +120,13 @@ REST_FRAMEWORK = {
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 LOGIN_URL = '/accounts/login/'
+
+DEFENDER_REDIS_URL = f"redis://{env('REDIS_HOST', default='redis')}:6379/1"
+DEFENDER_LOGIN_FAILURE_LIMIT = 5
+DEFENDER_COOLOFF_TIME = 300        # 5-minute lockout after limit reached
+DEFENDER_BEHIND_REVERSE_PROXY = True
+DEFENDER_REVERSE_PROXY_HEADER = 'HTTP_X_FORWARDED_FOR'
+DEFENDER_STORE_ACCESS_ATTEMPTS = True  # persist attempts for admin review
 
 LOGGING = {
     'version': 1,

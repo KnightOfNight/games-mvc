@@ -128,6 +128,11 @@ createsuperuser:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py createsuperuser
 
+## createuser: create a new player account and assign game group memberships
+createuser:
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
+	    exec django python manage.py createuser
+
 # ---------------------------------------------------------------------------
 # App scaffolding
 # ---------------------------------------------------------------------------
