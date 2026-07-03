@@ -58,6 +58,8 @@ class Command(BaseCommand):
 
         current_groups = set(user.groups.values_list('name', flat=True)) if updating else set()
         self.stdout.write('\nAvailable groups:')
+        if updating:
+            self.stdout.write('  [0]  no groups')
         for i, name in enumerate(PLAYER_GROUPS, 1):
             marker = '*' if name in current_groups else ' '
             self.stdout.write(f'  [{i}]{marker} {name}')
