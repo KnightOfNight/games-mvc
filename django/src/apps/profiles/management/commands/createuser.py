@@ -32,7 +32,8 @@ class Command(BaseCommand):
 
         def prompt(label, current=None):
             hint = f' [{current}]' if current else ''
-            return input(f'{label}{hint}: ').strip()
+            value = input(f'{label}{hint}: ').strip()
+            return value if value else current
 
         email      = prompt('Email (optional)',      user.email if updating else None)
         first_name = prompt('First name (optional)', user.first_name if updating else None)
@@ -48,7 +49,8 @@ class Command(BaseCommand):
             self.stdout.write('Passwords do not match, try again.')
 
         current_tag = profile.gamer_tag if profile else None
-        gamer_tag = prompt('Gamer tag (optional, max 20 chars)', current_tag)[:20] or None
+        gamer_tag_raw = prompt('Gamer tag (optional, max 20 chars)', current_tag)
+        gamer_tag = gamer_tag_raw[:20] if gamer_tag_raw else None
         if gamer_tag and gamer_tag != current_tag:
             if UserProfile.objects.filter(gamer_tag=gamer_tag).exists():
                 self.stderr.write(f'Gamer tag "{gamer_tag}" is already taken.')
@@ -62,7 +64,11 @@ class Command(BaseCommand):
         if updating:
             self.stdout.write('  (* = currently assigned)')
 
-        raw = input('\nEnter group numbers (comma-separated, or blank for none): ').strip()
+        if updating:
+            group_prompt = '\nEnter group numbers (comma-separated, blank to keep current): '
+        else:
+            group_prompt = '\nEnter group numbers (comma-separated, or blank for none): '
+        raw = input(group_prompt).strip()
         selected_groups = []
         if raw:
             for part in raw.split(','):
@@ -72,6 +78,8 @@ class Command(BaseCommand):
                         selected_groups.append(PLAYER_GROUPS[idx])
                 except ValueError:
                     pass
+        elif updating:
+            selected_groups = [g for g in current_groups if g in PLAYER_GROUPS]
 
         if updating:
             user.email      = email
