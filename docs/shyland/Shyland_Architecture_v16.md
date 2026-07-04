@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 89c0563 (v16: character creator).
+> Authoritative technical reference as of commit 05c634a (v16: character creator).
 > Describes what is built. For design intent see the current GDD.
 
 ---
