@@ -1,4 +1,4 @@
-# Shyland Project Instructions
+# Shyland Project Instructions v15.3
 
 These instructions apply to every chat session in this project. Read them before responding to any message.
 
@@ -30,11 +30,22 @@ This is the source of truth for all code and architecture. When asked about impl
 The following files are uploaded to this project and should be read when relevant:
 
 - **Shyland_GDD_vN.md** — the full Game Design Document. This is the authoritative source for game design decisions. When design questions arise, check here first.
-- **Shyland_Architecture.md** — the authoritative technical reference describing what is actually built. When implementation questions arise, check here first.
+- **Shyland_Architecture_vN.md** — the authoritative technical reference describing what is actually built. When implementation questions arise, check here first.
 
-The version number on the GDD increments when design decisions change. The current version is always the highest-numbered one in project files. When a new version is produced, the old one should be removed.
+The versions of the documents are always in sync.
 
-The architecture doc is versioned by git commit hash in its header. When a new version is uploaded, remove the old one.
+Multiple versions of the documents may be found in project files; the current
+version is always the highest-numbered one.
+
+The architecture document includes, in its header, the git commit hash of the
+architectural changes, if any were made, in a version change. In this case
+claude code will drive increment of the major version number stamp on the file
+and remove the old one from git.
+
+If there is a new version of the game that does not require architectural
+changes, then there is no change to the git commit in the architecture
+document, but its version stamp is still incremented along with that of the
+GDD.
 
 ---
 
