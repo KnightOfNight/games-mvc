@@ -1,4 +1,4 @@
-# Shyland Project Instructions v16.1
+# Shyland Project Instructions v16.2
 
 These instructions apply to every chat session in this project. Read them before responding to any message.
 
@@ -102,6 +102,8 @@ When preparing a Claude Code brief:
 ## Document Versioning Convention
 
 **GDD:** Version number increments when design decisions change (v1 → v2 → v3). The current version is always the highest-numbered one in project files. When a new version is produced here, upload it to the project and remove the old one.
+
+**GDD working drafts (release candidates):** During a design pass, in-progress changelog entries are labeled `v<N> RC1`, `v<N> RC2`, … — never `v<N>.1`-style decimals, which would rank numerically above the eventual closed `v<N>.0` and break the highest-numbered rule. When the design pass closes, the final changelog entry is the plain `v<N>.0` release. RC labels exist only in the changelog; RC drafts are not uploaded as separate project files.
 
 **Architecture doc:** Version number always stays in sync with the GDD's version number — this is the same rule stated in "Documents in This Project" above, restated here for the versioning-convention record. When a version includes architectural changes, the document's header records the new git commit hash, and Claude Code drives the version-stamp increment as part of every brief closeout. When a version is design-only and has no architectural changes, the header's commit hash does not change, but the version stamp still increments to match the GDD. When a new version is uploaded to this project, remove the old one.
 
