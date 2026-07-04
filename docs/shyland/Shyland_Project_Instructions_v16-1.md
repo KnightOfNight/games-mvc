@@ -1,4 +1,4 @@
-# Shyland Project Instructions v16
+# Shyland Project Instructions v16.1
 
 These instructions apply to every chat session in this project. Read them before responding to any message.
 
@@ -103,7 +103,7 @@ When preparing a Claude Code brief:
 
 **GDD:** Version number increments when design decisions change (v1 → v2 → v3). The current version is always the highest-numbered one in project files. When a new version is produced here, upload it to the project and remove the old one.
 
-**Architecture doc:** Version is tracked by git commit hash in the document header. Claude Code updates the header to the new commit hash as part of every brief closeout. When a new version is uploaded to this project, remove the old one.
+**Architecture doc:** Version number always stays in sync with the GDD's version number — this is the same rule stated in "Documents in This Project" above, restated here for the versioning-convention record. When a version includes architectural changes, the document's header records the new git commit hash, and Claude Code drives the version-stamp increment as part of every brief closeout. When a version is design-only and has no architectural changes, the header's commit hash does not change, but the version stamp still increments to match the GDD. When a new version is uploaded to this project, remove the old one.
 
 **Claude Code briefs:** Named to reflect their contents (e.g. `Shyland_Brief_Who_Presence.md`, `Shyland_Brief_Items.md`). Briefs are one-time documents — used once in a Claude Code session and not kept current afterward. They do not need to be retained in this project after the work is complete and closed out.
 

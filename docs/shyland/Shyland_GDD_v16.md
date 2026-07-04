@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 15.0 — Working Draft**
+**Version 16.0 — Closed**
 
 -----
 
@@ -23,6 +23,12 @@
 | v13     | v13             | Three bug fixes (status bar maximums added to payload, `format_wallet()` select_related corrected, combat status `room_name` fixed) plus four features: `brief` toggle implemented; `Origin` and `Archetype` promoted from CharField choices to full models; `UnarmedMessagePool` and `UnarmedMessage` models introduced; unarmed combat wired as an explicit feature with random flavor messaging. Section 3.2 updated: Origin is now a model owning Acuity baseline and band values. Section 3.3 updated: Archetype is now a model owning primary stats and unarmed message pool FK. Section 4.2 updated: Acuity defaults now read from `Origin` model; `_ACUITY_DEFAULTS` dict removed. Section 5.2 updated: room description on combat entry is intentionally suppressed — design decision, not a bug. Section 5.4 updated: unarmed combat documented explicitly. Section 9.1 updated: `brief` command added. Section 9.3 updated: boolean command rule added. Section 10.4 updated: status payload now includes bar maximums and Acuity band bounds. Section 12 Future Systems: Brief Toggle row removed; unarmed pool customization rows added. |
 | v14     | v14             | Passive out-of-combat regeneration implemented for Vitality and Longevity. Section 4.1 updated: Vitality recovery description now specifies the regen formula and gate conditions; Machinekind note updated (passive regen applies via nanomachine narrative). Section 4.3 updated: Longevity recovery description updated to reflect passive regen now implemented, with its 30× slower rate noted. Section 10.4 updated: `process_effects()` now has four phases; Phase 4 (passive bar regeneration) documented. |
 | v15     | v15             | World-building schema additions. `NpcDefinition` gains `combat_tier` field (Normal/Elite/Champion/Boss/World Boss). `RoomSpawn` model introduced as the authoritative source of truth for NPC population; tick engine `process_npc_respawn()` rewritten to use it. `VendorEntry` model introduced linking NPC definitions to items with explicit copper prices, enabling vendor authoring before buy/sell commands exist. `ZoneGate` model introduced for fast-travel configuration, enabling gate authoring before the travel command exists. Per-direction blocked exit messages added to `Room` — six optional fields allowing builders to override the generic "no exit" response per direction. Section 2.4 updated: blocked exit messages documented. Section 2.6 updated: zone gates now have a schema backing. Section 5.9 updated: `combat_tier` documented; `RoomSpawn` documented; respawn description updated. Section 6.12 updated: `VendorEntry` model noted. Section 10.4 updated: `process_npc_respawn()` now `RoomSpawn`-driven. Section 12 updated: Room Spawn Configuration row removed; new deferred rows added for buy/sell commands, zone gate travel command, and combat tier behavior. |
+| v16.1   | v15 (unchanged) | In-game character creator design finalized (implementation pending — this is a working draft, more changes expected before closing to v16). Section 3.1 rewritten: creation flow is now Origin, Archetype, and Name only — **portraits are permanently cut, not just deferred**. Entry gating rule added: a player with no character who presses play is routed to the character creator and can do nothing else except return to the game system's front page — no partial access to the world. Name now defaults to the player's `user.profile` gamer tag; players may override it with a custom name. The profanity filter only runs against overridden names (the default gamer tag is assumed already vetted elsewhere) and must use a well-maintained public library rather than a hand-rolled wordlist, consistent with the project's general preference to reuse existing solutions over writing new ones. Section 12 updated: In-game Character Creation row rewritten to reflect finalized design pending implementation; portrait reference removed. |
+| v16.2   | v15 (unchanged) | Starting stat formula and Origin/Archetype description text authored (character creator design continues; still a working draft). Section 3.2 updated: each Origin now has full flavor-text description content, written for the `Origin.description` field which has been blank since v13. Section 3.3 updated: each Archetype now has full flavor-text description content, written for the `Archetype.description` field, also blank since v13. Section 3.4 updated: starting stat formula settled — every stat begins at a flat baseline of 8; each Archetype's two named primary stats are raised to 18 instead. No Origin-based stat modifiers — Origin's mechanical identity is carried entirely by Acuity baseline/band and passive trait, not by the six core stats. This keeps starting values inside the existing 8–18 range from prior versions. Section 12 updated: Origin and Archetype Descriptions row marked resolved in design (content authored here); pending is seeding the text into the database via migration or fixture. |
+| v16.3   | v15 (unchanged) | Remaining character creator open items settled (working draft continues). Section 3.1 updated: one character per account (a player has exactly one Shyland character tied to their account — no character slots or alts); spawn point on creation confirmed as Heart of the Convergence (0,0,0), the same room used as the default recall destination; character name length matches the existing `UserProfile.gamer_tag` constraint (max 20 characters), since the name defaults to and can be validated against that same field; the creation form allows the player to change any field (Origin, Archetype, name) as many times as they like before final submission — nothing is locked in until submit; "return to front page" is defined as navigating to the game system's root URL (the multi-game lobby), not just closing the creator. Starting decorative clothing remains an open item — a formulaic proposal (Origin material/palette + Archetype garment silhouette) is under discussion but not yet confirmed, so it is intentionally not yet written into this section. |
+| v16.4   | v15 (unchanged) | Starting attire settled — final open item for the character creator design (working draft continues; one item remains open — see below). Section 3.1 updated: every new character is dressed in purely decorative starting clothing described by a formula — an Origin material/palette phrase combined with an Archetype garment-silhouette phrase — rather than 49 hand-authored combinations. This clothing occupies no equipment slot, has no stats, and is not an `ItemDefinition`/`ItemInstance`; it exists as generated flavor text only. Full phrase tables for all seven Origins and seven Archetypes are included. **Still open:** name-uniqueness check timing (live validation as the player types vs. checked only on submit) has not yet been decided. |
+| v16.5   | v15 (unchanged) | Final open item resolved — **the character creator design is now complete and ready for a Claude Code brief.** Section 3.1 updated: name uniqueness is checked in real time as the player types (not only on form submit), giving immediate feedback before they attempt to finalize the character. This is the last remaining decision from the character creator design pass that began in this chat; no open items remain for this system. |
+| v16.0   | v16 (commit `05c634a`) | **Character creator implemented, verified, and closed out.** This version folds the full v16.1–v16.5 working-draft design together with four refinements that emerged during implementation and a documentation audit of stale v15 passages the working draft hadn't reached. Implementation refinements (Section 3.1): the profanity exemption is narrower than originally designed — it applies only to a kept, *set* gamer tag; a player with no gamer tag falls back to their username, which has no upstream vetting, so that default IS profanity-checked even when submitted unchanged. The default name is truncated to 20 characters when necessary (usernames can run up to 150 characters; gamer tags are already capped at 20). Name uniqueness is case-insensitive and enforced by a database-level constraint on every write path, including Django admin — the real-time as-you-type check is an advisory courtesy layered on top, not the authoritative gate. `Character.name` is permanent once set at creation and independent of later gamer-tag changes — this reverses the pre-v16 behavior where the displayed name tracked the profile live. Documentation-audit fixes: Section 10.1 Auth row updated to reflect `Character.name` as its own field rather than sourced live from `user.profile.gamer_tag`. Section 12 (Future Systems): removed the "Origin and Archetype Descriptions" and "In-game Character Creation" rows entirely (both fully shipped); added a new row noting that starting-attire flavor text is seeded but not yet rendered anywhere in-game. |
 
 -----
 
@@ -252,12 +258,55 @@ There is no safe logout room. Players are responsible for where they choose to g
 
 ### 3.1 Character Creation
 
+Shyland is web-based. When a player who has access to the game presses play and has no existing character, they are routed directly into the character creator. While in this state, the only two things the player can do are: (1) complete character creation, or (2) return to the game system's front page — the root URL of the multi-game platform, not just closing the creator window. There is no partial or read-only access to the world without a character.
+
+**One character per account.** A player has exactly one Shyland character tied to their account. There are no character slots, no alts, and no way to create a second character while the first exists.
+
+The creation form is a normal web form: the player may change Origin, Archetype, or name as many times as they like before submitting. Nothing is locked in until the form is submitted.
+
 New players choose:
 
 1. **Origin** (replaces traditional race — see 3.2)
 1. **Archetype** (replaces traditional class — see 3.3)
-1. **Name** (profanity filtered, uniqueness enforced)
-1. **Portrait** (selected from a curated set grouped by Origin; visual element displayed in UI)
+1. **Name** — defaults to the player's `user.profile` gamer tag; the player may override it with a custom name. Name length is constrained to match the existing `UserProfile.gamer_tag` field (max 20 characters); the default is truncated to 20 characters when necessary, since a player with no gamer tag falls back to their username, which can run up to 150 characters. Uniqueness is checked in real time as the player types the override, not only when the form is submitted, so they get immediate feedback before attempting to finalize the character — but that live check is an advisory courtesy only. The authoritative gate is a case-insensitive, database-level uniqueness constraint enforced on every write path, including Django admin, so a name collision can never slip through regardless of how a `Character` row is created. A profanity filter runs on the submitted name unless it exactly matches a gamer tag the player has actually set — a username-derived default has no upstream vetting and is always checked, even if the player submits it unchanged. The filter must use a well-maintained, publicly available library rather than a custom wordlist — consistent with the project's general preference to reuse existing solutions rather than write new ones where one already exists. Once set at creation, the name is permanent and independent of the account's gamer tag — changing the gamer tag later does not rename the character.
+
+There is no portrait selection. Portraits were considered and explicitly cut — not deferred — from character creation. Characters have no visual avatar.
+
+On successful creation, the character spawns at **Heart of the Convergence (0,0,0)** — the same room used as the default recall destination.
+
+#### Starting Attire
+
+Every new character is dressed in decorative starting clothing so they aren't naked, but this clothing is purely cosmetic — it occupies no equipment slot, carries no stats, and is not an `ItemDefinition`/`ItemInstance`. It is generated flavor text, not an item.
+
+The description is assembled from two phrases: an Origin material/palette phrase and an Archetype garment-silhouette phrase. This produces all 49 Origin × Archetype combinations without hand-authoring each one individually.
+
+**Template:** *"{name} wears {Origin material}, cut into {Archetype silhouette} — plain, decorative clothing with no combat value."*
+
+**Origin material/palette phrases:**
+
+| Origin | Material / Palette |
+|---|---|
+| Highborn | fine tailored fabrics in noble colors |
+| Feral | tanned hides, fur, and woven plant fiber |
+| Streetborn | salvaged synthetics and street-tech patchwork |
+| Irradiated | patched scavenged canvas and scrap plating |
+| Undying | black lace and grave-worn cloth |
+| Machinekind | riveted brass plating and worn leather straps |
+| Voidtouched | shifting, void-dark cloth that seems to drink the light |
+
+**Archetype garment-silhouette phrases:**
+
+| Archetype | Silhouette |
+|---|---|
+| Blade | a fitted tunic with wrapped forearms |
+| Bulwark | a heavy layered coat |
+| Shade | a close-cut hooded wrap |
+| Conduit | flowing, loose-sleeved robes |
+| Warden | simple, unadorned vestments |
+| Gunner | a trim long coat with a cinched belt |
+| Machinist | a utility vest lined with tool loops |
+
+**Example:** a Highborn Bulwark named Thorne would see: *"Thorne wears fine tailored fabrics in noble colors, cut into a heavy layered coat — plain, decorative clothing with no combat value."*
 
 ### 3.2 Origins
 
@@ -289,6 +338,24 @@ Each Origin has a distinct **Acuity baseline** — the natural resting point the
 
 Origins can have social/narrative consequences — some NPCs react differently to Machinekind in a fantasy village, or to an Irradiated in a pristine elven glade.
 
+#### Origin Descriptions
+
+The following text is authored for the `Origin.description` field on each of the seven Origins (blank since the model was introduced in v13):
+
+**Highborn** — Born into privilege and lineage in a fantasy court, carrying inherited confidence and formal training. Their minds rest at the same steady center most Origins share — no special gift, no burden, just the quiet certainty of someone raised to believe they belong.
+
+**Feral** — Raised by wild lands and tribal codes, moving with an animal's economy and an instinctive read of terrain. Their minds run a touch looser than most, tuned to reflex over deliberation.
+
+**Streetborn** — Cut their teeth in a neon-lit cyberpunk sprawl, reading a crowd, a network, and a threat with equal fluency. Same steady baseline as Highborn — sharpened by constant low-grade urban vigilance instead.
+
+**Irradiated** — Survivors of a shattered, irradiated world, bodies at uneasy peace with poison. That peace costs something — minds resting slightly below center, worn by scarcity and threat.
+
+**Undying** — Touched by a gothic curse or blessing that keeps death from fully taking hold. Minds settle well below the common center — colder, quieter — and that same distance is what makes death sting less.
+
+**Machinekind** — Built, not born: steam-driven constructs of gears and something that might be a soul. Runs slightly hot by design. No blood for poison to spoil, but the same mechanical nature means magic slides off too — only honest repair mends them.
+
+**Voidtouched** — Stared into something between the stars and lived. A permanent, unsettling distance from ordinary thought. That same distance lets them tolerate extremes of focus and scatter that would break anyone else, and channel eldritch forces others can barely touch.
+
 ### 3.3 Archetypes
 
 Archetypes define combat role and skill access. Each spans genre — a Blade is equally a swordsman, a street samurai, or a wasteland knife-fighter depending on equipment and flavor choices.
@@ -309,6 +376,24 @@ Archetypes are not rigid. A skill tree system (see 3.5) allows cross-archetype d
 
 The **Warden** archetype has expanded responsibility in Shyland — beyond healing Vitality, Wardens have tools to actively manage party members' Acuity, nudging allies toward their optimal range when combat stress or eldritch exposure has shifted them too far in either direction.
 
+#### Archetype Descriptions
+
+The following text is authored for the `Archetype.description` field on each of the seven Archetypes (blank since the model was introduced in v13):
+
+**Blade** — Closes distance and ends fights with raw physical skill. STR and DEX in equal measure, equally at home as a disciplined duelist or a street brawler.
+
+**Bulwark** — Stands between danger and everyone else. STR and END built to absorb punishment nothing lighter could survive.
+
+**Shade** — Wins fights before the enemy knows one started. DEX for speed, INT for the cunning to strike where it hurts, then be somewhere else.
+
+**Conduit** — Channels raw power through mind and will. INT to shape it, WIS to control it without being consumed.
+
+**Warden** — Keeps everyone else standing. WIS for healing, END to outlast the fight. Also nudges allies' Acuity back toward its band when it's drifted too far.
+
+**Gunner** — Deals damage from range and rarely misses. DEX for the trigger, PER for the read on distance and timing.
+
+**Machinist** — Doesn't fight alone. INT to build and command, DEX to keep deployments fast under pressure.
+
 ### 3.4 Core Stats
 
 Six primary stats, each 1–100 (starting range 8–18 based on origin/archetype bonuses):
@@ -321,6 +406,14 @@ Six primary stats, each 1–100 (starting range 8–18 based on origin/archetype
 |Intelligence|INT         |Spell/tech damage, mana/energy pool, crafting                            |
 |Wisdom      |WIS         |Healing output, resistance to debuffs, XP rate                           |
 |Perception  |PER         |Initiative, ranged accuracy, trap/secret detection, situational awareness|
+
+#### Starting Stats
+
+At character creation, every stat begins at a flat baseline of **8**. The two stats named as an Archetype's Primary Stats (see 3.3 table) are raised to **18** instead. There are no Origin-based stat modifiers — Origin's mechanical identity is carried entirely by its Acuity baseline/band and passive trait, not by the six core stats.
+
+Example: a **Bulwark** (primary stats STR, END) starts at STR 18, END 18, DEX 8, INT 8, WIS 8, PER 8.
+
+This is a deliberate design choice, not just a simplification — starting every character with two stats far above the rest reinforces what their Archetype is *for* from the first moment of play, before any stat points have been spent.
 
 #### Derived Stats
 
@@ -1260,7 +1353,7 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 |**Database**                 |PostgreSQL 16                                                     |
 |**In-memory / session state**|Redis 7 (Channels layer + presence tracking)                      |
 |**Client**                   |Browser-based — vanilla HTML/CSS/JS, no framework                 |
-|**Auth**                     |Django built-in auth; character name from `user.profile.gamer_tag`|
+|**Auth**                     |Django built-in auth with the shared gamer-tag profile system; Shyland characters have their own `name` field, initialized from the gamer tag at creation and independent of it thereafter|
 |**Deployment**               |Docker Compose: nginx → Daphne → Django/Redis/Postgres            |
 
 All game logic runs server-side. The client is a dumb terminal — it sends text commands and renders JSON output. No game state is trusted from the client.
@@ -1479,10 +1572,9 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Revival Mechanic**                   |Dying state exists (30-second window). Another player using a revival item on a dying character is not yet implemented.            |
 |**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
-|**Origin and Archetype Descriptions**  |Description fields exist on both models but are seeded blank. Content deferred to character creation version.                      |
-|**In-game Character Creation**         |Admin creation works. In-game flow (web form, Origin/Archetype selection, name entry, portrait selection) not yet implemented.     |
+|**Starting Attire Rendering**          |`Origin.attire_material` and `Archetype.attire_silhouette` are seeded with real content and combined into flavor text at character creation, but that text is not yet surfaced anywhere in-game (no `look`/inventory display of it yet). |
 
 -----
 
-*Document version 15.0 — Shyland Working Draft*
+*Document version 16.0 — Shyland, Closed*
 *All systems subject to revision during development.*
