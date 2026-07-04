@@ -1,4 +1,4 @@
-# Shyland Project Instructions v15.3
+# Shyland Project Instructions v16
 
 These instructions apply to every chat session in this project. Read them before responding to any message.
 
@@ -68,7 +68,7 @@ Each Claude Code brief follows a complete lifecycle. This applies to every brief
 Decisions are made, the GDD is the reference. Output is a Claude Code brief delivered as a downloadable markdown file. Always produce the brief as a file — never paste it inline in the chat.
 
 **2. Claude Code implements the brief**
-Claude Code runs in the terminal against the repo. It implements the brief, runs verification, and — only after all implementation and verification steps pass — updates the architecture document (`docs/shyland/architecture.md`) in the repo. The architecture doc update is always the last step and is gated on everything else being complete and tested.
+Claude Code runs in the terminal against the repo. It implements the brief, runs verification, and — only after all implementation and verification steps pass — updates the architecture document (`docs/shyland/Shyland_Architecture_vN.md`) in the repo. The architecture doc update is always the last step and is gated on everything else being complete and tested.
 
 **3. Close out here (this chat)**
 After Claude Code is done and the repo is pushed:
@@ -116,7 +116,7 @@ These are settled. Do not suggest alternatives unless the human explicitly opens
 | Decision | Detail |
 |---|---|
 | **Free forever** | No monetization, no premium currency, no real-money transactions of any kind. Ever. |
-| **Items soulbound on pickup** | No player-to-player item trading. Items cannot leave the character who picked them up. Super users can gift items; gifts become immediately soulbound to the recipient. |
+| **Items soulbound on equip** | No player-to-player item trading. Picking up transfers ownership but does not bind; the moment an item is equipped it becomes permanently soulbound (see GDD — clarified in GDD v6). Super users can gift items; gifts become immediately soulbound to the recipient. |
 | **Currency freely transferable** | Players can give each other currency. |
 | **No off-body storage** | No banks, no stash, no mule accounts. Players carry what they carry. |
 | **No hard level cap** | Infinite progression. Soft cap at content frontier. The Wastelands zone always scales to player level. |
@@ -134,7 +134,7 @@ These are settled. Do not suggest alternatives unless the human explicitly opens
 | **Artifact items are unique** | The Artifact rarity tier is reserved for one-of-a-kind hand-authored items that exist nowhere else in the game. They do not follow standard item generation rules. |
 | **One character per account** | A player has exactly one Shyland character tied to their account. No character slots, no alts. |
 | **No portraits** | Character creation is Origin, Archetype, and Name only. No visual avatar system — considered and explicitly cut, not deferred. |
-| **Character name defaults to gamer tag** | Name pre-fills from the player's `user.profile` gamer tag at creation. Override is allowed, with live uniqueness checking as the player types and a profanity filter (well-maintained public library only, never a custom wordlist) that runs solely on overridden names. |
+| **Character name defaults to gamer tag** | Name pre-fills from the player's `user.profile` gamer tag at creation (falling back to their username, truncated to 20 chars). Override is allowed, with live uniqueness checking as the player types (case-insensitive, enforced by a DB constraint) and a profanity filter (well-maintained public library only, never a custom wordlist). The filter exempts only a kept, *set* gamer tag — the username fallback has no upstream vetting and is always checked (v16 refinement). Once created, `Character.name` is its own field, independent of later gamer tag changes. |
 
 ---
 
@@ -156,7 +156,7 @@ Characters have three resource bars — not two, not one. All three are in the d
 - **Cache/channel layer:** Redis 7
 - **Deployment:** Docker Compose (nginx → Daphne → Django/Redis/Postgres)
 - **Client:** Vanilla JS, responsive HTML/CSS, no framework dependency
-- **Auth:** Django built-in auth; character name comes from `user.profile` (shared gamer tag system)
+- **Auth:** Django built-in auth with the shared `user.profile` gamer tag system; Shyland characters have their own `name` field, initialized from the gamer tag at creation (v16)
 
 All game logic runs server-side. The client is a dumb terminal. It sends text commands and renders JSON output. Never trust anything from the client for game state.
 
@@ -246,11 +246,9 @@ Room header format: `[ Area Name — Room Name ]` when the room has an area, `[ 
 
 ---
 
-## Commands Currently Implemented
+## Commands
 
-`look` / `l`, `north` / `n`, `south` / `s`, `east` / `e`, `west` / `w`, `up` / `u`, `down` / `d`, `say <text>`, `who`, `help` / `?`
-
-When suggesting new commands, check Section 9 of the GDD for the full planned command list before proposing something that may already be designed.
+GDD Section 9 is the single authoritative command reference: 9.1 lists implemented commands, 9.2 lists planned ones. No other document maintains a command list — the code's dispatch table (`consumers.py`) is the runtime source of truth, and GDD §9.1 is kept in sync with it at closeout. When suggesting new commands, check Section 9 first before proposing something that may already be designed.
 
 ---
 
