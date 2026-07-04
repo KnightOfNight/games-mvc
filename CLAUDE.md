@@ -22,6 +22,7 @@ Docs: `docs/shyland/`
 | `django` | python:3.12-slim + Daphne | ASGI server: Django 5 + Channels |
 | `postgres` | postgres:16-alpine | Primary database (persistent volume `pgdata`) |
 | `redis` | redis:7-alpine | Django Channels layer — WebSocket routing |
+| `ticker` | same image as `django` | Shyland tick engine (`run_tick_engine` management command) |
 
 Architecture flow:
 
@@ -182,7 +183,7 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 - `currency.py` — currency utility (single `copper` BigIntegerField, escalating-multiplier tiers)
 - `management/commands/seed_world.py` — creates The Convergence (5-room starter zone)
 
-**Commands implemented:** `look`/`l`, `north`/`n`, `south`/`s`, `east`/`e`, `west`/`w`, `up`/`u`, `down`/`d`, `say`, `who`
+**Commands implemented:** see the dispatch table in `consumers.py` (`receive_json`) — that is the source of truth. The authoritative player-facing reference with aliases and noun syntax is GDD Section 9. Do not maintain a command list here.
 
 **Client output message types:**
 ```json
