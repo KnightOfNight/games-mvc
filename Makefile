@@ -21,7 +21,7 @@ PROJECT_DIR     := $(shell pwd)
 
 # flist
 flist:
-	@find `ls` | egrep -v -e '__pycache__/' -e '^ssl' > docs/shyland/flist
+	@scripts/mkflist.sh
 
 # ---------------------------------------------------------------------------
 # First-time setup
