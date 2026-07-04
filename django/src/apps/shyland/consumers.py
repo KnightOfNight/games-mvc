@@ -4,6 +4,7 @@ import random
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.urls import reverse
 from django.utils import timezone
 
 from .currency import display_for_zone
@@ -89,6 +90,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if self.character is None:
             await self.accept()
             await self.output('No character found. Create one to play.', 'error')
+            # Structured signal so the client can route to the creator instead
+            # of sitting on a dead socket.
+            await self.send_json({'type': 'redirect', 'url': reverse('shyland:create_character')})
             await self.close()
             return
 
@@ -127,7 +131,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.player_group, self.channel_name)
         if hasattr(self, 'room_group'):
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
-        if hasattr(self, 'character'):
+        if getattr(self, 'character', None) is not None:
             await self.touch_last_seen(self.character)
 
     # ------------------------------------------------------------------
@@ -1222,7 +1226,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             char = (
                 Character.objects
                 .select_related(
-                    'current_room__zone', 'recall_room', 'user__profile',
+                    'current_room__zone', 'recall_room',
                     'archetype__unarmed_message_pool',
                 )
                 .get(user=user)
@@ -1281,7 +1285,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             Character.objects
             .filter(current_room=room)
             .exclude(pk=self.character.pk)
-            .select_related('user__profile')
         )
         return [c.name for c in chars]
 
@@ -1447,7 +1450,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_character_fresh(self):
         char = Character.objects.select_related(
-            'current_room__zone', 'current_room__area', 'recall_room', 'user__profile',
+            'current_room__zone', 'current_room__area', 'recall_room',
             'archetype__unarmed_message_pool',
         ).get(pk=self.character_pk)
         self.character = char

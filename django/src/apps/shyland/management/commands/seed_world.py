@@ -206,48 +206,114 @@ class Command(BaseCommand):
 
     def _seed_origins(self):
         origins = [
-            {'slug': 'highborn',    'name': 'Highborn',    'acuity_baseline': 1.0,  'acuity_band_low': 0.85, 'acuity_band_high': 1.15},
-            {'slug': 'feral',       'name': 'Feral',       'acuity_baseline': 0.95, 'acuity_band_low': 0.80, 'acuity_band_high': 1.10},
-            {'slug': 'streetborn',  'name': 'Streetborn',  'acuity_baseline': 1.0,  'acuity_band_low': 0.85, 'acuity_band_high': 1.15},
-            {'slug': 'irradiated',  'name': 'Irradiated',  'acuity_baseline': 0.90, 'acuity_band_low': 0.75, 'acuity_band_high': 1.05},
-            {'slug': 'undying',     'name': 'Undying',     'acuity_baseline': 0.80, 'acuity_band_low': 0.65, 'acuity_band_high': 1.00},
-            {'slug': 'machinekind', 'name': 'Machinekind', 'acuity_baseline': 1.05, 'acuity_band_low': 0.90, 'acuity_band_high': 1.20},
-            {'slug': 'voidtouched', 'name': 'Voidtouched', 'acuity_baseline': 0.70, 'acuity_band_low': 0.40, 'acuity_band_high': 1.30},
+            {
+                'slug': 'highborn', 'name': 'Highborn',
+                'acuity_baseline': 1.0, 'acuity_band_low': 0.85, 'acuity_band_high': 1.15,
+                'description': "Born into privilege and lineage in a fantasy court, carrying inherited confidence and formal training. Their minds rest at the same steady center most Origins share — no special gift, no burden, just the quiet certainty of someone raised to believe they belong.",
+                'attire_material': 'fine tailored fabrics in noble colors',
+            },
+            {
+                'slug': 'feral', 'name': 'Feral',
+                'acuity_baseline': 0.95, 'acuity_band_low': 0.80, 'acuity_band_high': 1.10,
+                'description': "Raised by wild lands and tribal codes, moving with an animal's economy and an instinctive read of terrain. Their minds run a touch looser than most, tuned to reflex over deliberation.",
+                'attire_material': 'tanned hides, fur, and woven plant fiber',
+            },
+            {
+                'slug': 'streetborn', 'name': 'Streetborn',
+                'acuity_baseline': 1.0, 'acuity_band_low': 0.85, 'acuity_band_high': 1.15,
+                'description': "Cut their teeth in a neon-lit cyberpunk sprawl, reading a crowd, a network, and a threat with equal fluency. Same steady baseline as Highborn — sharpened by constant low-grade urban vigilance instead.",
+                'attire_material': 'salvaged synthetics and street-tech patchwork',
+            },
+            {
+                'slug': 'irradiated', 'name': 'Irradiated',
+                'acuity_baseline': 0.90, 'acuity_band_low': 0.75, 'acuity_band_high': 1.05,
+                'description': "Survivors of a shattered, irradiated world, bodies at uneasy peace with poison. That peace costs something — minds resting slightly below center, worn by scarcity and threat.",
+                'attire_material': 'patched scavenged canvas and scrap plating',
+            },
+            {
+                'slug': 'undying', 'name': 'Undying',
+                'acuity_baseline': 0.80, 'acuity_band_low': 0.65, 'acuity_band_high': 1.00,
+                'description': "Touched by a gothic curse or blessing that keeps death from fully taking hold. Minds settle well below the common center — colder, quieter — and that same distance is what makes death sting less.",
+                'attire_material': 'black lace and grave-worn cloth',
+            },
+            {
+                'slug': 'machinekind', 'name': 'Machinekind',
+                'acuity_baseline': 1.05, 'acuity_band_low': 0.90, 'acuity_band_high': 1.20,
+                'description': "Built, not born: steam-driven constructs of gears and something that might be a soul. Runs slightly hot by design. No blood for poison to spoil, but the same mechanical nature means magic slides off too — only honest repair mends them.",
+                'attire_material': 'riveted brass plating and worn leather straps',
+            },
+            {
+                'slug': 'voidtouched', 'name': 'Voidtouched',
+                'acuity_baseline': 0.70, 'acuity_band_low': 0.40, 'acuity_band_high': 1.30,
+                'description': "Stared into something between the stars and lived. A permanent, unsettling distance from ordinary thought. That same distance lets them tolerate extremes of focus and scatter that would break anyone else, and channel eldritch forces others can barely touch.",
+                'attire_material': 'shifting, void-dark cloth that seems to drink the light',
+            },
         ]
         for data in origins:
-            _, created = Origin.objects.get_or_create(
-                slug=data['slug'],
-                defaults={
-                    'name': data['name'],
-                    'description': '',
-                    'acuity_baseline': data['acuity_baseline'],
-                    'acuity_band_low': data['acuity_band_low'],
-                    'acuity_band_high': data['acuity_band_high'],
-                },
+            slug = data.pop('slug')
+            name = data.pop('name')
+            # Acuity values are balance data an admin may have tuned in prod —
+            # set them on create only; re-runs update content fields alone.
+            balance = {k: data.pop(k) for k in ('acuity_baseline', 'acuity_band_low', 'acuity_band_high')}
+            content = {'name': name, **data}
+            _, created = Origin.objects.update_or_create(
+                slug=slug,
+                defaults=content,
+                create_defaults={**content, **balance},
             )
-            self.stdout.write(f'  Origin "{data["name"]}" {"created" if created else "exists"}.')
+            self.stdout.write(f'  Origin "{name}" {"created" if created else "updated"}.')
 
     def _seed_archetypes(self):
         archetypes = [
-            {'slug': 'blade',     'name': 'Blade',     'primary_stat_1': 'str', 'primary_stat_2': 'dex'},
-            {'slug': 'bulwark',   'name': 'Bulwark',   'primary_stat_1': 'str', 'primary_stat_2': 'end'},
-            {'slug': 'shade',     'name': 'Shade',     'primary_stat_1': 'dex', 'primary_stat_2': 'int'},
-            {'slug': 'conduit',   'name': 'Conduit',   'primary_stat_1': 'int', 'primary_stat_2': 'wis'},
-            {'slug': 'warden',    'name': 'Warden',    'primary_stat_1': 'wis', 'primary_stat_2': 'end'},
-            {'slug': 'gunner',    'name': 'Gunner',    'primary_stat_1': 'dex', 'primary_stat_2': 'per'},
-            {'slug': 'machinist', 'name': 'Machinist', 'primary_stat_1': 'int', 'primary_stat_2': 'dex'},
+            {
+                'slug': 'blade', 'name': 'Blade', 'primary_stat_1': 'str', 'primary_stat_2': 'dex',
+                'description': "Closes distance and ends fights with raw physical skill. STR and DEX in equal measure, equally at home as a disciplined duelist or a street brawler.",
+                'attire_silhouette': 'a fitted tunic with wrapped forearms',
+            },
+            {
+                'slug': 'bulwark', 'name': 'Bulwark', 'primary_stat_1': 'str', 'primary_stat_2': 'end',
+                'description': "Stands between danger and everyone else. STR and END built to absorb punishment nothing lighter could survive.",
+                'attire_silhouette': 'a heavy layered coat',
+            },
+            {
+                'slug': 'shade', 'name': 'Shade', 'primary_stat_1': 'dex', 'primary_stat_2': 'int',
+                'description': "Wins fights before the enemy knows one started. DEX for speed, INT for the cunning to strike where it hurts, then be somewhere else.",
+                'attire_silhouette': 'a close-cut hooded wrap',
+            },
+            {
+                'slug': 'conduit', 'name': 'Conduit', 'primary_stat_1': 'int', 'primary_stat_2': 'wis',
+                'description': "Channels raw power through mind and will. INT to shape it, WIS to control it without being consumed.",
+                'attire_silhouette': 'flowing, loose-sleeved robes',
+            },
+            {
+                'slug': 'warden', 'name': 'Warden', 'primary_stat_1': 'wis', 'primary_stat_2': 'end',
+                'description': "Keeps everyone else standing. WIS for healing, END to outlast the fight. Also nudges allies' Acuity back toward its band when it's drifted too far.",
+                'attire_silhouette': 'simple, unadorned vestments',
+            },
+            {
+                'slug': 'gunner', 'name': 'Gunner', 'primary_stat_1': 'dex', 'primary_stat_2': 'per',
+                'description': "Deals damage from range and rarely misses. DEX for the trigger, PER for the read on distance and timing.",
+                'attire_silhouette': 'a trim long coat with a cinched belt',
+            },
+            {
+                'slug': 'machinist', 'name': 'Machinist', 'primary_stat_1': 'int', 'primary_stat_2': 'dex',
+                'description': "Doesn't fight alone. INT to build and command, DEX to keep deployments fast under pressure.",
+                'attire_silhouette': 'a utility vest lined with tool loops',
+            },
         ]
         for data in archetypes:
-            _, created = Archetype.objects.get_or_create(
-                slug=data['slug'],
-                defaults={
-                    'name': data['name'],
-                    'description': '',
-                    'primary_stat_1': data['primary_stat_1'],
-                    'primary_stat_2': data['primary_stat_2'],
-                },
+            slug = data.pop('slug')
+            name = data.pop('name')
+            # Primary stats are balance data — set on create only, like Origin
+            # acuity values above.
+            balance = {k: data.pop(k) for k in ('primary_stat_1', 'primary_stat_2')}
+            content = {'name': name, **data}
+            _, created = Archetype.objects.update_or_create(
+                slug=slug,
+                defaults=content,
+                create_defaults={**content, **balance},
             )
-            self.stdout.write(f'  Archetype "{data["name"]}" {"created" if created else "exists"}.')
+            self.stdout.write(f'  Archetype "{name}" {"created" if created else "updated"}.')
 
     def _seed_effects(self):
         # --- Healing Draught ---

@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 
 COMBAT_ROUND_TICKS    = 3
 DYING_DURATION_SECS   = 30
@@ -162,6 +163,7 @@ class Origin(models.Model):
     acuity_baseline  = models.FloatField()
     acuity_band_low  = models.FloatField()
     acuity_band_high = models.FloatField()
+    attire_material  = models.CharField(max_length=200, blank=True, default='')
 
     class Meta:
         ordering = ['name']
@@ -181,6 +183,7 @@ class Archetype(models.Model):
     description          = models.TextField(blank=True)
     primary_stat_1       = models.CharField(max_length=3, choices=STAT_CHOICES)
     primary_stat_2       = models.CharField(max_length=3, choices=STAT_CHOICES)
+    attire_silhouette    = models.CharField(max_length=200, blank=True, default='')
     unarmed_message_pool = models.ForeignKey(
         UnarmedMessagePool,
         on_delete=models.SET_NULL,
@@ -197,6 +200,7 @@ class Archetype(models.Model):
 
 class Character(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='shyland_character')
+    name = models.CharField(max_length=20)
     origin = models.ForeignKey(Origin, on_delete=models.PROTECT, related_name='characters')
     archetype = models.ForeignKey(Archetype, on_delete=models.PROTECT, related_name='characters')
     level = models.IntegerField(default=1)
@@ -231,15 +235,20 @@ class Character(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
-    @property
-    def name(self):
-        try:
-            tag = self.user.profile.gamer_tag
-            if tag:
-                return tag
-        except ObjectDoesNotExist:
-            pass
-        return self.user.username
+    class Meta:
+        constraints = [
+            # Uniqueness must be case-insensitive: players are told a name is
+            # taken regardless of casing, so the DB has to enforce the same rule
+            # for every write path (creator form, admin, shell).
+            models.UniqueConstraint(
+                Lower('name'),
+                name='shyland_character_name_ci_unique',
+                violation_error_message='That name is already taken.',
+            ),
+        ]
+
+    def clean(self):
+        self.name = (self.name or '').strip()
 
     def __str__(self):
         return self.name

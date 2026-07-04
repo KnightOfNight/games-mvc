@@ -216,6 +216,8 @@
           requestAnimationFrame(() => { combatLive.textContent = msg.text; });
         }
       }
+    } else if (msg.type === 'redirect' && msg.url) {
+      window.location.href = msg.url;
     } else if (msg.type === 'status') {
       if (msg.room_name) roomName.textContent = msg.room_name;
       barV.textContent = msg.vitality_max !== undefined

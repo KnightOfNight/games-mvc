@@ -24,13 +24,13 @@ class UnarmedMessagePoolAdmin(admin.ModelAdmin):
 
 @admin.register(Origin)
 class OriginAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'acuity_baseline', 'acuity_band_low', 'acuity_band_high')
+    list_display = ('name', 'slug', 'acuity_baseline', 'acuity_band_low', 'acuity_band_high', 'attire_material')
     prepopulated_fields = {'slug': ('name',)}
 
 
 @admin.register(Archetype)
 class ArchetypeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'primary_stat_1', 'primary_stat_2', 'unarmed_message_pool')
+    list_display = ('name', 'slug', 'primary_stat_1', 'primary_stat_2', 'attire_silhouette', 'unarmed_message_pool')
     prepopulated_fields = {'slug': ('name',)}
     raw_id_fields = ('unarmed_message_pool',)
 
@@ -116,9 +116,9 @@ class CharacterAdmin(admin.ModelAdmin):
     list_filter = ('archetype', 'is_hardcore', 'is_dead')
     raw_id_fields = ('origin', 'archetype', 'current_room', 'recall_room')
     readonly_fields = ('wallet_display',)
-    list_select_related = ('user__profile',)
+    list_select_related = ('user',)
     fieldsets = (
-        (None, {'fields': ('user', 'origin', 'archetype', 'current_room', 'recall_room')}),
+        (None, {'fields': ('user', 'name', 'origin', 'archetype', 'current_room', 'recall_room')}),
         ('Progression', {'fields': ('level', 'xp', 'unspent_stat_points')}),
         ('Primary Stats', {'fields': ('stat_str', 'stat_dex', 'stat_end', 'stat_int', 'stat_wis', 'stat_per')}),
         ('Bars', {'fields': ('vitality_current', 'vitality_max', 'longevity_current', 'longevity_max',

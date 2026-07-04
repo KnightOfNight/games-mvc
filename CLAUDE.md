@@ -111,8 +111,8 @@ games-mvc/
 │           └── context_processors.py
 ├── docs/
 │   └── shyland/                 ← Shyland documentation
-│       ├── Shyland_GDD_v3.md    ← full game design document
-│       └── Shyland_Architecture_v14.md ← technical architecture reference
+│       ├── Shyland_GDD_v15.md   ← full game design document
+│       └── Shyland_Architecture_v16.md ← technical architecture reference
 ├── scripts/
 │   ├── init.py                  ← setup wizard (writes .env)
 │   └── check_secrets.py         ← pre-start validation
@@ -176,8 +176,9 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 **Docs:** `docs/shyland/`
 
 **Key files:**
-- `models.py` — `Zone`, `Room`, `Character`, `RoomVisit`
+- `models.py` — `Zone`, `Room`, `Character`, `RoomVisit` (plus `Origin`, `Archetype`, items, NPCs, combat)
 - `consumers.py` — `SkylandConsumer` (movement, look, say, who)
+- `views.py` / `forms.py` — character creation flow (`/shyland/create/`, real-time name check)
 - `currency.py` — currency utility (single `copper` BigIntegerField, escalating-multiplier tiers)
 - `management/commands/seed_world.py` — creates The Convergence (5-room starter zone)
 
@@ -187,10 +188,11 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 ```json
 {"type": "output", "text": "...", "category": "room|chat|system|error"}
 {"type": "status", "vitality": N, "acuity": N, "longevity": N, "room_name": "..."}
+{"type": "redirect", "url": "..."}
 ```
 
-**Architecture reference:** `docs/shyland/Shyland_Architecture_v14.md`
-**Game design reference:** `docs/shyland/Shyland_GDD_v3.md`
+**Architecture reference:** `docs/shyland/Shyland_Architecture_v16.md`
+**Game design reference:** `docs/shyland/Shyland_GDD_v15.md`
 
 ---
 
@@ -295,7 +297,7 @@ For local dev without real certs: `make gen-certs` (requires `make init` first).
 
 **Auth:** Django's built-in auth system. Login at `/accounts/login/`. All WebSocket consumers should reject unauthenticated connections (check `self.scope['user'].is_authenticated` in `connect()`).
 
-**User profile:** `apps.profiles` provides `UserProfile` — a one-to-one extension of `auth.User` with a `gamer_tag` field (max 20 chars, unique, nullable). A `post_save` signal auto-creates a `UserProfile` for each new `User`. Any game needing a display name should use `select_related('user__profile')` and access `user.profile.gamer_tag` (falling back to `user.username`). Do not add a separate name field to game-specific character models.
+**User profile:** `apps.profiles` provides `UserProfile` — a one-to-one extension of `auth.User` with a `gamer_tag` field (max 20 chars, unique, nullable). A `post_save` signal auto-creates a `UserProfile` for each new `User`. Games without per-character identity should use `select_related('user__profile')` and access `user.profile.gamer_tag` (falling back to `user.username`) rather than adding their own name field. **Exception (Shyland, v16):** `shyland.Character` has its own `name` field — a per-character identity chosen in the character creator, initialized from the gamer tag but independent of it afterward (case-insensitively unique via a DB constraint). Do not derive Shyland display names from the profile at read time.
 
 **Database:** Single PostgreSQL instance shared by all games. Each game's models live in their own app and migration history. No cross-app foreign keys between game apps — only FK to `auth.User`.
 

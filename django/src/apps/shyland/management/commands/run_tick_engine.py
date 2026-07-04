@@ -75,7 +75,7 @@ class Command(BaseCommand):
             return list(Character.objects.filter(
                 is_dying=True,
                 dying_since__lte=cutoff,
-            ).select_related('recall_room', 'user__profile'))
+            ).select_related('recall_room'))
 
         @_dsa
         def execute_death(character):
@@ -135,7 +135,6 @@ class Command(BaseCommand):
         @_dsa
         def get_active_sessions():
             return list(CombatSession.objects.filter(is_active=True).prefetch_related(
-                'characters__user__profile',
                 'characters__active_effects',
                 'npcs__definition__effects__effect_definition',
             ))
@@ -158,7 +157,7 @@ class Command(BaseCommand):
             @_dsa
             def load_participants(session):
                 chars = list(session.characters.select_related(
-                    'user__profile', 'current_room__area',
+                    'current_room__area',
                     'archetype__unarmed_message_pool',
                 ).prefetch_related(
                     'archetype__unarmed_message_pool__messages',
@@ -558,7 +557,6 @@ class Command(BaseCommand):
                     component__component_type__in=TICKING_TYPES,
                 ).select_related(
                     'component',
-                    'effect_instance__target__user__profile',
                     'effect_instance__target__current_room__area',
                     'effect_instance__definition',
                 ))
@@ -684,7 +682,7 @@ class Command(BaseCommand):
         def get_characters_needing_drift():
             candidates = list(Character.objects.exclude(
                 acuity_current=F('acuity_baseline')
-            ).select_related('user__profile'))
+            ))
 
             acuity_shift_types = {'shift_acuity_high', 'shift_acuity_low'}
             result = []
@@ -728,7 +726,7 @@ class Command(BaseCommand):
                 expires_at__lte=now,
             ).select_related(
                 'component',
-                'effect_instance__target__user__profile',
+                'effect_instance__target',
                 'effect_instance__definition',
             ))
 

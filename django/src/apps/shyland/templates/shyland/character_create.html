@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Shyland — Create Your Character{% endblock %}
+
+{% block head %}
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --border: #2a2a35;
+    --text: #c8c8d4;
+    --muted: #6b6b80;
+    --accent: #7b68ee;
+    --room: #a8d8a8;
+    --error: #cc4444;
+    --ok: #4caf7d;
+  }
+
+  html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+
+  #creator {
+    max-width: 640px;
+    margin: 40px auto;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  h1 { font-size: 18px; color: var(--room); margin-bottom: 6px; }
+  .subtitle { color: var(--muted); margin-bottom: 22px; }
+
+  .field { margin-bottom: 20px; }
+  label { display: block; color: var(--accent); margin-bottom: 6px; font-weight: bold; }
+
+  select, input[type="text"] {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  select:focus, input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .desc {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+    line-height: 1.5;
+    min-height: 2.5em;
+  }
+
+  #name-status { margin-top: 6px; min-height: 1.4em; }
+  #name-status.ok { color: var(--ok); }
+  #name-status.error { color: var(--error); }
+
+  .errorlist { list-style: none; color: var(--error); margin-top: 6px; }
+  .form-errors { color: var(--error); margin-bottom: 16px; }
+
+  #actions { display: flex; align-items: center; justify-content: space-between; margin-top: 26px; }
+  button[type="submit"] {
+    padding: 8px 22px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  button[type="submit"]:hover { opacity: .85; }
+  .back-link { color: var(--muted); text-decoration: underline; }
+  .back-link:hover { color: var(--text); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="creator">
+  <h1>Create Your Character</h1>
+  <p class="subtitle">Choose an Origin and an Archetype, and name yourself. The Convergence awaits.</p>
+
+  <form method="post" action="{% url 'shyland:create_character' %}">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="form-errors" role="alert">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="field">
+      <label for="id_origin">Origin</label>
+      <select name="origin" id="id_origin" aria-describedby="origin-desc">
+        {% for o in form.fields.origin.queryset %}
+          <option value="{{ o.pk }}" data-description="{{ o.description }}"
+                  {% if form.origin.value|stringformat:"s" == o.pk|stringformat:"s" %}selected{% endif %}>{{ o.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="desc" id="origin-desc" aria-live="polite"></div>
+      {{ form.origin.errors }}
+    </div>
+
+    <div class="field">
+      <label for="id_archetype">Archetype</label>
+      <select name="archetype" id="id_archetype" aria-describedby="archetype-desc">
+        {% for a in form.fields.archetype.queryset %}
+          <option value="{{ a.pk }}" data-description="{{ a.description }}"
+                  {% if form.archetype.value|stringformat:"s" == a.pk|stringformat:"s" %}selected{% endif %}>{{ a.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="desc" id="archetype-desc" aria-live="polite"></div>
+      {{ form.archetype.errors }}
+    </div>
+
+    <div class="field">
+      <label for="id_name">Name</label>
+      <input type="text" name="name" id="id_name" maxlength="20" required
+             value="{{ form.name.value|default_if_none:'' }}"
+             autocomplete="off" spellcheck="false" aria-describedby="name-status">
+      <div id="name-status" role="status" aria-live="polite"></div>
+      {{ form.name.errors }}
+    </div>
+
+    <div id="actions">
+      <button type="submit">Enter Shyland</button>
+      <a class="back-link" href="{% url 'home' %}">Back to front page</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const originSelect = document.getElementById('id_origin');
+  const archetypeSelect = document.getElementById('id_archetype');
+  const originDesc = document.getElementById('origin-desc');
+  const archetypeDesc = document.getElementById('archetype-desc');
+  const nameInput = document.getElementById('id_name');
+  const nameStatus = document.getElementById('name-status');
+  const checkUrl = "{% url 'shyland:check_name' %}";
+
+  function showDesc(select, target) {
+    const opt = select.options[select.selectedIndex];
+    target.textContent = opt ? (opt.dataset.description || '') : '';
+  }
+
+  originSelect.addEventListener('change', () => showDesc(originSelect, originDesc));
+  archetypeSelect.addEventListener('change', () => showDesc(archetypeSelect, archetypeDesc));
+  showDesc(originSelect, originDesc);
+  showDesc(archetypeSelect, archetypeDesc);
+
+  let debounceTimer = null;
+  let requestSeq = 0;
+
+  nameInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const value = nameInput.value.trim();
+    if (!value) {
+      requestSeq++;  // invalidate any in-flight check so it can't repaint the cleared status
+      nameStatus.className = '';
+      nameStatus.textContent = '';
+      return;
+    }
+    debounceTimer = setTimeout(() => {
+      const seq = ++requestSeq;
+      fetch(checkUrl + '?name=' + encodeURIComponent(value), { credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (seq !== requestSeq) return; // stale response
+          if (data.available) {
+            nameStatus.className = 'ok';
+            nameStatus.textContent = 'Name available.';
+          } else {
+            nameStatus.className = 'error';
+            nameStatus.textContent = data.error || 'That name cannot be used.';
+          }
+        })
+        .catch(() => {
+          if (seq !== requestSeq) return;
+          nameStatus.className = '';
+          nameStatus.textContent = '';
+        });
+    }, 400);
+  });
+})();
+</script>
+{% endblock %}
