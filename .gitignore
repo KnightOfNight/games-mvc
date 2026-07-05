@@ -9,3 +9,4 @@ __pycache__/
 *.pyo
 .DS_Store
 django/src/staticfiles/
+.claude/worktrees/
