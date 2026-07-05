@@ -1,13 +1,13 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 05c634a (v16: character creator).
+> Authoritative technical reference as of commit 05c634a (v17: Infinity City world seed — data only, no model changes since the v16 character creator).
 > Describes what is built. For design intent see the current GDD.
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -250,6 +250,8 @@ Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new atti
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
 
+Changed in v17: the world-seed portion of the command was rewritten for the Infinity City map. `handle()` first deletes the placeholder content (the five Fracture Point plaza rooms by name, the `goblin-scout`/`training-dummy`/`fracture-wraith` NPC definitions, and the `the-fracture-point-plaza` area — the old `_seed_npcs` method that created them is gone), then builds The Convergence: the zone, 4 areas, 54 rooms keyed on `(zone, coord_x, coord_y, coord_z)` via `update_or_create`, exits wired in a second pass (every room's six exit FKs are assigned explicitly, absent ones to `NULL`, so re-runs fully normalize), 9 unique non-combat NPC definitions placed via `RoomSpawn`, and character relocation (characters with no `current_room`, or one outside The Convergence, move to Heart of the Convergence at (0,0,0); null `recall_room` is set the same way). The command ends with a built-in verification pass (room/area/NPC/spawn counts, ring-loop and path-connectivity walks, flags) that raises `CommandError` on any failure. The command is idempotent. One deliberate deviation from the v17 content brief: the brief assigned ring room R16 the same coordinates as the Basalt Way's last room; R16 sits at (1,−5,0) instead. NPC stats and drop/respawn numbers follow the balance-data convention below (create-only); NPC name, description, genre tag, and behavior flags are refreshed on every run.
+
 Changed in v16: `_seed_origins` and `_seed_archetypes` now use **`update_or_create`** instead of `get_or_create`, keyed on `slug`. Re-running the seed command therefore applies content changes to already-existing rows instead of silently skipping them (their stdout lines now report `"created"`/`"updated"` accordingly). This mattered for v16 because all seven Origins and seven Archetypes already existed from prior seeding.
 
 **Balance data is create-only.** The `defaults` dict (applied on every run) carries only content fields — `name`, `description`, and the attire phrase — while balance values (`Origin.acuity_baseline`/`acuity_band_low`/`acuity_band_high`, `Archetype.primary_stat_1`/`primary_stat_2`) go in `create_defaults` (Django 5's create-only bucket). Re-running `seed_world` on a live database refreshes descriptions but never reverts admin-tuned balance numbers.
@@ -299,7 +301,7 @@ New in v16. One character per account was already enforced at the schema level (
 
 **Creation (`CharacterCreateView.post`)** — on a valid form:
 
-- **Spawn point** — `Room.objects.filter(zone__slug='the-convergence', coord_x=0, coord_y=0, coord_z=0).first()`. The lookup is by zone slug + coordinates, **never by room name** — the room currently seeded there ("The Fracture Point") is placeholder content expected to be rebuilt, and the coordinate convention is stable across that rebuild. If no room matches, the view fails loudly with a non-field form error ("Spawn point is not configured. Contact an admin.") rather than picking a different room. Both `current_room` and `recall_room` are set to the spawn room.
+- **Spawn point** — `Room.objects.filter(zone__slug='the-convergence', coord_x=0, coord_y=0, coord_z=0).first()`. The lookup is by zone slug + coordinates, **never by room name** — the coordinate convention is stable across content rebuilds (as of v17 the room seeded there is "Heart of the Convergence"; before the Infinity City seed it was the placeholder "The Fracture Point"). If no room matches, the view fails loudly with a non-field form error ("Spawn point is not configured. Contact an admin.") rather than picking a different room. Both `current_room` and `recall_room` are set to the spawn room.
 - **Starting stats** — flat baseline of 8 on all six stats, with the Archetype's `primary_stat_1` and `primary_stat_2` raised to 18. No Origin-based stat modifiers.
 - **Acuity** — `acuity_current`, `acuity_baseline`, `acuity_band_low`, `acuity_band_high` are copied from the chosen Origin (overriding the model defaults of 1.0/1.0/0.8/1.2).
 - **Bars** — `recalculate_bars(character)` is called on the unsaved instance so `vitality_max/current` and `longevity_max/current` are computed from the level-1 stats above, not left at the model's raw 100/100 defaults.
@@ -435,7 +437,7 @@ Future sessions should check this list before assuming a system exists.
 - Minimap and fog-of-war rendering in client (`RoomVisit` records exist but are not rendered)
 - Admin in-game teleport commands
 - All chat channels except `say` and `who`: `yell`, `tell`, `party`, `guild`, `zone`, `general`, `emote`
-- Zone content beyond The Convergence (5 starter rooms)
+- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built
 - Monitoring container — tracks health of all containers
 
 ---

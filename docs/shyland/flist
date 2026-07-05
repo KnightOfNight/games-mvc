@@ -38,7 +38,6 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0016_npcdefinition_combat_tier_room_no_exit_down_msg_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/__init__.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0015_character_origin_archetype_nonnull.py
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/__pycache__
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0010_character_unspent_stat_points_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0011_remove_effectdefinition_duration_max_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0017_archetype_attire_silhouette_character_name_and_more.py
@@ -142,15 +141,14 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/s
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Project_Instructions_v16-2.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_GDD_v16.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/flist.tmp
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Architecture_v17.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Claud.AI_Brief_v15_to_v16.md
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Architecture_v16.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/LICENSE
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/Makefile
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/Dockerfile
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/rate-limit.conf
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/default.conf
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/default.conf.template
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/entrypoint.sh
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/README.md
