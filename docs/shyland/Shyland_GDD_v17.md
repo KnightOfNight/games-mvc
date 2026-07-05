@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 16.0 — Closed**
+**Version 17.0 — Closed**
 
 -----
 
@@ -29,6 +29,7 @@
 | v16 RC4 | v15 (unchanged) | Starting attire settled — final open item for the character creator design (working draft continues; one item remains open — see below). Section 3.1 updated: every new character is dressed in purely decorative starting clothing described by a formula — an Origin material/palette phrase combined with an Archetype garment-silhouette phrase — rather than 49 hand-authored combinations. This clothing occupies no equipment slot, has no stats, and is not an `ItemDefinition`/`ItemInstance`; it exists as generated flavor text only. Full phrase tables for all seven Origins and seven Archetypes are included. **Still open:** name-uniqueness check timing (live validation as the player types vs. checked only on submit) has not yet been decided. |
 | v16 RC5 | v15 (unchanged) | Final open item resolved — **the character creator design is now complete and ready for a Claude Code brief.** Section 3.1 updated: name uniqueness is checked in real time as the player types (not only on form submit), giving immediate feedback before they attempt to finalize the character. This is the last remaining decision from the character creator design pass that began in this chat; no open items remain for this system. |
 | v16.0   | v16 (commit `05c634a`) | **Character creator implemented, verified, and closed out.** This version folds the full v16 RC1–RC5 working-draft design together with four refinements that emerged during implementation and a documentation audit of stale v15 passages the working draft hadn't reached. Implementation refinements (Section 3.1): the profanity exemption is narrower than originally designed — it applies only to a kept, *set* gamer tag; a player with no gamer tag falls back to their username, which has no upstream vetting, so that default IS profanity-checked even when submitted unchanged. The default name is truncated to 20 characters when necessary (usernames can run up to 150 characters; gamer tags are already capped at 20). Name uniqueness is case-insensitive and enforced by a database-level constraint on every write path, including Django admin — the real-time as-you-type check is an advisory courtesy layered on top, not the authoritative gate. `Character.name` is permanent once set at creation and independent of later gamer-tag changes — this reverses the pre-v16 behavior where the displayed name tracked the profile live. Documentation-audit fixes: Section 10.1 Auth row updated to reflect `Character.name` as its own field rather than sourced live from `user.profile.gamer_tag`. Section 12 (Future Systems): removed the "Origin and Archetype Descriptions" and "In-game Character Creation" rows entirely (both fully shipped); added a new row noting that starting-attire flavor text is seeded but not yet rendered anywhere in-game. |
+| v17.0   | v17 (commit unchanged) | **Infinity City world seed implemented and closed out.** No model changes. No new commands. Content-only version. The Convergence zone (Z05) is now fully seeded with its first-version map: 4 path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms, and 9 NPC definitions. The starting room is Heart of the Convergence at (0,0,0), anchored by the Obelisk. Four winding park paths lead outward to a 35-room ring street surrounding the park. Seven sealed zone gates are placed clockwise on the ring street from north, one per future battle zone, each with atmospheric sealed-exit flavor text. Four information NPCs (Aldric, Info Prime, Pella, Seris) are placed at cardinal ring/path intersections; The Obelisk serves as a fifth information point at the center. Four vendor NPCs (Morra the blacksmith, Repairbot Prime, Ferwick the magician, Veris the crystal vendor) are placed across the ring from their paired information NPCs. Morra has her own smithy building (2 rooms: exterior + interior). All other vendors occupy open-air positions in ring street rooms. All Convergence rooms have `flag_safe=True`. Placeholder world content (The Fracture Point plaza and its 4 connected rooms, goblin scout, training dummy, fracture wraith) removed. Section 2.1 updated to reflect the settled Convergence lore. Section 2.5 updated: Infinity City documented as the starting area within The Convergence zone. Section 12 updated: zone content placeholder row replaced with specific note on what is and isn't yet built. |
 
 -----
 
@@ -94,9 +95,15 @@ These decisions are fixed for version one and not subject to revision during ini
 
 ### 2.1 The Lore of the Fracture
 
-Long ago, the world of Shyland was a single coherent reality. A catastrophic event known as **The Fracture** shattered dimensional membranes, pulling fragments of other realities into permanent collision with this one. The result is a patchwork world where zones retain their original genre identity but exist in geographic proximity to radically different ones.
+Imagine a Venn diagram of universes. Each universe is its own reality — fantasy, cyberpunk, gothic horror, post-apocalyptic, steampunk, cosmic. At some point in the deep past, these realities collided. Not violently destroyed — *overlapped*. Where any two universes touch, there is tension, bleed-through, anachronism. A fantasy forest where neon signs flicker between the trees. A cyberpunk alley where a knight in plate armor wanders, confused.
 
-Nobody fully understands The Fracture. Scholars debate its cause. Some zones have adapted to their neighbors; others remain hostile to anything foreign. This tension is a primary driver of narrative and conflict.
+But where *all* of them meet — the dead center of the Venn diagram — something unexpected happened. The forces cancelled each other out. The chaos balanced into stillness. A neutral zone emerged, not belonging to any single universe, touched by all of them.
+
+That is **The Convergence**.
+
+Nobody fully understands it. Scholars debate what caused the collision. Some zones have adapted to their neighbors; others remain hostile to anything foreign. This tension is a primary driver of narrative and conflict.
+
+**How players arrive:** Death in a home universe — an honorable death, a death that found peace — is what brings a character to the Convergence. They did not choose to come. The Convergence is not a second chance handed out freely; it is where the worthy end up when their story in one world closes. They wake at the Obelisk, whole, in a place they have never been, with everything still ahead of them.
 
 ### 2.2 Zone Architecture
 
@@ -122,7 +129,7 @@ World
 |Z07    |The Pale Shore     |Cosmic horror / lovecraftian ocean              |Endgame     |
 |Z08    |The Wastelands     |Infinite scaling zone — always level-appropriate|All levels  |
 
-**The Convergence (Z05)** is the game's social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. Lore-wise, it is the epicenter of The Fracture. It is also the default logout and recall destination.
+**The Convergence (Z05)** is the game's social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. It is the point where all universes overlap and stillness holds. It is also the default logout and recall destination. The starting area within The Convergence is **Infinity City** — see Section 2.9.
 
 **The Wastelands (Z08)** is a special infinite scaling zone — see Section 2.7.
 
@@ -251,6 +258,64 @@ When no higher-level content has yet been published, The Wastelands ensures play
 When a player logs out, their character remains in the world at their exact location for 60 seconds (allowing them to be targeted in PvP zones — a deliberate risk of logging out in dangerous areas), then fades from the world. On next login, they appear at the exact room where they logged out.
 
 There is no safe logout room. Players are responsible for where they choose to go offline.
+
+### 2.9 Infinity City — The Starting Area
+
+**Infinity City** is the starting area of The Convergence zone. It is not a planned city. It grew organically at the point where all dimensional paths converge — the way a city always grows at a crossroads or the mouth of a river, except this crossroads has infinite paths and the travelers arriving on them come from every universe that exists.
+
+The city is old. Nobody planned it. It accumulated. Travelers, refugees, merchants, and wanderers from every universe drifted toward the one place that felt stable, and over generations it became a city that belongs to no world and therefore belongs to everyone.
+
+**Architecture and nature coexist.** The city grew around its trees, not through them. Buildings have roots running beneath their foundations. Vines climb the storefronts. The trees do not stop at the street. This was not a design decision — it is what happened when the city grew up alongside Convergence Park, and the city never saw a reason to change it.
+
+#### Heart of the Convergence — (0, 0, 0)
+
+The starting room and default recall destination. At its center stands **the Obelisk** — a dark, smooth monolith with as many facets as there are universes, each face ground to a perfect plane that catches light differently. At the Obelisk's heart, suspended inside the stone, is a small sphere that glows white. Steadily. Without flickering. It simply is.
+
+The Obelisk serves as an information point for new players. It speaks in as few words as possible, always the best ones.
+
+#### Convergence Park
+
+A rectangular park (9 rooms wide, 7 rooms tall on the coordinate grid) surrounding the Obelisk. The park is tended but not controlled — nature was here first and the city has respected that. Not all park rooms are navigable paths. Four paths wind outward from the Obelisk to the ring street:
+
+| Path | Direction | Material | Rooms |
+|---|---|---|---|
+| Wisteria Walk | North | Pale grey stone + wisteria trellises | 4 |
+| Bamboo Run | East | Crushed amber gravel + bamboo stands | 3 |
+| Basalt Way | South | Dark basalt slabs + flowering moss | 5 |
+| Fern Boards | West | Dark timber boardwalk + ferns | 4 |
+
+Each path has a continuous sensory identity maintained through all its rooms. Non-path park rooms are not navigable; rooms adjacent to lawn areas have custom `no_exit_*_msg` text directing players to stay on the paths.
+
+#### The Ring Street
+
+A 35-room ring street surrounds the park, approximating a circle in the square-room coordinate system. The ring connects to each path at its cardinal intersection. Walking the ring clockwise from north, players encounter:
+
+- **Seven sealed zone gates** — one per future battle zone, placed clockwise from north in zone build order (Verdant Reach at ~1:00, Ashenveil at ~2:00, continuing through The Wastelands at ~11:00). Each sealed gate has atmospheric `no_exit_*_msg` flavor text hinting at the zone beyond. When a zone is built, its gate is opened by wiring the exit.
+- **Four information NPC intersections** — at the north, east, south, and west path/ring junctions, each with a unique NPC and structure
+- **Four vendor locations** — each paired with the information NPC across the ring street
+
+The ring street is lined with trees throughout. Sparse content between gates includes closed storefronts, stalls under construction, undeveloped lots, and atmospheric details hinting at the zone beyond each gate.
+
+#### Information NPCs
+
+| NPC | Location | Structure | Personality |
+|---|---|---|---|
+| The Obelisk | Heart of the Convergence (0,0,0) | The Obelisk itself | Disinterested — operates at a level where everything else is beneath it; speaks as few words as possible, always the best ones |
+| Aldric | North ring/path intersection | Ancient hollowed tree, "INFORMATION" carved in old bark | Grumpy but not mean; has been here 40+ years and has opinions about it |
+| Info Prime | East ring/path intersection | Vertical metal docking tube, green button to summon | Nearly flat tone; 412 years old; occasionally and unexpectedly poignant |
+| Pella | South ring/path intersection | Brightly colored gazebo with climbing vines | Bubbly but not annoying; old; already decided she likes you |
+| Seris | West ring/path intersection | Exotic shifting crystal structure | Friendly, doesn't always proffer help; feels like more than looking; cosmic genre |
+
+#### Vendor NPCs
+
+| NPC | Location | Structure | Function | Personality |
+|---|---|---|---|---|
+| Morra | Across ring from Aldric (north) | Proper smithy building — 2 rooms (exterior + interior) | Blacksmith — repairs and sells weapons/armor | Grumpy because she always works on Mk 1 garbage; reverential toward high-Mk items in good condition; genuinely offended by high-Mk items in poor condition |
+| Repairbot Prime | Across ring from Info Prime (east) | Vertical metal docking tube, Version 2 chassis | General repair | ~300 years old; same design lineage as Info Prime; precise; unexpectedly mentions things it has never said aloud before |
+| Ferwick | Across ring from Pella (south) | Open-air stall | Magical repairs | Old, cheerful, slightly scattered; first attempt sometimes fails; always succeeds on second attempt; never charges for the retry; finds it funny |
+| Veris | Across ring from Seris (west) | Exotic shifting crystal structure — exact twin of Seris's | Crystal vendor | Same personality as Seris — quiet, perceptive, unhurried — but different words; twins in nature, not in script |
+
+**Exits are transitions, not doors.** This is a core world-building principle established with Infinity City. Players do not open doors between rooms — they feel the world change around them. Zone gates in particular should feel like the zone begins, not like a door was opened.
 
 -----
 
@@ -1573,8 +1638,12 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
 |**Starting Attire Rendering**          |`Origin.attire_material` and `Archetype.attire_silhouette` are seeded with real content and combined into flavor text at character creation, but that text is not yet surfaced anywhere in-game (no `look`/inventory display of it yet). |
+|**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) is fully seeded. The Verdant Reach (Z01) is the next zone to be built — beginner-level fantasy wilderness, accessible via the sealed north gate on the ring street. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order. Each zone opening also opens new level content for players.|
+|**NPC Dialogue and Interaction Commands**|Information and vendor NPCs are placed and have examine descriptions. No `talk`, `ask`, or `buy`/`sell` commands yet implemented. NPC personalities and interaction flavor text are designed (see Section 2.9) but not wired to any command.|
+|**Sirius — Special Vendor Entity**     |Unique bipedal feline special vendor (Section 6.12). Wish mechanics and persistent memory system need a dedicated design session before implementation.|
+|**Stat Respec Mechanic**               |Allow players to rebalance already-spent stat points using in-game currency. Needs a dedicated design session.|
 
 -----
 
-*Document version 16.0 — Shyland, Closed*
+*Document version 17.0 — Shyland, Closed*
 *All systems subject to revision during development.*
