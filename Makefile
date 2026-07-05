@@ -17,7 +17,7 @@ PROJECT_DIR     := $(shell pwd)
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs db-reset help
+        new-app push-certs reset seed help
 
 # flist
 flist:
@@ -181,14 +181,18 @@ gen-certs:
 	@echo "      Use your vendor certs for a trusted connection."
 	$(MAKE) push-certs
 
-## db-reset: drop all volumes, rebuild, migrate, and reseed
-db-reset:
+## reset: wipe the database, rebuild, migrate, and reseed
+reset:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
 	$(MAKE) build
-	$(MAKE) start
-	sleep 5
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --wait
 	$(MAKE) migrate
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) exec django python manage.py seed_world
+	$(MAKE) seed
+
+## seed: run seed_world to populate game world data
+seed:
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
+	    exec django python manage.py seed_world
 
 ## check-secrets: verify .env and cert files exist before allowing start
 check-secrets:
@@ -219,6 +223,8 @@ help:
 	@echo "  migrate                Run database migrations"
 	@echo "  makemigrations         Make migrations (APP=<name> optional)"
 	@echo "  createsuperuser        Create a Django admin superuser"
+	@echo "  seed                   Run seed_world to populate game world data"
+	@echo "  reset                  Wipe database, rebuild, migrate, and reseed"
 	@echo ""
 	@echo "Games:"
 	@echo "  new-app NAME=<name>    Scaffold a new game app in apps/"
