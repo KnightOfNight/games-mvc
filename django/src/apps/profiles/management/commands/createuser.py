@@ -33,7 +33,7 @@ class Command(BaseCommand):
         def prompt(label, current=None):
             hint = f' [{current}]' if current else ''
             value = input(f'{label}{hint}: ').strip()
-            return value if value else current
+            return value if value else (current or '')
 
         email      = prompt('Email (optional)',      user.email if updating else None)
         first_name = prompt('First name (optional)', user.first_name if updating else None)
