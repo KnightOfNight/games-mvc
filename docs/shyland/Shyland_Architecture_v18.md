@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit PENDING (v18 brief 1: Mk 1 item kit — `suppress_mk_suffix` display field, central tier-display helper, equip exchange rule, Verdant Reach item definitions).
+> Authoritative technical reference as of commit b2d0914 (v18 brief 1: Mk 1 item kit — `suppress_mk_suffix` display field, central tier-display helper, equip exchange rule, Verdant Reach item definitions).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
