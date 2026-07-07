@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit b2d0914 (v18 brief 1: Mk 1 item kit — `suppress_mk_suffix` display field, central tier-display helper, equip exchange rule, Verdant Reach item definitions).
+> Authoritative technical reference as of commit b2d0914 (v18 brief 2: the Obelisk Network — `TravelNode`/`TravelMessage` models, `ZoneGate` removed, the `travel` command, the Primordial Sphere, and the network's first node at the Heart of the Convergence).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. Brief 2 ships the Obelisk Network, Shyland's fast-travel system (GDD 2.11): the superseded `ZoneGate` model is removed and replaced by `TravelNode` (one node per room, obelisk or checkpoint type) and `TravelMessage` (three seeded flavor pools), the `travel` command is implemented in the consumer (list + go forms, revelation derived from `RoomVisit`), the Primordial Sphere NPC is placed at the Heart of the Convergence, and the Heart is registered as the network's first node ("The Convergence", obelisk). Brief 2 also contains no Verdant Reach content. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -225,9 +225,25 @@ suppress_mk_suffix = models.BooleanField(
 
 This is **display-only**: `mk_tier`, scaling, and rarity machinery are untouched — a Copper Ring of Strength still has a real `mk_tier` and scales normally; the player just never sees "Mk N" appended to a tier-material name. Flavor materials (iron, wood, leather) do *not* suppress — an Iron Sword still displays "Iron Sword Mk 1". The suffix suppression is honored by `get_display_name_with_tier()` in `item_utils.py` (see Section 4.6). Migration `0018` adds the field (single `AddField` with a default — safe on populated databases).
 
+#### `TravelNode`, `TravelMessage` (new in v18 brief 2) — and `ZoneGate` removed
+
+**`ZoneGate` no longer exists.** The model (introduced v15, authoring-only, never wired to a command; no gate data was ever seeded) was superseded by the Obelisk Network and deleted in brief 2 — model, admin registration, and all references. Migration `0019_travelmessage_travelnode_delete_zonegate` drops the table and creates the two new models below. Do not hunt for `ZoneGate` in current code; it survives only in migration history (`0016` created it, `0019` deletes it).
+
+**`TravelNode`** — the node registry for the Obelisk Network (GDD 2.11). Fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `room` | `OneToOneField(Room, related_name='travel_node')` | One node per room, enforced by the one-to-one |
+| `travel_name` | `CharField(max_length=60, unique=True)` | Unique, typeable destination name shown in travel lists (e.g. "The Convergence") |
+| `node_type` | `CharField(max_length=12, choices=...)` | `'obelisk'` (travel source **and** destination) or `'checkpoint'` (destination only) |
+
+There is no per-character revelation table: a character's available destinations are derived entirely from `RoomVisit` — any node whose room appears in their visit records is revealed, permanently. The network is global (no zone scoping) and travel is free (no cost, no cooldown). Node rooms are safe by seeding convention (GDD 2.11); the travel logic performs no combat checks.
+
+**`TravelMessage`** — global flavor-text pools for travel events. Fields: `category` (`'traveler'` — shown to the traveling player; `'departure'` — shown to players in the origin room; `'arrival'` — shown to players in the destination room) and `text`. Witness messages (departure/arrival) may include the literal placeholder `{name}`, replaced with the traveling character's name via `str.replace` (not `.format`, so stray braces in prose are harmless); traveler messages take no placeholders. One message is selected uniformly at random from the appropriate pool per event — travel text is never hardcoded. Pools are global, not per-zone.
+
 #### All other models
 
-`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `RoomSpawn`, `VendorEntry`, `ZoneGate`, `CombatSession`, `CombatAction` — *(unchanged from v15)*.
+`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `RoomSpawn`, `VendorEntry`, `CombatSession`, `CombatAction` — *(unchanged from v15)*.
 
 ### 4.2 Currency system (`currency.py`)
 
@@ -235,7 +251,27 @@ This is **display-only**: `mk_tier`, scaling, and rarity machinery are untouched
 
 ### 4.3 WebSocket consumer (`consumers.py`)
 
-Changed in v18 (brief 1): the `equip` command was rewritten and the name-plus-tier display formatting was centralized. All other command handling *(unchanged from v16)*.
+Changed in v18: brief 1 rewrote the `equip` command and centralized name-plus-tier display formatting; brief 2 added the `travel` command. All other command handling *(unchanged from v16)*.
+
+#### The `travel` command (v18 brief 2)
+
+`cmd_travel(args)`, dispatched on the verb `travel`, with two forms. Both forms start with the same source checks against the current room's `TravelNode`:
+
+- **No node in this room** → error: `There is no obelisk here. Travel is a gift of the obelisks — you must stand before one.`
+- **Checkpoint node** → error: `The obelisks project their protection here, but only an obelisk itself can send you onward.` Checkpoints are destinations only; only an obelisk-type node can initiate travel.
+
+The character's revealed destinations are computed as all `TravelNode` rows whose room has a `RoomVisit` for this character (helper `get_revealed_destinations`), excluding the node the character is standing at, ordered alphabetically by `travel_name`. No zone filtering — the network is global.
+
+**`travel` (no argument) — list.** Empty set → `The Obelisk is silent. It has nothing to show you yet — the network reveals itself only to those who walk it.` Otherwise a header line `The Obelisk offers passage to:` followed by one plain line per destination — the `travel_name`, with obelisk-type nodes suffixed ` (obelisk)` and checkpoints unsuffixed (screen-reader-friendly, matching existing list output style).
+
+**`travel <destination>` — go.** The argument is matched against the revealed set by case-insensitive prefix match on `travel_name`, additionally ignoring a leading `The ` on the node name (`_travel_name_matches` static helper — `travel verdant` and `travel the verdant crown` both match "The Verdant Crown"). No match → `The Obelisk knows no such place — or you have not yet stood there. Type "travel" to see where it can send you.` Multiple matches → the matching names are listed and the player is asked to be more specific; nothing changes. On a unique match, the travel sequence runs:
+
+1. A random `departure` message (with `{name}` substituted) is broadcast to the origin room, excluding the traveler.
+2. The character moves using the same machinery as normal movement: `group_discard` the old room group, the existing `move_character()` helper, `group_add` the new room group (`self.last_direction` is reset to `None` — travel has no direction for flee to reverse).
+3. A random `traveler` message is sent to the traveler, followed by the full standard room output (`send_room_description(entering=True)` — identical to normal movement, including `RoomVisit` bookkeeping on arrival; no special-casing).
+4. A random `arrival` message (with `{name}` substituted) is broadcast to the destination room, excluding the traveler.
+
+Travel is free: no currency cost, no cooldown, and no combat check (node rooms are safe by design — safety is a seeding concern, not travel logic). The obelisk speaks no words: no NPC dialogue is involved; all travel text comes from the `TravelMessage` pools, selected randomly per event. Supporting DB helpers: `get_travel_node(room)`, `get_revealed_destinations(current_node)`, `get_random_travel_message(category)`.
 
 #### The equip exchange rule (`cmd_equip`)
 
@@ -301,9 +337,17 @@ This is the **single source of truth for name-plus-tier formatting**. No inline 
 | `Origin` | `OriginAdmin` | `attire_material` added to `list_display` |
 | `Archetype` | `ArchetypeAdmin` | `attire_silhouette` added to `list_display` |
 
-Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except one v18 (brief 1) change: `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`) to make the new field editable in admin.
+Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except: one v18 (brief 1) change — `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`); and v18 (brief 2) changes — `ZoneGateAdmin` was removed with its model, and `TravelNodeAdmin` (list display: `travel_name`, `room`, `node_type` — nodes are builder-authorable data) and `TravelMessageAdmin` (list display: `category`, `text`) were registered.
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
+
+Changed in v18 (brief 2): three new idempotent seed steps, run from `handle()` after `_seed_convergence_npcs`:
+
+- **`_seed_primordial_sphere`** — the tenth Convergence NPC: **the Primordial Sphere** (`the-primordial-sphere`), the white sphere suspended in the Obelisk at the Heart of the Convergence, now examinable. The first of its kind — origin of the pattern every zone-end obelisk sphere will follow. Non-aggressive, unique, never wanders, `combat_tier='normal'`, no loot table, no currency drop. Unlike the other Convergence NPCs (whose placeholder stats use `base_vitality=999`), the brief pins its stats at 1 across the board (`base_vitality` and all six base stats = 1, `scaling_factor=1.0`). Follows the standard NPC convention: `update_or_create` by slug with content in `defaults` and balance in `create_defaults`, placed via a `RoomSpawn` (count 1) in the Heart. The Heart is a safe room, so the Sphere can never be attacked in practice.
+- **`_seed_travel_nodes`** — registers the network's first node: `TravelNode(room=<Heart of the Convergence>, travel_name='The Convergence', node_type='obelisk')` via `get_or_create` on the room. The room is looked up by the seed's own room key (coordinate identity `(0,0,0)`), never by display-name matching.
+- **`_seed_travel_messages`** — seeds the three global message pools with exactly 22 entries: **10 traveler, 6 departure-witness, 6 arrival-witness**. Idempotent via `get_or_create` on `(category, text)`.
+
+The built-in verification pass was extended accordingly: 10 NPC definitions / 10 RoomSpawns (was 9/9), exactly one Sphere spawn at the Heart, exactly one `TravelNode` (The Convergence obelisk at the Heart), and the 10/6/6 message counts.
 
 Changed in v18 (brief 1): `_seed_items` was expanded with the Mk 1 item kit for The Verdant Reach. Three mechanisms:
 
@@ -477,7 +521,7 @@ These are settled. Do not revisit without deliberate consideration.
 
 **`VendorEntry` price is always explicit copper.** No auto-calculation formula. Every row requires a price value.
 
-**`ZoneGate.is_bidirectional` controls travel direction.** When True, a single row covers travel in both directions; the travel command (not yet implemented) checks both `source_room` and `destination_room`. Discovery gating uses the existing `RoomVisit` model — no additional fields needed.
+**The Obelisk Network replaces `ZoneGate` (v18 brief 2).** Fast travel is node-based, not edge-based: `TravelNode` rows mark rooms as obelisks (source + destination) or checkpoints (destination only), and any revealed node is reachable from any obelisk — the network is global, with no zone scoping and no per-gate rows. Revelation is per-character, permanent, and derived entirely from `RoomVisit` (no new per-character table; no sharing between characters). Travel is free — no currency, no resource, no cooldown. The obelisk speaks no words: all travel text comes from the randomly-selected `TravelMessage` pools. Safe rooms are a seeding concern, not travel logic — the command performs no combat checks.
 
 **Per-direction blocked exit messages are optional on `Room`.** Fields `no_exit_{direction}_msg` default to `''`. When non-empty, the custom message overrides the hardcoded default in `_NO_EXIT_DEFAULTS` in `consumers.py`. Direction aliases are resolved to canonical before the field lookup.
 
@@ -490,7 +534,7 @@ These are settled. Do not revisit without deliberate consideration.
 Future sessions should check this list before assuming a system exists.
 
 - Buy/sell commands (`VendorEntry` model exists; no commands yet)
-- Zone gate travel command (`ZoneGate` model exists; no command yet)
+- Obelisk Network nodes beyond The Convergence (the machinery and `travel` command are fully built in brief 2; only one node is registered, so no destination is reachable yet — Verdant Reach nodes arrive with the zone's world seed)
 - Per-combat-tier behavior differences (`combat_tier` field exists; no differentiated AI yet)
 - Custom blocked exit messages for the `flee` path (flee uses a different room-exit lookup; `no_exit_*_msg` fields only apply to `cmd_move`)
 - Per-archetype unarmed message pools (all archetypes currently fall back to the default pool)

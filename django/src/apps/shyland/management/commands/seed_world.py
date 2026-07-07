@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from apps.shyland.models import (
     Area, Archetype, Character, EffectComponent, EffectDefinition, ItemDefinition,
-    NpcDefinition, Origin, Room, RoomSpawn, Zone,
+    NpcDefinition, Origin, Room, RoomSpawn, TravelMessage, TravelNode, Zone,
     UnarmedMessage, UnarmedMessagePool,
 )
 
@@ -104,6 +104,9 @@ class Command(BaseCommand):
         self._seed_rooms(zone, areas)
         self._wire_exits()
         self._seed_convergence_npcs()
+        self._seed_primordial_sphere()
+        self._seed_travel_nodes()
+        self._seed_travel_messages()
         self._set_character_rooms()
 
         self._seed_unarmed_pools()
@@ -1138,6 +1141,113 @@ class Command(BaseCommand):
                 f'spawn in {self.rooms[room_key].name}.'
             )
 
+    def _seed_primordial_sphere(self):
+        # The first sphere — origin of the pattern every zone-end obelisk
+        # sphere follows. Unlike the placeholder NPCs above, the brief pins
+        # its stats at 1 across the board.
+        content = {
+            'name': 'the Primordial Sphere',
+            'genre_tag': 'fantasy',
+            'description': (
+                'A perfect sphere of soft white light, suspended at eye level inside '
+                'the stone of the Obelisk as though the stone grew around it. It does '
+                'not spin, pulse, or drift — it simply is, with a patience that makes '
+                'the plaza feel younger than it. Looking at it for too long feels '
+                'less like watching and more like being read. It has never spoken. '
+                'It never will. And yet every traveler who stands here leaves with '
+                'the same quiet certainty: it noticed them.'
+            ),
+            'is_aggressive': False,
+            'is_unique': True,
+            'wanders': False,
+            'combat_tier': 'normal',
+            'loot_table': None,
+            'unarmed_message_pool': None,
+        }
+        balance = {
+            'base_vitality': 1,
+            'base_str': 1, 'base_dex': 1, 'base_end': 1,
+            'base_int': 1, 'base_wis': 1, 'base_per': 1,
+            'scaling_factor': 1.0,
+            'currency_drop_min': 0,
+            'currency_drop_max': 0,
+            'respawn_minutes': 0,
+        }
+        sphere, created = NpcDefinition.objects.update_or_create(
+            slug='the-primordial-sphere',
+            defaults=content,
+            create_defaults={**content, **balance},
+        )
+        RoomSpawn.objects.get_or_create(
+            room=self.rooms['heart'],
+            npc_definition=sphere,
+            mk_tier=1,
+            defaults={'count': 1, 'is_active': True},
+        )
+        self.stdout.write(
+            f'  NpcDefinition "the Primordial Sphere" {"created" if created else "updated"}; '
+            f'spawn in {self.rooms["heart"].name}.'
+        )
+
+    # ------------------------------------------------------------------
+    # Obelisk Network
+    # ------------------------------------------------------------------
+
+    def _seed_travel_nodes(self):
+        node, created = TravelNode.objects.get_or_create(
+            room=self.rooms['heart'],
+            defaults={
+                'travel_name': 'The Convergence',
+                'node_type': 'obelisk',
+            },
+        )
+        self.stdout.write(
+            f'  TravelNode "{node.travel_name}" ({node.node_type}) '
+            f'{"created" if created else "exists"}.'
+        )
+
+    def _seed_travel_messages(self):
+        pools = {
+            'traveler': [
+                'The world folds. For one breathless instant you are a thought between two places — then the ground remembers you.',
+                'Light swallows light. You fall upward through somewhere that has no name, and arrive as though you never left.',
+                'The obelisk does not move. Everything else does. When the world stops turning, you are elsewhere.',
+                'You cross a boundary that was never meant to be seen, stitched shut behind you before you can look back.',
+                'For a moment you are unmade — scattered across every place you have ever stood — and then gathered, gently, here.',
+                'Somewhere between one heartbeat and the next, the universe changes its mind about where you are.',
+                'The green of leaves, the grey of stone, the black between stars — all of it blurs past, or you blur past it.',
+                'You step through the skin of the world. It does not tear. It welcomes.',
+                'Distance forgets you. When it remembers, you are already there.',
+                'The stone hums a single note too low to hear, and the world rearranges itself around your stillness.',
+            ],
+            'departure': [
+                '{name} dissolves into motes of pale light that drift upward and are gone.',
+                'The air folds around {name}, and where they stood there is only a fading afterimage.',
+                '{name} takes a step that never lands. They are simply no longer here.',
+                'A soundless pulse washes outward, and {name} is gone between one blink and the next.',
+                'Light bends briefly around {name} — then straightens, having taken them with it.',
+                "{name} fades like a figure walking into fog that isn't there.",
+            ],
+            'arrival': [
+                'Motes of pale light gather and knit themselves into {name}.',
+                'The air unfolds, and {name} steps out of a place that was never a doorway.',
+                '{name} arrives mid-stride, as though finishing a step begun somewhere else entirely.',
+                'A soundless pulse washes over the ground, and {name} is standing where no one stood.',
+                'Light bends, brightens, and lets go of {name}.',
+                '{name} coalesces out of the quiet, blinking, entirely here.',
+            ],
+        }
+        created_count = 0
+        for category, texts in pools.items():
+            for text in texts:
+                _, created = TravelMessage.objects.get_or_create(
+                    category=category, text=text,
+                )
+                if created:
+                    created_count += 1
+        total = sum(len(texts) for texts in pools.values())
+        self.stdout.write(f'  TravelMessages: {created_count} created ({total} defined).')
+
     # ------------------------------------------------------------------
     # Character starting rooms
     # ------------------------------------------------------------------
@@ -1236,11 +1346,42 @@ class Command(BaseCommand):
         npc_count = NpcDefinition.objects.filter(slug__in=[
             'the-obelisk', 'aldric', 'info-prime', 'repairbot-prime',
             'pella', 'ferwick', 'seris', 'veris', 'morra',
+            'the-primordial-sphere',
         ]).count()
-        self._check(f'9 NPC definitions exist (found {npc_count})', npc_count == 9)
+        self._check(f'10 NPC definitions exist (found {npc_count})', npc_count == 10)
 
         spawn_count = RoomSpawn.objects.filter(room__zone__slug='the-convergence').count()
-        self._check(f'9 RoomSpawns in The Convergence (found {spawn_count})', spawn_count == 9)
+        self._check(f'10 RoomSpawns in The Convergence (found {spawn_count})', spawn_count == 10)
+
+        sphere_spawns = RoomSpawn.objects.filter(
+            npc_definition__slug='the-primordial-sphere',
+        )
+        self._check(
+            'Primordial Sphere has exactly one spawn, at the Heart',
+            sphere_spawns.count() == 1
+            and heart is not None
+            and sphere_spawns.first().room_id == heart.pk,
+        )
+
+        node_count = TravelNode.objects.count()
+        heart_node = TravelNode.objects.filter(
+            room=heart, travel_name='The Convergence', node_type='obelisk',
+        ).exists() if heart is not None else False
+        self._check(
+            f'Exactly one TravelNode: The Convergence obelisk at the Heart '
+            f'(found {node_count})',
+            node_count == 1 and heart_node,
+        )
+
+        msg_counts = {
+            category: TravelMessage.objects.filter(category=category).count()
+            for category in ('traveler', 'departure', 'arrival')
+        }
+        self._check(
+            f'22 travel messages: 10 traveler, 6 departure, 6 arrival '
+            f'(found {msg_counts})',
+            msg_counts == {'traveler': 10, 'departure': 6, 'arrival': 6},
+        )
 
         placeholder_count = Room.objects.filter(
             zone__slug='the-convergence', name='The Fracture Point',

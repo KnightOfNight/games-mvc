@@ -14,7 +14,7 @@ from .item_utils import (
 )
 from .models import (
     Character, CombatSession, ItemInstance,
-    NpcInstance, Room, RoomVisit,
+    NpcInstance, Room, RoomVisit, TravelMessage, TravelNode,
     COMBAT_ROUND_TICKS, FLEE_COOLDOWN_TICKS,
 )
 
@@ -194,6 +194,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_attack(args)
         elif verb == 'flee':
             await self.cmd_flee()
+        elif verb == 'travel':
+            await self.cmd_travel(args)
         elif verb == 'brief':
             await self.cmd_brief(args)
         elif verb == 'spend':
@@ -263,6 +265,89 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.start_combat(aggro_npcs, first_attacker='npc')
         else:
             await self.send_room_description(destination, entering=True)
+
+    async def cmd_travel(self, args):
+        room = await self.get_current_room()
+        node = await self.get_travel_node(room)
+
+        if node is None:
+            await self.output(
+                'There is no obelisk here. Travel is a gift of the obelisks — '
+                'you must stand before one.', 'error',
+            )
+            return
+        if node.node_type != 'obelisk':
+            await self.output(
+                'The obelisks project their protection here, but only an obelisk '
+                'itself can send you onward.', 'error',
+            )
+            return
+
+        destinations = await self.get_revealed_destinations(node)
+
+        if not args:
+            if not destinations:
+                await self.output(
+                    'The Obelisk is silent. It has nothing to show you yet — '
+                    'the network reveals itself only to those who walk it.', 'system',
+                )
+                return
+            lines = ['The Obelisk offers passage to:']
+            for dest in destinations:
+                suffix = ' (obelisk)' if dest.node_type == 'obelisk' else ''
+                lines.append(f'  {dest.travel_name}{suffix}')
+            await self.output('\n'.join(lines), 'system')
+            return
+
+        query = args.strip().lower()
+        matches = [d for d in destinations if self._travel_name_matches(d.travel_name, query)]
+
+        if not matches:
+            await self.output(
+                'The Obelisk knows no such place — or you have not yet stood there. '
+                'Type "travel" to see where it can send you.', 'error',
+            )
+            return
+        if len(matches) > 1:
+            names = ', '.join(d.travel_name for d in matches)
+            await self.output(
+                f'The Obelisk offers more than one such passage: {names}. '
+                'Be more specific.', 'system',
+            )
+            return
+
+        destination = matches[0].room
+        char_name = self.character.name
+
+        departure = await self.get_random_travel_message('departure')
+        if departure:
+            await self.broadcast_to_room_exclude(departure.replace('{name}', char_name), 'room')
+
+        await self.channel_layer.group_discard(self.room_group, self.channel_name)
+        await self.move_character(destination)
+        self.last_direction = None
+        self.room_group = f'room_{destination.id}'
+        await self.channel_layer.group_add(self.room_group, self.channel_name)
+
+        traveler = await self.get_random_travel_message('traveler')
+        if traveler:
+            await self.output(traveler, 'room')
+
+        # Re-fetch with full select_related, same as normal movement.
+        destination = await self.get_current_room()
+        await self.send_room_description(destination, entering=True)
+
+        arrival = await self.get_random_travel_message('arrival')
+        if arrival:
+            await self.broadcast_to_room_exclude(arrival.replace('{name}', char_name), 'room')
+
+    @staticmethod
+    def _travel_name_matches(travel_name, query):
+        """Case-insensitive prefix match, tolerating a leading 'The ' on the node name."""
+        name = travel_name.lower()
+        if name.startswith(query):
+            return True
+        return name.startswith('the ') and name[4:].startswith(query)
 
     async def cmd_say(self, text):
         if not text:
@@ -391,6 +476,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  use <item>                 — use a consumable\n'
             '  examine (ex) <item>        — inspect an item, NPC, or corpse in detail\n'
             '  loot [corpse] [item]       — loot a corpse; bare \'loot\' takes everything from your most recent kill\n'
+            '  travel [destination]       — fast-travel via the Obelisk Network (from an obelisk)\n'
             '  kill / attack (k) <npc>   — attack an NPC in the room\n'
             '  flee                       — attempt to escape from combat\n'
             '  stats                      — show your character stats and XP\n'
@@ -1308,6 +1394,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _set_brief_mode(self, value):
         Character.objects.filter(pk=self.character_pk).update(brief_mode=value)
+
+    @database_sync_to_async
+    def get_travel_node(self, room):
+        return TravelNode.objects.filter(room=room).first()
+
+    @database_sync_to_async
+    def get_revealed_destinations(self, current_node):
+        return list(
+            TravelNode.objects
+            .filter(room__visits__character_id=self.character_pk)
+            .exclude(pk=current_node.pk)
+            .select_related('room')
+            .order_by('travel_name')
+        )
+
+    @database_sync_to_async
+    def get_random_travel_message(self, category):
+        texts = list(
+            TravelMessage.objects.filter(category=category)
+            .values_list('text', flat=True)
+        )
+        return random.choice(texts) if texts else None
 
     @database_sync_to_async
     def _check_and_record_visit(self, character, room):

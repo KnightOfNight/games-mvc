@@ -5,7 +5,8 @@ from .models import (
     EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry,
     NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomSpawn, RoomVisit,
-    UnarmedMessage, UnarmedMessagePool, VendorEntry, Zone, ZoneGate,
+    TravelMessage, TravelNode, UnarmedMessage, UnarmedMessagePool, VendorEntry,
+    Zone,
 )
 
 
@@ -290,12 +291,18 @@ class VendorEntryAdmin(admin.ModelAdmin):
     list_select_related = ('npc_definition', 'item_definition')
 
 
-@admin.register(ZoneGate)
-class ZoneGateAdmin(admin.ModelAdmin):
-    list_display        = ('name', 'source_room', 'destination_room', 'is_bidirectional', 'requires_discovery', 'is_active')
-    list_filter         = ('is_active', 'is_bidirectional', 'requires_discovery')
-    raw_id_fields       = ('source_room', 'destination_room')
-    list_select_related = ('source_room', 'destination_room')
+@admin.register(TravelNode)
+class TravelNodeAdmin(admin.ModelAdmin):
+    list_display        = ('travel_name', 'room', 'node_type')
+    list_filter         = ('node_type',)
+    raw_id_fields       = ('room',)
+    list_select_related = ('room',)
+
+
+@admin.register(TravelMessage)
+class TravelMessageAdmin(admin.ModelAdmin):
+    list_display = ('category', 'text')
+    list_filter  = ('category',)
 
 
 @admin.register(CombatSession)

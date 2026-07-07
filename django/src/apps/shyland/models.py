@@ -808,59 +808,55 @@ class VendorEntry(models.Model):
         )
 
 
-class ZoneGate(models.Model):
+class TravelNode(models.Model):
     """
-    Fast-travel configuration linking two rooms.
+    A registered stop on the Obelisk Network (GDD 2.11).
 
-    When is_bidirectional=True, a single ZoneGate row represents travel in
-    both directions. The gate travel command (not yet implemented) will query
-    both source_room and destination_room.
-
-    When requires_discovery=True, a character must have a RoomVisit record
-    for the gate's source room before they can use the gate from elsewhere.
-    The RoomVisit model already tracks this — no additional fields needed.
-
-    ZoneGates are authoring-only in v15. No travel command is implemented.
+    A character's available destinations are derived from RoomVisit: any node
+    whose room they have seen is revealed to them, permanently. The network is
+    global — no zone scoping. Travel is free and only initiates from a room
+    whose node is obelisk-type; checkpoints are destinations only.
     """
-    name                = models.CharField(
-        max_length=100,
-        help_text="Display name shown to players (e.g. 'The Northern Rift Gate').",
-    )
-    source_room         = models.ForeignKey(
-        'Room', on_delete=models.CASCADE, related_name='gates_from',
-    )
-    destination_room    = models.ForeignKey(
-        'Room', on_delete=models.CASCADE, related_name='gates_to',
-    )
-    description         = models.TextField(
-        blank=True,
-        help_text="Flavor text shown when a player examines the gate.",
-    )
-    is_bidirectional    = models.BooleanField(
-        default=True,
-        help_text=(
-            "If True, this gate can be used in both directions. "
-            "The travel command will check both source_room and destination_room."
-        ),
-    )
-    requires_discovery  = models.BooleanField(
-        default=True,
-        help_text=(
-            "If True, character must have visited the source room "
-            "(RoomVisit record exists) before using this gate from elsewhere."
-        ),
-    )
-    is_active           = models.BooleanField(
-        default=True,
-        help_text="Inactive gates are invisible and unusable.",
-    )
+    NODE_TYPE_CHOICES = [
+        ('obelisk', 'Obelisk'),
+        ('checkpoint', 'Checkpoint'),
+    ]
 
-    class Meta:
-        ordering = ['name']
+    room = models.OneToOneField(
+        Room, on_delete=models.CASCADE, related_name='travel_node',
+        help_text='The room this node lives in. One node per room.',
+    )
+    travel_name = models.CharField(
+        max_length=60, unique=True,
+        help_text='Unique, typeable destination name shown in travel lists '
+                  '(e.g. "Fordwatch", "The Verdant Crown").',
+    )
+    node_type = models.CharField(
+        max_length=12, choices=NODE_TYPE_CHOICES,
+        help_text='Obelisks are travel sources and destinations. '
+                  'Checkpoints are destinations only.',
+    )
 
     def __str__(self):
-        direction = "↔" if self.is_bidirectional else "→"
-        return f"{self.name}: {self.source_room.name} {direction} {self.destination_room.name}"
+        return f'{self.travel_name} ({self.node_type})'
+
+
+class TravelMessage(models.Model):
+    CATEGORY_CHOICES = [
+        ('traveler', 'Traveler'),           # shown to the traveling player
+        ('departure', 'Departure witness'), # shown to players in the origin room
+        ('arrival', 'Arrival witness'),     # shown to players in the destination room
+    ]
+
+    category = models.CharField(max_length=12, choices=CATEGORY_CHOICES)
+    text = models.TextField(
+        help_text='Witness messages may include {name}, replaced with the '
+                  'traveling character\'s name. Traveler messages take no '
+                  'placeholders.',
+    )
+
+    def __str__(self):
+        return f'[{self.category}] {self.text[:60]}'
 
 
 class CombatSession(models.Model):

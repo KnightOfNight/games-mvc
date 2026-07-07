@@ -32,6 +32,7 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0014_seed_origins_archetypes.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0006_loottable_corpse_iteminstance_corpse_loottableentry_and_more.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0019_travelmessage_travelnode_delete_zonegate.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0002_remove_character_name.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0008_character_dying_since_character_is_dying_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0003_area_room_area.py
