@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit b2d0914 (v18 brief 2: the Obelisk Network — `TravelNode`/`TravelMessage` models, `ZoneGate` removed, the `travel` command, the Primordial Sphere, and the network's first node at the Heart of the Convergence).
+> Authoritative technical reference as of commit 5c01351 (v18 brief 2: the Obelisk Network — `TravelNode`/`TravelMessage` models, `ZoneGate` removed, the `travel` command, the Primordial Sphere, and the network's first node at the Heart of the Convergence).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
