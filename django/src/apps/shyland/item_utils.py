@@ -120,6 +120,19 @@ def get_display_name(item):
     return f"an unidentified {item.definition.item_type}"
 
 
+def get_display_name_with_tier(item):
+    """
+    Display name plus Mk tier suffix, honoring suppress_mk_suffix.
+    Unidentified items never show a tier.
+    """
+    name = get_display_name(item)
+    if not item.is_identified:
+        return name
+    if item.definition.suppress_mk_suffix:
+        return name
+    return f"{name} Mk {item.mk_tier}"
+
+
 def get_display_description(item):
     """
     Return the description to show a player for this item instance.

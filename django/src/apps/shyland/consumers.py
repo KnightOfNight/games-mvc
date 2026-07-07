@@ -9,8 +9,8 @@ from django.utils import timezone
 
 from .currency import display_for_zone
 from .item_utils import (
-    format_slot_name, get_display_name, get_display_description,
-    parse_item_noun, parse_corpse_noun, STAT_LABELS,
+    format_slot_name, get_display_name, get_display_name_with_tier,
+    get_display_description, parse_item_noun, parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, ItemInstance,
@@ -23,6 +23,9 @@ SLOT_ORDER = [
     'LEGS', 'FEET', 'RING', 'MAIN_HAND', 'OFF_HAND', 'RANGED', 'BACK',
 ]
 SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
+
+# RING is the only slot a character has two of.
+SLOT_CAPACITY = {'RING': 2}
 
 RARITY_RANK = {
     'common': 1, 'uncommon': 2, 'rare': 3,
@@ -62,6 +65,15 @@ _NO_EXIT_DEFAULTS = {
     'up':    "There is nothing above you.",
     'down':  "You'd have to dig to go that way.",
 }
+
+
+def _join_owned_names(items, conj):
+    names = [f'your {get_display_name(i)}' for i in items]
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f'{names[0]} {conj} {names[1]}'
+    return ', '.join(names[:-1]) + f', {conj} {names[-1]}'
 
 
 def _item_suffix(item, defn):
@@ -301,7 +313,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
                 defn = item.definition
                 if item.is_identified:
-                    name_str = f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}'
+                    name_str = f'{item.rarity.capitalize()} {get_display_name_with_tier(item)}'
                 else:
                     name_str = get_display_name(item)
                 suffix = _item_suffix(item, defn)
@@ -339,7 +351,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 count_str = f'   x{count}' if count > 1 else ''
                 if item.is_identified:
                     rarity_label = item.rarity.capitalize()
-                    name_str = f'{get_display_name(item)} Mk {item.mk_tier}'
+                    name_str = get_display_name_with_tier(item)
                     lines.append(f'  {rarity_label:<9} {name_str}{count_str}  {bind_tag}')
                 else:
                     name_str = get_display_name(item)
@@ -349,7 +361,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 suffix = _item_suffix(item, defn)
                 if item.is_identified:
                     rarity_label = item.rarity.capitalize()
-                    name_str = f'{get_display_name(item)} Mk {item.mk_tier}'
+                    name_str = get_display_name_with_tier(item)
                     lines.append(f'  {rarity_label:<9} {name_str}{suffix}  {bind_tag}')
                 else:
                     name_str = get_display_name(item)
@@ -503,61 +515,95 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         equipped_items = await self.get_equipped_items(char)
-        equipped_by_slot = {i.equipped_slot: i for i in equipped_items}
-        occupied_slots = set(equipped_by_slot.keys())
 
-        if defn.is_two_handed:
-            main_item = equipped_by_slot.get('MAIN_HAND')
-            off_item = equipped_by_slot.get('OFF_HAND')
+        # One candidate per way the item could go on: (slot, items displaced).
+        # A two-handed item claims both hands from any slot it occupies; a
+        # one-handed item going into a hand conflicts with any equipped
+        # two-handed item, wherever that item sits (including RANGED).
+        candidates = []
+        for slot in defn.valid_slots:
+            occupants = [i for i in equipped_items if i.equipped_slot == slot]
+            capacity = SLOT_CAPACITY.get(slot, 1)
 
-            if main_item and off_item:
+            if defn.is_two_handed:
+                extras = [
+                    i for i in equipped_items
+                    if i.equipped_slot in ('MAIN_HAND', 'OFF_HAND')
+                    or i.definition.is_two_handed
+                ]
+            elif slot in ('MAIN_HAND', 'OFF_HAND'):
+                extras = [i for i in equipped_items if i.definition.is_two_handed]
+            else:
+                extras = []
+
+            base_sets = [[]] if len(occupants) < capacity else [[o] for o in occupants]
+            for base in base_sets:
+                displaced, seen = [], set()
+                for equipped in base + extras:
+                    if equipped.pk not in seen:
+                        seen.add(equipped.pk)
+                        displaced.append(equipped)
+                candidates.append((slot, displaced))
+
+        # A slot the item can occupy without displacing anything wins outright.
+        free = next(((slot, d) for slot, d in candidates if not d), None)
+        if free is not None:
+            target_slot = free[0]
+            await self.equip_item(item, target_slot, char)
+            await self.output(
+                f"You equip {get_display_name(item)} in your {format_slot_name(target_slot)}.",
+                'system',
+            )
+            return
+
+        min_size = min(len(d) for _, d in candidates)
+        minimal = [(slot, d) for slot, d in candidates if len(d) == min_size]
+
+        if min_size >= 2:
+            _, displaced = minimal[0]
+            await self.output(
+                f"You'd have to unequip {_join_owned_names(displaced, 'and')} first.",
+                'system',
+            )
+            return
+
+        # Exactly one item must come off. If different candidate slots would
+        # displace different items, the choice is the player's — refuse.
+        distinct, seen = [], set()
+        for _, d in minimal:
+            if d[0].pk not in seen:
+                seen.add(d[0].pk)
+                distinct.append(d[0])
+
+        if len(distinct) > 1:
+            if all(slot == 'RING' for slot, _ in minimal):
                 msg = (
-                    f"Your Main Hand ({get_display_name(main_item)}) and "
-                    f"Off Hand ({get_display_name(off_item)}) slots are both occupied. "
-                    f"Unequip them first."
+                    f"Both ring slots are full — "
+                    f"unequip {_join_owned_names(distinct, 'or')} first."
                 )
-                await self.output(msg, 'system')
-                return
-            elif main_item:
-                await self.output(
-                    f"Your Main Hand slot is occupied by your {get_display_name(main_item)}. "
-                    f"Unequip it first.",
-                    'system',
-                )
-                return
-            elif off_item:
-                await self.output(
-                    f"Your Off Hand slot is occupied by your {get_display_name(off_item)}. "
-                    f"Unequip it first.",
-                    'system',
-                )
-                return
+            else:
+                msg = f"You'd have to unequip {_join_owned_names(distinct, 'or')} first."
+            await self.output(msg, 'system')
+            return
 
-            target_slot = defn.valid_slots[0]
-        else:
-            target_slot = None
-            for slot in defn.valid_slots:
-                if slot not in occupied_slots:
-                    target_slot = slot
-                    break
+        # Unambiguous one-for-one exchange: auto-swap, if the displaced item
+        # can legally come off. Never perform a partial swap.
+        displaced_item = distinct[0]
+        target_slot = minimal[0][0]
 
-            if target_slot is None:
-                first_slot = defn.valid_slots[0]
-                blocking = equipped_by_slot.get(first_slot)
-                if blocking:
-                    msg = (
-                        f"Your {format_slot_name(first_slot)} slot is occupied by your "
-                        f"{get_display_name(blocking)}. Unequip it first."
-                    )
-                else:
-                    msg = f"No suitable slot available for that item."
-                await self.output(msg, 'system')
-                return
+        unequipped_count = 0
+        if displaced_item.definition.item_type == 'bag':
+            unequipped_count = await self.count_unequipped_items(char)
+        blocked = self._unequip_blocked_reason(displaced_item, equipped_items, unequipped_count)
+        if blocked:
+            await self.output(blocked, 'system')
+            return
 
+        await self.unequip_item(displaced_item)
         await self.equip_item(item, target_slot, char)
-        display_name = get_display_name(item)
         await self.output(
-            f"You equip {display_name} in your {format_slot_name(target_slot)}.",
+            f"You unequip your {get_display_name(displaced_item)} and equip your "
+            f"{get_display_name(item)} in your {format_slot_name(target_slot)}.",
             'system',
         )
 
@@ -582,32 +628,35 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         item = matched
-        defn = item.definition
         display_name = get_display_name(item)
 
-        if item.is_cursed:
-            await self.output(f"Your {display_name} is cursed and cannot be removed.", 'system')
-            return
-
-        if defn.item_type == 'bag':
-            other_bag_bonus = sum(
-                i.definition.carry_bonus for i in equipped_items
-                if i.definition.item_type == 'bag' and i.pk != item.pk
-            )
-            new_limit = char.stat_str * 10 + other_bag_bonus
+        unequipped_count = 0
+        if item.definition.item_type == 'bag':
             unequipped_count = await self.count_unequipped_items(char)
-            if (unequipped_count + 1) > new_limit:
-                await self.output(
-                    f"You're carrying too many items to remove your {display_name}.",
-                    'system',
-                )
-                return
+        blocked = self._unequip_blocked_reason(item, equipped_items, unequipped_count)
+        if blocked:
+            await self.output(blocked, 'system')
+            return
 
         await self.unequip_item(item)
         await self.output(
             f"You unequip your {display_name} and stow it in your inventory.",
             'system',
         )
+
+    def _unequip_blocked_reason(self, item, equipped_items, unequipped_count):
+        """Return the refusal message if the item cannot legally be unequipped, else None."""
+        if item.is_cursed:
+            return f"Your {get_display_name(item)} is cursed and cannot be removed."
+        if item.definition.item_type == 'bag':
+            other_bag_bonus = sum(
+                i.definition.carry_bonus for i in equipped_items
+                if i.definition.item_type == 'bag' and i.pk != item.pk
+            )
+            new_limit = self.character.stat_str * 10 + other_bag_bonus
+            if (unequipped_count + 1) > new_limit:
+                return f"You're carrying too many items to remove your {get_display_name(item)}."
+        return None
 
     async def cmd_use(self, args):
         if not args:
@@ -663,7 +712,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def _format_identified_item_lines(self, item):
         defn = item.definition
         lines = []
-        lines.append(f'{item.rarity.capitalize()} {get_display_name(item)} Mk {item.mk_tier}')
+        lines.append(f'{item.rarity.capitalize()} {get_display_name_with_tier(item)}')
         lines.append(f'  {defn.description}')
         lines.append('')
         lines.append(f'  Type:       {defn.item_type.title()}')

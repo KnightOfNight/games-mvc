@@ -1,13 +1,15 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 05c634a (v17: Infinity City world seed — data only, no model changes since the v16 character creator).
+> Authoritative technical reference as of commit PENDING (v18 brief 1: Mk 1 item kit — `suppress_mk_suffix` display field, central tier-display helper, equip exchange rule, Verdant Reach item definitions).
 > Describes what is built. For design intent see the current GDD.
+>
+> **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
 
 ---
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -59,7 +61,7 @@ Only `nginx` exposes a host port. `django`, `postgres`, `redis`, and `ticker` ar
 | `make shell` | Django shell inside the container |
 | `make createsuperuser` | Create a Django admin superuser |
 | `make new-app NAME=x` | Scaffold a new game app in `apps/` |
-| `make db-reset` | Drop all Docker volumes, rebuild, start, migrate, and run `seed_world` — full data wipe |
+| `make reset` | Drop all Docker volumes, rebuild, start, migrate, and run `seed_world` — full data wipe |
 
 > **Critical workflow note:** After editing any file under `django/src/`, run `make build` before testing. `make restart` alone recreates containers from the existing image and picks up no changes.
 
@@ -208,9 +210,24 @@ The previous read-only `@property def name` — which returned `user.profile.gam
 
 Migration `0017` adds the field in the standard safe three-step form so it applies cleanly on databases that already contain `Character` rows (this codebase runs as multiple installations): `AddField` nullable → `RunPython` backfill (gamer tag falling back to username, truncated to 20, deduplicated case-insensitively with numeric suffixes) → `AlterField` to non-null + `AddConstraint`. On this deployment the table was empty, so the backfill was a no-op; the populated-table path was exercised by planting rows on the 0016 schema and migrating forward.
 
+#### `ItemDefinition`
+
+One new field added in v18 (brief 1), alongside the existing display-related fields (`mystery_name`, `mystery_description`):
+
+```python
+suppress_mk_suffix = models.BooleanField(
+    default=False,
+    help_text='If True, display names never show the "Mk N" suffix. '
+              'Used for tier-material items (copper/silver/gold/platinum) '
+              'whose material name already conveys the tier.',
+)
+```
+
+This is **display-only**: `mk_tier`, scaling, and rarity machinery are untouched — a Copper Ring of Strength still has a real `mk_tier` and scales normally; the player just never sees "Mk N" appended to a tier-material name. Flavor materials (iron, wood, leather) do *not* suppress — an Iron Sword still displays "Iron Sword Mk 1". The suffix suppression is honored by `get_display_name_with_tier()` in `item_utils.py` (see Section 4.6). Migration `0018` adds the field (single `AddField` with a default — safe on populated databases).
+
 #### All other models
 
-`EffectDefinition`, `EffectComponent`, `ItemDefinition`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `RoomSpawn`, `VendorEntry`, `ZoneGate`, `CombatSession`, `CombatAction` — *(unchanged from v15)*.
+`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `RoomSpawn`, `VendorEntry`, `ZoneGate`, `CombatSession`, `CombatAction` — *(unchanged from v15)*.
 
 ### 4.2 Currency system (`currency.py`)
 
@@ -218,11 +235,33 @@ Migration `0017` adds the field in the standard safe three-step form so it appli
 
 ### 4.3 WebSocket consumer (`consumers.py`)
 
-Three small changes in v16; all command handling *(unchanged from v15)*:
+Changed in v18 (brief 1): the `equip` command was rewritten and the name-plus-tier display formatting was centralized. All other command handling *(unchanged from v16)*.
 
-- **Character-less connections get a structured redirect.** `connect()` still sends the `'No character found. Create one to play.'` error and closes, but now also sends `{"type": "redirect", "url": "/shyland/create/"}` (via `reverse('shyland:create_character')`) first. `game.html` handles the `redirect` message type by navigating to the URL, so a player whose character is missing (or deleted mid-session) is routed into the creator instead of sitting on a dead socket.
-- **`disconnect()` guards against `self.character is None`** — the character-less connect path sets the attribute to `None`, and `touch_last_seen` previously crashed on it.
-- **Dead profile joins removed.** Every read of `character.name` now resolves the real database field, so the `select_related('user__profile')` entries that existed solely to feed the removed property were deleted (`get_character`, `get_character_fresh`, `get_others_in_room`; likewise six sites in `run_tick_engine.py` and `CharacterAdmin.list_select_related`, which is now `('user',)`).
+#### The equip exchange rule (`cmd_equip`)
+
+The old behavior — refuse whenever a target slot is occupied or a two-handed conflict exists — is replaced by a general exchange rule. For each slot in the item's `valid_slots` (in order), `cmd_equip` computes a **displacement set**: every currently equipped item that must come off for the new item to legally occupy that slot.
+
+- The current occupant(s) of the slot, if it is at capacity. Slot capacity comes from the module-level `SLOT_CAPACITY = {'RING': 2}` — RING is the only slot a character has two of; every other slot holds one item. A slot below capacity contributes an empty base set; a slot at capacity contributes one candidate per occupant (displacing that occupant).
+- If the new item is two-handed: every equipped item in MAIN_HAND or OFF_HAND, plus every equipped item whose definition is two-handed **regardless of its slot** — a two-handed item claims the character's hands from wherever it sits, including a two-handed bow equipped in RANGED.
+- If the new item is one-handed and the candidate slot is MAIN_HAND or OFF_HAND: additionally, any equipped item whose definition is two-handed (its hands-claim conflicts even from RANGED).
+
+Outcome selection, in `valid_slots` order:
+
+1. **Any candidate with an empty displacement set** → equip there. Output: `You equip <item> in your <slot>.`
+2. Otherwise, take the minimal displacement sets across candidates:
+   - **Minimum size ≥ 2** → refuse, naming every item in the set: `You'd have to unequip your Iron Sword and your Wooden Shield first.` Nothing is unequipped.
+   - **Minimum size 1, all minimal sets contain the same item** → **auto-swap**: unequip the displaced item, equip the new one, and send a single exchange message: `You unequip your Broadsword and equip your Wooden Shield in your Off Hand.` (Display names via `get_display_name()`.)
+   - **Minimum size 1, but different candidate slots displace different items** (ambiguous — a third ring while both RING slots are full; a MAIN_HAND/OFF_HAND item while both hands hold different items) → refuse, naming the candidates: `Both ring slots are full — unequip your Copper Ring of Strength or your Copper Ring of Wisdom first.` (Non-ring ambiguity uses `You'd have to unequip your X or your Y first.`) Nothing is unequipped.
+
+**Auto-swap defers to the existing unequip constraints.** Before swapping, the displaced item is checked with the same rules `cmd_unequip` applies — cursed items cannot be removed; a bag cannot come off if doing so would violate the carry limit. These checks live in the shared helper `_unequip_blocked_reason()`, used by both `cmd_unequip` and the auto-swap path, so the refusal messages are identical and a partial swap can never occur. The swap itself reuses the existing `unequip_item()`/`equip_item()` helpers, so soulbinding and slot bookkeeping behave exactly as a manual unequip-then-equip would.
+
+A module-level `_join_owned_names(items, conj)` helper formats the `your X and/or your Y` lists in refusal and exchange messages.
+
+#### Display formatting
+
+`consumers.py` no longer formats Mk suffixes inline. Every name-plus-tier display (inventory equipment block, inventory item lines, examine header) goes through `get_display_name_with_tier()` from `item_utils.py` (see Section 4.6). Rarity labels are unchanged and still appear exactly where they did before, prepended by the call sites.
+
+Carried over from v16 unchanged: character-less connections get a structured redirect; `disconnect()` guards against `self.character is None`; profile joins removed.
 
 ### 4.4 `effect_utils.py`
 
@@ -232,11 +271,27 @@ Three small changes in v16; all command handling *(unchanged from v15)*:
 
 *(unchanged from v15)*
 
-`recalculate_bars(character)` gained a second call site: the character creator calls it on the unsaved `Character` to compute starting bars from the level-1 stats before the first save (see Section 4.11).
+`recalculate_bars(character)` gained a second call site in v16: the character creator calls it on the unsaved `Character` to compute starting bars from the level-1 stats before the first save (see Section 4.11).
 
 ### 4.6 Item generation and utilities (`item_utils.py`)
 
-*(unchanged from v15)*
+One new helper added in v18 (brief 1), directly below `get_display_name()`:
+
+```python
+def get_display_name_with_tier(item):
+    """
+    Display name plus Mk tier suffix, honoring suppress_mk_suffix.
+    Unidentified items never show a tier.
+    """
+    name = get_display_name(item)
+    if not item.is_identified:
+        return name
+    if item.definition.suppress_mk_suffix:
+        return name
+    return f"{name} Mk {item.mk_tier}"
+```
+
+This is the **single source of truth for name-plus-tier formatting**. No inline `Mk {item.mk_tier}` formatting of player-facing item names remains in `consumers.py`. (Model `__str__` methods and tick-engine log lines are admin/debug representations, not display names, and intentionally do not use it.) Everything else in `item_utils.py` *(unchanged from v15)*.
 
 ### 4.7 Admin
 
@@ -246,22 +301,40 @@ Three small changes in v16; all command handling *(unchanged from v15)*:
 | `Origin` | `OriginAdmin` | `attire_material` added to `list_display` |
 | `Archetype` | `ArchetypeAdmin` | `attire_silhouette` added to `list_display` |
 
-Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15.
+Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except one v18 (brief 1) change: `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`) to make the new field editable in admin.
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
+
+Changed in v18 (brief 1): `_seed_items` was expanded with the Mk 1 item kit for The Verdant Reach. Three mechanisms:
+
+- **Legacy absorption.** Before any item is processed, the legacy generic `copper-ring` definition is renamed in place (`.filter(slug='copper-ring').update(...)`) to `copper-ring-of-wisdom` / "Copper Ring of Wisdom". The old dictionary was removed from the seed list, so the generic ring can never be recreated and the rename is safe to re-run on both fresh and existing databases.
+- **Gear** (weapons, armor, shield) stays on `get_or_create(slug=...)` — created once, never overwritten, so admin-tuned balance survives re-seeding.
+- **The 12 copper accessories** use `update_or_create(slug=...)` uniformly, so the absorbed legacy ring is normalized to its authored shape on existing databases and re-seeding stays idempotent.
+
+**Full post-brief ItemDefinition inventory (33 rows):**
+
+| Group | Definitions |
+|-------|-------------|
+| Leather armor set (6 new + adopted vest) | Leather Cap (HEAD), Leather Shoulders (SHOULDERS), Leather Gloves (HANDS), Leather Belt (WAIST), Leather Leggings (LEGS), Leather Boots (FEET); the pre-existing Leather Vest (CHEST) is adopted into the set unchanged |
+| Shield (new) | Wooden Shield (armor-typed, OFF_HAND, one-handed) |
+| Weapons (4 new) | Iron Mace (MAIN_HAND, 1H), Broadsword (MAIN_HAND, 2H), Battle Axe (MAIN_HAND, 2H), Hunting Bow (RANGED, **2H** — all bows are two-handed for now) |
+| Copper accessories (11 new + 1 absorbed) | Copper Ring of Strength / Dexterity / Endurance / Intelligence / Wisdom / Perception (RING) and Copper Amulet of the same six stats (NECK). Copper Ring of Wisdom is the absorbed legacy `copper-ring`. All twelve: `suppress_mk_suffix=True`, scaling 2.0/0.8, no durability, primary = suffix stat at base 2.0 / factor 0.8, secondary pool = the two adjacent stats at 0.5/0.2 (str→dex+end, dex→str+per, end→str+wis, int→wis+dex, wis→int+end, per→dex+int) |
+| Pre-existing, unchanged | Iron Sword, Combat Knife, Pulse Pistol, Apprentice Staff, Leather Vest, Ballistic Jacket, Satchel, Healing Draught, Focus Tonic, Repair Kit |
+
+Net effect on an existing v17 database: 22 new rows plus the in-place rename (11 → 33). On a fresh database the full seed creates all 33 directly. No proper nouns in any new item name; no new technology weapons (the Pulse Pistol is untouched and receives no new associations). This brief seeds **no zone content** — no rooms, NPCs, or drop tables.
 
 Changed in v17: the world-seed portion of the command was rewritten for the Infinity City map. `handle()` first deletes the placeholder content (the five Fracture Point plaza rooms by name, the `goblin-scout`/`training-dummy`/`fracture-wraith` NPC definitions, and the `the-fracture-point-plaza` area — the old `_seed_npcs` method that created them is gone), then builds The Convergence: the zone, 4 areas, 54 rooms keyed on `(zone, coord_x, coord_y, coord_z)` via `update_or_create`, exits wired in a second pass (every room's six exit FKs are assigned explicitly, absent ones to `NULL`, so re-runs fully normalize), 9 unique non-combat NPC definitions placed via `RoomSpawn`, and character relocation (characters with no `current_room`, or one outside The Convergence, move to Heart of the Convergence at (0,0,0); null `recall_room` is set the same way). The command ends with a built-in verification pass (room/area/NPC/spawn counts, ring-loop and path-connectivity walks, flags) that raises `CommandError` on any failure. The command is idempotent. One deliberate deviation from the v17 content brief: the brief assigned ring room R16 the same coordinates as the Basalt Way's last room; R16 sits at (1,−5,0) instead. NPC stats and drop/respawn numbers follow the balance-data convention below (create-only); NPC name, description, genre tag, and behavior flags are refreshed on every run.
 
 Changed in v16: `_seed_origins` and `_seed_archetypes` now use **`update_or_create`** instead of `get_or_create`, keyed on `slug`. Re-running the seed command therefore applies content changes to already-existing rows instead of silently skipping them (their stdout lines now report `"created"`/`"updated"` accordingly). This mattered for v16 because all seven Origins and seven Archetypes already existed from prior seeding.
 
-**Balance data is create-only.** The `defaults` dict (applied on every run) carries only content fields — `name`, `description`, and the attire phrase — while balance values (`Origin.acuity_baseline`/`acuity_band_low`/`acuity_band_high`, `Archetype.primary_stat_1`/`primary_stat_2`) go in `create_defaults` (Django 5's create-only bucket). Re-running `seed_world` on a live database refreshes descriptions but never reverts admin-tuned balance numbers.
+**Balance data is create-only.** The `defaults` dict (applied on every run) carries only content fields — `name`, `description`, and the attire phrase — while balance values (`Origin.acuity_baseline`/`acuity_band_low`/`acuity_band_high`, `Archetype.primary_stat_1`/`primary_stat_2`) go in `create_defaults` (Django 5's create-only bucket). Re-running `seed_world` on a live database refreshes descriptions but never reverts admin-tuned balance numbers. (The v18 copper accessories deliberately deviate: they are full `update_or_create` rows per the brief, so re-seeding normalizes them — including the absorbed legacy ring.)
 
-Both methods now seed real content:
+Both methods seed real content:
 
 - **Origins** — each of the seven (`highborn`, `feral`, `streetborn`, `irradiated`, `undying`, `machinekind`, `voidtouched`) has a non-empty `description` (flavor text tying the Origin's genre to its Acuity profile) and a non-empty `attire_material` phrase (e.g. Voidtouched: `'shifting, void-dark cloth that seems to drink the light'`). The `acuity_baseline` / `acuity_band_low` / `acuity_band_high` values are unchanged from v15.
 - **Archetypes** — each of the seven (`blade`, `bulwark`, `shade`, `conduit`, `warden`, `gunner`, `machinist`) has a non-empty `description` (role summary referencing its two primary stats) and a non-empty `attire_silhouette` phrase (e.g. Machinist: `'a utility vest lined with tool loops'`). The `primary_stat_1` / `primary_stat_2` values are unchanged from v15.
 
-All other seed methods (`_seed_unarmed_pools`, `_seed_effects`, `_seed_items`, `_seed_npcs`, zone/room/area creation) *(unchanged from v15)*.
+All other seed methods (`_seed_unarmed_pools`, `_seed_effects`, zone/room/area creation) *(unchanged from v17)*.
 
 ### 4.9 Tick Engine (`management/commands/run_tick_engine.py`)
 
@@ -338,7 +411,7 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Expiry messages: one per parent if all components expire together; one per component if staggered.** Balances feedback against message spam.
 
-**`make db-reset` target.** Drops all volumes, rebuilds, starts, waits 5 seconds, migrates, reseeds. Used for breaking model changes.
+**`make reset` target** (renamed from `db-reset`). Drops all volumes, rebuilds, starts with `--wait`, migrates, reseeds. Used for breaking model changes.
 
 **Single `copper` BigIntegerField for all currency.** All math through `currency.py`.
 
@@ -349,6 +422,10 @@ These are settled. Do not revisit without deliberate consideration.
 **One character per account.** Enforced at the schema level by `Character.user` being a `OneToOneField` (true since v14); as of v16 the creation flow also enforces it at the view layer — both the creator's GET and POST redirect to the game if a character already exists, rather than relying on the DB constraint to fail loudly.
 
 **Spawn-point lookups use zone slug + coordinates, never room name.** The creator finds the spawn room via `zone__slug='the-convergence', coord_x=0, coord_y=0, coord_z=0`. Room names are content, subject to rebuild; coordinates are convention. Future briefs should reuse this pattern instead of name-based room lookups. If the lookup fails, fail loudly — never silently substitute a different room.
+
+**Tier materials suppress the Mk display suffix (v18).** Items named with a tier material (copper — later silver/gold/platinum) never display "Mk N"; the material name conveys the tier. Display-only via `ItemDefinition.suppress_mk_suffix` and `get_display_name_with_tier()` — `mk_tier`, scaling, and rarity machinery are unchanged. Flavor materials (iron, wood, leather) do not suppress.
+
+**The equip exchange rule (v18).** Equipping counts the equipped items that must come off: zero → equip into a free valid slot; exactly one, unambiguously → auto-swap in a single command with an exchange message (never silent); two or more, or one but ambiguous → refuse, naming the items. A two-handed item claims both hands regardless of which slot it sits in (a two-handed bow in RANGED conflicts with MAIN_HAND/OFF_HAND and with other two-handed items); all bows are two-handed for now. Auto-swap defers to the existing unequip constraints (curses, bag carry limit) — no partial swaps.
 
 **Items soulbound on equip.** Permanently soulbound the moment an item is equipped.
 
@@ -437,7 +514,7 @@ Future sessions should check this list before assuming a system exists.
 - Minimap and fog-of-war rendering in client (`RoomVisit` records exist but are not rendered)
 - Admin in-game teleport commands
 - All chat channels except `say` and `who`: `yell`, `tell`, `party`, `guild`, `zone`, `general`, `emote`
-- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built
+- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built (v18 brief 1 ships only the Verdant Reach item kit: definitions exist, but no Verdant Reach rooms, NPCs, or drop tables)
 - Monitoring container — tracks health of all containers
 
 ---
@@ -449,3 +526,5 @@ Future sessions should check this list before assuming a system exists.
 **`create_corpse()` is synchronous.** Always call it from within a `@database_sync_to_async` wrapper.
 
 **No room description sent after entering combat.** When a player moves into a room with aggressive NPCs, the room description is not sent.
+
+**`tests.py` and `tests/` coexist in `apps/shyland/`.** The stale default `tests.py` stub shadows nothing at runtime, but `manage.py test apps.shyland` crashes during unittest discovery because of the module/package name collision. Run the test modules explicitly (`manage.py test apps.shyland.tests.test_currency apps.shyland.tests.test_area`) until the stub is removed. Pre-existing; not introduced by v18.

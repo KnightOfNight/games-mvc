@@ -167,7 +167,7 @@ class ItemDefinitionAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'item_type', 'genre_tag', 'description')}),
-        ('Identification', {'fields': ('mystery_name', 'mystery_description')}),
+        ('Identification', {'fields': ('mystery_name', 'mystery_description', 'suppress_mk_suffix')}),
         ('Scaling', {'fields': ('scaling_base', 'scaling_factor')}),
         ('Weapon', {'fields': ('damage_spread', 'is_ranged')}),
         ('Equipment', {'fields': ('valid_slots', 'is_two_handed')}),

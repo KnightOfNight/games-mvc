@@ -38,8 +38,10 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0016_npcdefinition_combat_tier_room_no_exit_down_msg_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/__init__.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0015_character_origin_archetype_nonnull.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/__pycache__
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0010_character_unspent_stat_points_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0011_remove_effectdefinition_duration_max_and_more.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0018_itemdefinition_suppress_mk_suffix.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0017_archetype_attire_silhouette_character_name_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0009_reset_acuity_to_float_defaults.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0005_itemdefinition_mystery_description_and_more.py
@@ -78,6 +80,7 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/migrations
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/migrations/__init__.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/migrations/__pycache__
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/models.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/__init__.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shydle/apps.py
@@ -97,6 +100,7 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations/__init__.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations/__pycache__
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations/0002_shyshipgame_winner.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations/0003_shyshipgame_bot_state_shyshipgame_vs_bot.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyship/migrations/0001_initial.py
@@ -124,6 +128,7 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/migrations
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/migrations/0002_create_player_groups.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/migrations/__init__.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/migrations/__pycache__
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/migrations/0001_initial.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/models.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/profiles/management
@@ -138,17 +143,17 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docker
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/flist
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_GDD_v17.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Project_Instructions_v16-2.md
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_GDD_v16.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/flist.tmp
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Architecture_v17.md
-https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Claud.AI_Brief_v15_to_v16.md
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Architecture_v18.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/LICENSE
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/Makefile
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/Dockerfile
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/rate-limit.conf
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/default.conf
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/conf/default.conf.template
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/nginx/entrypoint.sh
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/README.md

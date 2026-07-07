@@ -410,6 +410,12 @@ class ItemDefinition(models.Model):
             "If blank, falls back to 'You can't determine anything about this item.'"
         )
     )
+    suppress_mk_suffix = models.BooleanField(
+        default=False,
+        help_text='If True, display names never show the "Mk N" suffix. '
+                  'Used for tier-material items (copper/silver/gold/platinum) '
+                  'whose material name already conveys the tier.',
+    )
 
     def __str__(self):
         return self.name
