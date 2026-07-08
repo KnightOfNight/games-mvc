@@ -237,7 +237,7 @@ function showResult(title, text, timeoutMs) {
 // ── Action button visibility ──────────────────────────────────────────────────
 
 function updateActionButtons() {
-  rerollBtn.hidden = totalMoves !== 0;
+  rerollBtn.disabled = totalMoves !== 0;
   if (gameStatus === 'waiting') {
     // Cancel is in the waiting overlay; nothing in the topbar
     cancelBtn.hidden  = true;

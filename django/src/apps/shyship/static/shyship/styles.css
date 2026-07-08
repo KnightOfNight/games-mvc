@@ -171,6 +171,14 @@ body {
   transform: translateY(1px);
 }
 
+.icon-button:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(80, 140, 200, 0.12);
+  color: rgba(232, 240, 248, 0.35);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .danger-button {
   border: 1px solid rgba(200, 60, 40, 0.4);
   border-radius: 999px;
