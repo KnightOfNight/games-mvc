@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 17.0 — Closed**
+**Version 18.0 — Closed**
 
 -----
 
@@ -30,6 +30,24 @@
 | v16 RC5 | v15 (unchanged) | Final open item resolved — **the character creator design is now complete and ready for a Claude Code brief.** Section 3.1 updated: name uniqueness is checked in real time as the player types (not only on form submit), giving immediate feedback before they attempt to finalize the character. This is the last remaining decision from the character creator design pass that began in this chat; no open items remain for this system. |
 | v16.0   | v16 (commit `05c634a`) | **Character creator implemented, verified, and closed out.** This version folds the full v16 RC1–RC5 working-draft design together with four refinements that emerged during implementation and a documentation audit of stale v15 passages the working draft hadn't reached. Implementation refinements (Section 3.1): the profanity exemption is narrower than originally designed — it applies only to a kept, *set* gamer tag; a player with no gamer tag falls back to their username, which has no upstream vetting, so that default IS profanity-checked even when submitted unchanged. The default name is truncated to 20 characters when necessary (usernames can run up to 150 characters; gamer tags are already capped at 20). Name uniqueness is case-insensitive and enforced by a database-level constraint on every write path, including Django admin — the real-time as-you-type check is an advisory courtesy layered on top, not the authoritative gate. `Character.name` is permanent once set at creation and independent of later gamer-tag changes — this reverses the pre-v16 behavior where the displayed name tracked the profile live. Documentation-audit fixes: Section 10.1 Auth row updated to reflect `Character.name` as its own field rather than sourced live from `user.profile.gamer_tag`. Section 12 (Future Systems): removed the "Origin and Archetype Descriptions" and "In-game Character Creation" rows entirely (both fully shipped); added a new row noting that starting-attire flavor text is seeded but not yet rendered anywhere in-game. |
 | v17.0   | v17 (commit unchanged) | **Infinity City world seed implemented and closed out.** No model changes. No new commands. Content-only version. The Convergence zone (Z05) is now fully seeded with its first-version map: 4 path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms, and 9 NPC definitions. The starting room is Heart of the Convergence at (0,0,0), anchored by the Obelisk. Four winding park paths lead outward to a 35-room ring street surrounding the park. Seven sealed zone gates are placed clockwise on the ring street from north, one per future battle zone, each with atmospheric sealed-exit flavor text. Four information NPCs (Aldric, Info Prime, Pella, Seris) are placed at cardinal ring/path intersections; The Obelisk serves as a fifth information point at the center. Four vendor NPCs (Morra the blacksmith, Repairbot Prime, Ferwick the magician, Veris the crystal vendor) are placed across the ring from their paired information NPCs. Morra has her own smithy building (2 rooms: exterior + interior). All other vendors occupy open-air positions in ring street rooms. All Convergence rooms have `flag_safe=True`. Placeholder world content (The Fracture Point plaza and its 4 connected rooms, goblin scout, training dummy, fracture wraith) removed. Section 2.1 updated to reflect the settled Convergence lore. Section 2.5 updated: Infinity City documented as the starting area within The Convergence zone. Section 12 updated: zone content placeholder row replaced with specific note on what is and isn't yet built. |
+| v18 RC1 | v17 (unchanged) | **The Verdant Reach (Z01) zone design complete** (implementation pending — working draft). New Section 2.10 captures the full design: 150 rooms (101 surface / 49 cave), levels 1–10, three surface Areas in spine order (Fernwater Vale ~30 rooms / The Sagewind Flats ~20 / The Viridian Ridge ~51, a 30/20/50 split that doubles as the leveling plan) plus seven cave Areas on a logarithmic room curve (1/4/6/8/9/10/11). Maze-with-a-spine layout — linear progression, not linear geography. Zone doubles as a movement tutorial: valley-wall caves → plains sinkholes teaching `down` → three-dimensional mountain delves. Surface creatures all passive except flagged mountain-offshoot aggressors; all other aggro lives in the caves (spiders, giant centipedes, flying giant beetles). Six bosses (caves 2–7) with minions, on a weapon→armor→trinket drop rotation and an Uncommon (2–4) → Rare (5–6) → Epic (7) rarity ladder; Legendary excluded from the zone. Boss loot delivered via narrative chest death-flavor over standard corpse-loot mechanics. Animals drop XP plus generic Animal Hide rolls (insects: Insect Carapace); villagers are the money/gear source. Five-plus villages (Reedmere, Windhome, Stonestep, Highfold, Lastlight), 1–3 rooms each, villages always preceding mountain caves. Entrance: five atmosphere rooms ending at a river; fog-lift valley reveal on crossing. Act seams: five-room ancient stair (Vale→Flats), one-room boulder field (Flats→Ridge). Three checkpoints at act thresholds (Fordwatch, Stairhead, Cragfoot) hosting service NPCs — established as a zone-wide pattern. Zone terminus: The Verdant Crown, an impossibly green summit garden holding a green-sphere obelisk — establishing the every-zone-ends-in-an-obelisk pattern, with obelisk NPCs providing return travel to any obelisk or checkpoint, and the Heart of the Convergence Obelisk retroactively gaining the same workings. MUD-traditional shared world confirmed (no instancing); respawn table set (bosses 10 min, villagers 5, everything else 1). Section 12 updated: Battle Zones row rewritten; new rows added for the checkpoint/obelisk fast-travel network session, outleveled-content XP reduction, and hide/carapace crafting. **Still open before the implementation brief:** checkpoint/fast-travel mechanics session, room-by-room layout doc, XP pacing check, trinket category verification. |
+| v18 RC2 | v17 (unchanged) | **Checkpoint & fast-travel design complete** (working draft continues). New Section 2.11 — The Obelisk Network — captures the full design: checkpoints are destinations only; obelisks are sources and destinations; the network is global with no zone scoping (cross-battle-zone travel allowed by design — one flat rule, *destination revealed? travel permitted*). Revelation is per-character and permanent, triggered by seeing the node's room; the Heart of the Convergence reveals at first login but the destination list starts empty. Travel is a simple command — `travel` lists revealed destinations, `travel <destination>` goes, obelisk rooms only, no dialogue system required. Travel is free forever: a gift from the obelisks, earned through revelation. All checkpoint and obelisk rooms are safe rooms in every zone because of obelisk presence — projected in spirit to checkpoints, manifested there as a **Shard**: a free-floating sphere named per zone (a Verdant Shard in Z01), with a mood expressed purely in text, indestructible and non-interactive, the only checkpoint-specific artifact the obelisk placed. Everything else at a checkpoint is natural local evolution — service NPCs are locals who followed the foot traffic. Travel messaging: the obelisk speaks no words; traveler and witnesses at both ends see randomly selected themed messages. Section 2.6 updated: obelisk network added to special travel options. Section 2.10 updated: parked-mechanics language replaced with references to 2.11; checkpoint blocker removed from the zone's open items. Section 9.2 updated: `travel` command added to planned commands. Section 12 updated: Checkpoint & Obelisk Fast-Travel Network row rewritten — design complete, implementation mapping questions (ZoneGate relationship, RoomVisit reuse, message pool machinery, Shard representation) deferred to brief time. **The Verdant Reach implementation pipeline is now unblocked**; remaining before the brief: room-by-room layout doc, XP pacing check, trinket category verification. |
+| v18 RC3 | v17 (unchanged) | **Terminology settled and item inventory verified against the repo** (working draft continues). "Accessory" is the real item-type word for the third boss-drop category; "trinket" is a conversational alias only and never appears in code, data, or authoritative design text. Section 2.10 rotation updated to weapon → armor → accessory, with the note that accessories fill the NECK and RING (×2) slots, making the full-set hunt a concrete checklist. Repo check findings recorded in Section 2.10 open items: the `ACCESSORY` type exists in the model and exactly one accessory ItemDefinition is seeded (Copper Ring — RING slot only, no NECK item); armor definitions cover only CHEST (Leather Vest, Ballistic Jacket); weapons are the only slot-complete pool. Consequence: a fantasy-genre **Mk 1 item kit covering all equipment slots is a prerequisite for the zone and will be its own focused brief**, separate from the world seed. Remaining before implementation: Mk 1 item kit brief, room-by-room layout doc, XP pacing check. |
+| v18 RC4 | v17 (unchanged) | **Mk 1 item kit design complete** (working draft continues). New subsection in 2.10 — The Mk 1 Item Kit — Leather: plain uniform set, no proper nouns, ~24 new ItemDefinitions. Armor: six new Leather pieces (Cap, Shoulders, Gloves, Belt, Leggings, Boots), all END-anchored with slot-flavored secondary pools; existing Leather Vest adopted. Wooden Shield added (armor-typed, OFF_HAND, END anchor). Weapons: Iron Mace (1H), Broadsword (2H, steady), Battle Axe (2H, swingy — same budget as Broadsword, spread 8 vs 5), Hunting Bow (2H ranged); two-handers run ~45% above one-handers; no technology weapons in Z01 and the Pulse Pistol is excluded from Z01 drop tables; every Archetype is covered by the zone's loot. Accessories: copper only in Zone 1 — Copper Ring of `<stat>` ×6 and Copper Amulet of `<stat>` ×6, each stat variant its own ItemDefinition, suffix stat as sole primary, rarity carrying benefit variance; existing generic Copper Ring absorbed as Copper Ring of Wisdom. Section 6.3 gains the **tier-material naming rule**: tier materials (copper/silver/gold/platinum, tracking the currency ladder) suppress the Mk display suffix — display alias only, engine untouched; flavor materials (iron, wood, leather) do not suppress. Section 3.6 gains the **handedness design rule**: conflicting equips always refuse with a message, no silent auto-unequips, player manages exchanges. Repo verification recorded: `is_two_handed` already exists in model, seed, and equip logic (Apprentice Staff already two-handed; refuse-and-message already implemented) — handedness is *not* a new mechanic and no migration is needed; one gap found (off-hand equip while wielding a two-hander incorrectly succeeds) and its `consumers.py` fix is assigned to the kit brief. Remaining before implementation: item kit brief (ready to write), room-by-room layout doc, XP pacing check. |
+| v18 RC5 | v17 (unchanged) | **Equip exchange rule revised — refuse-always replaced by one-for-one auto-swap** (working draft continues). Section 3.6 rewritten: when equipping, count the items that must come off — zero equips normally; exactly one (unambiguous) auto-swaps in a single messaged exchange (never silent); two or more refuses naming what to unequip; exactly one but ambiguous refuses naming the candidates (canonical case: both RING slots full — the ring exception; also any multi-slot item facing all-occupied slots, e.g. a knife with both hands full). Rule is general across all equipment slots. Accepted edge case recorded as intended: two-handed weapon + equip shield auto-swaps, leaving no weapon. Auto-swap respects existing unequip constraints — cursed items and carry-limit-violating bag displacement refuse. **All bows are two-handed for now** recorded in 3.6 and the kit subsection. Section 2.10 kit subsection handedness paragraph rewritten to match; the two code gaps found in RC4 review are subsumed by the exchange-rule rewrite carried in the item kit brief. The item kit brief (Brief 1 of the v18 series) was rewritten accordingly. |
+| v18 RC6 | v17 (unchanged) | **Obelisk Network implementation mapping settled; Brief 2 produced** (working draft continues). Section 2.11's open-for-brief-time list replaced with settled rulings: `ZoneGate` superseded and removed (wrong shape — pairwise edges vs. node membership); revelation derived from `RoomVisit` with no new per-character table; dedicated `TravelMessage` model with traveler/departure/arrival pools; Shards represented as non-aggressive NPC definitions (zone seed content, not network machinery); and the Heart of the Convergence gains a white Sphere NPC for examine parity — the Convergence sphere didn't predate the zone-end sphere pattern, it started it. The Heart is registered as the network's first node ("The Convergence", obelisk-type). `Shyland_Brief_Obelisk_Network.md` produced as Brief 2 of the v18 series. |
+| v18 RC7 | v17 (unchanged) | **Battle-zone engine mechanics settled; Brief 3 produced** (working draft continues). Repo verification first, with a correction to the RC1-era record: the respawn engine already exists in full (`RoomSpawn` population config, tick-engine refill, per-definition `respawn_minutes`, 2× dead-instance cap) — the Reach's respawn table is pure seed data, not new machinery. Four mechanics settled: **(1) Boss-gated minion spawns** — a spawn can require a living NPC of a given definition in its room; boss minions respawn every **3 minutes** while the boss lives (revised from 1 minute — too fast for a team to kill the boss between waves), reinforcements stop when the boss dies, and the encounter resets as a unit when the boss respawns at 10 minutes; respawn table updated. **(2) Guaranteed-group loot** — loot table entries carry an optional group label; each group yields exactly one weighted pick per kill (boss rotation guarantees), ungrouped entries roll independently as before; rarity floors are seed data via rarity weights. **(3) Per-NPC `death_message`** — single authored text field, blank by default, broadcast once to the room at death: the narrative chest's delivery mechanism (a boss's reveal is a staged beat, deliberately not a randomized pool). **(4) Outleveled XP reduction — in v18, not deferred:** full XP within the NPC's Mk band, −20% per level beyond the band top, 10% multiplier floor, absolute minimum 1 XP; never zero, always give them something; Section 12 row rewritten as designed-and-in-v18. `Shyland_Brief_Engine_Mechanics.md` produced as Brief 3 of the v18 series (three one-field model changes with migrations; no zone content). |
+| v18 RC8 | v17 (unchanged) | **Layout DD produced and approved; commerce joins v18; all layout blockers ruled** (working draft continues). `Shyland_Verdant_Reach_Layout.md` produced as an intermediate design document (DD) between the GDD and the seed briefs: all 150 rooms keyed, named, and wired; full NPC roster with approved balance (`scaling_factor = level`, bosses `level × 3`; ~475 average kills 1→10 — XP pacing check passed); six bosses named with approved death-message chest reveals; insect tiers cave/giant cave/elder cave; loot tables including guaranteed groups; checkpoint service NPCs, vendor inventories, and prices; TravelNodes and Verdant Shard placements. Blocker rulings: **commerce (buy/sell/repair + item valuation) is in v18 as its own brief**, applied before the world seed — the v18 series grows to five briefs (item kit → obelisk network → engine mechanics → commerce → world seed); a **`material` item type** is approved for Animal Hide / Insect Carapace; **animals drop no copper** — only higher sentient species carry money. Naming ruling: the Convergence's sphere is **the Primordial Sphere** (it didn't predate the zone-end sphere pattern, it started it); zone-end spheres are named for their zones (the Verdant Sphere at the Verdant Crown); Brief 2 updated accordingly. Commerce design Q&A opened. |
+| v18 RC9 | v17 (unchanged) | **Commerce fully designed; Brief 4 produced** (working draft continues). Section 6.12 extended with the settled system: authored `base_value` on every ItemDefinition; item value = base × Mk × rarity multiplier (×1/×2/×4/×8/×16/×32 Common→Artifact); vendors pay exactly one third (minimum 1 copper); vendor buy prices remain authored `VendorEntry` data; vendor purchases are always Common; only unequipped items sell and **soulbound items CAN be sold** (compensated disposal — the instance is deleted, vendors never resell, the no-trading pillar untouched; cursed items are unsellable for free via the unequip rule); repair is paid per attempt with harmless failure, cost = value × missing durability × 50%, success = 20% + current durability × 75%, success restores 100%, items never destroyed; command set `list`/`buy`/`sell`/`repair` with `repair` bare form walking the most-damaged item, `repair all` batch semantics, and automatic routing (living vendor / living repairer via new `is_repairer` flag). Materials confirmed as an item type; Animal Hide (6cp) and Insect Carapace (8cp) defined; base_value back-fill table authored for all existing definitions. **Combat QoL settled:** targetless `attack`/`kill` auto-targets the first attacker, only while under aggro. Section 9.2 updated with the five command entries. `Shyland_Brief_Commerce_and_Combat_QoL.md` produced as Brief 4 of the v18 series (four model fields, one migration run, no zone content). The v18 series now stands: Briefs 1–4 complete; only the world seed remains. |
+| v18 RC10 | v17 (unchanged) | **World seed briefs produced; full cross-check complete — v18 planning is done.** `Shyland_Brief_Verdant_Reach_Seed_Part1.md` (Brief 5a: entrance, Fernwater Vale, ancient stair, Sagewind Flats, caves 1–4, Fordwatch and Stairhead, Reedmere and Windhome, three bosses — 69 rooms with full authored prose) and `Shyland_Brief_Verdant_Reach_Seed_Part2.md` (Brief 5b: the Viridian Ridge in three legs, Stonestep/Highfold/Lastlight with warnings written into their prose per R7, four aggro offshoots, the three delves, Cragfoot, the Verdant Sphere, and The Verdant Crown as the network's second obelisk source — 81 rooms) produced per the approved DD, with room prose unreviewed by design under the creative-content policy. **Cross-check pass performed across all six briefs** (automated exit-pairing, coordinate, slug, and rarity-weight checks plus a full manual read): exit pairs all correct; all rarity weight sets sum to 100; all item references resolve to Brief 1 / pre-existing slugs. Eight fixes applied: five coordinate collisions corrected (the Drone Pit shifted to its own x-column; The Lion's Backyard and The Crag Shelf moved off occupied coordinates); Brief 2's combat-tier placeholder replaced with the verified `'normal'` value; Brief 4's vendor `list` formatting corrected to definition-based (the instance display helper doesn't apply to VendorEntry rows); slug-resolution notes added to both seed briefs' loot sections. **The v18 series is final: Briefs 1 → 2 → 3 → 4 → 5a → 5b, ready to apply in order.** Next: implementation via Claude Code, then closeout (architecture doc v18 upload, GDD v18.0 release). |
+| v18 RC11 | **v18 (commit b2d0914)** | **Brief 1 (Mk 1 Item Kit) implemented, verified, and pushed** — the architecture doc is now `Shyland_Architecture_v18.md`, updated in place by subsequent briefs. Closeout notes processed, with corrections to this document's record: **the kit contains 4 new weapons, not 5** — the five approved additions were four weapons plus the armor-typed Wooden Shield, and the brief's Context miscounted ("5 weapons", "23 net-new"); Part D was always correct and complete, actual result 22 net-new rows (11 → 33 definitions, legacy Copper Ring absorbed in place), **nothing is missing and no follow-up brief is needed**. Kit subsection arithmetic corrected accordingly. **Slot capacity recorded in 3.6:** exactly two RING slots, one of everything else — the design already said RING ×2 but the v17 code had a single ring slot; Brief 1 added the capacity mechanism (`SLOT_CAPACITY`), documented in the architecture doc. Also shipped per closeout notes: generic ambiguous-refusal wording ("or"-joined, matching the ring case's shape), eleven accessory descriptions authored in-session under the creative-content policy, an admin fieldset fix for `suppress_mk_suffix` visibility, and the scope line that only player-facing display uses `get_display_name_with_tier()` (admin/debug strings unaffected). Dev database was rebuilt to a clean v17 baseline before implementation (environment note; no design impact). Briefs 2–6 pending. |
+| v18 RC12 | v18 (commit 74ca44e) | **Brief 2 (Obelisk Network) implemented, verified, and pushed** (code commit 5c01351; architecture doc hash-stamped 74ca44e, updated in place). The network is live: `ZoneGate` deleted (migration 0019), `TravelNode` and `TravelMessage` added, the `travel` command shipped with all brief-verbatim strings plus a help entry, the Primordial Sphere seeded at the Heart, and "The Convergence" registered as the network's first node. Full travel loop verified in-container (18/18) including real witness broadcasts. **§9.1 updated: `travel` (both forms) moved from planned (§9.2) to implemented**, per the single-source-of-truth convention. Closeout notes recorded: the `ZoneGate` name survives only in immutable migration history (0016/0019) — live code is clean; NPC placement is spawn-row based as the seed intends; and **the recall command was never implemented** — it remains planned in §9.2, the Brief 2 regression step's reference to it was this document's authoring error, and §2.11's "three ways out" now carries a recorded note that deep-zone players have two ways out until recall ships (accepted for the Reach's launch). Briefs 3–6 pending. |
+| v18 RC13 | v18 (commit 8ad567c) | **Brief 3 (Engine Mechanics) implemented, verified, and pushed** (code commit b686093; architecture doc updated in place). All four battle-zone mechanics live, fully data-driven with no Z01-specific logic: boss-gated spawns (`RoomSpawn.requires_living_npc`, one exists() query per gated spawn, ungated spawns query nothing), guaranteed-group loot (partitioned rolls, exactly one weighted pick per group, verified at 50 rolls with 33/11/6 tracking the 6:3:1 weights), per-NPC `death_message` (broadcast once after the kill line, blank = byte-identical output), and outleveled XP (worked table passes exactly, including the min-1 guard). **One code deviation, correctly made:** the brief's verbatim `int(base × multiplier)` disagreed with its own worked table due to binary floating point (0.20×3 → 0.39999…), paying 3/1 XP where the table promised 4/2; Claude Code treated the worked table as the authoritative gate and added a commented `round(…, 9)` before truncation — the discrepancy was this document author's error, and the resolution priority (tables over prose/code) is the standing rule. Engine quirk recorded in the architecture doc: the pre-existing 2× dead-instance cap gives a count=1 spawn one buffered instant replacement, relevant to spawn-test choreography only. Migration 0020; image rebuilt with migration baked in; all five containers stable. Briefs 4–6 pending. |
+| v18 RC14 | v18 (commit ce502b3) | **Brief 4 (Commerce & Combat QoL) implemented, verified, and pushed** (code commit 97f3732; architecture doc updated in place). Commerce is live: migration 0021's four fields, valuation helpers verified to the copper (broadsword 200/66, Epic amulet 240/80, repair 18cp at 50%), materials seeded, base_value back-filled with a seed-verification check that nothing sits at the migration default, and all four commands routed to living vendors/repairers. Beyond-brief additions, all correct: **money movement is atomic with row locks** (no double-spend or oversell on finite stock), the stale VendorEntry docstring note was removed, and the seed's built-in verification grew two commerce checks. Targetless `attack`/`kill` resolves the first attacker via combat-session insertion order. **§9.1 updated: a Commerce table added (`list`, `buy`, `sell`, all three `repair` forms) and the bare `attack`/`kill` auto-target row added to Combat; all five entries removed from §9.2.** Display ruling at closeout: **materials keep their Mk suffix** ("Animal Hide Mk 1") — `base_value × mk_tier` makes a Mk 3 hide worth 3× a Mk 1 hide, and the suffix is the only visible signal of that difference; the tier-material suppression rule stays narrowed to the metals whose names already encode tier. Briefs 5–6 pending. |
+| v18 RC15 | v18 (commit e68f022) | **Brief 5 (Verdant Reach Seed Part 1) implemented, verified, and pushed — Shyland's first battle-zone content is live and playable** (code commit 973a07d; architecture doc updated in place). The zone, 6 areas, and all 69 rooms seeded with verbatim prose; exits wired both ways from a one-way edge list; the Verdant gate opened off the ring street; 6 unarmed pools, 29 NPC definitions (bosses with death messages, the game's first vendors and repairers, the Verdant Shard), 7 loot tables including the three guaranteed-group boss tables, 57 spawns (three gated), 8 vendor entries, and the Fordwatch/Stairhead travel nodes. End-to-end verification against the live ticker: the 31-step spine walk with the fog reveal, aggro-in-caves/none-outside, the full commerce loop at Fordwatch, obelisk travel to both checkpoints, the Silk Matron's complete boss cycle (death message, exactly one Uncommon weapon, 50–150 copper, brood gating), and villager loot/respawn. **Two record corrections from closeout deviations:** (1) the Z01 Zone row never existed — this document's Brief 5 premise that the Infinity City seed created it was wrong; the brief's own get_or_create instruction handled it harmlessly, and the seed now creates the zone. (2) **The respawn engine was never actually working** — `process_npc_respawn` counted live instances only, so `respawn_minutes` was meaningless (every kill refilled next tick) and boss-minion gating could not engage naturally; RC7's "respawn engine already exists in full" was an overcorrection, and Brief 3's gate verification passed only via hand-driven timers. Fixed at Brief 5: dead instances hold their slot until their timer clears, making the approved respawn table (bosses 10 / villagers 5 / minions 3 / others 1) real for the first time. Also fixed: re-seeding no longer teleports Verdant Reach players back to the Heart. Brief 6 pending — the Ridge, three delves, and the Crown complete the zone. |
+| v18 RC16 | v18 (commit 1b40395) | **Brief 6 (Verdant Reach Seed Part 2) implemented, verified, and pushed — the v18 implementation series (Briefs 1–6) is COMPLETE and Z01 stands whole: 150 rooms, 10 areas** (code commit 1b40395; docs commit 3832f5d; architecture doc updated in place). Shipped verbatim: the 51-room Ridge with Cragfoot, three villages, four warned-about aggro offshoots and the vistas; the 9/10/11-room delves; the Verdant Crown; the f18↔Cragfoot wiring; three elder pools; 20 NPC definitions including the Verdant Sphere and three bosses with death messages; five loot tables; 72 spawns (three gated); Ridda's vendor rows; and the Crown as the Obelisk Network's **second travel source** (two sources, three checkpoints, revelation-by-visit per 2.11 with no deviations). All verification passed — full topology walk, aggro pattern (offshoots fire, spine lions don't), all three boss cycles end-to-end against the live ticker, Convergence↔Crown round trip, commerce at Cragfoot, XP spot checks (90/54/300), 20/20 tests — **except one flagged item pending a design ruling: the Epic-accessory secondary count.** The twelve copper accessories carry 2-entry secondary pools (the approved two-adjacent-stats design), so the Devourer's guaranteed Epic rolls its full pool of 2 — three stat lines total with the primary — rather than the rarity table's 3 secondaries; recorded in the architecture doc's Known Issues; options are pool-capped semantics (slots = min(rarity, pool), consistent with Legendary's "all in pool" definition) or a small Brief 7 authoring a third secondary per accessory. Closeout conventions recorded: **minions inherit their stat donor's combat tier** (Brief 6's shipped elite from elder donors; display-only field); loot-table display names are admin-facing creative content. No migrations in Briefs 5–6 — the entire zone is seed data. Next: the Epic ruling, then final closeout (architecture doc upload, GDD v18.0). |
+| v18 RC17 | v18 (commit 1b40395, unchanged) | **Epic-accessory ruling: pool-capped semantics blessed (option a).** Secondary slot counts are `min(rarity's slots, pool size)` — Legendary's "all in pool" definition was already this principle at the ceiling, so no data changes, no follow-up brief, and Brief 6's flagged verification item resolves as correct-as-built. The rarity section gains the clarifying rule; the copper accessories' two-stat pools stand as designed, rolling both secondaries at Epic (three stat lines with the primary). The architecture doc's Known Issues entry on this point is now a resolved design question — it can be cleared with a one-line doc edit in any future Claude Code session, or stand as history. **The v18 implementation series is closed with zero open items.** Remaining: architecture doc upload to the project, then GDD v18.0. |
+| **v18.0** | **v18 (commit 1b40395) — uploaded, Closed** | **RELEASE. The Verdant Reach (Z01) ships complete — Shyland's first battle zone — alongside every system built to carry it.** The version's full contents, implemented across six briefs and reconciled through seventeen RCs: **The zone** — 150 rooms in 10 areas across Fernwater Vale, The Sagewind Flats, and The Viridian Ridge plus seven caves on a logarithmic curve; levels 1–10; maze-with-a-spine layout doubling as a movement tutorial; fog-reveal entrance, ancient stair, boulder field; five villages; four warned-about aggro offshoots; six bosses with narrative-chest death messages on a weapon→armor→accessory rotation and an Uncommon→Rare→Epic ladder; the Verdant Crown terminus establishing the zone-end obelisk pattern. **The Mk 1 item kit** — leather set, Wooden Shield, four weapons with handedness and the general equip exchange rule, twelve copper accessories with tier-material Mk suppression, pool-capped rarity semantics. **The Obelisk Network** — destination-only checkpoints, source-and-destination obelisks (two sources, three checkpoints live), per-character permanent revelation, the free `travel` command, Shards, the Primordial Sphere. **Battle-zone engine mechanics** — boss-gated spawns, guaranteed-group loot, per-NPC death messages, outleveled XP (never zero), and the respawn engine actually working for the first time. **Commerce** — authored `base_value` valuation, one-third sell pricing, soulbound-sellable/unequipped-only, pay-per-attempt repair, `list`/`buy`/`sell`/`repair`, materials, and targetless `attack`/`kill` under aggro. §9.1 reflects the shipped dispatch table. The architecture doc (`Shyland_Architecture_v18.md`, hash 1b40395) is uploaded in lockstep; v17 documents removed. The RC1–RC17 rows above are this version's design history, including every implementation-time correction, kept per convention. |
 
 -----
 
@@ -235,7 +253,8 @@ Players move using directional commands: `north`, `south`, `east`, `west`, `up`,
 Special travel options:
 
 - **Recall scroll** — teleports player to their bound recall point (default: The Convergence)
-- **Zone gates** — fixed fast-travel points between zones, requiring discovery first. The `ZoneGate` model is now in place: each gate links a source room to a destination room, with optional bidirectionality and a discovery requirement (the character must have previously visited the source room before using the gate from elsewhere). The travel command is not yet implemented; gate configurations can be authored in Django admin.
+- **The Obelisk Network** — the game's fast-travel system: obelisk rooms are travel sources; checkpoints and obelisks are destinations, revealed per-character by visiting them. Free, global, and command-driven (`travel`). Full design in Section 2.11.
+- **Zone gates** — fixed fast-travel points between zones, requiring discovery first. The `ZoneGate` model is now in place: each gate links a source room to a destination room, with optional bidirectionality and a discovery requirement (the character must have previously visited the source room before using the gate from elsewhere). The travel command is not yet implemented; gate configurations can be authored in Django admin. The model's relationship to the Obelisk Network (Section 2.11) — backing model, superseded, or dormant — is an open implementation question.
 
 Mounts are deferred to a future version.
 
@@ -316,6 +335,249 @@ The ring street is lined with trees throughout. Sparse content between gates inc
 | Veris | Across ring from Seris (west) | Exotic shifting crystal structure — exact twin of Seris's | Crystal vendor | Same personality as Seris — quiet, perceptive, unhurried — but different words; twins in nature, not in script |
 
 **Exits are transitions, not doors.** This is a core world-building principle established with Infinity City. Players do not open doors between rooms — they feel the world change around them. Zone gates in particular should feel like the zone begins, not like a door was opened.
+
+### 2.10 The Verdant Reach — Zone Z01
+
+**The Verdant Reach** is the game's first battle zone: a beginner-level classic-fantasy wilderness spanning **levels 1–10** — the full Mk 1 band. Players graduate to the intermediate zones (Ashenveil Cathedral, The Neon Sprawl) right as Mk 2 gear begins to matter. The zone is entered through the sealed gate at ~1:00 on the Infinity City ring street — a natural tree arch where the forest simply begins. Opening the zone means wiring that exit.
+
+Every zone has a color. The Verdant Reach's color is **green**. The color is never stated outright in names or content — it is carried in pigment-words (viridian, sage, verdant) and living-green imagery (fern, reed, moss), and told in the sum of all the zone's names rather than any single one. Caves carry no green at all — their vocabulary is stone, silk, moss, and lichen.
+
+#### Design Principles
+
+- **Linear progression, not linear layout.** The zone is a maze with one true path — the spine — running from the tree arch to the summit, encoding the level 1→10 difficulty gradient. Side branches, dead ends, and pockets of exploration hang off the spine. "Linear" describes the intended player journey, not a corridor of rooms.
+- **The zone is a movement tutorial disguised as wilderness.** Act 1 (the valley) teaches horizontal exploration and safe cave-diving through valley-wall cave entrances. Act 2 (the plains) introduces literal `down` travel via sinkhole caves. Act 3 (the mountains) demands full three-dimensional navigation — the big delves use `up` and `down` internally. A player who finishes the Reach has learned the game's complete movement vocabulary without a single tutorial prompt.
+- **The surface is passive; the caves are hostile.** Outdoors, every creature is attackable but none initiate (yellow). All aggro content lives in the seven caves — with one deliberate exception: in some mountain offshoot rooms, some lions and bears aggro. The spine stays safe; Act 3's side branches carry real danger.
+- **Terrain-typed inhabitants.** Every creature belongs to its terrain and never appears outside it. No mountain men in the valley; no goats on the plains. Spawn placement is terrain-scoped.
+- **Greenery and paths are decoration, not geography.** Forest, trees, glades, ferns, and paths are room-level flavor vocabulary woven through every surface area's prose. They are never Areas. Caves use their own decorative vocabulary: moss, lichen, damp stone.
+
+#### Structure
+
+**150 rooms total. 101 surface, 49 underground.** Ten Areas: three surface Areas in spine order, plus seven cave Areas.
+
+| Area | Act | Surface Rooms | Levels | Caves |
+|---|---|---|---|---|
+| **Fernwater Vale** | 1 — Valley | ~30 | 1–3 | Spinner's Hollow, The Silken Cleft |
+| **The Sagewind Flats** | 2 — Plains | ~20 | 4–5 | The Whistling Sink, The Drone Pit |
+| **The Viridian Ridge** | 3 — Mountains | ~51 | 6–10 | The Undercrag, Chitterdeep, Hollowcrown |
+
+The surface split is 30/20/50 by design: a gentle, roomy opening act; a short, brisk transitional middle; and half the zone devoted to the long climb through the mountains. Room share tracks level share — the split *is* the leveling plan.
+
+#### The Seven Caves
+
+Cave room counts follow a logarithmic curve — `rooms(n) = round(1 + 5·ln(n))` — growing fast early and flattening late:
+
+| # | Name | Act | Rooms | Entrance Style | Boss |
+|---|---|---|---|---|---|
+| 1 | Spinner's Hollow | Vale | 1 | Horizontal valley-wall entrance | None — a single spider; the pure introduction to entering an aggro room |
+| 2 | The Silken Cleft | Vale | 4 | Horizontal valley-wall entrance | Yes |
+| 3 | The Whistling Sink | Flats | 6 | Sinkhole — teaches `down` | Yes |
+| 4 | The Drone Pit | Flats | 8 | Sinkhole | Yes |
+| 5 | The Undercrag | Ridge | 9 | Mountain delve — uses `up` and `down` internally | Yes |
+| 6 | Chitterdeep | Ridge | 10 | Mountain delve | Yes |
+| 7 | Hollowcrown | Ridge | 11 | Mountain delve — the hollow inside the crown of the summit mountain | Yes |
+
+**Cave inhabitants:** spiders, giant centipedes, and giant beetles. The beetles fly — their attack message pool carries aerial flavor (swooping down, dropping from the ceiling darkness). Cave 1 contains only a spider. Caves 2–7 mix all three types and end in a boss: a big, hard version of one of the three, attended by minions, guarding the cave's loot (see Boss Loot below). The three insect types have distinct fight personalities — the spider's speed, the centipede's skittering panic, the beetle's armored dive-bombing — and are the game's first use of per-NPC unarmed message pools.
+
+#### The Entrance Experience
+
+Five rooms of pure atmosphere bring the player in:
+
+1. **The tree arch** — the threshold itself, hinting at a short path beyond
+2. **–4. The descending path** — starting green, turning rocky as it drops toward the sound of water
+5. **The river** — running along the valley floor; the true boundary of the zone's opening
+
+One offshoot room hangs off the path with a few bears — the player's first optional kill, safely off the spine. **Crossing the river, the fog lifts and the whole valley spreads out before the player.** The zone withholds its identity for five rooms, then delivers it all at once — the fog is the mechanism behind "you don't realize you're in a valley at first." Checkpoint **Fordwatch** sits just across the river: arrival, reveal, and waystation in one beat.
+
+#### Act Transitions
+
+Each seam between acts teaches differently, and each is marked by a checkpoint:
+
+- **Vale → Flats: the ancient stair.** The valley path reaches an apparent dead end — then the player spots very old steps carved into the rock. **Five rooms of climbing** from valley floor to the plains above, with vista rooms along the way that mix beauty with a worried glance at how much climbing remains. Looking back down the valley, the player sees what was once an easier path, long since eroded away by the river — the world is older than the player, and the hard way is the only way left. Checkpoint **Stairhead** waits at the top. The stair is the valley's single exit — a deliberate maze-spine chokepoint.
+- **Flats → Ridge: the boulder field.** The plains end in a room of grassy field littered with boulders marking the mountains' feet. **One single transition room**, then the player is in the mountains proper, where checkpoint **Cragfoot** sits at the base. By Act 3 the player no longer needs a gentle hand.
+
+#### The Mountain Climb and the Summit
+
+The Viridian Ridge's ~51 surface rooms wind upward as a switchback mountain path, delve mouths and offshoots hanging off the bends. Each mountain village anchors a mini-cluster: village (safety, services, a warning) → the cave it precedes (the sanctioned danger) → an aggro offshoot (the unsanctioned one). The signature pattern: an aggro lion room one step past a village — the place the villagers warned you about. The warning lives in the village's flavor text; ignoring it is a choice; the lions are the consequence.
+
+**The maze ends at The Verdant Crown** — the top of the mountain, but no snowy peak. It is tall, lush, and impossibly green, a garden where no garden should survive. In the middle stands an obelisk with a sphere — not white like the Heart of the Convergence's, but **green**, the Reach's color. The name is the one place the zone says its color almost out loud, echoing The Verdant Reach itself — reaching it feels like arriving at the zone's namesake.
+
+#### The Obelisk Pattern — Every Zone Ends This Way
+
+The Verdant Crown establishes a world grammar that every future zone follows: **every zone ends in an obelisk scene.** Same structure, different color and different staging — one zone's obelisk might sit in a catacomb ringed by zombies. The player learns that reaching the obelisk *is* finishing the zone, and each zone's version recontextualizes the same sacred object. Like the eroded valley path, the obelisks quietly deepen the lore: they predate everything. The Fracture's fingerprints.
+
+Each zone-end obelisk includes an **obelisk NPC that can send the player back to any other obelisk or checkpoint.** Retroactively, **the Obelisk at the Heart of the Convergence gains the same workings** — the white sphere becomes the network's origin node. The fast-travel design is settled in full — network shape, revelation, the `travel` command, cost, safety, Shards, and messaging. See Section 2.11, The Obelisk Network.
+
+#### Checkpoints
+
+Three checkpoints, each sitting at an act threshold so that reaching the next act and unlocking the next waystation are the same event:
+
+| Checkpoint | Location |
+|---|---|
+| **Fordwatch** | Just across the river, at the fog-lift reveal |
+| **Stairhead** | Top of the ancient stair, entering the Sagewind Flats |
+| **Cragfoot** | Base of the Viridian Ridge |
+
+Checkpoints are waystations in the full sense: destination-only nodes on the Obelisk Network (Section 2.11), and — as a **zone-wide pattern for all future zones** — the home of the zone's service NPCs (repair, buy, sell). Every zone gets consistent repair/vendor access, and checkpoint rooms are where it lives. Checkpoints let a returning player skip ahead to later content rather than re-walking outleveled territory.
+
+#### Bestiary
+
+All surface creatures are passive (yellow) except the flagged mountain-offshoot aggressors. Villagers are human NPCs going about their lives — attackable, optionally killable for money and gear.
+
+| Act | Animals | Humanoids |
+|---|---|---|
+| Fernwater Vale | Bears (feeding at the river), mountain lions (scaling the cliffs), river otters (playing near the villages), wild boars (the valley's toughest passive fight) | Peaceful fishing villagers (Reedmere) |
+| The Sagewind Flats | Deer, buffalo, rabbits, prairie dogs | Native plains peoples living in hide tents (Windhome) — written as a fully realized culture with their own names, work, and daily life; no stereotypes |
+| The Viridian Ridge | Bears, mountain lions (some aggro in offshoot rooms), mountain goats, mountain squirrels | Mountain villagers (Stonestep, Highfold, Lastlight) |
+| Caves | Spiders, giant centipedes, giant beetles (flying) | — |
+
+#### Villages
+
+Villages are **1–3 rooms each** — starting at one, growing to a max of three where the settlement earns it. At least three villages in the Viridian Ridge alone; more than that across the zone. **A village always precedes a cave in the mountains** — players can repair, sell, and gear up before diving. Minimum settlement roster:
+
+| Village | Act | Role |
+|---|---|---|
+| **Reedmere** | Vale | Fishing village — reeds, still water; the player's first settlement |
+| **Windhome** | Flats | The plains peoples' home — theirs by name, a place of belonging |
+| **Stonestep** | Ridge | Before The Undercrag |
+| **Highfold** | Ridge | Before Chitterdeep — a fold is where goats are kept |
+| **Lastlight** | Ridge | Before Hollowcrown — the final hearth before the top |
+
+#### Loot & Drops
+
+- **Animals drop no items** — a bear carrying a sword makes no sense. Animals give XP plus a dice-roll chance at a generic **Animal Hide**; cave insects the same with **Insect Carapace**. One ItemDefinition each for now — pure vendor-sellables. Crafting uses for hides and carapaces come much later (see Section 12).
+- **Villagers drop money and gear** — Common trash, the zone's baseline loot source.
+- **Pre-boss rarity is deliberately unimpressive.** Everything before a boss is Mk 1 with at most a few points in a single stat — Common with occasional Uncommon. Nothing fancier ever rolls from trash.
+- **Boss drop category rotation:** weapon → armor → accessory, looping boss by boss through the zone. ("Accessory" is the real item-type word — see Section 3.6; "trinket" is a conversational alias only and never appears in code or data.) Cave 2 = weapon, Cave 3 = armor, Cave 4 = accessory; the mountain caves repeat the cycle at higher rarity: Cave 5 = weapon, Cave 6 = armor, Cave 7 = accessory. Accessories fill the NECK and RING (×2) slots. Loot mechanism (settled at brief time): guaranteed-group entries on loot tables — each labeled group yields exactly one weighted pick per kill, so a boss always drops exactly one item from its rotation category, with rarity floors expressed through the existing rarity weights; ungrouped entries still roll independently for bonus drops. A player who clears all six bosses touches every equipment category twice — once in cheap versions, once in the good stuff. The "full set of the zone's best" is therefore a concrete checklist: seven armor slots, the weapon slots, one neck, two rings.
+- **Boss rarity ladder:** Caves 2–4 guarantee **Uncommon** (visibly better than anything looted off a villager, but modest). Caves 5–6 guarantee **Rare**. Cave 7 guarantees **Epic**. **Legendary never drops in the Reach** — the first one a player ever sees should mean something.
+- **The full-set hunt:** a player who clears the mountains, with some replays, should walk out wearing a complete set of the zone's best. Missing pieces are farmable on replay, at reduced XP since the player has outleveled the content. The rule (settled in v18): full XP while within the NPC's Mk level band (band top = Mk tier × 10); −20% per character level beyond the band top; floored at 10% of base and never less than 1 XP. Outleveled content always pays something — helping a friend or farming a missing Epic never feels like nothing.
+- **The narrative chest.** Boss loot delivery is pure theater over standard mechanics: the boss guards a chest that splits open when it dies, or the spider drops the prized possessions it was holding, or the kill cuts a net suspending a chest from the ceiling — all death-flavor text, unique per boss. Mechanically almost nothing new exists: the loot lands where loot always lands and the player loots the corpse normally. Delivery mechanism (settled at brief time): a `death_message` text field on the NPC definition, blank by default, broadcast once to the room at the moment of death — one authored reveal per boss, the same staged beat every kill, by design. Zero new commands, maximum theater.
+
+#### Respawn
+
+The Reach runs MUD-traditional: **one shared world, no instancing.** A boss killed by one player is dead for every player until it respawns. Players can race, camp, or cooperate. Timers (mapped to `NpcDefinition.respawn_minutes`):
+
+| Tier | Respawn |
+|---|---|
+| Bosses | 10 minutes |
+| Boss minions | 3 minutes — only while their boss lives |
+| All other animals & insects | 1 minute |
+| Villagers | 5 minutes |
+
+The world refills almost immediately for general hunting; wiped villages stay eerily quiet for a noticeable while; a 10-minute boss timer makes the full-set hunt a rhythm — dive, loot, resupply at the village, dive again — rather than a camp-fest.
+
+**Minion respawn is gated on the boss** (engine mechanic: a spawn can require a living NPC of a given definition in its room). While the boss lives, minions respawn every 3 minutes — mid-fight reinforcements are deliberate pressure: the adds are effectively infinite, so the winning play is to burn the boss down, not clear the room first. One minute proved too fast for a team to kill the boss between waves; three gives a real window. The moment the boss dies, reinforcements stop — survivors linger, but the player mops up and loots in peace. When the boss respawns at 10 minutes, the encounter resets as a unit and the 3-minute cycle restarts. Adds stopped coming? The boss must be mortal after all.
+
+#### The Mk 1 Item Kit — Leather (Design Complete)
+
+The zone's loot depends on a full-slot roster of Mk 1 ItemDefinitions. The kit's identity is **leather** — humble, fantasy-native, and it quietly rhymes with the zone (hides are what the Reach's animals are made of). Naming is a **plain uniform set with no proper nouns**; the Mark system carries progression. 23 definitions authored (22 net-new rows — the twelfth accessory is the absorbed legacy Copper Ring) plus housekeeping. This kit is authored via its own focused brief, separate from the world seed.
+
+**Armor — the Leather set (6 new + 1 adopted).** Every piece is END-anchored (armor's job is survival) with one slot-flavored twist in its secondary pool. Scaling ~4–5 + 2.0/Mk, chest and legs highest, cap and belt lowest; all take durability loss.
+
+| Piece | Slot | Secondary flavor |
+|---|---|---|
+| Leather Cap | HEAD | PER (awareness) |
+| Leather Shoulders | SHOULDERS | STR |
+| Leather Vest *(adopted, exists in seed)* | CHEST | STR, DEX, physical_resist |
+| Leather Gloves | HANDS | DEX, crit_chance |
+| Leather Belt | WAIST | STR, END |
+| Leather Leggings | LEGS | END-weighted |
+| Leather Boots | FEET | DEX (movement-flavored) |
+
+**Shield (1).** Wooden Shield — armor-typed, OFF_HAND, END 3+1.0 primary, secondary pool weighted toward physical_resist with STR and magic_resist. Takes durability loss. The Bulwark's identity piece.
+
+**Weapons (4 new).** No technology weapons in Z01 — no pistols, no guns, no lasers, nothing lightsaber-shaped. The existing Pulse Pistol is excluded from all Z01 drop tables. Two-handers run ~40–50% above one-handers in damage budget to pay for the empty off-hand. Spread is weapon identity: tight = consistent, wide = swingy. The Broadsword and Battle Axe share a power budget with opposite personalities — the sword is steady, the axe gambles.
+
+| Weapon | Hands | Midpoint | Spread | Primary | Secondary pool flavor |
+|---|---|---|---|---|---|
+| Iron Mace *(new)* | 1H | 8 + 3.0/Mk | 3 | STR 3+1.0 | END, stun_chance, physical_resist |
+| Broadsword *(new)* | 2H | 12 + 4.5/Mk | 5 | STR 4+1.2 | DEX, crit_chance, bleed_chance, lifesteal |
+| Battle Axe *(new)* | 2H | 11 + 4.5/Mk | 8 | STR 4+1.2 | crit_chance (heavy), bleed_chance, END |
+| Hunting Bow *(new)* | 2H ranged | 7 + 3.0/Mk | 4 | DEX 2+0.8, PER 2+0.8 | crit_chance, PER, bleed_chance |
+| Iron Sword *(exists)* | 1H | 8 + 3.0/Mk | 4 | STR | — |
+| Combat Knife *(exists)* | 1H | 5 + 2.0/Mk | 2 | DEX | — |
+| Apprentice Staff *(exists, two-handed)* | 2H | 7 + 2.5/Mk | 5 | INT | — |
+
+With this roster every Archetype finds something in the zone's loot: Blade (sword/knife), Bulwark (mace + shield), Shade (knife), Conduit (staff), Warden (staff/mace), Gunner (bow), Machinist (knife/staff until pet machinery exists).
+
+**Accessories (12).** Copper accessories only in Zone 1. Each stat variant is its own ItemDefinition: **Copper Ring of `<stat>` ×6 and Copper Amulet of `<stat>` ×6** (STR, DEX, END, INT, WIS, PER). Each has its suffix stat as sole primary (2 + 0.8/Mk, matching the existing Copper Ring's budget), a secondary pool of the two stats adjacent in that stat's Archetype pairings, and no durability loss. The pieces drop randomly; rarity carries the benefit variance (number of secondary stats and stat points). The existing generic `copper-ring` definition is absorbed as Copper Ring of Wisdom.
+
+**Handedness and the equip exchange rule (verified against the repo).** `ItemDefinition.is_two_handed` already exists in the model, the Apprentice Staff is already flagged two-handed, and basic two-handed refusal already exists in the equip logic. v18 replaces the refuse-always policy with the **general one-for-one auto-swap rule** (Section 3.6): one unambiguous displacement auto-swaps with a message; two or more, or an ambiguous one (the ring exception), refuses. All bows are two-handed for now. Two code gaps found in review (off-hand equips while a two-hander is wielded, and a second two-hander alongside a two-handed bow in RANGED) are subsumed by the exchange-rule rewrite in the kit brief (`consumers.py`, no migration).
+
+#### Implementation Status — Complete (v18.0)
+
+The zone is fully implemented and live. Design flowed through an approved intermediate design document — `Shyland_Verdant_Reach_Layout.md` (the DD), mapping all 150 rooms, the NPC roster and balance, bosses, loot, vendors, and travel nodes, where the XP pacing check passed (~475 average kills for 1→10 under the approved `scaling_factor = level` rule) — and shipped across the six v18 briefs. Per-boss drop pools shipped as guaranteed-group loot tables drawn from the Mk 1 kit. No open items remain for this zone.
+
+### 2.11 The Obelisk Network — Checkpoints & Fast Travel
+
+The obelisks are the game's fast-travel system. There are no waystones, no portals, no ticket vendors — only the obelisks, their checkpoints, and the `travel` command. This section is the authoritative design for the network; Section 2.10 documents the Verdant Reach's specific nodes.
+
+#### Network Shape
+
+- **Obelisks are sources and destinations.** To travel, a player must be standing in an obelisk room. Every zone-end obelisk is a network node, as is the Obelisk at the Heart of the Convergence.
+- **Checkpoints are destinations only.** A player can arrive at a checkpoint but never depart from one. From a checkpoint, you walk — the zone content stays meaningful.
+- **The network is global, never zone-scoped.** From any obelisk, a player can travel to any checkpoint or obelisk they have revealed — no zone boundaries, no special-casing the Convergence. Cross-battle-zone travel is allowed by design (a high-level player warping to a beginner-zone checkpoint to help a friend is a feature, not an exploit). One flat rule — *destination revealed? travel permitted* — keeps the implementation simple: a single per-character set of revealed nodes and one membership check.
+
+The Convergence Obelisk is not mechanically special — it is simply the first node every character reveals, at minute zero. Special in lore, ordinary in code.
+
+#### Revelation
+
+A node becomes an available destination the moment the player sees its room. **Revelation is per-character and permanent** — once revealed, a node never un-reveals, and revealed nodes are never shared between players (your friend still has to reach you the first time).
+
+The Heart of the Convergence reveals at first login — every character is born there — but the network starts empty of anywhere to *go*. The destination list grows as the player explores. A brand-new player standing at the Obelisk with zero destinations is a natural lore beat: the Obelisk has nothing to show them yet.
+
+A player deep in a zone therefore has exactly three ways out: walk, recall scroll (to the Convergence), or push forward to the summit obelisk. (Note, recorded at Brief 2 closeout: the recall command is designed but not yet implemented — §9.2 — so until it ships, deep-zone players have two ways out. Accepted for The Verdant Reach's launch.) Conquering a zone's obelisk is what turns that zone from a place you trek through into a place you command.
+
+#### The `travel` Command
+
+Travel is a simple command — no dialogue system required:
+
+- `travel` — lists the player's revealed destinations. Only meaningful in an obelisk room; elsewhere it explains that travel requires an obelisk.
+- `travel <destination>` — travels there, if the destination is revealed and the player stands at an obelisk.
+
+Destination names are unique across the entire network and typeable (Fordwatch, Stairhead, Cragfoot — every future zone's node names must keep that promise). Multi-word destinations accept case-insensitive prefix matching, consistent with MUD command feel.
+
+**Travel is free, forever. It is a gift from the obelisks, but it has to be earned through revelation.** The cost is not copper — it is the journey the player already made. Discovery is the price. No fee, no resource cost, no cooldown.
+
+#### Safety — Obelisk Presence
+
+**All checkpoint and obelisk rooms are safe rooms (`flag_safe=True`), in every zone, because of the obelisks themselves.** Safety is not a game rule bolted on — it is obelisk presence and influence. At checkpoints, which have no obelisk of their own, the obelisks project their spirit there. Consequences:
+
+- Combat can never occur where travel occurs, so `travel` needs no combat gate — the question is structurally impossible.
+- Arriving players always materialize inside the obelisks' protection.
+- A zone-end obelisk room (e.g. The Verdant Crown) is a bubble of sanctuary inside hostile territory: nothing hostile grows in the obelisk's garden.
+
+#### Shards
+
+Every checkpoint holds a **Shard** — a small sphere like the one suspended in the zone's obelisk, but unattached and free: floating, buzzing around, looking at things. A Shard is a piece of the obelisk projected into the world, and it is the source of the checkpoint's safe-room protection made visible.
+
+- **Shards are named per zone, never per area.** In Z01, every checkpoint has *a Verdant Shard*. Zone color, zone name.
+- **Shards have moods, expressed purely in text.** Room prose and `examine` describe temperament. The Reach's Shards are all pretty happy — bobbing, curious. A future graveyard checkpoint's Shard might hover quietly in a corner. Mood is an authoring surface per zone (and per placement where it earns it), and a storytelling channel: players learn to read a zone's soul from how its Shards behave.
+- **Shards are indestructible and non-interactive.** Not attackable, not talkable — examine-only. They watch.
+- **The Shard is the only checkpoint-specific thing the obelisk put there.** No stone markers, no waystones, no built structures — the obelisk's medium is magic, not masonry. Everything else in a checkpoint room is the natural evolution of the local zone.
+
+The recurring signature players learn across every zone: see a Shard, you're safe, services are near, and you can arrive here from any obelisk.
+
+#### Checkpoint Commerce
+
+The service NPCs at checkpoints (repair, buy, sell — the zone-wide pattern from Section 2.10) are **locals who migrated to the checkpoint because they recognized how much traffic it gets and want to make money there.** A Reedmere fisherman with a repair bench at Fordwatch; a mountain trader at Cragfoot. The obelisk provides safety and arrival; commerce follows foot traffic, exactly as it would in a real world. Zones keep their cultural identity, and the network keeps its magic unlittered. The locals don't understand the network — they just know travelers keep appearing near the floating sphere, and travelers have money.
+
+#### Travel Messaging
+
+The obelisk speaks no words during travel — consistent with its character, it simply acts. All travel text is randomly selected from pools so the experience never goes stale:
+
+- **The traveler** sees the screen go funny with a message drawn from a pool themed around transportation, transformation, teleportation, crossing boundaries, crossing universes.
+- **Witnesses in the departure room** see a random third-person message about someone going.
+- **Witnesses in the arrival room** see a random third-person message about someone arriving.
+
+The game already has message-pool machinery of this shape (`UnarmedMessagePool`); whether travel messages reuse it or get their own model is a brief-time implementation decision, not a design one.
+
+#### Implementation Mapping (settled, carried in the Obelisk Network brief)
+
+- **`ZoneGate` is superseded and removed.** Pairwise gate edges are the wrong shape for a node-membership network; the model is deleted with a migration. The network gets purpose-built storage: a `TravelNode` registry (room + unique travel name + obelisk/checkpoint type).
+- **Revelation is derived from `RoomVisit`** — no new per-character table. A character's destinations are exactly the nodes whose rooms they have visited; permanence comes free.
+- **Travel messages get a dedicated `TravelMessage` model** (traveler / departure-witness / arrival-witness categories, random selection per event, global pools for now).
+- **Shards are NPC definitions** — non-aggressive, no loot, examine-only; safe rooms make them unkillable in practice. Verdant Shard content ships with the zone's world seed, not the network brief.
+- **The Heart of the Convergence gains a Sphere NPC — the Primordial Sphere** — for examine parity with every zone-end sphere to come. The Convergence sphere doesn't predate the pattern — **it started it**, and its name says so. Each zone-end sphere is named for its zone (the Verdant Reach's is the Verdant Sphere). The Obelisk itself remains room prose; the network registers the Heart as its first node (travel name: "The Convergence").
 
 -----
 
@@ -546,6 +808,19 @@ Equipment has:
 - **Bound flag** — all items are soulbound on equip; cannot be traded between players
 
 Genre mixing in equipment is explicitly supported. A character can carry a plasma rifle in one hand and an enchanted dagger in the other.
+
+**Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
+
+**Equip exchange rule (general, all slots).** When equipping an item, count the currently equipped items that must come off to make room:
+
+- **Zero** — the item equips into a free valid slot.
+- **Exactly one, unambiguously** — the swap is **automatic**: the old item is unequipped and the new one equipped in a single command, with output describing the exchange. Never silent, always messaged. Examples: wielding a two-handed sword and equipping a bow (auto), wielding a bow and equipping a two-handed sword (auto), wearing a cap and equipping a different cap (auto). The edge case is intended and accepted: wielding a two-handed weapon and equipping a shield auto-swaps — leaving no weapon in hand. Consistent and flexible.
+- **Two or more** — **refuse** with a message naming what must be unequipped first. Example: sword and shield equipped, equipping a two-handed axe refuses; unequip either one and the now one-for-one swap autos.
+- **Exactly one, but ambiguous** — refuse, naming the candidates. Canonical case: both RING slots full and a third ring equipped — the game cannot know which ring to displace. Same rule for any item valid in multiple slots that are all occupied (e.g. a knife valid in either hand while both hands are full).
+
+Auto-swap respects every existing unequip constraint: a cursed item cannot be displaced, and a displacement that would violate the carry limit (bags) refuses instead.
+
+**Slot capacity.** Characters have exactly two RING slots; every other equipment slot holds exactly one item. (Implemented in v18 as a slot-capacity mechanism; RING is currently the only multi-capacity slot.)
 
 **Carry limit:** Base carry weight is STR × 10. Bags equipped in valid slots add a carry bonus on top of that. No off-body storage, no bank, no shared stash.
 
@@ -886,6 +1161,8 @@ Items in Shyland use a **Mark (Mk) tier system** tied to player level ranges. Th
 
 **Reading an item:** `Rare Plasma Rifle Mk 7` tells you everything — what it is, how powerful it is relative to other items, and how special it is. Rarity stacks on top of Mark tier.
 
+**Tier materials suppress the Mk suffix (display only).** Items whose names carry a **tier material** — the copper → silver → gold → platinum ladder that tracks the currency table — do not display a Mark suffix, because the material already says the tier: a *Copper Ring of Strength* is `mk_tier=1` under the hood with standard scaling and rarity machinery, but never prints "Mk 1." This is the same pattern as local zone currencies: a display alias, same math, zero engine change. The rule is deliberately narrow — it applies **only** to tier materials. Flavor materials (iron, wood, leather, and the like) do not suppress anything: an Iron Sword still reads "Iron Sword Mk 1." Today the tier-material rule covers accessories only; later zones extend the ladder upward with the nobler metals as Mk tiers rise.
+
 **In The Wastelands:** Loot scales dynamically. A level 150 character finds Mk 15 loot. The Mk system extends infinitely to accommodate this.
 
 ### 6.4 Item Generation — The Definition/Instance Split
@@ -932,6 +1209,8 @@ The number of secondary stats on an instance is determined by rarity:
 |Artifact |Hand-authored — not generated by standard machinery|
 
 Secondary stats are drawn randomly without replacement from the pool at drop time. Two Rare items of the same type can have different secondary stats — which ones rolled is part of what makes individual drops feel distinct.
+
+**Slot counts are pool-capped** (settled at v18 closeout): an instance rolls `min(rarity's slot count, size of the item's secondary stat pool)`. Legendary's "all in pool" is this same principle stated at the ceiling — every rarity is implicitly "at most all in pool." A small-pool item therefore maxes out early: the copper accessories, with their deliberate two-stat pools, roll both secondaries at Epic and above — three stat lines total counting the primary. The rarity guarantee is about the roll's ceiling, not a promise that every item type can express every tier's slot count.
 
 #### Weapon Damage
 
@@ -1155,7 +1434,19 @@ Display rules:
 - **Repair vendor** — restores equipment durability
 - **Skill trainer** — sells skill books for cross-tree skills
 
-Vendor inventory is configured via the **`VendorEntry`** model. Each row links an `NpcDefinition` to an `ItemDefinition` with a Mk tier and an explicit copper price. An NPC with one or more `VendorEntry` rows is a vendor — no flag is needed on `NpcDefinition` itself. Stock can be unlimited (`stock_limit = null`) or finite (a set integer). The `buy` and `sell` commands are not yet implemented; `VendorEntry` rows can be authored in Django admin in preparation.
+Vendor inventory is configured via the **`VendorEntry`** model. Each row links an `NpcDefinition` to an `ItemDefinition` with a Mk tier and an explicit copper price. An NPC with one or more `VendorEntry` rows is a vendor — no flag is needed on `NpcDefinition` itself. Stock can be unlimited (`stock_limit = null`) or finite; finite stock exhausts via a sold counter. Repairers are marked with `NpcDefinition.is_repairer`.
+
+**Commerce (settled in v18, carried in the commerce brief):**
+
+- **Item value = `base_value × Mk tier × rarity multiplier`.** Every ItemDefinition carries an authored `base_value` (its worth in copper at Mk 1 Common). Rarity multipliers: Common ×1, Uncommon ×2, Rare ×4, Epic ×8, Legendary ×16, Artifact ×32.
+- **Vendors pay one third.** Sale price = value ÷ 3, minimum 1 copper. Vendor *buy* prices are authored per `VendorEntry` — never formula-derived.
+- **Only unequipped items can be sold; soulbound items CAN be sold.** Selling is compensated disposal: the sold instance ceases to exist, vendors never resell player items, so the no-trading pillar stands untouched. (A cursed item can't be unequipped, therefore can't be sold while the curse holds — the curse keeps its teeth for free.)
+- **Vendor-bought items are always Common rarity**, generated at the entry's Mk tier.
+- **Repair is paid per attempt; failure is harmless** — copper spent, item unchanged, retry immediately. Success always restores 100% durability; items are never destroyed by repair. Cost per attempt = value × missing durability × 50%. Success chance = 20% + (current durability × 75%) — honoring the very-difficult-at-zero rule.
+- **Commands:** `list` (vendor stock with prices), `buy <item>`, `sell <item>`, `repair <item>`, bare `repair` (targets the most-damaged item; repeated use walks the damage list; reports "nothing to repair" when done), and `repair all` (one paid attempt per damaged item, most-damaged first, individual attempts may fail, stops if copper runs out). Commands route automatically: buy/sell/list to the living vendor in the room, repair to the living repairer — killed service NPCs are out of business until they respawn.
+- **Materials** are an item type (`material`) — no slots, stats, or durability; pure vendor-sellables (Animal Hide, Insect Carapace, and their future kin). Animals drop no copper — only higher sentient species carry money.
+
+**Combat QoL (settled alongside commerce):** targetless `attack`/`kill` auto-targets **only while the player has aggro** — "ouch, you hit me, I'm hitting you back." The target is the first attacker (earliest-engaged living NPC in the session); spamming the bare command stays on that enemy until it dies, then rolls to the next. With no aggro, a target is still required — auto-targeting a peaceful room would turn a typo into a murder.
 
 **The Robotic Helper NPC:** A unique NPC that can be summoned by players in the field. There is only one. It is not instanced per player. It will not always come when called. It functions as a mobile vendor alternative to stationary vendors in town. Full design TBD.
 
@@ -1284,6 +1575,8 @@ These commands exist in the current codebase and are available to all players.
 |`west` |`w`  |Move west if an exit exists |
 |`up`   |`u`  |Move up if an exit exists   |
 |`down` |`d`  |Move down if an exit exists |
+|`travel`|—    |List revealed Obelisk Network destinations (obelisk rooms only — Section 2.11)|
+|`travel <destination>`|—    |Travel to a revealed checkpoint or obelisk (obelisk rooms only; case-insensitive prefix match, leading-The tolerance)|
 
 If no exit exists in the requested direction, the server responds with a message and no movement occurs. The message is either a custom per-direction message set on the room (via `no_exit_*_msg` fields) or the hardcoded default for that direction. Movement has no action economy cost outside of combat.
 
@@ -1326,7 +1619,19 @@ If no exit exists in the requested direction, the server responds with a message
 |Command                            |Alias|Description                  |
 |-----------------------------------|-----|-----------------------------|
 |`kill <target>` / `attack <target>`|`k`  |Initiate combat with a target|
+|`kill` / `attack` (bare)           |`k`  |Auto-target the first attacker — only while under aggro; refuses with no target otherwise|
 |`flee`                             |—    |Attempt to escape combat     |
+
+#### Commerce
+
+|Command|Alias|Description|
+|-------|-----|-----------|
+|`list`|—    |Show the room vendor's stock and prices (Section 6.12)|
+|`buy <item>`|—    |Buy from the room's living vendor (always Common rarity, entry's Mk tier)|
+|`sell <item>`|—    |Sell an unequipped item for one third of its value (soulbound OK; instance deleted)|
+|`repair <item>`|—  |One paid repair attempt via the room's living repairer|
+|`repair`|—    |Bare form: targets the most-damaged item; repeated use walks the damage list|
+|`repair all`|—    |One paid attempt per damaged item, most-damaged first; stops if copper runs out|
 
 #### Item Interaction
 
@@ -1638,12 +1943,15 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
 |**Starting Attire Rendering**          |`Origin.attire_material` and `Archetype.attire_silhouette` are seeded with real content and combined into flavor text at character creation, but that text is not yet surfaced anywhere in-game (no `look`/inventory display of it yet). |
-|**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) is fully seeded. The Verdant Reach (Z01) is the next zone to be built — beginner-level fantasy wilderness, accessible via the sealed north gate on the ring street. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order. Each zone opening also opens new level content for players.|
+|**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) and The Verdant Reach (Z01, levels 1–10) are fully seeded and live. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order; each opening also opens new level content. Note for the next zone pass: the Convergence itself has no commerce yet — the Reach's checkpoint NPCs are the game's only vendors and repairers (architecture doc §7).|
+|**Checkpoint & Obelisk Fast-Travel Network**|**Design complete (Section 2.11); implementation pending.** Global network, destination-only checkpoints, per-character permanent revelation, free `travel` command, obelisk-sourced safe rooms, Shards. Open implementation-mapping questions for brief time: relationship to the existing `ZoneGate` model; whether revelation reuses `RoomVisit`; message pool machinery; Shard representation.|
+|**Outleveled-Content XP Reduction**    |**Designed and in v18** (carried in the engine mechanics brief). Full XP within the NPC's Mk band (band top = Mk tier × 10); −20% per level beyond it; multiplier floor 10%; absolute minimum 1 XP — outleveled kills always pay something.|
+|**Hide & Carapace Crafting**           |Animal Hide and Insect Carapace are vendor-sellables only for now. Giving players something to make with them is deferred — much later, alongside the crafting system (Section 6.13).|
 |**NPC Dialogue and Interaction Commands**|Information and vendor NPCs are placed and have examine descriptions. No `talk`, `ask`, or `buy`/`sell` commands yet implemented. NPC personalities and interaction flavor text are designed (see Section 2.9) but not wired to any command.|
 |**Sirius — Special Vendor Entity**     |Unique bipedal feline special vendor (Section 6.12). Wish mechanics and persistent memory system need a dedicated design session before implementation.|
 |**Stat Respec Mechanic**               |Allow players to rebalance already-spent stat points using in-game currency. Needs a dedicated design session.|
 
 -----
 
-*Document version 17.0 — Shyland, Closed*
+*Document version 18.0 — Shyland, Closed*
 *All systems subject to revision during development.*
