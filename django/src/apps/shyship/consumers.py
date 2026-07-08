@@ -5,7 +5,9 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .bot import next_bot_cell, update_bot_state
-from .models import ShyshipGame, ShyshipMove
+from .models import ShyshipGame, ShyshipMove, place_ships_randomly
+
+ALLOWED_AUTO_SPEEDS = (1, 2, 5)
 
 
 class ShyshipConsumer(AsyncWebsocketConsumer):
@@ -69,7 +71,13 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
         except (json.JSONDecodeError, TypeError):
             return
 
-        if data.get('type') != 'fire':
+        msg_type = data.get('type')
+
+        if msg_type == 'reroll_ships':
+            await self.handle_reroll_ships()
+            return
+
+        if msg_type != 'fire':
             return
 
         game = await self.get_game()
@@ -127,7 +135,9 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
             return
 
         if game.vs_bot and self.player_num == 1:
-            await asyncio.sleep(0.6)
+            speed = data.get('speed')
+            factor = speed if speed in ALLOWED_AUTO_SPEEDS else 1
+            await asyncio.sleep(0.6 / factor)
             bot_result = await self.bot_take_turn()
             if bot_result:
                 b_row, b_col, b_hit, b_ship, b_sunk, b_over = bot_result
@@ -152,6 +162,22 @@ class ShyshipConsumer(AsyncWebsocketConsumer):
 
     async def game_event(self, event):
         await self.send(text_data=json.dumps(event['data']))
+
+    async def handle_reroll_ships(self):
+        if await self.any_moves_exist():
+            return
+        new_ships = place_ships_randomly()
+        await self.save_own_ships(new_ships)
+        await self.send(text_data=json.dumps({'type': 'ships_own', 'ships_own': new_ships}))
+
+    @database_sync_to_async
+    def any_moves_exist(self):
+        return ShyshipMove.objects.filter(game_id=self.game_id).exists()
+
+    @database_sync_to_async
+    def save_own_ships(self, ships):
+        field = 'ships_p1' if self.player_num == 1 else 'ships_p2'
+        ShyshipGame.objects.filter(pk=self.game_id).update(**{field: ships})
 
     @database_sync_to_async
     def get_display_name(self, user):

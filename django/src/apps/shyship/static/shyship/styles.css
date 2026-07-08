@@ -138,6 +138,39 @@ body {
   border-color: rgba(100, 180, 255, 0.6);
 }
 
+.secondary-button:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(80, 140, 200, 0.12);
+  color: rgba(232, 240, 248, 0.35);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  border: 1px solid rgba(80, 140, 200, 0.3);
+  border-radius: 999px;
+  background: rgba(30, 58, 100, 0.6);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 8px;
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.icon-button:hover {
+  transform: translateY(-1px);
+  background: rgba(40, 80, 140, 0.8);
+}
+
+.icon-button:active {
+  transform: translateY(1px);
+}
+
 .danger-button {
   border: 1px solid rgba(200, 60, 40, 0.4);
   border-radius: 999px;
@@ -386,6 +419,16 @@ body {
   text-align: center;
   text-transform: uppercase;
   cursor: default;
+}
+
+.board-title-row {
+  display: flex;
+  gap: 8px;
+}
+
+.board-title-row .board-title {
+  width: auto;
+  flex: 1;
 }
 
 /* -------------------------
@@ -832,7 +875,7 @@ body {
   }
 
   #board-title-enemy { grid-area: title-enemy; }
-  #board-title-own   { grid-area: title-own; }
+  .board-title-row   { grid-area: title-own; }
   #enemy-grid        { grid-area: grid; }
   #own-grid          { grid-area: grid; }
 

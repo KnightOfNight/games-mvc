@@ -10,6 +10,8 @@ let myFires = new Set();
 let autoPlay = false;
 let targeting = null; // null = hunt mode; object = targeting a ship
 let visibleBoard = 'enemy'; // 'enemy' | 'own' — mobile only
+const AUTO_SPEED_STEPS = [1, 2, 5];
+let autoSpeedIndex = 0;
 
 const statusBar       = document.getElementById('status-bar');
 const ownGrid         = document.getElementById('own-grid');
@@ -36,6 +38,8 @@ const cancelBtn       = document.getElementById('cancel-btn');
 const forfeitBtn      = document.getElementById('forfeit-btn');
 const cancelForm      = document.getElementById('cancel-form');
 const forfeitForm     = document.getElementById('forfeit-form');
+const speedBtn        = document.getElementById('speed-btn');
+const rerollBtn       = document.getElementById('reroll-ships-btn');
 
 // ── Board visibility (mobile) ─────────────────────────────────────────────────
 
@@ -138,7 +142,22 @@ function autoFire() {
   if (!autoPlay || gameStatus !== 'active' || currentTurn !== playerNum) return;
   const cell = nextAutoCell();
   if (!cell) return;
-  ws.send(JSON.stringify({ type: 'fire', row: cell[0], col: cell[1] }));
+  ws.send(JSON.stringify({
+    type: 'fire',
+    row: cell[0],
+    col: cell[1],
+    speed: AUTO_SPEED_STEPS[autoSpeedIndex],
+  }));
+}
+
+function autoFireDelay(baseMs) {
+  return baseMs / AUTO_SPEED_STEPS[autoSpeedIndex];
+}
+
+function updateSpeedButton() {
+  speedBtn.disabled = !(autoPlay && window.SHYSHIP_VS_BOT);
+  const nextIndex = (autoSpeedIndex + 1) % AUTO_SPEED_STEPS.length;
+  speedBtn.textContent = `X${AUTO_SPEED_STEPS[nextIndex]}`;
 }
 
 // ── Enemy fire notification ───────────────────────────────────────────────────
@@ -218,6 +237,7 @@ function showResult(title, text, timeoutMs) {
 // ── Action button visibility ──────────────────────────────────────────────────
 
 function updateActionButtons() {
+  rerollBtn.hidden = totalMoves !== 0;
   if (gameStatus === 'waiting') {
     // Cancel is in the waiting overlay; nothing in the topbar
     cancelBtn.hidden  = true;
@@ -362,7 +382,17 @@ function applyMove(msg) {
     showFireNotify(msg.is_hit, msg.ship_name, msg.sunk, () => setVisibleBoard('own'), true);
   }
   if (autoPlay && msg.player_num === playerNum) updateTargeting(msg.row, msg.col, msg.is_hit, msg.sunk);
-  if (autoPlay) setTimeout(autoFire, 100);
+  if (autoPlay) setTimeout(autoFire, autoFireDelay(100));
+}
+
+function applyOwnShips(ships) {
+  ownGrid.querySelectorAll('.sea-cell.ship').forEach((cell) => cell.classList.remove('ship'));
+  for (const ship of ships) {
+    for (const [r, c] of ship.cells) {
+      const cell = getCell(ownGrid, r, c);
+      if (cell) cell.classList.add('ship');
+    }
+  }
 }
 
 function applyPlayerJoined(msg) {
@@ -389,6 +419,7 @@ function handleMessage(msg) {
     case 'state':          applyState(msg); break;
     case 'move':           applyMove(msg); break;
     case 'player_joined':  applyPlayerJoined(msg); break;
+    case 'ships_own':      applyOwnShips(msg.ships_own); break;
     case 'error':          applyError(msg); break;
     case 'game_over':
       gameStatus = 'done';
@@ -423,11 +454,22 @@ function init() {
   buildGrid(ownGrid);
   buildGrid(enemyGrid);
   enemyGrid.addEventListener('click', handleEnemyClick);
+  updateSpeedButton();
 
   document.getElementById('auto-btn').addEventListener('click', () => {
     autoPlay = !autoPlay;
     document.getElementById('auto-btn').classList.toggle('is-active', autoPlay);
-    if (autoPlay) { setVisibleBoard('own'); setTimeout(autoFire, 400); }
+    updateSpeedButton();
+    if (autoPlay) { setVisibleBoard('own'); setTimeout(autoFire, autoFireDelay(400)); }
+  });
+
+  speedBtn.addEventListener('click', () => {
+    autoSpeedIndex = (autoSpeedIndex + 1) % AUTO_SPEED_STEPS.length;
+    updateSpeedButton();
+  });
+
+  rerollBtn.addEventListener('click', () => {
+    ws.send(JSON.stringify({ type: 'reroll_ships' }));
   });
 
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
