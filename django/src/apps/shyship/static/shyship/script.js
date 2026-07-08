@@ -197,14 +197,12 @@ confirmYes.addEventListener('click', () => { if (confirmAction) confirmAction();
 confirmNo.addEventListener('click', hideConfirm);
 confirmModal.querySelector('.modal-backdrop').addEventListener('click', hideConfirm);
 
-cancelOverlayBtn.addEventListener('click', () =>
-  showConfirm('Cancel Game', 'This will cancel the game for all players.', () => cancelForm.submit())
-);
+cancelOverlayBtn.addEventListener('click', () => { ws.close(); cancelForm.submit(); });
 cancelBtn.addEventListener('click', () =>
-  showConfirm('Cancel Game', 'This will cancel the game for all players.', () => cancelForm.submit())
+  showConfirm('Cancel Game', 'This will cancel the game for all players.', () => { ws.close(); cancelForm.submit(); })
 );
 forfeitBtn.addEventListener('click', () =>
-  showConfirm('Forfeit Game', 'Are you sure? Your opponent will win.', () => forfeitForm.submit())
+  showConfirm('Forfeit Game', 'Are you sure? Your opponent will win.', () => { ws.close(); forfeitForm.submit(); })
 );
 
 // ── Result overlay ────────────────────────────────────────────────────────────

@@ -17,6 +17,13 @@ class ShyshipLoginView(LoginView):
         return '/'
 
 GROUP_NAME = 'players.shyship'
+MAX_OPEN_GAMES = 10
+
+
+def _open_game_count(user):
+    return ShyshipGame.objects.filter(
+        player1=user, status__in=[ShyshipGame.WAITING, ShyshipGame.ACTIVE]
+    ).count()
 
 
 class ShyshipAccessMixin(LoginRequiredMixin):
@@ -36,6 +43,7 @@ class LobbyView(ShyshipAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         user = self.request.user
+        ctx['can_create_game'] = _open_game_count(user) < MAX_OPEN_GAMES
         ctx['open_games'] = (
             ShyshipGame.objects
             .filter(status=ShyshipGame.WAITING)
@@ -87,6 +95,8 @@ class LobbyView(ShyshipAccessMixin, TemplateView):
     def post(self, request):
         action = request.POST.get('action')
         if action == 'create':
+            if _open_game_count(request.user) >= MAX_OPEN_GAMES:
+                return redirect('shyship:lobby')
             game = ShyshipGame.objects.create(
                 player1=request.user,
                 ships_p1=place_ships_randomly(),

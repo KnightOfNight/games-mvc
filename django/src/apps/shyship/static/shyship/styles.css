@@ -13,6 +13,7 @@
   --hit-border:  #8b1a0f;
   --miss:        #dce8f0;
   --accent:      #b92f25;
+  --accent-green: #2e9e4f;
   --shadow:      0 18px 60px rgba(0, 10, 30, 0.6);
 }
 
@@ -89,6 +90,23 @@ body {
 
 .new-game-button:active {
   transform: translateY(1px);
+}
+
+.create-game-button {
+  background: var(--accent-green);
+  box-shadow: 0 4px 16px rgba(46, 158, 79, 0.35);
+}
+
+.create-game-button:hover {
+  box-shadow: 0 6px 20px rgba(46, 158, 79, 0.5);
+}
+
+.new-game-button:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(232, 240, 248, 0.45);
+  box-shadow: none;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .secondary-button {

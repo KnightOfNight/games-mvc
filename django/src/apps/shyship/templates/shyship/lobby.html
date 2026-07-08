@@ -19,7 +19,7 @@
           <form method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="create" />
-            <button type="submit" class="new-game-button">+ NEW GAME</button>
+            <button type="submit" class="new-game-button create-game-button"{% if not can_create_game %} disabled{% endif %}>NEW GAME</button>
           </form>
         </div>
 
@@ -47,7 +47,7 @@
                 {% if request.user == game.player1 and game.move_count == 0 %}
                   <form method="post" action="{% url 'shyship:vs_computer' game.id %}">{% csrf_token %}<button type="submit" class="secondary-button">VS COMPUTER</button></form>
                   <form id="form-cancel-{{ game.id }}" method="post" action="{% url 'shyship:cancel' game.id %}" style="display:none">{% csrf_token %}</form>
-                  <button type="button" class="danger-button" data-action="cancel" data-form="form-cancel-{{ game.id }}">CANCEL</button>
+                  <button type="button" class="danger-button" data-action="cancel" data-form="form-cancel-{{ game.id }}"{% if not game.player2 %} data-skip-confirm="true"{% endif %}>CANCEL</button>
                 {% elif game.status == 'active' %}
                   <form id="form-forfeit-{{ game.id }}" method="post" action="{% url 'shyship:forfeit' game.id %}" style="display:none">{% csrf_token %}</form>
                   <button type="button" class="danger-button" data-action="forfeit" data-form="form-forfeit-{{ game.id }}">FORFEIT</button>
@@ -170,7 +170,11 @@
         var btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'cancel') {
-          open('Cancel Game', 'This will cancel the game for all players.', btn.dataset.form);
+          if (btn.dataset.skipConfirm === 'true') {
+            document.getElementById(btn.dataset.form).submit();
+          } else {
+            open('Cancel Game', 'This will cancel the game for all players.', btn.dataset.form);
+          }
         } else if (btn.dataset.action === 'forfeit') {
           open('Forfeit Game', 'Are you sure? Your opponent will win.', btn.dataset.form);
         }
