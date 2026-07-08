@@ -86,10 +86,9 @@ PATH_EDGES = [
     ('smithy_ext', 'north', 'smithy_int'), ('smithy_int', 'south', 'smithy_ext'),
 ]
 
-# The Verdant Reach (v18 brief 5), as one-way canonical edges. Each entry is
-# expanded to its reverse pair at wiring time — direction pairs are always
-# wired both ways. vr-f18's north exit stays unwired until brief 6 (Viridian
-# Ridge) seeds vr-c01.
+# The Verdant Reach (v18 briefs 5 and 6), as one-way canonical edges. Each
+# entry is expanded to its reverse pair at wiring time — direction pairs are
+# always wired both ways.
 VR_EDGES_ONE_WAY = [
     # The Verdant gate: Green Gate ring room ↔ the Tree Arch
     ('r02', 'north', 'vr-v01'),
@@ -137,6 +136,54 @@ VR_EDGES_ONE_WAY = [
     ('vr-c4b', 'north', 'vr-c4c'), ('vr-c4c', 'east', 'vr-c4d'),
     ('vr-c4c', 'north', 'vr-c4e'), ('vr-c4e', 'down', 'vr-c4f'),
     ('vr-c4e', 'north', 'vr-c4g'), ('vr-c4g', 'north', 'vr-c4h'),
+    # The Viridian Ridge spine (v18 brief 6): Cragfoot to the Verdant Crown
+    ('vr-f18', 'north', 'vr-c01'), ('vr-c01', 'north', 'vr-m01'),
+    ('vr-m01', 'north', 'vr-m02'), ('vr-m02', 'north', 'vr-m03'),
+    ('vr-m03', 'north', 'vr-m04'), ('vr-m04', 'north', 'vr-m05'),
+    ('vr-m05', 'north', 'vr-m06'), ('vr-m06', 'north', 'vr-m07'),
+    ('vr-m07', 'north', 'vr-m08'), ('vr-m08', 'north', 'vr-m14'),
+    ('vr-m14', 'north', 'vr-m15'), ('vr-m15', 'north', 'vr-m16'),
+    ('vr-m16', 'north', 'vr-m17'), ('vr-m17', 'north', 'vr-m18'),
+    ('vr-m18', 'north', 'vr-m19'), ('vr-m19', 'north', 'vr-m20'),
+    ('vr-m20', 'north', 'vr-m21'), ('vr-m21', 'north', 'vr-m27'),
+    ('vr-m27', 'north', 'vr-m28'), ('vr-m28', 'north', 'vr-m29'),
+    ('vr-m29', 'north', 'vr-m30'), ('vr-m30', 'north', 'vr-m31'),
+    ('vr-m31', 'north', 'vr-m32'), ('vr-m32', 'north', 'vr-m33'),
+    ('vr-m33', 'north', 'vr-m34'), ('vr-m34', 'north', 'vr-m35'),
+    ('vr-m35', 'north', 'vr-m41'), ('vr-m41', 'north', 'vr-vc1'),
+    # Ridge offshoots, vistas, and the four AGGRO grounds
+    ('vr-m02', 'east', 'vr-m09'), ('vr-m04', 'west', 'vr-m10'),
+    ('vr-m07', 'east', 'vr-m12'), ('vr-m15', 'east', 'vr-m22'),
+    ('vr-m17', 'west', 'vr-m23'), ('vr-m20', 'west', 'vr-m26'),
+    ('vr-m27', 'west', 'vr-m43'), ('vr-m28', 'east', 'vr-m36'),
+    ('vr-m30', 'west', 'vr-m37'), ('vr-m32', 'west', 'vr-m38'),
+    ('vr-m33', 'east', 'vr-m39'), ('vr-m35', 'east', 'vr-m42'),
+    # Ridge villages (each with its warned-about aggro offshoot)
+    ('vr-m06', 'east', 'vr-st1'), ('vr-st1', 'north', 'vr-st2'),
+    ('vr-st2', 'north', 'vr-m11'),
+    ('vr-m18', 'east', 'vr-hf1'), ('vr-hf1', 'north', 'vr-hf2'),
+    ('vr-hf2', 'west', 'vr-m24'),
+    ('vr-m31', 'east', 'vr-ll1'), ('vr-ll1', 'north', 'vr-ll2'),
+    # The Undercrag
+    ('vr-m08', 'east', 'vr-m13'), ('vr-m13', 'east', 'vr-c5a'),
+    ('vr-c5a', 'down', 'vr-c5b'), ('vr-c5b', 'north', 'vr-c5c'),
+    ('vr-c5c', 'up', 'vr-c5d'), ('vr-c5c', 'north', 'vr-c5e'),
+    ('vr-c5e', 'down', 'vr-c5f'), ('vr-c5f', 'down', 'vr-c5g'),
+    ('vr-c5f', 'north', 'vr-c5h'), ('vr-c5h', 'north', 'vr-c5i'),
+    # Chitterdeep
+    ('vr-m21', 'east', 'vr-m25'), ('vr-m25', 'east', 'vr-c6a'),
+    ('vr-c6a', 'down', 'vr-c6b'), ('vr-c6b', 'down', 'vr-c6c'),
+    ('vr-c6c', 'east', 'vr-c6d'), ('vr-c6c', 'north', 'vr-c6e'),
+    ('vr-c6e', 'down', 'vr-c6f'), ('vr-c6e', 'north', 'vr-c6g'),
+    ('vr-c6g', 'north', 'vr-c6h'), ('vr-c6h', 'up', 'vr-c6i'),
+    ('vr-c6i', 'north', 'vr-c6j'),
+    # Hollowcrown
+    ('vr-m34', 'east', 'vr-m40'), ('vr-m40', 'east', 'vr-c7a'),
+    ('vr-c7a', 'north', 'vr-c7b'), ('vr-c7b', 'up', 'vr-c7c'),
+    ('vr-c7c', 'east', 'vr-c7d'), ('vr-c7c', 'north', 'vr-c7e'),
+    ('vr-c7e', 'up', 'vr-c7f'), ('vr-c7f', 'east', 'vr-c7g'),
+    ('vr-c7f', 'north', 'vr-c7h'), ('vr-c7h', 'up', 'vr-c7i'),
+    ('vr-c7i', 'north', 'vr-c7j'), ('vr-c7j', 'north', 'vr-c7k'),
 ]
 
 
@@ -170,6 +217,12 @@ class Command(BaseCommand):
         self._seed_verdant_rooms_vale(vr_zone, vr_areas)
         self._seed_verdant_rooms_flats(vr_zone, vr_areas)
         self._seed_verdant_rooms_caves(vr_zone, vr_areas)
+        self._seed_ridge_rooms_leg1(vr_zone, vr_areas)
+        self._seed_ridge_rooms_leg2(vr_zone, vr_areas)
+        self._seed_ridge_rooms_leg3(vr_zone, vr_areas)
+        self._seed_undercrag_rooms(vr_zone, vr_areas)
+        self._seed_chitterdeep_rooms(vr_zone, vr_areas)
+        self._seed_hollowcrown_rooms(vr_zone, vr_areas)
         self._wire_exits()
         self._seed_convergence_npcs()
         self._seed_primordial_sphere()
@@ -187,6 +240,11 @@ class Command(BaseCommand):
         self._seed_verdant_npcs()
         self._seed_verdant_spawns()
         self._seed_verdant_vendors()
+
+        self._seed_ridge_loot_tables()
+        self._seed_ridge_npcs()
+        self._seed_ridge_spawns()
+        self._seed_ridge_vendors()
 
         self._verify()
 
@@ -1267,6 +1325,8 @@ class Command(BaseCommand):
             ('heart', 'The Convergence', 'obelisk'),
             ('vr-v07', 'Fordwatch', 'checkpoint'),
             ('vr-f01', 'Stairhead', 'checkpoint'),
+            ('vr-c01', 'Cragfoot', 'checkpoint'),
+            ('vr-vc1', 'The Verdant Crown', 'obelisk'),
         ]
         for room_key, travel_name, node_type in nodes:
             node, created = TravelNode.objects.get_or_create(
@@ -1443,14 +1503,20 @@ class Command(BaseCommand):
         heart_node = TravelNode.objects.filter(
             room=heart, travel_name='The Convergence', node_type='obelisk',
         ).exists() if heart is not None else False
+        crown_node = TravelNode.objects.filter(
+            room=self.rooms['vr-vc1'], travel_name='The Verdant Crown',
+            node_type='obelisk',
+        ).exists()
         checkpoint_nodes = TravelNode.objects.filter(
             node_type='checkpoint',
-            travel_name__in=('Fordwatch', 'Stairhead'),
+            travel_name__in=('Fordwatch', 'Stairhead', 'Cragfoot'),
         ).count()
         self._check(
-            f'Exactly 3 TravelNodes: the Convergence obelisk plus the '
-            f'Fordwatch and Stairhead checkpoints (found {node_count})',
-            node_count == 3 and heart_node and checkpoint_nodes == 2,
+            f'Exactly 5 TravelNodes: the Convergence and Verdant Crown '
+            f'obelisks plus the Fordwatch, Stairhead, and Cragfoot '
+            f'checkpoints (found {node_count})',
+            node_count == 5 and heart_node and crown_node
+            and checkpoint_nodes == 3,
         )
 
         msg_counts = {
@@ -1506,10 +1572,10 @@ class Command(BaseCommand):
         self._check('Zone the-verdant-reach exists', Zone.objects.filter(slug=vr).exists())
 
         vr_area_count = Area.objects.filter(zone__slug=vr).count()
-        self._check(f'6 Verdant Reach areas exist (found {vr_area_count})', vr_area_count == 6)
+        self._check(f'10 Verdant Reach areas exist (found {vr_area_count})', vr_area_count == 10)
 
         vr_room_count = Room.objects.filter(zone__slug=vr).count()
-        self._check(f'69 Verdant Reach rooms exist (found {vr_room_count})', vr_room_count == 69)
+        self._check(f'150 Verdant Reach rooms exist (found {vr_room_count})', vr_room_count == 150)
 
         # Every Verdant edge is wired in both directions, per the persisted DB
         # state (vr_edges() already contains both directions of each pair).
@@ -1524,9 +1590,9 @@ class Command(BaseCommand):
 
         f18 = Room.objects.get(pk=self.rooms['vr-f18'].pk)
         self._check(
-            "vr-f18 north exit unwired with brief-6 pending message",
-            f18.exit_north_id is None
-            and f18.no_exit_north_msg == 'The mountains rise ahead, waiting.',
+            'vr-f18 north exit wired to Cragfoot with its pending message gone',
+            f18.exit_north_id == self.rooms['vr-c01'].pk
+            and f18.no_exit_north_msg == '',
         )
 
         r02 = Room.objects.get(pk=self.rooms['r02'].pk)
@@ -1540,16 +1606,25 @@ class Command(BaseCommand):
             if key.startswith('vr-') and Room.objects.get(pk=room.pk).flag_safe
         }
         self._check(
-            'Fordwatch and Stairhead are the only safe Verdant rooms',
-            safe_keys == {'vr-v07', 'vr-f01'},
+            'Fordwatch, Stairhead, Cragfoot, and the Verdant Crown are the '
+            'only safe Verdant rooms',
+            safe_keys == {'vr-v07', 'vr-f01', 'vr-c01', 'vr-vc1'},
         )
 
         indoor_count = Room.objects.filter(zone__slug=vr, flag_indoors=True).count()
-        cave_keys = [k for k in self.rooms if k.startswith('vr-c')]
+        cave_keys = [
+            k for k in self.rooms
+            if k.startswith('vr-c') and k not in ('vr-c01',)
+        ]
         self._check(
-            f'All 19 cave rooms are flag_indoors (found {indoor_count})',
-            indoor_count == 19 and len(cave_keys) == 19
+            f'All 49 cave rooms are flag_indoors (found {indoor_count})',
+            indoor_count == 49 and len(cave_keys) == 49
             and all(Room.objects.get(pk=self.rooms[k].pk).flag_indoors for k in cave_keys),
+        )
+
+        self._check(
+            'No Verdant Reach room is flag_dark',
+            not Room.objects.filter(zone__slug=vr, flag_dark=True).exists(),
         )
 
         vr_npc_slugs = [
@@ -1563,46 +1638,75 @@ class Command(BaseCommand):
             'silk-matron', 'whistler-below', 'dronemother',
             'matrons-brood', 'whistlers-young', 'dronemothers-swarm',
         ]
-        vr_npc_count = NpcDefinition.objects.filter(slug__in=vr_npc_slugs).count()
+        ridge_passive_slugs = [
+            'mountain-goat', 'mountain-squirrel', 'brown-bear', 'mountain-lion',
+            'mountain-villager', 'mountain-hunter', 'old-brammel',
+            'ridda-the-trader', 'the-verdant-sphere',
+        ]
+        ridge_aggro_slugs = [
+            'prowling-mountain-lion', 'territorial-brown-bear',
+            'elder-cave-spider', 'elder-cave-centipede', 'elder-cave-beetle',
+            'undercrag-weaver', 'chittering-king', 'crowned-devourer',
+            'weavers-brood', 'kings-skitterlings', 'devourers-drones',
+        ]
+        all_vr_slugs = vr_npc_slugs + ridge_passive_slugs + ridge_aggro_slugs
+        vr_npc_count = NpcDefinition.objects.filter(slug__in=all_vr_slugs).count()
         self._check(
-            f'29 Verdant NPC definitions exist (found {vr_npc_count})',
-            vr_npc_count == 29,
+            f'49 Verdant NPC definitions exist (found {vr_npc_count})',
+            vr_npc_count == 49,
         )
 
         aggro_ok = (
             not NpcDefinition.objects.filter(
-                slug__in=vr_npc_slugs[:17], is_aggressive=True,
+                slug__in=vr_npc_slugs[:17] + ridge_passive_slugs,
+                is_aggressive=True,
             ).exists()
             and NpcDefinition.objects.filter(
-                slug__in=vr_npc_slugs[17:], is_aggressive=True,
-            ).count() == 12
+                slug__in=vr_npc_slugs[17:] + ridge_aggro_slugs,
+                is_aggressive=True,
+            ).count() == 23
         )
-        self._check('Surface/villager NPCs passive; cave NPCs, bosses, and '
-                    'minions aggressive', aggro_ok)
+        self._check('Surface/villager NPCs passive; aggro variants, cave NPCs, '
+                    'bosses, and minions aggressive', aggro_ok)
 
         boss_ok = (
             NpcDefinition.objects.filter(
-                slug__in=('silk-matron', 'whistler-below', 'dronemother'),
+                slug__in=('silk-matron', 'whistler-below', 'dronemother',
+                          'undercrag-weaver', 'chittering-king',
+                          'crowned-devourer'),
                 combat_tier='boss', is_unique=False,
-            ).exclude(death_message='').count() == 3
+            ).exclude(death_message='').count() == 6
         )
-        self._check('3 bosses at combat_tier boss with death messages', boss_ok)
+        self._check('6 bosses at combat_tier boss with death messages', boss_ok)
 
         repairer_count = NpcDefinition.objects.filter(
-            slug__in=('maro-the-mender', 'tavik-the-mender'), is_repairer=True,
+            slug__in=('maro-the-mender', 'tavik-the-mender', 'old-brammel'),
+            is_repairer=True,
         ).count()
-        self._check('Maro and Tavik are repairers', repairer_count == 2)
+        self._check('Maro, Tavik, and Old Brammel are repairers', repairer_count == 3)
+
+        sphere = NpcDefinition.objects.filter(
+            slug='the-verdant-sphere', is_unique=True,
+        ).first()
+        sphere_spawns = RoomSpawn.objects.filter(
+            npc_definition__slug='the-verdant-sphere',
+        )
+        self._check(
+            'The Verdant Sphere is unique with exactly one spawn, at the Crown',
+            sphere is not None and sphere_spawns.count() == 1
+            and sphere_spawns.first().room_id == self.rooms['vr-vc1'].pk,
+        )
 
         vr_spawn_count = RoomSpawn.objects.filter(room__zone__slug=vr).count()
         self._check(
-            f'57 RoomSpawns in the Verdant Reach (found {vr_spawn_count})',
-            vr_spawn_count == 57,
+            f'129 RoomSpawns in the Verdant Reach (found {vr_spawn_count})',
+            vr_spawn_count == 129,
         )
 
         gated = RoomSpawn.objects.filter(
             room__zone__slug=vr, requires_living_npc__isnull=False,
         )
-        gated_ok = gated.count() == 3 and all(
+        gated_ok = gated.count() == 6 and all(
             spawn.npc_definition.slug == minion
             and spawn.requires_living_npc.slug == boss
             for minion, boss, spawn in (
@@ -1611,26 +1715,34 @@ class Command(BaseCommand):
                     ('matrons-brood', 'silk-matron'),
                     ('whistlers-young', 'whistler-below'),
                     ('dronemothers-swarm', 'dronemother'),
+                    ('weavers-brood', 'undercrag-weaver'),
+                    ('kings-skitterlings', 'chittering-king'),
+                    ('devourers-drones', 'crowned-devourer'),
                 )
             )
         )
-        self._check('3 minion spawns gated on their bosses', gated_ok)
+        self._check('6 minion spawns gated on their bosses', gated_ok)
 
         table_entry_counts = {
             'animal-drops': 1, 'insect-drops': 1,
             'reedmere-gear': 4, 'windhome-gear': 4,
             'matron-loot': 7, 'whistler-loot': 9, 'dronemother-loot': 13,
+            'ridge-gear': 4, 'ridge-hunter-gear': 5,
+            'weaver-loot': 7, 'king-loot': 9, 'devourer-loot': 13,
         }
         tables_ok = all(
             LootTableEntry.objects.filter(loot_table__slug=slug).count() == n
             for slug, n in table_entry_counts.items()
         )
-        self._check('7 Verdant loot tables with expected entry counts', tables_ok)
+        self._check('12 Verdant loot tables with expected entry counts', tables_ok)
 
         group_counts = {
             'matron-loot': ('weapon', 6),
             'whistler-loot': ('armor', 8),
             'dronemother-loot': ('accessory', 12),
+            'weaver-loot': ('weapon', 6),
+            'king-loot': ('armor', 8),
+            'devourer-loot': ('accessory', 12),
         }
         groups_ok = all(
             LootTableEntry.objects.filter(
@@ -1640,18 +1752,24 @@ class Command(BaseCommand):
         )
         self._check('Boss loot guaranteed groups populated', groups_ok)
 
+        epic_ok = not LootTableEntry.objects.filter(
+            loot_table__slug='devourer-loot', guaranteed_group='accessory',
+        ).exclude(rarity_weights={'epic': 100}).exists()
+        self._check("Devourer accessories all roll at {'epic': 100}", epic_ok)
+
         pool_ok = all(
             UnarmedMessage.objects.filter(pool__slug=f'{prefix}-{species}').count() == 4
-            for prefix in ('vale', 'flats')
+            for prefix in ('vale', 'flats', 'ridge')
             for species in ('spider', 'centipede', 'beetle')
         )
-        self._check('6 Verdant unarmed pools with 4 messages each', pool_ok)
+        self._check('9 Verdant unarmed pools with 4 messages each', pool_ok)
 
         vendor_ok = (
             VendorEntry.objects.filter(npc_definition__slug='essa-the-trader').count() == 4
             and VendorEntry.objects.filter(npc_definition__slug='sona-the-trader').count() == 4
+            and VendorEntry.objects.filter(npc_definition__slug='ridda-the-trader').count() == 5
         )
-        self._check('Essa and Sona each carry 4 vendor entries', vendor_ok)
+        self._check('Essa and Sona carry 4 vendor entries each; Ridda carries 5', vendor_ok)
 
     # ------------------------------------------------------------------
     # Shared platform seed data (unchanged)
@@ -1681,8 +1799,9 @@ class Command(BaseCommand):
             UnarmedMessage.objects.create(pool=default_pool, template=template, order=i)
         self.stdout.write(f'  Seeded {len(messages)} UnarmedMessages in "Default" pool.')
 
-        # Verdant Reach species pools (v18 brief 5). The flats pools are the
-        # vale pools with the species noun upsized to its giant variant.
+        # Verdant Reach species pools (v18 briefs 5 and 6). The flats and
+        # ridge pools are the vale pools with the species noun upsized to its
+        # giant/elder variant.
         vale_templates = {
             'spider': [
                 'The spider blurs sideways and strikes at {target}, fangs first.',
@@ -1711,6 +1830,10 @@ class Command(BaseCommand):
             vr_pools[f'flats-{species}'] = (
                 f'Flats {species.capitalize()} Attacks',
                 [t.replace(f'The {species}', f'The giant {species}') for t in templates],
+            )
+            vr_pools[f'ridge-{species}'] = (
+                f'Ridge {species.capitalize()} Attacks',
+                [t.replace(f'The {species}', f'The elder {species}') for t in templates],
             )
         for slug, (name, templates) in vr_pools.items():
             pool, _ = UnarmedMessagePool.objects.get_or_create(
@@ -2675,6 +2798,19 @@ class Command(BaseCommand):
             ('pit', 'The Drone Pit',
              'A pit hive under the grass, its galleries carved smooth, the air thick with a '
              'hum felt more in the teeth than the ears.'),
+            ('ridge', 'The Viridian Ridge',
+             'Mountains that refuse to be grey: green climbs them almost to their crowns, '
+             'pine and moss and stubborn grass on switchback bones of stone. The wind up '
+             'here has edges. So does everything else.'),
+            ('undercrag', 'The Undercrag',
+             'A delve beneath the first shoulder of the Ridge, descending in webbed '
+             'galleries where the daylight has never been introduced.'),
+            ('chitterdeep', 'Chitterdeep',
+             'A deep of falling passages under the high Ridge, named for the sound that '
+             'never entirely stops.'),
+            ('hollowcrown', 'Hollowcrown',
+             'The hollow inside the summit itself, climbing in veined galleries toward a '
+             'crown of impossible green.'),
         ]
         areas = {}
         for key, name, description in area_defs:
@@ -3138,7 +3274,6 @@ class Command(BaseCommand):
             'respectfully. There is no line on the ground where the plains end and the mountains '
             'begin, but standing here, you know you have crossed it.',
             area=flats,
-            no_exit={'north': 'The mountains rise ahead, waiting.'},
         )
         self._vr_room(
             zone, 'vr-f10', -1, 22, 4,
@@ -3451,6 +3586,853 @@ class Command(BaseCommand):
         )
         self.stdout.write('Verdant Reach: cave rooms seeded (19).')
 
+    def _seed_ridge_rooms_leg1(self, zone, areas):
+        ridge = areas['ridge']
+
+        self._vr_room(
+            zone, 'vr-c01', 0, 31, 4,
+            'Cragfoot',
+            "A green sphere warms itself by a fire at the mountains' feet.",
+            'Where the boulders give way to the first true slope, a waystation has grown up '
+            "in the lee of a stone the size of a house: a fire ring, a mender's bench, trade "
+            'goods under oilcloth. A small sphere of green light hangs near the flames, '
+            'swaying gently, to all appearances warming itself — which should not work, and '
+            'works. Above, the switchbacks begin their long argument with the mountain.',
+            area=ridge, safe=True,
+        )
+        self._vr_room(
+            zone, 'vr-m01', 0, 32, 5,
+            'The First Switchback',
+            'The path folds back on itself and begins to climb in earnest.',
+            'The path takes the slope the only way paths can: sideways, folding back on '
+            'itself, gaining height by patience. Pine and juniper crowd the bends, and the '
+            'plains behind you begin their slow transformation into scenery.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m02', 0, 33, 5,
+            'The Goat Trail',
+            'Goat sign everywhere; a side track climbs to eastern ledges.',
+            'Droppings, tufted hair on the thorn bushes, and hoofprints stamped into '
+            'impossible angles of rock — the goats own this stretch and file no paperwork. '
+            'A side track climbs east toward ledges where several of them stand at slopes '
+            'that insult gravity.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m03', 0, 34, 5,
+            'The Shale Turn',
+            'Loose shale slides underfoot at a tight bend.',
+            'The path turns tight across a fan of loose shale that moves underfoot with a '
+            'sound like breaking crockery. Every step is a small negotiation. Below the '
+            'turn, the shale runs out into empty air and takes a long time to land.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m04', 0, 35, 5,
+            'The Pine Shelf',
+            'A level shelf of wind-bent pines, loud with squirrels.',
+            'The mountain relents into a level shelf of pines, every one of them bent the '
+            "same direction by the wind's long opinion. Squirrels run the branches overhead, "
+            'furious about everything, particularly you. A gap in the trees opens west.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m05', 0, 36, 6,
+            'The Second Switchback',
+            'The path folds again; goats watch from above with contempt.',
+            'The path folds back again and gains a hard stretch of height. Goats stand on '
+            'the rocks above the bend, chewing, watching your labor with the specific '
+            'contempt of creatures to whom slopes are horizontal.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m06', 0, 37, 6,
+            'Stonestep Approach',
+            'Terraced walls and woodsmoke — a village holds the slope.',
+            'Dry-stone terraces step up the slope to the east, holding soil and a village '
+            "against the mountain's preference for neither. Woodsmoke and the clink of tools "
+            'drift down. The people of Stonestep built where the mountain allowed and '
+            'apologized nowhere.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m07', 0, 38, 6,
+            'The Long Traverse',
+            'A long sidelong stretch beneath a bear-clawed slope.',
+            'The path runs long and sidelong beneath a slope of berry scrub, and the scrub '
+            'is torn in the wide, thorough way that means bear. A brown one, by the hair on '
+            'the thorns — bigger than the valley kind, and less philosophical. A vista opens '
+            'from a shelf to the east.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m08', 0, 39, 6,
+            'The Crag Shoulder',
+            'The first great shoulder; eastward, a delve mouth gapes.',
+            "The path crests the Ridge's first great shoulder and the mountain shows its "
+            'teeth: eastward, under an overhang of raw crag, a mouth of absolute dark opens '
+            'in the stone, breathing cold. Old silk fringes the entrance like grey banners. '
+            'The main path continues north, which is one option.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m09', 1, 33, 5,
+            'The Goat Ledges',
+            'Ledges at absurd angles, thoroughly owned by goats.',
+            'The track ends at a series of ledges stacked at angles that should require '
+            'permits. The goats stand on all of them, including several that cannot be '
+            'reached, watching you attempt geometry they solved at birth.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m10', -1, 35, 5,
+            'The Squirrel Pines',
+            'Deep pine shade, administered loudly by squirrels.',
+            'The pines grow close here, roofing the light out, and the squirrels administer '
+            'the dark at volume — chittering ultimatums, dropping cones with intent, holding '
+            'grudges of ancient standing. The needle-floor is soft and the air smells of '
+            'resin.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m11', 1, 40, 6,
+            "The Lion's Backyard",
+            'The high meadow the villagers warned you about.',
+            'Past the last terrace the ground rises into a hanging meadow, sweet grass and '
+            'sun-warmed stone — and bones, once you look, clean and scattered and plural. '
+            'This is the place they warned you about, in the village whose warning you did '
+            'or did not heed. The lions here do not watch and consider. They are already '
+            'moving.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m12', 2, 38, 6,
+            'The Crag Shelf',
+            'A vista shelf: the Flats laid out golden below.',
+            'A flat shelf of stone hangs over the drop, and from it the whole of the '
+            'Sagewind Flats lies below in golden motion, the grass moving like weather on '
+            "water. Windhome's smoke rises thin and straight. You can see the sink and the "
+            'pit from here — two small dark mouths in all that gold — and know better.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m13', 1, 39, 6,
+            'The Crag Mouth',
+            "The Undercrag's entrance: cold breath and old silk.",
+            'Up close the mouth is tall as two doors and hung with silk gone grey with '
+            'grit. The cold that moves out of it is cellar-cold, mineral, patient. Somewhere '
+            'inside, at the edge of hearing, something plucks a strand and lets it ring.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-st1', 1, 37, 6,
+            'Stonestep Terrace',
+            'A terraced village street held up by stubborn stonework.',
+            "Stonestep's single street runs along a terrace edge, houses built of the "
+            'mountain into the mountain, roofs weighted with slabs against the wind. The '
+            'people here are civil and busy and glad of travelers, and they will tell you, '
+            'unprompted and in detail, not to go up past the top terrace to the high '
+            'meadow. The lions have it, they say. The lions have always had it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-st2', 1, 38, 6,
+            'Stonestep Hearths',
+            'Upper terrace hearths; beyond, the path they warn about.',
+            'The upper terrace holds the hearth-houses, warm-smelling and close, washing '
+            "strung between them arguing with the wind. At the terrace's north end a path "
+            'continues up toward a hanging meadow, and every villager who sees you look at '
+            "it says the same word, kindly, and means it: don't.",
+            area=ridge,
+        )
+        self.stdout.write('Verdant Reach: Viridian Ridge leg 1 rooms seeded (16).')
+
+    def _seed_ridge_rooms_leg2(self, zone, areas):
+        ridge = areas['ridge']
+
+        self._vr_room(
+            zone, 'vr-m14', 0, 40, 7,
+            'The Wind Gap',
+            'A notch where the wind crosses the Ridge at speed.',
+            'The path threads a notch where the wind crosses the Ridge without slowing down '
+            'for anyone. Everything here leans — the grass, the one heroic pine, briefly '
+            'you. Through the gap, the higher country shows itself: greener than mountains '
+            'have any right to be.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m15', 0, 41, 7,
+            'The Third Switchback',
+            'Another fold of the path; a goat walk branches east.',
+            'The path folds and climbs. The drop below the bend has stopped being '
+            'interesting and started being serious. A narrow walk branches east along a '
+            'grassy rib where the goats keep their high pastures.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m16', 0, 42, 7,
+            'The Grey Ridge',
+            'Bare grey stone; a brown bear works the slope below.',
+            'The green thins across a rib of bare grey stone, lichen-mapped and '
+            'wind-polished. Below the path a brown bear works a berry slope with the total '
+            'focus of the self-employed. It is very large. The berries are apparently worth '
+            'it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m17', 0, 43, 7,
+            'The Windbreak',
+            'A stone windbreak shelters the path; pines crowd west.',
+            'Someone, sometime, stacked a long windbreak of dry stone along the path\'s '
+            'exposed edge, and generations of travelers have blessed them for it. In its '
+            'lee the air goes suddenly still and loud with your own footsteps. Pines crowd '
+            'a hollow to the west, full of motion.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m18', 0, 44, 7,
+            'Highfold Approach',
+            'Goat-folds terrace the slope below a hardy village.',
+            "Dry-stone goat-folds step down the slope in neat crescents, and above them "
+            "Highfold's houses sit low and round-shouldered against the weather. The bells "
+            'of the folds carry down the path. So does a warning, from the first villager '
+            'you meet, friendly and firm: the hollow west of the top fold belongs to the '
+            'bears now, and the bears are not reasonable this season.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m19', 0, 45, 8,
+            'The High Traverse',
+            'A long high stretch; a lion crosses at its own pace.',
+            'The path runs long and level across the mountain\'s face, the world arranged '
+            'below it in tiers. Partway along, a mountain lion crosses ahead of you at its '
+            'own pace, gives you one flat unhurried look, and continues — on the spine of '
+            'the path, so far, there is a truce.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m20', 0, 46, 8,
+            'The Fourth Switchback',
+            'The path folds beneath a vista shelf to the west.',
+            'The fold gains height in earnest now, the air thinner and bright. A shelf to '
+            'the west promises the kind of view that makes the climbing make sense, or at '
+            'least argues the case.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m21', 0, 47, 8,
+            'The Chitter Shoulder',
+            'A dry rasping rides the wind from a gate of dark stone.',
+            'The path crests the second shoulder and you hear it before you see it: a dry, '
+            'layered rasping, rising and falling, riding the wind from the east — from a '
+            'gate of dark stone at the base of a crag, where the mountain has opened and '
+            'something inside never stops talking to itself. North, the path continues '
+            'toward the last and highest country.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m22', 1, 41, 7,
+            'The Goat Walk',
+            'A grassy rib of high pasture, thick with goats.',
+            'The rib runs out into hanging pasture, sweet and short-cropped, and the goats '
+            'are here in numbers — nannies, kids, and one patriarch with horns like '
+            'furniture, all watching you with rectangular skepticism.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m23', -1, 43, 7,
+            'The Windbreak Pines',
+            'A sheltered pine hollow, squirrel-ruled.',
+            'The hollow holds the pines and the pines hold the squirrels, and the squirrels '
+            'hold court — loudly, continuously, with prejudice. Out of the wind, the air is '
+            'warm and resinous and full of small thrown objects.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m24', -1, 45, 7,
+            "Bear's Hollow",
+            'The torn-up hollow the folk of Highfold warned about.',
+            'The hollow west of the top fold is torn — earth clawed up in furrows, saplings '
+            'snapped at the height of a shoulder much higher than yours, a smell of musk '
+            'thick enough to lean on. Highfold warned you. Highfold may already be a '
+            'smoking memory behind you, but the warning was true either way: the bears here '
+            'do not bluff, and they have already noticed.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m25', 1, 47, 8,
+            'The Chittering Mouth',
+            "Chitterdeep's gate: the rasping is louder here, and layered.",
+            'The gate of Chitterdeep stands taller than it needs to, and the sound pours '
+            'out of it in layers — near rasps and far rasps, over and under, a deep talking '
+            'to itself in ten thousand small dry voices. The cold coming up from below '
+            'smells of stone and molt.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m26', -1, 46, 8,
+            'The Grey Vista',
+            'The whole zone below: vale, flats, and the climb between.',
+            'From the shelf the whole journey lies below you at once — the vale a green '
+            'fold in the far south, the river a bright hair, the flats golden and moving, '
+            'the stair invisible but known, every step of it in your legs. Higher country '
+            'rises at your back, greener as it climbs, which is not how mountains are '
+            'supposed to work.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-hf1', 1, 44, 7,
+            'Highfold Terrace',
+            'A village of goatherds among their crescent folds.',
+            'Highfold lives with its goats the way Reedmere lives with its river: the folds '
+            'come first, the houses fit around them. Bells, hay-smell, and hands that never '
+            'stop working hide or rope. They are generous with milk-cheese and warnings, in '
+            'that order — the hollow west of the hearths, they say, is the bears\' now. Do '
+            'not test it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-hf2', 1, 45, 7,
+            'Highfold Hearths',
+            'Round-backed hearth houses; westward, the forbidden hollow.',
+            'The hearth-houses turn their round backs to the weather, doorways low and '
+            'warm-breathed. A track runs west off the top fold toward a pine hollow, and it '
+            'is the most warned-about stretch of ground on the mountain: every hearth has a '
+            'story about it, and none of the stories end well.',
+            area=ridge,
+        )
+        self.stdout.write('Verdant Reach: Viridian Ridge leg 2 rooms seeded (15).')
+
+    def _seed_ridge_rooms_leg3(self, zone, areas):
+        ridge = areas['ridge']
+
+        self._vr_room(
+            zone, 'vr-m27', 0, 48, 9,
+            'The Thin Air',
+            'High country: thin bright air and the summit finally visible.',
+            'The air goes thin and glassy and the light gains an edge. Above, for the first '
+            'time, the summit shows itself — and it is wrong in the loveliest way: no snow, '
+            'no bare rock, but a crown of deep green, glowing like a held leaf. A quiet col '
+            'opens west; the path climbs on.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m28', 0, 49, 9,
+            'The Fifth Switchback',
+            'The folds come faster now; goats claim a ledge east.',
+            'The switchbacks come tighter and steeper, the mountain done with pretending to '
+            'be gradual. Goats hold a ledge to the east — the high-country breed, shaggier, '
+            'bigger, disapproving of your form.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m29', 0, 50, 9,
+            'The Stone Teeth',
+            'The path threads a row of standing stones like teeth.',
+            'Weathered pillars stand in a row across the slope like the teeth of something '
+            'the mountain grew over, and the path threads between them. In their lee, a '
+            'brown bear the size of a toolshed turns over rocks with one paw, snacking on '
+            'what runs out.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m30', 0, 51, 10,
+            'The Stunted Rise',
+            'Trees shrink to knee height; the wind means it now.',
+            'The pines up here grow to the height of your knee and no higher, ancient and '
+            "bonsai'd by wind that has never once relented. Squirrels live in them anyway, "
+            'at reduced volume and increased fury. A twisted little wood gathers to the '
+            'west.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m31', 0, 52, 10,
+            'Lastlight Approach',
+            "The final village's lights, warm against the height.",
+            'Lastlight earns its name at dusk, they say, when its hearths are the last warm '
+            'lights below the summit — but even at noon the village reads as an outpost of '
+            "warmth against altitude. Its people are the high Ridge's toughest, and their "
+            "welcome comes with the mountain's last and most serious warnings attached.",
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m32', 0, 53, 10,
+            'The Knife Edge',
+            'The path narrows over air on both sides.',
+            'For a stretch the path is the top of the mountain — a knife edge with '
+            'committed air on both sides and wind with opinions. Westward off the edge, a '
+            'ledge track drops toward a sunning shelf the Lastlight folk speak of only to '
+            'forbid.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m33', 0, 54, 10,
+            'The Sixth Switchback',
+            'The last true switchback; a lion owns the bend.',
+            'The final switchback folds beneath a wall of green-veined stone. A mountain '
+            'lion — high-country big — lies across a sun-warmed rock at the bend, and lets '
+            "you pass, this time, on the path's old truce. East, a track climbs toward a "
+            'throne of tumbled boulders.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m34', 0, 55, 11,
+            'The Crown Shoulder',
+            "The summit's last shoulder; eastward, a gate into the mountain.",
+            "The last shoulder before the summit, and the mountain's final door: eastward, "
+            'a gate of pale stone opens into the peak itself, exhaling air that is somehow '
+            'warm, mineral-sweet, alive. The green of the summit crown hangs directly above '
+            'now, close enough to make the light under your feet faintly emerald.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m35', 0, 56, 11,
+            'The Green Ascent',
+            'Impossible green begins: growth where nothing should grow.',
+            'The stone gives way to growth. At an altitude that should permit lichen and '
+            'apology, the mountain is green — moss deep as carpet, flowers with no names '
+            'you know, air warm as a held breath. It should not be. It is. Every step '
+            'upward, the wrongness gets more beautiful. A rail of cloud hangs level with a '
+            'shelf to the east.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m36', 1, 49, 9,
+            'The High Fold Ledge',
+            'The highest goats on the mountain hold this ledge.',
+            'The ledge belongs to the highest goats on the mountain, shag-coated and '
+            'enormous, who regard your arrival with the mild interest of creatures that '
+            'have watched avalanches from above.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m37', -1, 51, 10,
+            'The Stunted Pines',
+            "A wind-bonsai'd wood, knee-high and centuries old.",
+            'The little wood is centuries old and knee-high, every trunk a fist of '
+            "resistance. The squirrels here are the mountain's maddest, living at the edge "
+            'of the possible and defending it like a kingdom.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m38', -1, 53, 10,
+            "Lion's Watch",
+            'The sunning shelf Lastlight forbids, and for good reason.',
+            'The ledge track ends at a broad shelf where the sun pools all day, and the '
+            "lions of the high Ridge keep it as a court. Lastlight's forbiddance was not "
+            'folklore: the shapes rising from the warm stone are already committed, and up '
+            'here there is nowhere to be but exactly where you are.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m39', 1, 54, 10,
+            "Bear's Throne",
+            "A tumble of boulders ruled by the mountain's largest bears.",
+            'The boulders stack into a natural throne against the summit wall, and the '
+            "mountain's largest bears hold it — visibly, deliberately, a dynasty in fur. "
+            'The bones about the base are old and new and not all small. This is the '
+            "hardest ground on the mountain that isn't underground, and it knows it.",
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m40', 1, 55, 11,
+            'The Crown Mouth',
+            "Hollowcrown's gate: warm air rising from inside the peak.",
+            'The gate into the summit stands pale and veined, and the air moving out of it '
+            'rises — warm, sweet with mineral and growth, wrong for a cave in every '
+            'reassuring way and one alarming one: beneath the sweetness, wings. Somewhere '
+            'above and inside, the hollow of the crown hums.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m41', 0, 57, 12,
+            'The Last Stair',
+            'Steps of living stone rise through flowers to the crown.',
+            'Steps rise through the green — not carved, this time, but grown, stone risers '
+            'cushioned in moss, flowers crowding the treads. The light from above is '
+            'emerald and gold. The air hums faintly, warm as noon. Whatever waits at the '
+            'top has been waiting a long time, and gladly.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m42', 1, 56, 11,
+            'The Cloud Rail',
+            'A shelf level with the clouds themselves.',
+            'The shelf hangs level with a rail of cloud that streams past close enough to '
+            "touch, tearing silently on the summit's green shoulder. Below the cloud, the "
+            'whole zone; above it, only the crown. People would build temples for this '
+            'view. Up here, the mountain simply has it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-m43', -1, 48, 9,
+            'The Silent Col',
+            'A hushed saddle where the wind, for once, does not come.',
+            'The col sits in a fold of the mountain that the wind, by some accident of '
+            'shape, cannot enter. The silence is total and physical. Grass grows tall here, '
+            "unbothered, and the air holds the day's warmth like cupped hands. Travelers "
+            'who find it tend to stay an hour longer than they meant to.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-ll1', 1, 52, 10,
+            'Lastlight Terrace',
+            'The highest village: stone houses roped against the sky.',
+            "Lastlight's houses are stone to the eaves and roped to the mountain, and its "
+            'people are correspondingly weatherproof. They feed travelers as a duty and a '
+            "pleasure, and they deliver the mountain's last warnings with the weight of "
+            "scripture: the sunning shelf west of the Knife Edge is the lions'; the boulder "
+            "throne east of the last switchback is the bears'; and past both, they say — "
+            'lower, with something that is not quite fear — is the hollow in the crown, and '
+            'what keeps it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-ll2', 1, 53, 10,
+            'Lastlight Hearths',
+            'The last hearths below the summit, warm and watchful.',
+            'The hearth-row is the warmest ground on the high mountain, and the most '
+            "watchful — hunters' bows hang strung by every door. From here the green of the "
+            'crown is directly overhead, casting its faint emerald light on the chimney '
+            'smoke. The people of Lastlight look up at it often. They never say quite what '
+            'they think of it.',
+            area=ridge,
+        )
+        self._vr_room(
+            zone, 'vr-vc1', 0, 58, 12,
+            'The Verdant Crown',
+            'Eden on the roof of the world, and a green sphere in an obelisk.',
+            'The summit is a garden. There is no other word and no need for one: at an '
+            'altitude fit for ice, the crown of the mountain is deep with green — moss and '
+            'flower and slender trees, warm air, water somewhere speaking quietly to stone. '
+            'In the center stands an obelisk, twin in every proportion to the one at the '
+            'Heart of the Convergence, and suspended in its stone burns a sphere of pure '
+            'deep green, steady as a held note. The garden grows toward it. Everything here '
+            'does. You have walked the whole of the Verdant Reach to stand in this light, '
+            'and the light, unmistakably, notices.',
+            area=ridge, safe=True,
+        )
+        self.stdout.write('Verdant Reach: Viridian Ridge leg 3 rooms seeded (20).')
+
+    def _seed_undercrag_rooms(self, zone, areas):
+        undercrag = areas['undercrag']
+
+        self._vr_room(
+            zone, 'vr-c5a', 2, 39, 6,
+            'The Crag Gate',
+            'A cold entry hall hung with grey silk banners.',
+            'The entry hall is tall and cellar-cold, hung with silk gone grey and heavy '
+            'with rock dust. The floor is swept — not clean, swept, in long strokes the '
+            "width of a body. A shaft descends at the hall's end, its lip polished by use.",
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5b', 2, 39, 5,
+            'The First Descent',
+            'Down the shaft: silk lines run taut into the dark.',
+            'The shaft lets into a sloping gallery where silk lines run taut along the '
+            'walls like the rigging of a ship, thrumming faintly when anything anywhere '
+            'moves. The dark ahead has depth to it, and occupants.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5c', 2, 40, 5,
+            'The Under Gallery',
+            'A broad web-strung gallery; a chimney climbs into black.',
+            'The gallery opens broad and low, webbed post to pillar, and the rustling here '
+            'is constant — above, below, keeping pace. A natural chimney climbs into black '
+            'overhead, its walls silk-lined all the way up, which is information.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5d', 2, 40, 6,
+            'The Web Chimney',
+            'A silk-lined vertical pocket, thick with weavers.',
+            'The chimney tops out in a pocket entirely upholstered in silk, floor '
+            'indistinguishable from wall from ceiling. Everything here is at an angle and '
+            'everything here is theirs. Coming up the chimney, you were felt arriving the '
+            'whole way.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5e', 2, 41, 5,
+            'The Cold Ladder',
+            'Natural stone steps descend into deeper cold.',
+            'The gallery ends at a descent of natural steps, each broad as a table, '
+            'dropping into cold that gains authority with every level. Beetles patrol here '
+            '— the elder kind, big as carts, wing cases whispering open at your light.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5f', 2, 41, 4,
+            'The Black Span',
+            'A stone bridge over darkness; a silk well drops below.',
+            'A natural span of stone crosses a gulf whose bottom your light declines to '
+            'discuss. Silk cables anchor the span to the walls in a way that suggests '
+            'maintenance. Partway across, a well of woven silk drops through the span '
+            'itself, down into the true dark.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5g', 2, 41, 3,
+            'The Silk Well',
+            'The bottom of the well: a nursery of pale silk.',
+            'The well bottoms out in a chamber of layered pale silk, egg-cases racked along '
+            'the walls in disquieting order. The weavers here are protective in the '
+            'absolute sense. The way you came in is the way out, and they know it better '
+            'than you.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5h', 2, 42, 4,
+            'The Deep Landing',
+            "The delve's deep floor; ahead, a vault of listening silk.",
+            "The span lands on the delve's deep floor, and the silk here changes character "
+            '— older, denser, structural. Every strand runs the same direction: inward, '
+            'north, toward a vault where the dark is complete and attentive. The rustling '
+            'has stopped, which is worse.',
+            area=undercrag, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c5i', 2, 43, 4,
+            "The Weaver's Vault",
+            "The Weaver's chamber; high above, a snared strongbox hangs.",
+            "The vault rises out of your light's reach, and the Weaver holds its center — "
+            'a spider of architectural size, pale as the deep silk it has spent generations '
+            'spinning. High above, snared in a cradle of lines, hangs an iron-strapped '
+            'strongbox, taken whole from someone who needed it, kept for reasons a spider '
+            'keeps things. Every line in the room runs, eventually, to her.',
+            area=undercrag, indoors=True,
+        )
+        self.stdout.write('Verdant Reach: Undercrag rooms seeded (9).')
+
+    def _seed_chitterdeep_rooms(self, zone, areas):
+        chitterdeep = areas['chitterdeep']
+
+        self._vr_room(
+            zone, 'vr-c6a', 2, 47, 8,
+            'The Chitter Gate',
+            'The rasping surrounds you the moment you enter.',
+            'Inside the gate the sound is no longer ahead of you; it is around you — dry, '
+            'layered, continuous, the deep talking in its sleep. The passage tips '
+            'immediately downward, walls polished at flank height by the passing of long '
+            'bodies.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6b', 2, 47, 7,
+            'The Falling Gallery',
+            'The passage falls in long polished pitches.',
+            'The gallery descends in long pitches, floor polished to a shine that has '
+            'nothing to do with water. Centipedes flow along the walls in both directions, '
+            'unbothered by the grade, unbothered by you — so far.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6c', 2, 47, 6,
+            'The Thousand Steps',
+            'Rippled stone descends like steps cut for no human gait.',
+            'The floor ripples into hundreds of shallow ridges descending into the dark — '
+            'steps, if steps were cut for a gait with a hundred feet. Beetles work the '
+            'margins here, and a side passage east breathes a papery smell.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6d', 3, 47, 6,
+            'The Molt Chamber',
+            "Shed skins stand propped like a museum of the deep's growth.",
+            "The chamber is full of the deep's history: shed centipede skins, translucent "
+            'and whole, propped against the walls by draft and chance like exhibits. They '
+            'ascend in size toward the back, where the largest stands taller than you and '
+            'is not the largest thing down here.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6e', 2, 48, 6,
+            'The Chitter Hall',
+            'A long hall where the sound gains a rhythm; a vault drops below.',
+            'The hall runs long and ribbed, and in it the chittering gains something '
+            'terrible: rhythm. Call and response, near and far, ten thousand small voices '
+            'keeping time. Spiders hunt the margins of the sound. A worked shaft drops '
+            'through the floor midway, breathing warmth and the smell of eggs.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6f', 2, 48, 5,
+            'The Egg Vault',
+            'A warm vault racked with translucent eggs.',
+            'The vault below is warm as a body and racked wall to wall with eggs — '
+            'translucent, faintly pulsing, each holding a coiled length of what the deep is '
+            'made of. The guardians here do not patrol. They are simply always between you '
+            'and the racks.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6g', 2, 49, 6,
+            'The Long Crawl',
+            'The ceiling drops; the passage insists on humility.',
+            'The ceiling steps down until the passage insists on humility, and you move at '
+            'a crouch through stone dust and molt-paper while things your own length flow '
+            'past in the dark with room to spare. This is their hallway. You are the wrong '
+            'shape for it.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6h', 2, 50, 6,
+            'The Rising Dark',
+            'The deep turns upward; the rhythm converges from above.',
+            'Unexpectedly, the deep turns upward — a climbing gallery, the rhythm of the '
+            'chittering converging from overhead now, all its layers braiding into one '
+            'direction. The air warms as you climb. Whatever conducts this chorus is above '
+            'you.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6i', 2, 50, 7,
+            "The King's Approach",
+            'A polished processional gallery; the sound holds its breath.',
+            'The climb lets into a gallery polished like the inside of a shell, and here — '
+            'only here — the chittering stops. The silence is ceremonial. The floor is '
+            "swept. The passage north has the proportions of a throne room's doors because "
+            'that is what it is.',
+            area=chitterdeep, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c6j', 2, 51, 7,
+            'The Chittering Throne',
+            'The King coiled about an ancient chest, scored by a thousand legs.',
+            'The throne room rises in ribs of dark stone, and the King fills it — a '
+            'centipede of dynastic size, coiled in glossy tiers about a chest of black iron '
+            'and older wood, its lid scored soft by the grip of a thousand legs across '
+            'uncountable years. As your light touches him the chittering resumes from every '
+            'wall at once: the deep, announcing its King. He uncoils exactly as much as the '
+            'occasion requires.',
+            area=chitterdeep, indoors=True,
+        )
+        self.stdout.write('Verdant Reach: Chitterdeep rooms seeded (10).')
+
+    def _seed_hollowcrown_rooms(self, zone, areas):
+        hollowcrown = areas['hollowcrown']
+
+        self._vr_room(
+            zone, 'vr-c7a', 2, 55, 11,
+            'The Crown Gate',
+            'Warm mineral air and a hum: the inside of the summit.',
+            'Inside the gate the mountain is warm. Veins of pale green mineral thread the '
+            'walls, glowing faintly, and the hum you felt outside resolves into layers — '
+            'the deep drone of wings, somewhere above, and under it something almost like '
+            "the garden's warmth given a voice. The way leads north, and then, impossibly "
+            'for a cave, up.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7b', 2, 56, 11,
+            'The Hollow Stair',
+            'A rising gallery, green-veined and wing-swept.',
+            'The passage rises in a natural stair of green-veined stone, the mineral light '
+            'strengthening as you climb. Beetles command this gallery — the elder kind, '
+            'vast, dropping from the dark above with a sound like tearing canvas.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7c', 2, 56, 12,
+            'The Veined Gallery',
+            'Glowing mineral veins thick as rivers; a seam glitters east.',
+            'The veins run thick as rivers here, casting the gallery in green half-light '
+            'that needs no torch. Spiders have strung the high corners, their silk catching '
+            'the glow like frost. To the east a seam in the wall glitters with something '
+            'more than mineral.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7d', 3, 56, 12,
+            'The Glittering Seam',
+            'A crystal-crusted pocket, jealously patrolled.',
+            'The seam opens into a pocket crusted in green crystal, every facet holding a '
+            'small burning copy of your light. The beetles patrol it with what can only be '
+            'called jealousy. Things glint in the crystal matrix that did not grow there — '
+            'carried things, hoarded things, a magpie instinct at monstrous scale.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7e', 2, 57, 12,
+            'The Upper Dark',
+            'The climb continues; the hum gains mass overhead.',
+            'The gallery climbs again, and the hum overhead gains mass — no longer sound, '
+            'closer to weather. Centipedes hunt this stretch, drawn up from their own deeps '
+            "by whatever the crown's warmth promises. The green light strengthens with "
+            'every step upward.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7f', 2, 57, 13,
+            'The Wingway',
+            'A flight gallery inside the peak; wings pass like weather.',
+            'The passage broadens into a flight gallery where the beetles move at speed '
+            'through the green glow, wings roaring open, banking around you as though you '
+            'were furniture — for now. A shaft drops away east where something fell, or was '
+            'dropped, long ago.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7g', 3, 57, 13,
+            'The Fallen Shaft',
+            "A collapsed pocket where the crown's cast-offs gather.",
+            "The shaft ends in a collapsed pocket where the hollow's cast-offs have "
+            'gathered across ages — carapace, crystal shards, the dust of things carried up '
+            'and found wanting. Spiders and centipedes contest the scraps here, in the dark '
+            'below the light.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7h', 2, 58, 13,
+            'The Deep Turn',
+            'The last broad turn; above, the hum is a single deep chord.',
+            'The gallery makes one last broad turn beneath a ceiling lost in green glow, '
+            'and the hum above resolves into a single sustained chord, patient and '
+            'enormous. The beetles here no longer patrol. They stand posted. The hollow is '
+            'done being casual about you.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7i', 2, 58, 14,
+            'The Last Dark',
+            'The final climb: warm, bright-veined, and defended.',
+            'The last climb rises through stone so veined with glowing green it is barely '
+            'dark at all. The air is garden-warm and moving, drawn upward toward the crown. '
+            "What defends this stretch defends it absolutely: the summit's own, in the "
+            "summit's own light.",
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7j', 2, 59, 14,
+            "The Devourer's Approach",
+            "A processional gallery beneath the garden's floor.",
+            'You are directly beneath the garden now — rootlets finger through the ceiling '
+            'seams, and water somewhere above speaks its quiet syllable to stone. The '
+            "gallery runs processional and green-lit toward the hollow's heart, and the "
+            'chord of wings ahead deepens to greet you, which is not the right word, and '
+            'both of you know it.',
+            area=hollowcrown, indoors=True,
+        )
+        self._vr_room(
+            zone, 'vr-c7k', 2, 60, 14,
+            "The Devourer's Hoard",
+            "The hollow's heart: the Devourer atop a hoard, beneath the Crown.",
+            "The hollow's heart is a vaulted chamber directly beneath the Verdant Crown, "
+            'its ceiling a lace of glowing roots, and it is floored — floored — in hoard: '
+            'coin, crystal, carried treasure of every genre the rifts ever spilled, heaped '
+            'in dunes. Atop it, wings spread to the vault, stands the Crowned Devourer: a '
+            'beetle at the scale of legend, chitin black-green as the deepest leaf, the '
+            'chord of its wings the very hum you have climbed through all this way. Above '
+            'you both, through the roots, the light of the Crown burns green and steady. '
+            'The Devourer does not move to meet you. On a hoard like this, everything comes '
+            'to it eventually.',
+            area=hollowcrown, indoors=True,
+        )
+        self.stdout.write('Verdant Reach: Hollowcrown rooms seeded (11).')
+
     def _seed_verdant_loot_tables(self):
         boss_weapons = [
             'iron-sword', 'iron-mace', 'broadsword',
@@ -3677,6 +4659,9 @@ class Command(BaseCommand):
              "mother's hum assigns it.", {}),
         ]
 
+        self._upsert_npc_definitions(npcs, 'Verdant Reach')
+
+    def _upsert_npc_definitions(self, npcs, label):
         created_count = 0
         for (slug, name, tier, aggressive, stats, sf, pool_slug, loot_slug,
              (copper_min, copper_max), respawn, description, extras) in npcs:
@@ -3686,7 +4671,7 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'description': description,
                 'is_aggressive': aggressive,
-                'is_unique': False,
+                'is_unique': extras.get('is_unique', False),
                 'wanders': False,
                 'combat_tier': tier,
                 'loot_table': LootTable.objects.get(slug=loot_slug) if loot_slug else None,
@@ -3713,7 +4698,7 @@ class Command(BaseCommand):
             if created:
                 created_count += 1
         self.stdout.write(
-            f'Verdant Reach: {len(npcs)} NPC definitions seeded '
+            f'{label}: {len(npcs)} NPC definitions seeded '
             f'({created_count} created).'
         )
 
@@ -3827,3 +4812,309 @@ class Command(BaseCommand):
                 )
                 entry_count += 1
         self.stdout.write(f'Verdant Reach: {entry_count} vendor entries seeded.')
+
+    # ------------------------------------------------------------------
+    # The Viridian Ridge & delves (v18 brief 6) — loot, NPCs, spawns, vendors
+    # ------------------------------------------------------------------
+
+    def _seed_ridge_loot_tables(self):
+        boss_weapons = [
+            'iron-sword', 'iron-mace', 'broadsword',
+            'battle-axe', 'hunting-bow', 'combat-knife',
+        ]
+        boss_armor = [
+            'leather-cap', 'leather-shoulders', 'leather-vest', 'leather-gloves',
+            'leather-belt', 'leather-leggings', 'leather-boots', 'wooden-shield',
+        ]
+        boss_accessories = [
+            f'copper-{kind}-of-{stat}'
+            for kind in ('ring', 'amulet')
+            for stat in ('strength', 'dexterity', 'endurance',
+                         'intelligence', 'wisdom', 'perception')
+        ]
+        villager_weights = {'common': 85, 'uncommon': 15}
+        ridge_gear = [
+            ('iron-mace', 0.10, villager_weights, ''),
+            ('iron-sword', 0.10, villager_weights, ''),
+            ('leather-shoulders', 0.10, villager_weights, ''),
+            ('wooden-shield', 0.10, villager_weights, ''),
+        ]
+
+        # (table slug, table name, entries); each entry is
+        # (item slug, drop_chance, rarity_weights, guaranteed_group).
+        tables = [
+            ('ridge-gear', 'Ridge Gear', list(ridge_gear)),
+            ('ridge-hunter-gear', 'Ridge Hunter Gear',
+             ridge_gear + [('battle-axe', 0.10, villager_weights, '')]),
+            ('weaver-loot', 'Undercrag Weaver Loot',
+             [(slug, 1.0, {'rare': 100}, 'weapon') for slug in boss_weapons]
+             + [('insect-carapace', 0.5, {'common': 100}, '')]),
+            ('king-loot', 'Chittering King Loot',
+             [(slug, 1.0, {'rare': 100}, 'armor') for slug in boss_armor]
+             + [('insect-carapace', 0.5, {'common': 100}, '')]),
+            ('devourer-loot', 'Crowned Devourer Loot',
+             [(slug, 1.0, {'epic': 100}, 'accessory') for slug in boss_accessories]
+             + [('insect-carapace', 0.5, {'common': 100}, '')]),
+        ]
+
+        for table_slug, table_name, entries in tables:
+            table, _ = LootTable.objects.get_or_create(
+                slug=table_slug, defaults={'name': table_name},
+            )
+            for item_slug, drop_chance, weights, group in entries:
+                LootTableEntry.objects.get_or_create(
+                    loot_table=table,
+                    item_definition=ItemDefinition.objects.get(slug=item_slug),
+                    defaults={
+                        'mk_tier_min': 1,
+                        'mk_tier_max': 1,
+                        'drop_chance': drop_chance,
+                        'guaranteed_group': group,
+                        'rarity_weights': weights,
+                    },
+                )
+        self.stdout.write(f'Viridian Ridge: {len(tables)} loot tables seeded.')
+
+    def _seed_ridge_npcs(self):
+        # Same tuple shape as _seed_verdant_npcs; see _upsert_npc_definitions.
+        npcs = [
+            # Surface creatures — passive except the two territorial variants
+            ('mountain-goat', 'mountain goat', 'normal', False,
+             (70, 13, 12, 14, 2, 2, 10), 6.0, None, 'animal-drops', (0, 0), 1,
+             'Shag-coated and slab-shouldered, standing on a slope that should '
+             'be impossible, chewing, unimpressed by your entire species.', {}),
+            ('mountain-squirrel', 'mountain squirrel', 'normal', False,
+             (20, 5, 17, 6, 3, 3, 14), 6.0, None, 'animal-drops', (0, 0), 1,
+             'Small, loud, and incandescent with territorial fury. It has '
+             'already thrown something at you.', {}),
+            ('brown-bear', 'brown bear', 'elite', False,
+             (130, 18, 8, 17, 3, 3, 8), 7.0, None, 'animal-drops', (0, 0), 1,
+             'A brown bear of the high Ridge — bigger than the valley kind, '
+             'and less philosophical about company.', {}),
+            ('mountain-lion', 'mountain lion', 'elite', False,
+             (120, 15, 17, 13, 3, 3, 14), 8.0, None, 'animal-drops', (0, 0), 1,
+             'A high-country lion, long as a bench and fluid as poured shadow. '
+             'On the path, there is a truce. You are not always on the path.', {}),
+            ('prowling-mountain-lion', 'prowling mountain lion', 'elite', True,
+             (150, 17, 19, 14, 3, 3, 15), 9.0, None, 'animal-drops', (0, 0), 1,
+             'A lion of the forbidden places, and it is not watching you — it '
+             'is already closing. The villagers told you. They always tell '
+             'you.', {}),
+            ('territorial-brown-bear', 'territorial brown bear', 'elite', True,
+             (170, 21, 9, 19, 3, 3, 9), 9.0, None, 'animal-drops', (0, 0), 1,
+             'A bear at the scale where the word stops being descriptive. This '
+             'ground is claimed, and you are the paperwork.', {}),
+            # Villagers — passive
+            ('mountain-villager', 'mountain villager', 'normal', False,
+             (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (8, 20), 5,
+             'A villager of the high Ridge, stone-handed and weatherproof, '
+             'hospitality and warnings issued in the same breath.', {}),
+            ('mountain-hunter', 'mountain hunter', 'normal', False,
+             (110, 13, 14, 13, 8, 9, 14), 8.0, None, 'ridge-hunter-gear', (8, 20), 5,
+             'A Ridge hunter, bow strung and back never quite to the slope. '
+             'They know exactly which grounds are forbidden, and why, and stay '
+             'alive by it.', {}),
+            # Checkpoint service NPCs — passive
+            ('old-brammel', 'Old Brammel the Mender', 'normal', False,
+             (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (8, 20), 5,
+             "Old Brammel came down from Lastlight the year the green light "
+             "appeared at the crag's foot, set up a bench, and has been "
+             "mending travelers' gear beside it ever since. He calls the "
+             'sphere "the little lamp" and considers it excellent company.',
+             {'is_repairer': True}),
+            ('ridda-the-trader', 'Ridda the Trader', 'normal', False,
+             (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (10, 24), 5,
+             "Ridda trades at the mountains' door: tools, iron, and the things "
+             "climbers wish they'd bought lower down. Her prices are fair and "
+             'her warnings free.', {}),
+            # The Verdant Sphere — the summit sphere
+            ('the-verdant-sphere', 'the Verdant Sphere', 'normal', False,
+             (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
+             'A sphere of pure deep green, suspended at eye level inside the '
+             'stone of the obelisk as though the stone grew around it — and '
+             'here, in this garden, perhaps it did. It is the same presence '
+             'as the pale one at the Heart of the Convergence, wearing this '
+             "zone's color the way light wears a leaf. It does not spin, "
+             'pulse, or drift. The garden grows toward it. Stand here long '
+             'enough and you will understand the impulse.',
+             {'is_unique': True}),
+            # Cave insects — aggressive
+            ('elder-cave-spider', 'elder cave spider', 'elite', True,
+             (110, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
+             'A spider grown old in the dark under the mountain, pale as deep '
+             'silk and patient as geology.', {}),
+            ('elder-cave-centipede', 'elder cave centipede', 'elite', True,
+             (130, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 1,
+             'Length beyond reason, armored in segments the size of shields, '
+             'older than the villages above it.', {}),
+            ('elder-cave-beetle', 'elder cave beetle', 'elite', True,
+             (150, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 1,
+             'A beetle at the scale of livestock, chitin black-green, wings '
+             'that open with a sound like a door to somewhere worse.', {}),
+            # Bosses — aggressive
+            ('undercrag-weaver', 'the Undercrag Weaver', 'boss', True,
+             (500, 20, 22, 18, 5, 5, 18), 21.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
+             'A spider of architectural size, pale as the generations of silk '
+             'it has spun beneath the mountain. High above it, snared in a '
+             'cradle of lines, hangs an iron-strapped strongbox it took whole '
+             'and keeps for reasons a spider keeps things.',
+             {'death_message':
+              'The Undercrag Weaver sags into its own silk. High above, the '
+              'web-line holding a snared strongbox parts strand by strand — '
+              'then all at once, and the box crashes down and bursts open.'}),
+            ('chittering-king', 'the Chittering King', 'boss', True,
+             (650, 24, 20, 22, 6, 6, 16), 27.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
+             'A centipede of dynastic size, coiled in glossy tiers about a '
+             'chest scored soft by a thousand legs across uncountable years. '
+             'The deep chitters in his name.',
+             {'death_message':
+              'The Chittering King unclenches, segment by segment, from '
+              'around the chest it has coiled about for years. The lid, '
+              'scored by a thousand legs, falls open.'}),
+            ('crowned-devourer', 'the Crowned Devourer', 'boss', True,
+             (850, 27, 18, 27, 7, 7, 15), 30.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
+             'Legend, standing on legend: a beetle vast as myth atop a hoard '
+             'of every genre the rifts ever spilled, wings holding one '
+             'enormous patient chord beneath the light of the Crown itself.',
+             {'death_message':
+              'The Crowned Devourer crashes down, wings splintering, and the '
+              'hoard beneath it shifts — coins and treasures sliding free of '
+              'the great shape that will never guard them again.'}),
+            # Boss minions — aggressive, spawn-gated on their boss
+            ('weavers-brood', "one of the Weaver's brood", 'elite', True,
+             (90, 15, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'insect-drops', (0, 0), 3,
+             "A spider of the Weaver's brood, pale and quick, spun into the "
+             'world for exactly this purpose.', {}),
+            ('kings-skitterlings', "one of the King's skitterlings", 'elite', True,
+             (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 3,
+             "A skitterling of the King's court, already terrible, keeping "
+             'the rhythm its sovereign conducts.', {}),
+            ('devourers-drones', "one of the Devourer's drones", 'elite', True,
+             (120, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 3,
+             "A drone of the Devourer's chord, wings tuned to its mother's "
+             "note, holding the hoard's perimeter.", {}),
+        ]
+        self._upsert_npc_definitions(npcs, 'Viridian Ridge')
+
+    def _seed_ridge_spawns(self):
+        # (room key, npc slug, count, gating boss slug or None)
+        spawns = [
+            # Surface — Cragfoot, the ridge legs, villages, aggro grounds
+            ('vr-c01', 'verdant-shard', 1, None),
+            ('vr-c01', 'old-brammel', 1, None),
+            ('vr-c01', 'ridda-the-trader', 1, None),
+            ('vr-m02', 'mountain-goat', 1, None),
+            ('vr-m04', 'mountain-squirrel', 2, None),
+            ('vr-m05', 'mountain-goat', 2, None),
+            ('vr-m07', 'brown-bear', 1, None),
+            ('vr-m09', 'mountain-goat', 3, None),
+            ('vr-m10', 'mountain-squirrel', 3, None),
+            ('vr-m11', 'prowling-mountain-lion', 2, None),
+            ('vr-st1', 'mountain-villager', 2, None),
+            ('vr-st2', 'mountain-villager', 2, None),
+            ('vr-m15', 'mountain-goat', 2, None),
+            ('vr-m16', 'brown-bear', 1, None),
+            ('vr-m17', 'mountain-squirrel', 2, None),
+            ('vr-m19', 'mountain-lion', 1, None),
+            ('vr-m22', 'mountain-goat', 3, None),
+            ('vr-m23', 'mountain-squirrel', 3, None),
+            ('vr-m24', 'territorial-brown-bear', 2, None),
+            ('vr-hf1', 'mountain-villager', 2, None),
+            ('vr-hf2', 'mountain-villager', 2, None),
+            ('vr-m28', 'mountain-goat', 2, None),
+            ('vr-m29', 'brown-bear', 1, None),
+            ('vr-m30', 'mountain-squirrel', 2, None),
+            ('vr-m33', 'mountain-lion', 1, None),
+            ('vr-m36', 'mountain-goat', 3, None),
+            ('vr-m37', 'mountain-squirrel', 3, None),
+            ('vr-m38', 'prowling-mountain-lion', 3, None),
+            ('vr-m39', 'territorial-brown-bear', 3, None),
+            ('vr-ll1', 'mountain-villager', 2, None),
+            ('vr-ll2', 'mountain-villager', 1, None),
+            ('vr-ll2', 'mountain-hunter', 2, None),
+            ('vr-vc1', 'the-verdant-sphere', 1, None),
+            # The Undercrag
+            ('vr-c5a', 'elder-cave-spider', 1, None),
+            ('vr-c5b', 'elder-cave-spider', 2, None),
+            ('vr-c5c', 'elder-cave-centipede', 2, None),
+            ('vr-c5d', 'elder-cave-spider', 2, None),
+            ('vr-c5e', 'elder-cave-beetle', 2, None),
+            ('vr-c5f', 'elder-cave-centipede', 1, None),
+            ('vr-c5f', 'elder-cave-beetle', 1, None),
+            ('vr-c5g', 'elder-cave-spider', 2, None),
+            ('vr-c5h', 'elder-cave-spider', 1, None),
+            ('vr-c5h', 'elder-cave-centipede', 1, None),
+            ('vr-c5i', 'undercrag-weaver', 1, None),
+            ('vr-c5i', 'weavers-brood', 3, 'undercrag-weaver'),
+            # Chitterdeep
+            ('vr-c6a', 'elder-cave-centipede', 1, None),
+            ('vr-c6b', 'elder-cave-centipede', 2, None),
+            ('vr-c6c', 'elder-cave-beetle', 2, None),
+            ('vr-c6d', 'elder-cave-centipede', 2, None),
+            ('vr-c6e', 'elder-cave-spider', 2, None),
+            ('vr-c6f', 'elder-cave-centipede', 2, None),
+            ('vr-c6g', 'elder-cave-beetle', 1, None),
+            ('vr-c6g', 'elder-cave-spider', 1, None),
+            ('vr-c6h', 'elder-cave-centipede', 2, None),
+            ('vr-c6i', 'elder-cave-centipede', 1, None),
+            ('vr-c6i', 'elder-cave-beetle', 1, None),
+            ('vr-c6j', 'chittering-king', 1, None),
+            ('vr-c6j', 'kings-skitterlings', 3, 'chittering-king'),
+            # Hollowcrown
+            ('vr-c7a', 'elder-cave-beetle', 1, None),
+            ('vr-c7b', 'elder-cave-beetle', 2, None),
+            ('vr-c7c', 'elder-cave-spider', 2, None),
+            ('vr-c7d', 'elder-cave-beetle', 2, None),
+            ('vr-c7e', 'elder-cave-centipede', 2, None),
+            ('vr-c7f', 'elder-cave-beetle', 2, None),
+            ('vr-c7g', 'elder-cave-spider', 1, None),
+            ('vr-c7g', 'elder-cave-centipede', 1, None),
+            ('vr-c7h', 'elder-cave-beetle', 2, None),
+            ('vr-c7i', 'elder-cave-centipede', 1, None),
+            ('vr-c7i', 'elder-cave-beetle', 1, None),
+            ('vr-c7j', 'elder-cave-beetle', 2, None),
+            ('vr-c7k', 'crowned-devourer', 1, None),
+            ('vr-c7k', 'devourers-drones', 3, 'crowned-devourer'),
+        ]
+        for room_key, npc_slug, count, gate_slug in spawns:
+            RoomSpawn.objects.get_or_create(
+                room=self.rooms[room_key],
+                npc_definition=NpcDefinition.objects.get(slug=npc_slug),
+                mk_tier=1,
+                defaults={
+                    'count': count,
+                    'is_active': True,
+                    'requires_living_npc': (
+                        NpcDefinition.objects.get(slug=gate_slug)
+                        if gate_slug else None
+                    ),
+                },
+            )
+        self.stdout.write(f'Viridian Ridge: {len(spawns)} room spawns seeded.')
+
+    def _seed_ridge_vendors(self):
+        vendors = {
+            'ridda-the-trader': [
+                ('healing-draught', 15),
+                ('iron-mace', 80),
+                ('wooden-shield', 70),
+                ('iron-sword', 75),
+                ('leather-cap', 40),
+            ],
+        }
+        entry_count = 0
+        for npc_slug, wares in vendors.items():
+            npc = NpcDefinition.objects.get(slug=npc_slug)
+            for item_slug, price in wares:
+                VendorEntry.objects.get_or_create(
+                    npc_definition=npc,
+                    item_definition=ItemDefinition.objects.get(slug=item_slug),
+                    mk_tier=1,
+                    defaults={
+                        'price': price,
+                        'stock_limit': None,
+                        'is_active': True,
+                    },
+                )
+                entry_count += 1
+        self.stdout.write(f'Viridian Ridge: {entry_count} vendor entries seeded.')
