@@ -477,8 +477,12 @@ class Command(BaseCommand):
             if spawn.requires_living_npc_id and not await self.gate_npc_is_alive(spawn):
                 continue
             live_count, dead_count = await self.count_instances(spawn)
+            # Dead instances hold their slot until clear_expired_dead removes
+            # them at respawn time; counting only live instances here would
+            # refill the room the tick after a kill and respawn_minutes would
+            # never matter.
             to_create = min(
-                spawn.count - live_count,
+                spawn.count - (live_count + dead_count),
                 (spawn.count * 2) - (live_count + dead_count),
             )
             for _ in range(to_create):
