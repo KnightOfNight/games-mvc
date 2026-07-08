@@ -163,11 +163,12 @@ class EffectComponentAdmin(admin.ModelAdmin):
 
 @admin.register(ItemDefinition)
 class ItemDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'item_type', 'genre_tag', 'takes_durability_loss')
+    list_display = ('name', 'item_type', 'genre_tag', 'base_value', 'takes_durability_loss')
     list_filter = ('item_type', 'genre_tag')
     prepopulated_fields = {'slug': ('name',)}
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'item_type', 'genre_tag', 'description')}),
+        ('Economy', {'fields': ('base_value',)}),
         ('Identification', {'fields': ('mystery_name', 'mystery_description', 'suppress_mk_suffix')}),
         ('Scaling', {'fields': ('scaling_base', 'scaling_factor')}),
         ('Weapon', {'fields': ('damage_spread', 'is_ranged')}),
@@ -255,8 +256,8 @@ class NpcEffectInline(admin.TabularInline):
 
 @admin.register(NpcDefinition)
 class NpcDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'genre_tag', 'combat_tier', 'is_aggressive', 'is_unique', 'respawn_minutes')
-    list_filter = ('genre_tag', 'is_aggressive', 'is_unique')
+    list_display = ('name', 'slug', 'genre_tag', 'combat_tier', 'is_aggressive', 'is_unique', 'is_repairer', 'respawn_minutes')
+    list_filter = ('genre_tag', 'is_aggressive', 'is_unique', 'is_repairer')
     prepopulated_fields = {'slug': ('name',)}
     raw_id_fields = ('loot_table', 'unarmed_message_pool')
     inlines = [NpcEffectInline]
@@ -293,7 +294,7 @@ class RoomSpawnAdmin(admin.ModelAdmin):
 
 @admin.register(VendorEntry)
 class VendorEntryAdmin(admin.ModelAdmin):
-    list_display        = ('npc_definition', 'item_definition', 'mk_tier', 'price', 'stock_limit', 'is_active')
+    list_display        = ('npc_definition', 'item_definition', 'mk_tier', 'price', 'stock_limit', 'sold_count', 'is_active')
     list_filter         = ('is_active', 'npc_definition')
     raw_id_fields       = ('npc_definition', 'item_definition')
     list_select_related = ('npc_definition', 'item_definition')

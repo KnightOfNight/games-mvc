@@ -44,6 +44,33 @@ RARITY_SECONDARY_SLOTS = {
     'artifact':  None,  # hand-authored; caller should not use this function
 }
 
+RARITY_VALUE_MULTIPLIERS = {
+    'common': 1, 'uncommon': 2, 'rare': 4,
+    'epic': 8, 'legendary': 16, 'artifact': 32,
+}
+
+
+def get_item_value(item):
+    """Full worth in copper: base_value × mk_tier × rarity multiplier."""
+    mult = RARITY_VALUE_MULTIPLIERS.get(item.rarity, 1)
+    return item.definition.base_value * item.mk_tier * mult
+
+
+def get_sale_price(item):
+    """What a vendor pays: one third of value, minimum 1 copper."""
+    return max(1, get_item_value(item) // 3)
+
+
+def get_repair_cost(item):
+    """Cost per repair attempt: value × missing durability × 50%, min 1."""
+    missing = 1.0 - (item.durability_current / 100.0)
+    return max(1, int(get_item_value(item) * missing * 0.5))
+
+
+def get_repair_success_chance(item):
+    """20% at zero durability, ~95% near full."""
+    return 0.20 + ((item.durability_current / 100.0) * 0.75)
+
 
 def _roll_stat(base, factor, mk_tier, rarity):
     midpoint = base + (factor * mk_tier)

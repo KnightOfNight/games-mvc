@@ -7,14 +7,17 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
+from . import currency
 from .currency import display_for_zone
 from .item_utils import (
-    format_slot_name, get_display_name, get_display_name_with_tier,
-    get_display_description, parse_item_noun, parse_corpse_noun, STAT_LABELS,
+    format_slot_name, generate_item_instance, get_display_name,
+    get_display_name_with_tier, get_display_description, get_repair_cost,
+    get_repair_success_chance, get_sale_price, parse_item_noun,
+    parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, ItemInstance,
-    NpcInstance, Room, RoomVisit, TravelMessage, TravelNode,
+    NpcInstance, Room, RoomVisit, TravelMessage, TravelNode, VendorEntry,
     COMBAT_ROUND_TICKS, FLEE_COOLDOWN_TICKS,
 )
 
@@ -190,6 +193,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_examine(args)
         elif verb == 'loot':
             await self.cmd_loot(args)
+        elif verb == 'list':
+            await self.cmd_list()
+        elif verb == 'buy':
+            await self.cmd_buy(args)
+        elif verb == 'sell':
+            await self.cmd_sell(args)
+        elif verb == 'repair':
+            await self.cmd_repair(args)
         elif verb in ('kill', 'attack', 'k'):
             await self.cmd_attack(args)
         elif verb == 'flee':
@@ -477,7 +488,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  examine (ex) <item>        — inspect an item, NPC, or corpse in detail\n'
             '  loot [corpse] [item]       — loot a corpse; bare \'loot\' takes everything from your most recent kill\n'
             '  travel [destination]       — fast-travel via the Obelisk Network (from an obelisk)\n'
-            '  kill / attack (k) <npc>   — attack an NPC in the room\n'
+            '  list                       — see what a vendor here has for sale\n'
+            '  buy <item>                 — buy an item from a vendor here\n'
+            '  sell <item>                — sell an unequipped item to a vendor here\n'
+            '  repair [item | all]        — pay a mender here to repair damaged gear\n'
+            '  kill / attack (k) [npc]    — attack an NPC; bare attack strikes back at whatever hit you first\n'
             '  flee                       — attempt to escape from combat\n'
             '  stats                      — show your character stats and XP\n'
             '  spend <stat> <amount>      — spend stat points (e.g. spend dex 2)\n'
@@ -1019,23 +1034,223 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             })
 
     # ------------------------------------------------------------------
+    # Commerce commands
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _entry_exhausted(entry):
+        return entry.stock_limit is not None and entry.sold_count >= entry.stock_limit
+
+    @staticmethod
+    def _entry_display_name(entry):
+        # Vendor entries reference definitions, not instances — format
+        # directly rather than via get_display_name_with_tier.
+        name = entry.item_definition.name
+        if entry.item_definition.suppress_mk_suffix:
+            return name
+        return f'{name} Mk {entry.mk_tier}'
+
+    async def cmd_list(self):
+        room = await self.get_current_room()
+        vendor = await self.get_vendor_in_room(room)
+        if vendor is None:
+            await self.output('There is no one here to trade with.', 'error')
+            return
+
+        entries = await self.get_vendor_entries(vendor)
+        listable = [e for e in entries if not self._entry_exhausted(e)]
+        if not listable:
+            await self.output(f'{vendor.name} has nothing left for sale.', 'system')
+            return
+
+        lines = [f'{vendor.name} offers:']
+        for entry in listable:
+            line = f'  {self._entry_display_name(entry)} — {entry.price} copper'
+            if entry.stock_limit is not None:
+                line += f' ({entry.stock_limit - entry.sold_count} left)'
+            lines.append(line)
+        await self.output('\n'.join(lines), 'system')
+
+    async def cmd_buy(self, args):
+        if not args:
+            await self.output('Buy what?', 'system')
+            return
+
+        room = await self.get_current_room()
+        vendor = await self.get_vendor_in_room(room)
+        if vendor is None:
+            await self.output('There is no one here to trade with.', 'error')
+            return
+
+        entries = await self.get_vendor_entries(vendor)
+        query = args.strip().lower()
+        entry = next(
+            (e for e in entries if e.item_definition.name.lower().startswith(query)),
+            None,
+        )
+        if entry is None:
+            await self.output("They don't sell that.", 'system')
+            return
+        if self._entry_exhausted(entry):
+            await self.output('Sold out.', 'system')
+            return
+
+        char = await self.get_character_fresh()
+        if entry.price > char.copper:
+            await self.output(
+                f"You can't afford that — it costs {entry.price} copper.", 'system',
+            )
+            return
+
+        current_count, max_capacity = await self.get_carry_capacity(char)
+        if current_count >= max_capacity:
+            await self.output(
+                f"You can't carry any more. ({current_count}/{max_capacity} items)",
+                'system',
+            )
+            return
+
+        result = await self.do_buy(entry, char)
+        if result == 'poor':
+            await self.output(
+                f"You can't afford that — it costs {entry.price} copper.", 'system',
+            )
+            return
+        if result == 'sold_out':
+            await self.output('Sold out.', 'system')
+            return
+        await self.output(
+            f'You buy {get_display_name_with_tier(result)} for {entry.price} copper.',
+            'system',
+        )
+
+    async def cmd_sell(self, args):
+        if not args:
+            await self.output('Sell what?', 'system')
+            return
+
+        room = await self.get_current_room()
+        vendor = await self.get_vendor_in_room(room)
+        if vendor is None:
+            await self.output('There is no one here to trade with.', 'error')
+            return
+
+        char = self.character
+        carried = await self.get_carried_items(char)
+        query = args.strip().lower()
+        matches = [i for i in carried if get_display_name(i).lower().startswith(query)]
+        if not matches:
+            await self.output("You aren't carrying that.", 'system')
+            return
+
+        unequipped = [i for i in matches if not i.is_equipped]
+        if not unequipped:
+            await self.output("You'll have to unequip it first.", 'system')
+            return
+
+        item = unequipped[0]
+        name = get_display_name_with_tier(item)
+        price = await self.do_sell(item, char)
+        await self.output(f'You sell {name} for {price} copper.', 'system')
+
+    async def cmd_repair(self, args):
+        char = await self.get_character_fresh()
+        room = await self.get_current_room()
+        repairer = await self.get_repairer_in_room(room)
+        if repairer is None:
+            await self.output('There is no one here who can repair.', 'error')
+            return
+
+        arg = args.strip().lower() if args else ''
+        damaged = await self.get_damaged_items(char)
+
+        if arg == 'all':
+            if not damaged:
+                await self.output('You have nothing to repair.', 'system')
+                return
+            lines = []
+            repaired = failed = spent = 0
+            for item in damaged:
+                name = get_display_name_with_tier(item)
+                outcome, cost = await self.do_repair_attempt(item, char)
+                if outcome == 'poor':
+                    lines.append(
+                        f"You can't afford to repair {name} ({cost} copper) — "
+                        'you stop there.'
+                    )
+                    break
+                spent += cost
+                if outcome == 'success':
+                    repaired += 1
+                    lines.append(f'{name} is restored to full condition. ({cost} copper)')
+                else:
+                    failed += 1
+                    lines.append(f"The mending on {name} didn't take. ({cost} copper)")
+            lines.append(
+                f'Repaired {repaired} item{"s" if repaired != 1 else ""}, '
+                f'{failed} attempt{"s" if failed != 1 else ""} failed, '
+                f'{spent} copper spent.'
+            )
+            await self.output('\n'.join(lines), 'system')
+            return
+
+        if arg:
+            items = await self.get_carried_items(char)
+            matches = [i for i in items if get_display_name(i).lower().startswith(arg)]
+            if not matches:
+                await self.output("You aren't carrying that.", 'system')
+                return
+            item = matches[0]
+            if (not item.definition.takes_durability_loss
+                    or item.durability_current >= 100.0):
+                await self.output("That doesn't need repair.", 'system')
+                return
+        else:
+            if not damaged:
+                await self.output('You have nothing to repair.', 'system')
+                return
+            item = damaged[0]
+
+        name = get_display_name_with_tier(item)
+        outcome, cost = await self.do_repair_attempt(item, char)
+        if outcome == 'poor':
+            await self.output(
+                f"Repairing your {name} costs {cost} copper — you can't afford it.",
+                'system',
+            )
+        elif outcome == 'success':
+            await self.output(
+                f'{repairer.name} restores your {name} to full condition. '
+                f'({cost} copper)', 'system',
+            )
+        else:
+            await self.output(
+                f"{repairer.name} works on your {name}, but the mending didn't "
+                f'take. ({cost} copper)', 'system',
+            )
+
+    # ------------------------------------------------------------------
     # Combat commands
     # ------------------------------------------------------------------
 
     async def cmd_attack(self, args):
-        if not args:
-            await self.send_output("Attack what?", 'error')
-            return
-
         character = await self.get_character_fresh()
-        room = await self.get_current_room()
 
-        npcs = await self.get_live_npcs_in_room(room)
-        npc = await self.parse_npc_noun(args, npcs)
+        if not args:
+            # Targetless attack only auto-targets under aggro: the
+            # earliest-engaged living NPC in the active combat session.
+            npc = await self.get_first_attacker_npc(character)
+            if npc is None:
+                await self.send_output("Attack what?", 'error')
+                return
+        else:
+            room = await self.get_current_room()
+            npcs = await self.get_live_npcs_in_room(room)
+            npc = await self.parse_npc_noun(args, npcs)
 
-        if npc is None:
-            await self.send_output("You don't see that here.", 'error')
-            return
+            if npc is None:
+                await self.send_output("You don't see that here.", 'error')
+                return
 
         await self.send_output(f"You attack the {npc.definition.name}!", 'combat')
         await self.broadcast_to_room_exclude(
@@ -1601,6 +1816,125 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return current, max_carry
 
     # ------------------------------------------------------------------
+    # Commerce DB helpers
+    # ------------------------------------------------------------------
+
+    @database_sync_to_async
+    def get_vendor_in_room(self, room):
+        """First living NPC in the room whose definition has an active VendorEntry."""
+        return (
+            NpcInstance.objects.filter(
+                current_room=room,
+                is_alive=True,
+                definition__vendor_entries__is_active=True,
+            )
+            .select_related('definition')
+            .order_by('pk')
+            .distinct()
+            .first()
+        )
+
+    @database_sync_to_async
+    def get_repairer_in_room(self, room):
+        return (
+            NpcInstance.objects.filter(
+                current_room=room,
+                is_alive=True,
+                definition__is_repairer=True,
+            )
+            .select_related('definition')
+            .order_by('pk')
+            .first()
+        )
+
+    @database_sync_to_async
+    def get_vendor_entries(self, vendor):
+        """Active entries for a vendor, exhausted ones included (buy reports Sold out)."""
+        return list(
+            VendorEntry.objects.filter(
+                npc_definition_id=vendor.definition_id, is_active=True,
+            )
+            .select_related('item_definition')
+            .order_by('item_definition__name', 'mk_tier')
+        )
+
+    @database_sync_to_async
+    def do_buy(self, entry, character):
+        """Atomically charge, count the sale, and create the purchased item."""
+        from django.db import transaction
+        with transaction.atomic():
+            fresh = VendorEntry.objects.select_related('item_definition').select_for_update().get(pk=entry.pk)
+            if fresh.stock_limit is not None and fresh.sold_count >= fresh.stock_limit:
+                return 'sold_out'
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            try:
+                char.copper = currency.subtract(char.copper, fresh.price)
+            except ValueError:
+                return 'poor'
+            char.save(update_fields=['copper'])
+            fresh.sold_count += 1
+            fresh.save(update_fields=['sold_count'])
+            item = generate_item_instance(
+                definition=fresh.item_definition,
+                mk_tier=fresh.mk_tier,
+                rarity='common',
+                owner=char,
+            )
+            item.save()
+        self.character.copper = char.copper
+        return item
+
+    @database_sync_to_async
+    def do_sell(self, item, character):
+        """Credit the sale price and delete the sold instance — compensated disposal."""
+        from django.db import transaction
+        price = get_sale_price(item)
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            char.copper = currency.add(char.copper, price)
+            char.save(update_fields=['copper'])
+            item.delete()
+        self.character.copper = char.copper
+        return price
+
+    @database_sync_to_async
+    def get_damaged_items(self, character):
+        """Eligible repair targets, most-damaged first (stable tie-break on pk)."""
+        return list(
+            ItemInstance.objects.filter(
+                owner=character,
+                definition__takes_durability_loss=True,
+                durability_current__lt=100.0,
+            )
+            .select_related('definition')
+            .order_by('durability_current', 'pk')
+        )
+
+    @database_sync_to_async
+    def do_repair_attempt(self, item, character):
+        """One paid repair attempt. Returns (outcome, cost); outcome is
+        'poor' (refused, nothing charged), 'success', or 'fail' (copper spent,
+        item unchanged)."""
+        from django.db import transaction
+        cost = get_repair_cost(item)
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            try:
+                char.copper = currency.subtract(char.copper, cost)
+            except ValueError:
+                return ('poor', cost)
+            char.save(update_fields=['copper'])
+            if random.random() < get_repair_success_chance(item):
+                item.durability_current = 100.0
+                item.is_broken = False
+                item.save(update_fields=['durability_current', 'is_broken'])
+                outcome = 'success'
+            else:
+                outcome = 'fail'
+        self.character.copper = char.copper
+        return (outcome, cost)
+
+    # ------------------------------------------------------------------
     # Combat DB helpers
     # ------------------------------------------------------------------
 
@@ -1666,6 +2000,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_active_combat_session(self, character):
         return CombatSession.objects.filter(is_active=True, characters=character).first()
+
+    @database_sync_to_async
+    def get_first_attacker_npc(self, character):
+        """Earliest-engaged living NPC in the character's active combat
+        session (through-row order = join order), or None without aggro."""
+        session = CombatSession.objects.filter(
+            is_active=True, characters=character,
+        ).first()
+        if session is None:
+            return None
+        link = (
+            CombatSession.npcs.through.objects
+            .filter(combatsession=session, npcinstance__is_alive=True)
+            .select_related('npcinstance__definition')
+            .order_by('pk')
+            .first()
+        )
+        return link.npcinstance if link else None
 
     @database_sync_to_async
     def get_session_npcs(self, session):

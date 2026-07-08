@@ -337,6 +337,7 @@ class ItemDefinition(models.Model):
     BAG = 'bag'
     READABLE = 'readable'
     KEY = 'key'
+    MATERIAL = 'material'
     ITEM_TYPE_CHOICES = [
         (WEAPON, 'Weapon'),
         (ARMOR, 'Armor'),
@@ -345,6 +346,7 @@ class ItemDefinition(models.Model):
         (BAG, 'Bag'),
         (READABLE, 'Readable'),
         (KEY, 'Key'),
+        (MATERIAL, 'Material'),
     ]
 
     FANTASY = 'fantasy'
@@ -367,6 +369,13 @@ class ItemDefinition(models.Model):
     item_type = models.CharField(max_length=20, choices=ITEM_TYPE_CHOICES)
     genre_tag = models.CharField(max_length=20, choices=GENRE_TAG_CHOICES)
     description = models.TextField()
+
+    base_value = models.BigIntegerField(
+        default=1,
+        help_text='Authored worth in copper at Mk 1, Common. Item value = '
+                  'base_value × mk_tier × rarity multiplier. Sale price is '
+                  'one third of value.',
+    )
 
     scaling_base = models.FloatField()
     scaling_factor = models.FloatField()
@@ -630,6 +639,11 @@ class NpcDefinition(models.Model):
     is_aggressive   = models.BooleanField(default=False, help_text="Attacks players on sight.")
     is_unique       = models.BooleanField(default=False, help_text="One instance only; no respawn.")
     wanders         = models.BooleanField(default=False, help_text="Moves between rooms. Not yet implemented.")
+    is_repairer     = models.BooleanField(
+        default=False,
+        help_text='This NPC offers repair services. The repair command routes '
+                  'to a living repairer in the room.',
+    )
 
     combat_tier = models.CharField(
         max_length=20,
@@ -792,9 +806,6 @@ class VendorEntry(models.Model):
 
     An NpcDefinition with one or more VendorEntry rows is a vendor.
     No flag is needed on NpcDefinition itself.
-
-    Buy/sell commands are not yet implemented. This model exists for
-    authoring vendor inventories before those commands are built.
     """
     npc_definition  = models.ForeignKey(
         NpcDefinition, on_delete=models.CASCADE, related_name='vendor_entries',
@@ -815,6 +826,11 @@ class VendorEntry(models.Model):
             "Maximum number of this item available for purchase. "
             "Null = unlimited stock."
         ),
+    )
+    sold_count      = models.IntegerField(
+        default=0,
+        help_text='Units sold so far. An entry with a finite stock_limit is '
+                  'exhausted when sold_count >= stock_limit.',
     )
     is_active       = models.BooleanField(
         default=True,

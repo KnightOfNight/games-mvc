@@ -1401,6 +1401,20 @@ class Command(BaseCommand):
         ).count()
         self._check('All Convergence rooms are flag_safe', unsafe_count == 0)
 
+        material_count = ItemDefinition.objects.filter(
+            item_type='material', slug__in=('animal-hide', 'insect-carapace'),
+        ).count()
+        self._check(
+            f'2 material ItemDefinitions exist (found {material_count})',
+            material_count == 2,
+        )
+
+        unvalued = ItemDefinition.objects.filter(base_value=1).count()
+        self._check(
+            f'No ItemDefinition left at default base_value (found {unvalued})',
+            unvalued == 0,
+        )
+
         if self._failures:
             raise CommandError(f'{len(self._failures)} verification check(s) failed.')
         self.stdout.write(self.style.SUCCESS('All verification checks passed.'))
@@ -2027,6 +2041,37 @@ class Command(BaseCommand):
                 'effect': None,
                 'description': 'Patches, adhesive, and a small wrench. Enough to hold things together.',
             },
+            # Materials (vendor-sellable, no slots, stats, or durability)
+            {
+                'slug': 'animal-hide',
+                'name': 'Animal Hide',
+                'item_type': 'material',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'base_value': 6,
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': 'A cured animal hide, rolled and tied. Worth a little to any trader.',
+            },
+            {
+                'slug': 'insect-carapace',
+                'name': 'Insect Carapace',
+                'item_type': 'material',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'base_value': 8,
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': 'A plate of chitin, dark and glossy. Traders buy them by the stack.',
+            },
         ]
 
         # v18 copper accessories (tier-material items — no Mk suffix shown).
@@ -2269,6 +2314,43 @@ class Command(BaseCommand):
             self.stdout.write(
                 f'  ItemDefinition "{data["name"]}" {"created" if created else "updated"}.'
             )
+
+        # v18 brief 4: base_value back-fill. get_or_create never updates
+        # existing rows, so authored values are forced here on every run.
+        base_values = {
+            'iron-sword': 60,
+            'combat-knife': 35,
+            'pulse-pistol': 90,
+            'apprentice-staff': 55,
+            'leather-vest': 50,
+            'ballistic-jacket': 55,
+            'iron-mace': 65,
+            'broadsword': 100,
+            'battle-axe': 100,
+            'hunting-bow': 80,
+            'wooden-shield': 55,
+            'leather-cap': 35,
+            'leather-shoulders': 40,
+            'leather-gloves': 35,
+            'leather-belt': 35,
+            'leather-leggings': 45,
+            'leather-boots': 40,
+            'animal-hide': 6,
+            'insect-carapace': 8,
+        }
+        for stat in ('strength', 'dexterity', 'endurance',
+                     'intelligence', 'wisdom', 'perception'):
+            base_values[f'copper-ring-of-{stat}'] = 30
+            base_values[f'copper-amulet-of-{stat}'] = 30
+
+        for slug, value in base_values.items():
+            ItemDefinition.objects.filter(slug=slug).update(base_value=value)
+        ItemDefinition.objects.filter(item_type='consumable').update(base_value=12)
+        ItemDefinition.objects.filter(item_type='bag').update(base_value=50)
+        ItemDefinition.objects.exclude(slug__in=base_values).exclude(
+            item_type__in=('consumable', 'bag'),
+        ).update(base_value=25)
+        self.stdout.write('  base_value back-fill applied to all ItemDefinitions.')
 
         self.stdout.write(self.style.SUCCESS(
             f'Item seed complete: {count_created} new ItemDefinitions created.'
