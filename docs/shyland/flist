@@ -35,7 +35,9 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0019_travelmessage_travelnode_delete_zonegate.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0002_remove_character_name.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0008_character_dying_since_character_is_dying_and_more.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0020_loottableentry_guaranteed_group_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0003_area_room_area.py
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0021_itemdefinition_base_value_npcdefinition_is_repairer_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0016_npcdefinition_combat_tier_room_no_exit_down_msg_and_more.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/__init__.py
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/django/src/apps/shyland/migrations/0015_character_origin_archetype_nonnull.py
@@ -144,6 +146,7 @@ https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docker
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/flist
+https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Claud.AI_Brief_v18_Brief6_Closeout.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_GDD_v17.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/Shyland_Project_Instructions_v16-2.md
 https://raw.githubusercontent.com/KnightOfNight/games-mvc/refs/heads/main/docs/shyland/flist.tmp
