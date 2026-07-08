@@ -80,11 +80,6 @@ let activeModalCleanup = null;
 let activeModal = null;
 const keyStates = new Map();
 
-function getWebpageVersion() {
-  const meta = document.querySelector('meta[name="webpage-version"]');
-  return meta?.content || "";
-}
-
 async function fetchWithTimeout(url, options = {}, timeoutMs = WORDS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -134,12 +129,8 @@ function parseWordsPayload(payload) {
   };
 }
 
-async function loadWordsEntries(options = {}) {
-  const { version = "" } = options;
-  const wordsUrl = version
-    ? `${WORDS_URL}?v=${encodeURIComponent(version)}`
-    : WORDS_URL;
-  const response = await fetchWithTimeout(wordsUrl);
+async function loadWordsEntries() {
+  const response = await fetchWithTimeout(WORDS_URL);
   if (!response.ok) {
     throw new Error(`Words request failed with status ${response.status}`);
   }
@@ -1139,7 +1130,7 @@ async function initializeGame() {
   initializeBoard();
   initializeKeyboard();
   setControlsDisabled(true);
-  await loadWordsEntries({ version: getWebpageVersion() });
+  await loadWordsEntries();
   await resetGame();
 }
 
