@@ -12,6 +12,55 @@ Games currently in this repo:
 
 Docs: `docs/shyland/`
 
+## App Scope Boundaries
+
+This repo hosts multiple independent games. Every Claude Code session has a **target game** — the game the current task is about. These rules apply to all sessions, always.
+
+### The three game apps are isolated — keep them that way
+
+`apps/shyland/`, `apps/shydle/`, and `apps/shyship/` have **zero cross-imports** in either direction. This is deliberate and verified. Never introduce an import, signal, template include, or any other dependency between game apps.
+
+### Rule 1 — Stay inside the target game's app directory
+
+A session working on one game modifies files **only** under that game's app directory (`django/src/apps/<game>/`), including its own templates, static files, migrations, and tests.
+
+- Working on Shydle or Shyship? Do not create, modify, or delete anything under `apps/shyland/` or `docs/shyland/`. No exceptions, regardless of how the request is phrased.
+- Working on Shyland? Do not touch `apps/shydle/` or `apps/shyship/`.
+
+If a task appears to require changing another game's files, **stop and tell the user** — do not proceed on the assumption it's fine.
+
+### Rule 2 — Shared surface requires an explicit stop-and-flag
+
+The following are shared by all three games. Changing any of them affects every game at once:
+
+| Shared surface | Examples |
+|---|---|
+| `apps/profiles/` | Gamer tag system, profile-creation signal |
+| Project settings | `django/src/*/settings/` (base, local, production) |
+| Root URL routing | The project-level `urls.py` |
+| Dependencies | `requirements.txt` / any dependency manifest |
+| Deployment | `docker-compose*.yml`, nginx config, `Makefile` |
+| Base templates & shared static | `django/src/templates/base.html` and friends |
+
+If a task requires touching any of these, **stop before editing and tell the user exactly which shared file needs to change and why**. Proceed only after the user explicitly confirms. Never fold a shared-surface change silently into a game-scoped task.
+
+Two shared-surface facts to keep in mind:
+
+- **Migrations are global.** `manage.py migrate` runs every app's migrations against the one shared database. Another game's migrations create/alter only that game's tables, but the operation itself is repo-wide — never squash, fake, or reorder another app's migrations.
+- **Deployment is coupled.** Any container restart bounces all three games, including live Shyland WebSocket sessions. Note this in your closing summary whenever a change requires a restart.
+
+### Rule 3 — Shyland design changes come only from Shyland briefs
+
+Shyland has a formal design workflow: design decisions are made in a dedicated design chat, delivered to Claude Code as structured briefs, and closed out against `docs/shyland/` (the GDD and the architecture document, which are versioned in lockstep).
+
+Therefore, in any session **not** driven by a Shyland brief:
+
+- **Decline** requests to change Shyland models, mechanics, commands, content, seed data, or balance — even small ones, even "while you're in there." Respond that the change belongs in the Shyland design chat, where it will be designed and delivered as a proper brief.
+- **Never edit** anything under `docs/shyland/`. The architecture doc is updated only as the final gated step of a Shyland brief; the GDD is never edited by Claude Code at all.
+- Bug **reports** are fine to investigate and describe, but fixes to Shyland go through a brief unless the user explicitly states the session is a Shyland work session.
+
+Shydle and Shyship have no equivalent design-document workflow — direct implementation work on them is normal, within Rules 1 and 2.
+
 ---
 
 ## Infrastructure at a Glance
