@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit b686093 (v18 brief 3: battle-zone engine mechanics — boss-gated spawns via `RoomSpawn.requires_living_npc`, guaranteed-group loot via `LootTableEntry.guaranteed_group`, per-NPC death messages via `NpcDefinition.death_message`, and outleveled XP reduction in `xp_for_kill`).
+> Authoritative technical reference as of commit 97f3732 (v18 brief 4: commerce & combat QoL — item valuation via `ItemDefinition.base_value`, the `list`/`buy`/`sell`/`repair` commands, the `material` item type, and targetless `attack`/`kill` under aggro).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. Brief 2 ships the Obelisk Network, Shyland's fast-travel system (GDD 2.11): the superseded `ZoneGate` model is removed and replaced by `TravelNode` (one node per room, obelisk or checkpoint type) and `TravelMessage` (three seeded flavor pools), the `travel` command is implemented in the consumer (list + go forms, revelation derived from `RoomVisit`), the Primordial Sphere NPC is placed at the Heart of the Convergence, and the Heart is registered as the network's first node ("The Convergence", obelisk). Brief 2 also contains no Verdant Reach content. Brief 3 ships four zone-agnostic engine mechanics for battle-zone encounter design (migration `0020`, one `AddField` per model): boss-gated spawns (`RoomSpawn.requires_living_npc` + a tick-engine gate in `process_npc_respawn`), guaranteed-group loot (`LootTableEntry.guaranteed_group` + a rewritten `generate_loot_from_table`), per-NPC death messages (`NpcDefinition.death_message`, broadcast once to the room at death), and outleveled XP reduction (`xp_for_kill` pays −20% per level over the NPC's Mk band, floored at 10% of base and never below 1 XP). Brief 3 contains no zone content either — every mechanic is data-driven; Verdant Reach rooms, NPCs, spawns, and loot tables come in later briefs. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. Brief 2 ships the Obelisk Network, Shyland's fast-travel system (GDD 2.11): the superseded `ZoneGate` model is removed and replaced by `TravelNode` (one node per room, obelisk or checkpoint type) and `TravelMessage` (three seeded flavor pools), the `travel` command is implemented in the consumer (list + go forms, revelation derived from `RoomVisit`), the Primordial Sphere NPC is placed at the Heart of the Convergence, and the Heart is registered as the network's first node ("The Convergence", obelisk). Brief 2 also contains no Verdant Reach content. Brief 3 ships four zone-agnostic engine mechanics for battle-zone encounter design (migration `0020`, one `AddField` per model): boss-gated spawns (`RoomSpawn.requires_living_npc` + a tick-engine gate in `process_npc_respawn`), guaranteed-group loot (`LootTableEntry.guaranteed_group` + a rewritten `generate_loot_from_table`), per-NPC death messages (`NpcDefinition.death_message`, broadcast once to the room at death), and outleveled XP reduction (`xp_for_kill` pays −20% per level over the NPC's Mk band, floored at 10% of base and never below 1 XP). Brief 3 contains no zone content either — every mechanic is data-driven; Verdant Reach rooms, NPCs, spawns, and loot tables come in later briefs. Brief 4 ships the commerce loop and one combat quality-of-life change (migration `0021`): item valuation (`ItemDefinition.base_value` plus four helpers in `item_utils.py` — value, sale price, repair cost, repair success chance), the `material` item type with two seeded materials (Animal Hide, Insect Carapace) and a `base_value` back-fill across all definitions, the `list`/`buy`/`sell` commands routed to a living vendor in the room (`VendorEntry.sold_count` tracks finite-stock exhaustion), the `repair` command routed to a living repairer (`NpcDefinition.is_repairer`), and targetless `attack`/`kill` that auto-targets the earliest-engaged living NPC while the player has aggro. Brief 4 also ships no zone content — vendor and repairer NPCs arrive with the Verdant Reach world seed. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -225,6 +225,21 @@ suppress_mk_suffix = models.BooleanField(
 
 This is **display-only**: `mk_tier`, scaling, and rarity machinery are untouched — a Copper Ring of Strength still has a real `mk_tier` and scales normally; the player just never sees "Mk N" appended to a tier-material name. Flavor materials (iron, wood, leather) do *not* suppress — an Iron Sword still displays "Iron Sword Mk 1". The suffix suppression is honored by `get_display_name_with_tier()` in `item_utils.py` (see Section 4.6). Migration `0018` adds the field (single `AddField` with a default — safe on populated databases).
 
+Brief 4 adds a second field and a new item type (migration `0021`):
+
+```python
+base_value = models.BigIntegerField(
+    default=1,
+    help_text='Authored worth in copper at Mk 1, Common. Item value = '
+              'base_value × mk_tier × rarity multiplier. Sale price is '
+              'one third of value.',
+)
+```
+
+`base_value` is the single authored input to item valuation — everything else is derived by the `item_utils.py` helpers (see Section 4.6). Every seeded definition gets an authored value via the seed's back-fill (see Section 4.8); the default of 1 exists only so the migration is safe, and the seed's verification pass fails if any definition is left at it.
+
+The `ITEM_TYPE_CHOICES` gained **`material`** ("Material") — vendor-sellable materials with no slots, stats, or durability (hides, carapaces, and their future kin). Materials flow through the same `ItemInstance` machinery (they have a real `mk_tier` and rarity, which scale their value) and sell through the same `sell` path as gear.
+
 #### `TravelNode`, `TravelMessage` (new in v18 brief 2) — and `ZoneGate` removed
 
 **`ZoneGate` no longer exists.** The model (introduced v15, authoring-only, never wired to a command; no gate data was ever seeded) was superseded by the Obelisk Network and deleted in brief 2 — model, admin registration, and all references. Migration `0019_travelmessage_travelnode_delete_zonegate` drops the table and creates the two new models below. Do not hunt for `ZoneGate` in current code; it survives only in migration history (`0016` created it, `0019` deletes it).
@@ -249,9 +264,16 @@ Three fields, one per model, added by migration `0020` (all nullable/defaulted `
 - **`LootTableEntry.guaranteed_group`** — `CharField(max_length=40, blank, default='')`, an optional group label (e.g. `"weapon"`). At roll time each distinct group in a table yields **exactly one** of its entries, every roll, unconditionally; the entry is chosen by weighted selection using `drop_chance` as a *relative weight* (weights need not sum to anything). Grouped entries make no independent drop rolls. Blank = today's independent per-entry roll.
 - **`NpcDefinition.death_message`** — `TextField(blank, default='')`. If non-blank, broadcast verbatim to every character in the NPC's room (including the killer) exactly once, at the moment of death, after the kill line and before any corpse/loot output. No substitution placeholders — the text is authored per NPC and stands alone. Blank = no extra message.
 
+#### Commerce fields (new in v18 brief 4)
+
+Two fields added by migration `0021` (alongside `ItemDefinition.base_value` and the `material` type above; all defaulted `AddField`s — safe on populated databases):
+
+- **`NpcDefinition.is_repairer`** — `BooleanField(default=False)`. This NPC offers repair services; the `repair` command routes to a living repairer in the room. Vendors need no analogous flag — an NpcDefinition with one or more `VendorEntry` rows is a vendor, as before.
+- **`VendorEntry.sold_count`** — `IntegerField(default=0)`. Units sold so far. An entry with a finite `stock_limit` is **exhausted** when `sold_count >= stock_limit`: it is omitted from `list`, and buying it reports `Sold out.` Entries with `stock_limit=NULL` are unlimited and never exhaust. There is no restock mechanism yet — exhaustion is permanent until an admin resets `sold_count` or raises the limit.
+
 #### All other models
 
-`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `NpcEffect`, `NpcInstance`, `Corpse`, `VendorEntry`, `CombatSession`, `CombatAction` — *(unchanged from v15)*. `LootTableEntry`, `NpcDefinition`, and `RoomSpawn` are unchanged apart from the v18 brief 3 fields above.
+`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `NpcEffect`, `NpcInstance`, `Corpse`, `CombatSession`, `CombatAction` — *(unchanged from v15)*. `LootTableEntry` and `RoomSpawn` are unchanged apart from the v18 brief 3 fields above; `NpcDefinition` and `VendorEntry` are unchanged apart from the v18 brief 3 and 4 fields above.
 
 ### 4.2 Currency system (`currency.py`)
 
@@ -259,7 +281,7 @@ Three fields, one per model, added by migration `0020` (all nullable/defaulted `
 
 ### 4.3 WebSocket consumer (`consumers.py`)
 
-Changed in v18: brief 1 rewrote the `equip` command and centralized name-plus-tier display formatting; brief 2 added the `travel` command. All other command handling *(unchanged from v16)*.
+Changed in v18: brief 1 rewrote the `equip` command and centralized name-plus-tier display formatting; brief 2 added the `travel` command; brief 4 added the `list`/`buy`/`sell`/`repair` commerce commands and targetless `attack`/`kill` under aggro. All other command handling *(unchanged from v16)*.
 
 #### The `travel` command (v18 brief 2)
 
@@ -300,6 +322,30 @@ Outcome selection, in `valid_slots` order:
 **Auto-swap defers to the existing unequip constraints.** Before swapping, the displaced item is checked with the same rules `cmd_unequip` applies — cursed items cannot be removed; a bag cannot come off if doing so would violate the carry limit. These checks live in the shared helper `_unequip_blocked_reason()`, used by both `cmd_unequip` and the auto-swap path, so the refusal messages are identical and a partial swap can never occur. The swap itself reuses the existing `unequip_item()`/`equip_item()` helpers, so soulbinding and slot bookkeeping behave exactly as a manual unequip-then-equip would.
 
 A module-level `_join_owned_names(items, conj)` helper formats the `your X and/or your Y` lists in refusal and exchange messages.
+
+#### Commerce commands (v18 brief 4)
+
+`cmd_list`, `cmd_buy(args)`, `cmd_sell(args)`, `cmd_repair(args)`, dispatched on the verbs `list`, `buy`, `sell`, `repair`. No aliases.
+
+**Routing.** A **vendor** is a living `NpcInstance` in the character's current room whose definition has at least one active `VendorEntry`; a **repairer** is a living instance whose definition has `is_repairer=True` (DB helpers `get_vendor_in_room` / `get_repairer_in_room`, first match by instance pk). `list`/`buy`/`sell` route to the vendor; `repair` routes to the repairer. Absent or dead service NPCs are out of business until they respawn: `There is no one here to trade with.` / `There is no one here who can repair.` If multiple qualify, the first found is used; checkpoint seeding never places two.
+
+**`list`** — one line per active, non-exhausted `VendorEntry`: the entry's display name, the price in copper, and `(N left)` when `stock_limit` is finite. Exhausted entries are omitted. Vendor entries reference definitions, not instances, so the name is formatted directly from the definition (`_entry_display_name` static helper: `item_definition.name` plus ` Mk {mk_tier}` unless `suppress_mk_suffix`), **not** via `get_display_name_with_tier()`, which takes an instance.
+
+**`buy <item>`** — case-insensitive prefix match against the vendor's active entries' definition names. Checks, in order: entry exists (`They don't sell that.`); stock (`Sold out.`); price ≤ character copper (a can't-afford message naming the price); carry capacity (the same check and message as `pickup`). On success `do_buy` runs atomically (`select_for_update` on both the entry and the character, re-checking stock and funds inside the transaction): copper deducted via `currency.subtract`, `sold_count` incremented, and an `ItemInstance` generated at the entry's `mk_tier` with **rarity always `common`**, owned by the character, unbound (soulbind happens on first equip, as with any item). Vendor buy prices are authored data (`VendorEntry.price`) — never formula-derived.
+
+**`sell <item>`** — case-insensitive prefix match against the character's carried items; if every match is equipped: `You'll have to unequip it first.` Only unequipped items can be sold, but **soulbound status is irrelevant — soulbound items sell normally**. Selling is compensated disposal: `do_sell` credits `get_sale_price(item)` copper (one third of value, minimum 1) and **deletes the ItemInstance** — vendors never resell player items, and there is no buyback. Materials, gear, and consumables all sell through the same path; unidentified items sell at their stored (apparent) rarity.
+
+**`repair <item>` / `repair` / `repair all`** — repair targets are the character's items (equipped or carried) with `takes_durability_loss=True` and durability below 100%. Repair is **paid per attempt; failure is harmless** — copper is spent, the item is unchanged, and the player may retry immediately. Success always restores `durability_current` to 100% (and clears `is_broken`). Items are never destroyed by repair. Cost and odds come from the Section 4.6 helpers: cost = `value × missing_durability_fraction × 50%` (floored, min 1); success chance = `20% + current_durability_fraction × 75%`. An attempt the character cannot afford is refused *without charging*, naming the cost.
+
+- `repair <item>` — prefix match among the character's items; an undamaged or no-durability match gets `That doesn't need repair.`
+- `repair` (bare) — one attempt on the most-damaged eligible item (lowest durability, pk tie-break — stable). Nothing damaged → `You have nothing to repair.` Repeated invocations walk the damage list: a failure re-targets the same item, a success moves on.
+- `repair all` — one paid attempt per eligible item, most-damaged first, one report line each; stops (and says so) if copper runs out mid-batch; ends with a one-line summary (items repaired, attempts failed, copper spent).
+
+All money movement goes through `apps.shyland.currency` (`add`/`subtract`) inside `transaction.atomic()` blocks with `select_for_update` on the Character row (`do_buy`, `do_sell`, `do_repair_attempt`). Prices and costs are displayed as plain copper integers (`60 copper`), not through the zone-aliased `display_for_zone` — vendors deal in copper.
+
+#### Targetless `attack`/`kill` (v18 brief 4)
+
+`cmd_attack` invoked **without** a target now auto-targets only while the player has aggro — an active `CombatSession` with at least one living NPC opponent. The target is the **first attacker**: the earliest-engaged living NPC in the session, resolved by `get_first_attacker_npc` as the lowest-pk row of the session's `npcs` M2M through table whose NPC is alive (through-row insertion order = engagement order). From there the command proceeds exactly as if the player had named that NPC. With no aggro, bare `attack` still refuses with `Attack what?`. Explicitly named targets behave exactly as before. Net effect: a player jumped in an aggro room can spam bare `attack`/`kill`, stays on the enemy that hit them first until it dies, then rolls to the next-earliest attacker.
 
 #### Display formatting
 
@@ -342,7 +388,23 @@ This is the **single source of truth for name-plus-tier formatting**. No inline 
 - **Ungrouped entries** (blank group): exactly the previous behavior — an independent `drop_chance` roll per entry.
 - **Each distinct group**: exactly one entry is selected per roll via `random.choices` with each entry's `drop_chance` as its relative weight — one instance per group, every roll, unconditionally.
 
-Every selected entry (grouped or not) then flows through the same tier clamp (`mk_tier` clamped to `[mk_tier_min, mk_tier_max]`), rarity roll from `rarity_weights`, and `generate_item_instance()` as before; the `create_corpse` caller is unchanged. **Rarity floors are seed data, not code**: "boss always drops Rare or better" is expressed by giving the entry a `rarity_weights` dict containing only the permitted rarities — there is no rarity-floor machinery. Everything else in `item_utils.py` *(unchanged from v15)*.
+Every selected entry (grouped or not) then flows through the same tier clamp (`mk_tier` clamped to `[mk_tier_min, mk_tier_max]`), rarity roll from `rarity_weights`, and `generate_item_instance()` as before; the `create_corpse` caller is unchanged. **Rarity floors are seed data, not code**: "boss always drops Rare or better" is expressed by giving the entry a `rarity_weights` dict containing only the permitted rarities — there is no rarity-floor machinery.
+
+**Valuation helpers (new in v18 brief 4)** — the single source of truth for item worth; no command computes value, price, cost, or chance inline:
+
+```python
+RARITY_VALUE_MULTIPLIERS = {
+    'common': 1, 'uncommon': 2, 'rare': 4,
+    'epic': 8, 'legendary': 16, 'artifact': 32,
+}
+```
+
+- **`get_item_value(item)`** — full worth in copper: `base_value × mk_tier × rarity multiplier` (unknown rarity falls back to ×1).
+- **`get_sale_price(item)`** — what a vendor pays: one third of value, integer floor, minimum 1 copper.
+- **`get_repair_cost(item)`** — cost per repair attempt: `value × missing_durability_fraction × 50%`, integer floor, minimum 1 (`durability_current` is the 0–100 scale on `ItemInstance`).
+- **`get_repair_success_chance(item)`** — `0.20 + current_durability_fraction × 0.75`: 20% at zero durability, ~95% near full.
+
+Everything else in `item_utils.py` *(unchanged from v15)*.
 
 ### 4.7 Admin
 
@@ -352,9 +414,15 @@ Every selected entry (grouped or not) then flows through the same tier clamp (`m
 | `Origin` | `OriginAdmin` | `attire_material` added to `list_display` |
 | `Archetype` | `ArchetypeAdmin` | `attire_silhouette` added to `list_display` |
 
-Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except: one v18 (brief 1) change — `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`); v18 (brief 2) changes — `ZoneGateAdmin` was removed with its model, and `TravelNodeAdmin` (list display: `travel_name`, `room`, `node_type` — nodes are builder-authorable data) and `TravelMessageAdmin` (list display: `category`, `text`) were registered; and v18 (brief 3) changes — `RoomSpawnAdmin` gained `requires_living_npc` (list display, raw-id, select-related), a standalone `LootTableEntryAdmin` was registered with `guaranteed_group` in its list display and filters (entries were previously editable only via the `LootTableAdmin` inline, which also gained the field), and `death_message` appears in the `NpcDefinitionAdmin` form automatically (no `fieldsets` declared).
+Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except: one v18 (brief 1) change — `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`); v18 (brief 2) changes — `ZoneGateAdmin` was removed with its model, and `TravelNodeAdmin` (list display: `travel_name`, `room`, `node_type` — nodes are builder-authorable data) and `TravelMessageAdmin` (list display: `category`, `text`) were registered; and v18 (brief 3) changes — `RoomSpawnAdmin` gained `requires_living_npc` (list display, raw-id, select-related), a standalone `LootTableEntryAdmin` was registered with `guaranteed_group` in its list display and filters (entries were previously editable only via the `LootTableAdmin` inline, which also gained the field), and `death_message` appears in the `NpcDefinitionAdmin` form automatically (no `fieldsets` declared). v18 (brief 4) changes: `ItemDefinitionAdmin` gained an Economy fieldset holding `base_value` (also in list display); `NpcDefinitionAdmin` gained `is_repairer` in list display and filters (the form picks it up automatically); `VendorEntryAdmin` gained `sold_count` in list display.
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
+
+Changed in v18 (brief 4): two additions to `_seed_items`, plus two new verification checks.
+
+- **Two material definitions** appended to the gear/consumable list (`get_or_create`, like the rest of it): **Animal Hide** (`animal-hide`, `base_value=6`) and **Insect Carapace** (`insect-carapace`, `base_value=8`) — `item_type='material'`, fantasy genre, no slots, no stats, no durability. Item count: 33 → 35.
+- **`base_value` back-fill.** After the item loops, an authored value table is applied with `.filter(slug=...).update(base_value=...)` — forced on every run, since `get_or_create` never updates existing rows. Values: broadsword/battle-axe 100, pulse-pistol 90, hunting-bow 80, iron-mace 65, iron-sword 60, apprentice-staff/ballistic-jacket/wooden-shield 55, leather-vest 50, leather-leggings 45, leather-shoulders/leather-boots 40, combat-knife and the remaining leather pieces 35, all 12 copper accessories 30; then every `consumable` → 12 and every `bag` → 50 by item-type update; then any definition not covered → 25. Note the back-fill deliberately clobbers admin tuning (unlike the balance-data convention below) — `base_value` is authored in the seed, matching the copper-accessory precedent.
+- The verification pass gained two checks: the two materials exist with `item_type='material'`, and **no `ItemDefinition` remains at the migration default `base_value=1`**.
 
 Changed in v18 (brief 2): three new idempotent seed steps, run from `handle()` after `_seed_convergence_npcs`:
 
@@ -538,7 +606,7 @@ These are settled. Do not revisit without deliberate consideration.
 
 **`RoomSpawn` is the source of truth for NPC population.** The tick engine populates rooms from `RoomSpawn` config, not from dead `NpcInstance` state. Dead instances persist until `respawn_at` passes; `clear_expired_dead` deletes them at that point, allowing the fill logic to create replacements. Total instances (live + dead) per spawn slot are capped at `count × 2` to prevent unbounded accumulation.
 
-**`VendorEntry` price is always explicit copper.** No auto-calculation formula. Every row requires a price value.
+**`VendorEntry` price is always explicit copper.** No auto-calculation formula. Every row requires a price value. Since brief 4 this asymmetry is deliberate and load-bearing: the **buy side is authored data** (`VendorEntry.price`, Common rarity, entry's Mk tier), while the **sell side is formula-derived** (`get_sale_price` — one third of `get_item_value`, which is the only place `base_value` enters play). Selling deletes the instance; vendors never resell player items, so the two sides never meet.
 
 **The Obelisk Network replaces `ZoneGate` (v18 brief 2).** Fast travel is node-based, not edge-based: `TravelNode` rows mark rooms as obelisks (source + destination) or checkpoints (destination only), and any revealed node is reachable from any obelisk — the network is global, with no zone scoping and no per-gate rows. Revelation is per-character, permanent, and derived entirely from `RoomVisit` (no new per-character table; no sharing between characters). Travel is free — no currency, no resource, no cooldown. The obelisk speaks no words: all travel text comes from the randomly-selected `TravelMessage` pools. Safe rooms are a seeding concern, not travel logic — the command performs no combat checks.
 
@@ -552,7 +620,8 @@ These are settled. Do not revisit without deliberate consideration.
 
 Future sessions should check this list before assuming a system exists.
 
-- Buy/sell commands (`VendorEntry` model exists; no commands yet)
+- Vendor and repairer NPCs (the `list`/`buy`/`sell`/`repair` commands are fully built in brief 4; no Convergence NPC has `VendorEntry` rows or `is_repairer` set, so no service is reachable yet — vendors and menders arrive with the Verdant Reach world seed)
+- Vendor restock (`VendorEntry.sold_count` exhaustion is permanent until an admin intervenes)
 - Obelisk Network nodes beyond The Convergence (the machinery and `travel` command are fully built in brief 2; only one node is registered, so no destination is reachable yet — Verdant Reach nodes arrive with the zone's world seed)
 - Per-combat-tier behavior differences (`combat_tier` field exists; no differentiated AI yet)
 - Custom blocked exit messages for the `flee` path (flee uses a different room-exit lookup; `no_exit_*_msg` fields only apply to `cmd_move`)
@@ -561,7 +630,7 @@ Future sessions should check this list before assuming a system exists.
 - Rendering of starting-attire flavor text (`Origin.attire_material` / `Archetype.attire_silhouette` are seeded; no command or view composes/displays the combined phrase yet)
 - Item identification trigger — NPC sage, Warden ability, identification scrolls
 - Durability degradation on combat use (model field and death-penalty logic exist; per-hit degradation deferred)
-- `durability_restore` consumable effect (placeholder response implemented; full repair system deferred)
+- `durability_restore` consumable effect (placeholder response implemented; the vendor `repair` command shipped in brief 4, but the self-service consumable path remains unbuilt)
 - Skill point system — distinct from stat points; abilities/talents unlocked by spending skill points (not yet designed)
 - NPC AI — wandering, dialogue, patrol (is_aggressive aggro on room entry is implemented)
 - Party system (M2M relationship on `CombatSession` is in place; multi-character combat not yet wired)
@@ -577,7 +646,7 @@ Future sessions should check this list before assuming a system exists.
 - Minimap and fog-of-war rendering in client (`RoomVisit` records exist but are not rendered)
 - Admin in-game teleport commands
 - All chat channels except `say` and `who`: `yell`, `tell`, `party`, `guild`, `zone`, `general`, `emote`
-- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built (v18 briefs 1–3 ship only zone-agnostic groundwork: the item kit, the travel machinery, and the battle-zone engine mechanics; no Verdant Reach rooms, NPCs, spawns, or drop tables exist yet)
+- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built (v18 briefs 1–4 ship only zone-agnostic groundwork: the item kit, the travel machinery, the battle-zone engine mechanics, and the commerce loop; no Verdant Reach rooms, NPCs, spawns, or drop tables exist yet)
 - Monitoring container — tracks health of all containers
 
 ---
