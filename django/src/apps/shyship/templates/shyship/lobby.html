@@ -10,15 +10,8 @@
   <body>
     <main class="app">
       <div class="app-header">
-        <a href="/" class="topbar-back">&#8592; Games</a>
+        <a href="/" class="topbar-back">&#8592; LOBBY</a>
         <h1 class="app-title">SHYSHIP</h1>
-        <div class="user-pane">
-          <span class="user-pane-name">{{ request.user|display_name }}</span>
-          <form method="post" action="{% url 'shyship:logout' %}" style="margin:0">
-            {% csrf_token %}
-            <button type="submit" class="user-pane-action">Logout</button>
-          </form>
-        </div>
       </div>
 
       <section class="game-shell" aria-label="Shyship lobby">
