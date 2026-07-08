@@ -7,7 +7,6 @@ let currentTurn = 1;
 let gameStatus = 'waiting';
 let totalMoves = 0;
 let myFires = new Set();
-let shipNameCounts = {};
 let autoPlay = false;
 let targeting = null; // null = hunt mode; object = targeting a ship
 let visibleBoard = 'enemy'; // 'enemy' | 'own' — mobile only
@@ -146,16 +145,13 @@ function autoFire() {
 
 function showFireNotify(isHit, shipName, sunk, onClose, isMine) {
   if (autoPlay) return;
-  fireNotifyTitle.textContent = isHit ? 'HIT! HIT! HIT!' : 'MISS';
-  if (isHit && shipName && !isMine) {
-    const article = shipNameCounts[shipName] > 1 ? 'a' : 'the';
-    fireNotifyText.textContent = sunk
-      ? `Enemy sank ${article} ${shipName}!`
-      : `Enemy hit ${article} ${shipName}!`;
-  } else {
-    fireNotifyText.textContent = '';
+  if (!isMine || !isHit) {
+    if (onClose) onClose();
+    return;
   }
-  fireNotifyModal.classList.toggle('is-hit', isHit);
+  fireNotifyTitle.textContent = 'HIT! HIT! HIT!';
+  fireNotifyText.textContent = '';
+  fireNotifyModal.classList.add('is-hit');
 
   let timer;
 
@@ -172,7 +168,7 @@ function showFireNotify(isHit, shipName, sunk, onClose, isMine) {
   fireNotifyModal.querySelector('.modal-backdrop').addEventListener('click', dismiss);
   fireNotifyModal.classList.add('is-open');
   fireNotifyModal.setAttribute('aria-hidden', 'false');
-  timer = setTimeout(dismiss, autoPlay ? 600 : 3000);
+  timer = setTimeout(dismiss, 1000);
 }
 
 // ── Confirmation modal ────────────────────────────────────────────────────────
@@ -310,7 +306,6 @@ function applyState(msg) {
   totalMoves   = msg.moves.length;
 
   for (const ship of msg.ships_own) {
-    shipNameCounts[ship.name] = (shipNameCounts[ship.name] || 0) + 1;
     for (const [r, c] of ship.cells) {
       const cell = getCell(ownGrid, r, c);
       if (cell) cell.classList.add('ship');
