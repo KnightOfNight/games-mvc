@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 5c01351 (v18 brief 2: the Obelisk Network — `TravelNode`/`TravelMessage` models, `ZoneGate` removed, the `travel` command, the Primordial Sphere, and the network's first node at the Heart of the Convergence).
+> Authoritative technical reference as of commit b686093 (v18 brief 3: battle-zone engine mechanics — boss-gated spawns via `RoomSpawn.requires_living_npc`, guaranteed-group loot via `LootTableEntry.guaranteed_group`, per-NPC death messages via `NpcDefinition.death_message`, and outleveled XP reduction in `xp_for_kill`).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v18 is implemented across multiple briefs. Subsequent v18 briefs update this file in place; the version stamp does not increment again until v19.**
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. Brief 2 ships the Obelisk Network, Shyland's fast-travel system (GDD 2.11): the superseded `ZoneGate` model is removed and replaced by `TravelNode` (one node per room, obelisk or checkpoint type) and `TravelMessage` (three seeded flavor pools), the `travel` command is implemented in the consumer (list + go forms, revelation derived from `RoomVisit`), the Primordial Sphere NPC is placed at the Heart of the Convergence, and the Heart is registered as the network's first node ("The Convergence", obelisk). Brief 2 also contains no Verdant Reach content. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
+Shyland is a free, browser-based Multi-User Dungeon. The primary interface is text: players connect via WebSocket, type commands, and read descriptive output. A minimal visual chrome (status bar, side panel) supplements the text pane. As of this commit, v16 adds the in-game character creator: a player with no `Character` who visits `/shyland/play/` is redirected to a creation form where they choose an Origin, an Archetype, and a Name, then spawn into The Convergence. Supporting changes: `Character.name` is now a real database field (previously a read-only property over the gamer tag), `Origin` and `Archetype` gained attire flavor-text fields and real seeded descriptions, and the `better-profanity` dependency was added for name filtering. v17 adds the Infinity City world seed — a data-only change (no models, no migrations) that replaces the 5-room placeholder starter zone in `seed_world.py` with the full first-version map of The Convergence: 4 park-path areas (Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards), 54 rooms (obelisk hub, four park paths, a 35-room ring street, and Morra's Smithy), and 9 non-combat NPC definitions placed via `RoomSpawn`. v18 (in progress across multiple briefs) begins The Verdant Reach series. Brief 1 ships the Mk 1 item kit: 23 fantasy `ItemDefinition` seed rows (22 net-new plus the legacy Copper Ring absorbed as Copper Ring of Wisdom) covering a leather armor set, a wooden shield, four weapons, and twelve copper accessories; a `suppress_mk_suffix` display field on `ItemDefinition` (migration `0018`); a central `get_display_name_with_tier()` helper in `item_utils.py`; and a rewritten `equip` command implementing a general exchange rule (one-for-one auto-swap, refusals on multi-item or ambiguous displacement). Brief 1 contains no zone content — Verdant Reach rooms, NPCs, and drop tables come in later v18 briefs. Brief 2 ships the Obelisk Network, Shyland's fast-travel system (GDD 2.11): the superseded `ZoneGate` model is removed and replaced by `TravelNode` (one node per room, obelisk or checkpoint type) and `TravelMessage` (three seeded flavor pools), the `travel` command is implemented in the consumer (list + go forms, revelation derived from `RoomVisit`), the Primordial Sphere NPC is placed at the Heart of the Convergence, and the Heart is registered as the network's first node ("The Convergence", obelisk). Brief 2 also contains no Verdant Reach content. Brief 3 ships four zone-agnostic engine mechanics for battle-zone encounter design (migration `0020`, one `AddField` per model): boss-gated spawns (`RoomSpawn.requires_living_npc` + a tick-engine gate in `process_npc_respawn`), guaranteed-group loot (`LootTableEntry.guaranteed_group` + a rewritten `generate_loot_from_table`), per-NPC death messages (`NpcDefinition.death_message`, broadcast once to the room at death), and outleveled XP reduction (`xp_for_kill` pays −20% per level over the NPC's Mk band, floored at 10% of base and never below 1 XP). Brief 3 contains no zone content either — every mechanic is data-driven; Verdant Reach rooms, NPCs, spawns, and loot tables come in later briefs. See [Section 7](#7-what-is-not-yet-built) for unbuilt systems.
 
 ---
 
@@ -241,9 +241,17 @@ There is no per-character revelation table: a character's available destinations
 
 **`TravelMessage`** — global flavor-text pools for travel events. Fields: `category` (`'traveler'` — shown to the traveling player; `'departure'` — shown to players in the origin room; `'arrival'` — shown to players in the destination room) and `text`. Witness messages (departure/arrival) may include the literal placeholder `{name}`, replaced with the traveling character's name via `str.replace` (not `.format`, so stray braces in prose are harmless); traveler messages take no placeholders. One message is selected uniformly at random from the appropriate pool per event — travel text is never hardcoded. Pools are global, not per-zone.
 
+#### Battle-zone mechanic fields (new in v18 brief 3)
+
+Three fields, one per model, added by migration `0020` (all nullable/defaulted `AddField`s — safe on populated databases; unset means "exactly the pre-brief behavior"):
+
+- **`RoomSpawn.requires_living_npc`** — nullable FK to `NpcDefinition` (`SET_NULL`, related name `dependent_spawns`). If set, the tick engine only refills this spawn while a live `NpcInstance` of that definition exists in the same room. This is a spawn dependency, not an encounter system: it gates boss minions on their boss — minions respawn on their own `respawn_minutes` timer while the boss lives, reinforcements stop the moment it dies (survivors remain until killed), and gated spawns refill again once the boss respawns, so the encounter resets as a unit. `null` = ungated, spawn behaves as before.
+- **`LootTableEntry.guaranteed_group`** — `CharField(max_length=40, blank, default='')`, an optional group label (e.g. `"weapon"`). At roll time each distinct group in a table yields **exactly one** of its entries, every roll, unconditionally; the entry is chosen by weighted selection using `drop_chance` as a *relative weight* (weights need not sum to anything). Grouped entries make no independent drop rolls. Blank = today's independent per-entry roll.
+- **`NpcDefinition.death_message`** — `TextField(blank, default='')`. If non-blank, broadcast verbatim to every character in the NPC's room (including the killer) exactly once, at the moment of death, after the kill line and before any corpse/loot output. No substitution placeholders — the text is authored per NPC and stands alone. Blank = no extra message.
+
 #### All other models
 
-`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `LootTableEntry`, `NpcDefinition`, `NpcEffect`, `NpcInstance`, `Corpse`, `RoomSpawn`, `VendorEntry`, `CombatSession`, `CombatAction` — *(unchanged from v15)*.
+`EffectDefinition`, `EffectComponent`, `ItemInstance`, `EffectInstance`, `EffectComponentInstance`, `LootTable`, `NpcEffect`, `NpcInstance`, `Corpse`, `VendorEntry`, `CombatSession`, `CombatAction` — *(unchanged from v15)*. `LootTableEntry`, `NpcDefinition`, and `RoomSpawn` are unchanged apart from the v18 brief 3 fields above.
 
 ### 4.2 Currency system (`currency.py`)
 
@@ -305,7 +313,7 @@ Carried over from v16 unchanged: character-less connections get a structured red
 
 ### 4.5 Combat utilities (`combat_utils.py`)
 
-*(unchanged from v15)*
+One change in v18 (brief 3): **`xp_for_kill(npc_instance, character)` now reduces XP for outleveled kills.** Base XP is unchanged (`int(mk_tier × 10 × scaling_factor)`) and is paid in full while the character is within the NPC's Mk level band — band top = `mk_tier × 10`. Beyond the band top the multiplier drops 20% per level over, floored at 10% of base, and the awarded amount is additionally floored at 1 XP (`max(1, …)` — matters for low-base NPCs where 10% truncates to 0). Outleveled content always pays something. Worked values for a Mk 1 NPC at `scaling_factor=1.0` (base 10): levels 1–10 → 10 XP; 11 → 8; 12 → 6; 13 → 4; 14 → 2; 15+ → 1. The product is rounded at the 9th decimal before truncation to correct binary-float error (0.20 × 3 → 0.6000…01) so results match the decimal formula. The signature already took both arguments, so no call sites changed. Everything else *(unchanged from v15)*.
 
 `recalculate_bars(character)` gained a second call site in v16: the character creator calls it on the unsaved `Character` to compute starting bars from the level-1 stats before the first save (see Section 4.11).
 
@@ -327,7 +335,14 @@ def get_display_name_with_tier(item):
     return f"{name} Mk {item.mk_tier}"
 ```
 
-This is the **single source of truth for name-plus-tier formatting**. No inline `Mk {item.mk_tier}` formatting of player-facing item names remains in `consumers.py`. (Model `__str__` methods and tick-engine log lines are admin/debug representations, not display names, and intentionally do not use it.) Everything else in `item_utils.py` *(unchanged from v15)*.
+This is the **single source of truth for name-plus-tier formatting**. No inline `Mk {item.mk_tier}` formatting of player-facing item names remains in `consumers.py`. (Model `__str__` methods and tick-engine log lines are admin/debug representations, not display names, and intentionally do not use it.)
+
+**`generate_loot_from_table(loot_table, mk_tier)` was rewritten in v18 (brief 3)** for guaranteed-group loot. The roll now partitions the table's entries by `guaranteed_group`:
+
+- **Ungrouped entries** (blank group): exactly the previous behavior — an independent `drop_chance` roll per entry.
+- **Each distinct group**: exactly one entry is selected per roll via `random.choices` with each entry's `drop_chance` as its relative weight — one instance per group, every roll, unconditionally.
+
+Every selected entry (grouped or not) then flows through the same tier clamp (`mk_tier` clamped to `[mk_tier_min, mk_tier_max]`), rarity roll from `rarity_weights`, and `generate_item_instance()` as before; the `create_corpse` caller is unchanged. **Rarity floors are seed data, not code**: "boss always drops Rare or better" is expressed by giving the entry a `rarity_weights` dict containing only the permitted rarities — there is no rarity-floor machinery. Everything else in `item_utils.py` *(unchanged from v15)*.
 
 ### 4.7 Admin
 
@@ -337,7 +352,7 @@ This is the **single source of truth for name-plus-tier formatting**. No inline 
 | `Origin` | `OriginAdmin` | `attire_material` added to `list_display` |
 | `Archetype` | `ArchetypeAdmin` | `attire_silhouette` added to `list_display` |
 
-Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except: one v18 (brief 1) change — `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`); and v18 (brief 2) changes — `ZoneGateAdmin` was removed with its model, and `TravelNodeAdmin` (list display: `travel_name`, `room`, `node_type` — nodes are builder-authorable data) and `TravelMessageAdmin` (list display: `category`, `text`) were registered.
+Neither `OriginAdmin` nor `ArchetypeAdmin` declares `fieldsets`, so the new attire fields appear in their add/change forms automatically. All other admin registrations unchanged from v15, except: one v18 (brief 1) change — `ItemDefinitionAdmin` *does* declare `fieldsets`, so `suppress_mk_suffix` was added to its Identification fieldset (alongside `mystery_name` / `mystery_description`); v18 (brief 2) changes — `ZoneGateAdmin` was removed with its model, and `TravelNodeAdmin` (list display: `travel_name`, `room`, `node_type` — nodes are builder-authorable data) and `TravelMessageAdmin` (list display: `category`, `text`) were registered; and v18 (brief 3) changes — `RoomSpawnAdmin` gained `requires_living_npc` (list display, raw-id, select-related), a standalone `LootTableEntryAdmin` was registered with `guaranteed_group` in its list display and filters (entries were previously editable only via the `LootTableAdmin` inline, which also gained the field), and `death_message` appears in the `NpcDefinitionAdmin` form automatically (no `fieldsets` declared).
 
 ### 4.8 Seed data (`management/commands/seed_world.py`)
 
@@ -382,7 +397,11 @@ All other seed methods (`_seed_unarmed_pools`, `_seed_effects`, zone/room/area c
 
 ### 4.9 Tick Engine (`management/commands/run_tick_engine.py`)
 
-*(unchanged from v15)*
+Two changes in v18 (brief 3); everything else *(unchanged from v15)*.
+
+**Spawn gate in `process_npc_respawn`.** For each active spawn, after `clear_expired_dead` runs and before any instances are created: if `spawn.requires_living_npc` is set and no live `NpcInstance` of that definition exists in the spawn's room (`gate_npc_is_alive`, one `exists()` query per gated spawn; ungated spawns query nothing), instance creation is skipped for that spawn this tick. Dead-row clearing still runs — it is bookkeeping — and the count/cap logic is otherwise unchanged. Net behavior: gated minions respawn on their own timer while their boss lives, stop refilling the moment it dies, and refill again on the tick after the boss respawns — the encounter resets as a unit. (Note the pre-existing count/cap logic gives a `count=1` spawn one buffered instant replacement — live+dead cap is `count × 2` — so a boss stays down only once its dead rows saturate the cap; the gate reads actual `NpcInstance` liveness, whatever produced it.)
+
+**Death broadcast in the combat block.** Where an NPC's death is processed (`vitality_current <= 0` → `is_alive = False`), immediately after the existing kill output and before any corpse/loot output: if `npc.definition.death_message` is non-blank it is appended once to the round's `room_messages` and broadcast to the NPC's room — every character present, including the killer (personal kill lines are flushed before room broadcasts, so the killer always sees the kill line first). Blank message = byte-identical pre-brief output.
 
 ### 4.10 HTTP routes (`urls.py`)
 
@@ -558,7 +577,7 @@ Future sessions should check this list before assuming a system exists.
 - Minimap and fog-of-war rendering in client (`RoomVisit` records exist but are not rendered)
 - Admin in-game teleport commands
 - All chat channels except `say` and `who`: `yell`, `tell`, `party`, `guild`, `zone`, `general`, `emote`
-- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built (v18 brief 1 ships only the Verdant Reach item kit: definitions exist, but no Verdant Reach rooms, NPCs, or drop tables)
+- Zone content beyond The Convergence — The Verdant Reach and all other zones are not yet built (v18 briefs 1–3 ship only zone-agnostic groundwork: the item kit, the travel machinery, and the battle-zone engine mechanics; no Verdant Reach rooms, NPCs, spawns, or drop tables exist yet)
 - Monitoring container — tracks health of all containers
 
 ---
