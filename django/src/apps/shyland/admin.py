@@ -228,7 +228,7 @@ class EffectComponentInstanceAdmin(admin.ModelAdmin):
 class LootTableEntryInline(admin.TabularInline):
     model = LootTableEntry
     extra = 1
-    fields = ('item_definition', 'mk_tier_min', 'mk_tier_max', 'drop_chance', 'rarity_weights')
+    fields = ('item_definition', 'mk_tier_min', 'mk_tier_max', 'drop_chance', 'guaranteed_group', 'rarity_weights')
 
 
 @admin.register(LootTable)
@@ -236,6 +236,14 @@ class LootTableAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [LootTableEntryInline]
+
+
+@admin.register(LootTableEntry)
+class LootTableEntryAdmin(admin.ModelAdmin):
+    list_display        = ('loot_table', 'item_definition', 'drop_chance', 'guaranteed_group', 'mk_tier_min', 'mk_tier_max')
+    list_filter         = ('guaranteed_group', 'loot_table')
+    raw_id_fields       = ('loot_table', 'item_definition')
+    list_select_related = ('loot_table', 'item_definition')
 
 
 class NpcEffectInline(admin.TabularInline):
@@ -277,10 +285,10 @@ class NpcEffectAdmin(admin.ModelAdmin):
 
 @admin.register(RoomSpawn)
 class RoomSpawnAdmin(admin.ModelAdmin):
-    list_display        = ('npc_definition', 'mk_tier', 'count', 'room', 'is_active')
+    list_display        = ('npc_definition', 'mk_tier', 'count', 'room', 'is_active', 'requires_living_npc')
     list_filter         = ('is_active', 'npc_definition')
-    raw_id_fields       = ('room', 'npc_definition')
-    list_select_related = ('room', 'npc_definition')
+    raw_id_fields       = ('room', 'npc_definition', 'requires_living_npc')
+    list_select_related = ('room', 'npc_definition', 'requires_living_npc')
 
 
 @admin.register(VendorEntry)

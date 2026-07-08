@@ -582,6 +582,14 @@ class LootTableEntry(models.Model):
     mk_tier_min     = models.IntegerField()
     mk_tier_max     = models.IntegerField()
     drop_chance     = models.FloatField(help_text="0.0 to 1.0. Rolled independently per entry.")
+    guaranteed_group = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Optional group label (e.g. "weapon"). At roll time, each '
+                  'distinct group in a table yields EXACTLY ONE of its entries, '
+                  'chosen with drop_chance as relative weight. Grouped entries '
+                  'do not make independent drop rolls. Blank = normal '
+                  'independent roll.',
+    )
     rarity_weights  = models.JSONField(
         default=dict,
         help_text='Dict of rarity → weight. Keys: common, uncommon, rare, epic, legendary. Must sum to 100.'
@@ -653,6 +661,14 @@ class NpcDefinition(models.Model):
     currency_drop_max   = models.IntegerField(default=0, help_text="Maximum copper drop (before Mk scaling).")
 
     respawn_minutes = models.IntegerField(default=30, help_text="Ignored if is_unique=True.")
+
+    death_message = models.TextField(
+        blank=True, default='',
+        help_text='Optional. Broadcast once to the room at the moment this NPC '
+                  'dies, before corpse/loot output. Used for boss narrative '
+                  'reveals (e.g. a guarded chest splitting open). Blank = no '
+                  'extra message.',
+    )
 
     def __str__(self):
         return self.name
@@ -747,6 +763,15 @@ class RoomSpawn(models.Model):
     is_active       = models.BooleanField(
         default=True,
         help_text="Inactive spawns are ignored by the tick engine.",
+    )
+    requires_living_npc = models.ForeignKey(
+        'NpcDefinition', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='dependent_spawns',
+        help_text='If set, this spawn only refills while a live instance of the '
+                  'given definition exists in the same room. Used to gate boss '
+                  'minions on their boss: minions respawn on their own timer '
+                  'while the boss lives, stop when it dies, and resume when it '
+                  'respawns.',
     )
 
     class Meta:

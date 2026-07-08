@@ -150,8 +150,19 @@ def get_unarmed_message(attacker_pool, target_name):
 
 
 def xp_for_kill(npc_instance, character):
-    """Return XP awarded for killing an NPC."""
-    return int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor)
+    """
+    XP for killing an NPC. Full value while the character is within the
+    NPC's Mk level band (band top = mk_tier * 10). Beyond the band top,
+    -20% per level over, floored at 10% of base — and never less than 1.
+    Outleveled content always pays something.
+    """
+    base = int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor)
+    band_top = npc_instance.mk_tier * 10
+    levels_over = max(0, character.level - band_top)
+    multiplier = max(0.10, 1.0 - (0.20 * levels_over))
+    # round(…, 9) corrects binary-float error (0.20 * 3 → 0.6000…01) so the
+    # truncation below matches the decimal formula: 10 XP at −60% is 4, not 3.
+    return max(1, int(round(base * multiplier, 9)))
 
 
 def xp_for_next_level(level):

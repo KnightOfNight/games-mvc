@@ -355,6 +355,8 @@ class Command(BaseCommand):
 
                             messages.append((character.pk, f"You have slain the {npc.definition.name}! (+{xp} XP)", 'combat'))
                             room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat'))
+                            if npc_def.death_message:
+                                room_messages.append((session.room_id, npc_def.death_message, 'combat'))
 
                             live_npcs = [n for n in live_npcs if n.pk != npc.pk]
                             session.npcs.remove(npc)
@@ -472,6 +474,8 @@ class Command(BaseCommand):
 
         for spawn in spawns:
             await self.clear_expired_dead(spawn, now)
+            if spawn.requires_living_npc_id and not await self.gate_npc_is_alive(spawn):
+                continue
             live_count, dead_count = await self.count_instances(spawn)
             to_create = min(
                 spawn.count - live_count,
@@ -499,6 +503,15 @@ class Command(BaseCommand):
             is_alive=False,
             respawn_at__lte=now,
         ).delete()
+
+    @database_sync_to_async
+    def gate_npc_is_alive(self, spawn):
+        from apps.shyland.models import NpcInstance
+        return NpcInstance.objects.filter(
+            definition_id=spawn.requires_living_npc_id,
+            current_room=spawn.room,
+            is_alive=True,
+        ).exists()
 
     @database_sync_to_async
     def count_instances(self, spawn):

@@ -199,16 +199,28 @@ def generate_loot_from_table(loot_table, mk_tier):
     """
     Roll a LootTable at the given mk_tier.
     Returns a list of unsaved ItemInstance objects (caller must set corpse and call .save()).
-    """
-    from .models import LootTableEntry
 
-    results = []
+    Ungrouped entries (guaranteed_group blank) each make an independent
+    drop_chance roll. Entries sharing a guaranteed_group label yield exactly
+    one drop per group per roll, chosen with drop_chance as relative weight.
+    """
     entries = loot_table.entries.select_related('item_definition').all()
 
+    ungrouped = []
+    groups = {}
     for entry in entries:
-        if random.random() > entry.drop_chance:
-            continue
+        if entry.guaranteed_group:
+            groups.setdefault(entry.guaranteed_group, []).append(entry)
+        else:
+            ungrouped.append(entry)
 
+    dropped = [e for e in ungrouped if random.random() <= e.drop_chance]
+    for group_entries in groups.values():
+        weights = [e.drop_chance for e in group_entries]
+        dropped.append(random.choices(group_entries, weights=weights, k=1)[0])
+
+    results = []
+    for entry in dropped:
         tier = max(entry.mk_tier_min, min(mk_tier, entry.mk_tier_max))
 
         rarities = list(entry.rarity_weights.keys())
