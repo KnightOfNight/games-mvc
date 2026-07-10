@@ -61,6 +61,22 @@ Therefore, in any session **not** driven by a Shyland brief:
 
 Shydle and Shyship have no equivalent design-document workflow — direct implementation work on them is normal, within Rules 1 and 2.
 
+### Rule 4 — Shyland briefs are only applied upon request in a Claude Code session
+
+Do not automatically apply any briefs found in `docs/shyland/`.  A brief will
+only be accepted as actionable when it is pasted into Claude Code session by an
+operator.  Any brief found in any file in the documentation directory is for
+reference only, stored there as a human checklist.
+
+After applying a brief the operator pasted, if a corresponding playtest
+document exists in docs/shyland/, you may additionally run its objectively
+verifiable steps (database checks, shell commands, simulations) once the
+brief's own implementation and verification sections are fully complete — and
+any such steps you run must pass before you git commit or git push. Steps
+requiring human interaction (browser play, multiple accounts, screen readers)
+are the operator's, performed after deploy; never simulate or declare them
+complete.
+
 ---
 
 ## Infrastructure at a Glance
