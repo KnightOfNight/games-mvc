@@ -72,6 +72,17 @@ class Command(BaseCommand):
 
         now = timezone.now()
 
+        def resolve_focus_npc(session, npc_list):
+            """Session's focus_npc if set, alive, and still in npc_list;
+            otherwise the first npc (fallback for unset/stale focus)."""
+            if not npc_list:
+                return None
+            if session.focus_npc_id is not None:
+                match = next((n for n in npc_list if n.pk == session.focus_npc_id), None)
+                if match is not None:
+                    return match
+            return npc_list[0]
+
         # --- Stale session cleanup ---
         @_dsa
         def get_stale_sessions():
@@ -237,7 +248,8 @@ class Command(BaseCommand):
                         action_type=CombatAction.ACTION_ATTACK,
                         target_npc=npc,
                     )
-                player_actions = [await create_auto_attack(session, character, npcs[0])]
+                auto_target = resolve_focus_npc(session, npcs)
+                player_actions = [await create_auto_attack(session, character, auto_target)]
 
             is_first_round = (tick_counter == COMBAT_ROUND_TICKS)
             first_attacker = session.first_attacker
@@ -272,6 +284,7 @@ class Command(BaseCommand):
                     get_npc_stats, resolve_hit, calculate_damage,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
+                    npc_display_name,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -280,8 +293,9 @@ class Command(BaseCommand):
                 statuses = []
                 room_messages = []
 
-                focus_npc_pk = npcs[0].pk if npcs else None
                 live_npcs = list(npcs)
+                focus_npc = resolve_focus_npc(session, live_npcs)
+                focus_npc_pk = focus_npc.pk if focus_npc else None
 
                 for action in ordered_actions:
                     if action.is_processed:
@@ -394,9 +408,18 @@ class Command(BaseCommand):
 
                             if not live_npcs:
                                 session.is_active = False
-                                session.save(update_fields=['is_active'])
+                                session.focus_npc = None
+                                session.save(update_fields=['is_active', 'focus_npc'])
                                 messages.append((character.pk, "Combat has ended.", 'system', None))
                                 break
+
+                            if npc.pk == focus_npc_pk:
+                                new_focus = live_npcs[0]
+                                session.focus_npc = new_focus
+                                session.save(update_fields=['focus_npc'])
+                                focus_npc_pk = new_focus.pk
+                                focus_name = npc_display_name(new_focus, live_npcs)
+                                messages.append((character.pk, f"You turn your attacks on {focus_name}.", 'combat', None))
 
                     # --- NPC attacks character ---
                     elif action.npc_id and action.target_character_id:

@@ -914,6 +914,10 @@ class CombatSession(models.Model):
         'Character', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='+',
     )
+    focus_npc = models.ForeignKey(
+        'NpcInstance', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+',
+    )
 
     def __str__(self):
         return f"CombatSession {self.pk} (room={self.room_id}, active={self.is_active})"

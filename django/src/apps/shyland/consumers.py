@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import currency
+from .combat_utils import npc_display_name
 from .currency import display_for_zone
 from .item_utils import (
     format_slot_name, generate_item_instance, get_display_name,
@@ -89,24 +90,6 @@ def _item_suffix(item, defn):
             return '   — BROKEN'
         return f'   — {int(round(item.durability_current))}% durability'
     return ''
-
-
-ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
-
-
-def npc_display_name(npc, npcs_in_room):
-    """'the black bear' when unique in the room, 'the second black bear'
-    when multiple NPCs share the definition name. Positional: index within
-    the same-name NPCs in room parse order (the order parse_npc_noun uses).
-    Not a stable per-instance number — it shifts as same-name NPCs die."""
-    name = npc.definition.name
-    same_name = [n for n in npcs_in_room if n.definition.name == name]
-    if len(same_name) <= 1:
-        return f"the {name}"
-    index = next((i for i, n in enumerate(same_name) if n.pk == npc.pk), None)
-    if index is None or index >= len(ORDINALS):
-        return f"the {name}"
-    return f"the {ORDINALS[index]} {name}"
 
 
 def parse_presence_name(raw: bytes) -> str:
@@ -1348,15 +1331,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         display = npc_display_name(npc, npcs_in_room)
 
         session = await self.get_active_combat_session(character)
-        if session and await self.npc_in_session(session, npc):
-            await self.send_output(f"You're already fighting {display}.", 'combat')
+        in_session = session is not None and await self.npc_in_session(session, npc)
+
+        if in_session:
+            if session.focus_npc_id == npc.pk:
+                await self.send_output(f"You're already fighting {display}.", 'combat')
+                return
+            await self.set_session_focus(session, npc)
+            await self.send_output(f"You change your attacks to focus on {display}.", 'combat')
             return
 
         await self.send_output(f"You move to attack {display}!", 'combat')
         await self.broadcast_to_room_exclude(
             f"{character.name} moves to attack the {npc.definition.name}!", 'combat'
         )
-        await self.start_combat([npc], first_attacker='character')
+        await self.start_combat([npc], first_attacker='character', focus_npc=npc)
 
     async def cmd_flee(self):
         character = await self.get_character_fresh()
@@ -2102,7 +2091,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return matches[index - 1]
 
     @database_sync_to_async
-    def start_combat(self, npcs, first_attacker='character'):
+    def start_combat(self, npcs, first_attacker='character', focus_npc=None):
         existing = CombatSession.objects.filter(
             is_active=True,
             characters=self.character,
@@ -2117,12 +2106,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             session.characters.add(self.character)
         for npc in npcs:
             session.npcs.add(npc)
+        if focus_npc is not None:
+            session.focus_npc = focus_npc
         session.save()
         return session
 
     @database_sync_to_async
     def get_active_combat_session(self, character):
         return CombatSession.objects.filter(is_active=True, characters=character).first()
+
+    @database_sync_to_async
+    def set_session_focus(self, session, npc):
+        session.focus_npc = npc
+        session.save(update_fields=['focus_npc'])
 
     @database_sync_to_async
     def npc_in_session(self, session, npc):

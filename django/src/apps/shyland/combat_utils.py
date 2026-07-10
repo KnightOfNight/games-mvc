@@ -6,6 +6,23 @@ CRIT_BASE = 0.05           # critical chance floor on any successful hit
 CRIT_PER_DEX_ADVANTAGE = 0.01
 CRIT_CAP = 0.25
 
+ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
+
+
+def npc_display_name(npc, npcs_in_room):
+    """'the black bear' when unique in the room, 'the second black bear'
+    when multiple NPCs share the definition name. Positional: index within
+    the same-name NPCs in room parse order (the order parse_npc_noun uses).
+    Not a stable per-instance number — it shifts as same-name NPCs die."""
+    name = npc.definition.name
+    same_name = [n for n in npcs_in_room if n.definition.name == name]
+    if len(same_name) <= 1:
+        return f"the {name}"
+    index = next((i for i, n in enumerate(same_name) if n.pk == npc.pk), None)
+    if index is None or index >= len(ORDINALS):
+        return f"the {name}"
+    return f"the {ORDINALS[index]} {name}"
+
 
 def get_acuity_modifier(character):
     """Return acuity_current clamped to [0.1, 1.9], rounded to 1dp."""
