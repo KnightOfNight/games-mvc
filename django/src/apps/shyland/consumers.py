@@ -844,6 +844,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         char = self.character
+        was_dying = self._character_is_dying
         consumables = await self.get_carried_consumables(char)
 
         noun_result, matched = parse_item_noun(args, consumables)
@@ -875,6 +876,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         room = await self.get_current_room()
         char_fresh = await self.get_character_fresh()
+
+        if was_dying and char_fresh.vitality_current > 0:
+            await self.revive_character(char_fresh)
+            self._character_is_dying = False
+            await self.output(
+                "Breath floods back into your lungs. You are alive — barely.", 'system',
+            )
+            await self.send_room_description(room, entering=False)
+            await self.broadcast_to_room_exclude(
+                f"{char_fresh.name} staggers back to their feet!", 'combat',
+            )
+            return
+
         await self.send_json({
             'type': 'status',
             'vitality': char_fresh.vitality_current,
@@ -1557,6 +1571,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def player_message(self, event):
         """Handle messages sent directly to this player (e.g. effect ticks from tick engine)."""
+        event_type = event.get('event')
+        if event_type == 'clear':
+            await self.send_json({'type': 'clear'})
         if event.get('text'):
             await self.send_json({
                 'type': 'output',
@@ -1566,7 +1583,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if event.get('status') is not None:
             await self.send_json(event['status'])
 
-        event_type = event.get('event')
         if event_type == 'dying':
             self._character_is_dying = True
         elif event_type == 'respawn':
@@ -2048,6 +2064,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.character = char
         self._character_is_dying = char.is_dying
         return char
+
+    @database_sync_to_async
+    def revive_character(self, character):
+        character.is_dying = False
+        character.dying_since = None
+        character.save(update_fields=['is_dying', 'dying_since'])
 
     @database_sync_to_async
     def get_aggro_npcs_in_room(self, room):

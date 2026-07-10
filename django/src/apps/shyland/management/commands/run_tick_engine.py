@@ -6,9 +6,39 @@ from django.core.management.base import BaseCommand
 
 logger = logging.getLogger('shyland.tick')
 
+# Lore-only escalation ladder for the dying window. No numerals, no time
+# units — the design calls for atmosphere, not a countdown.
+DYING_LADDER = [
+    (5,  "The cold is spreading. Your heartbeat is slowing."),
+    (10, "The world is growing dim at the edges. You are running out of time."),
+    (15, "Your thoughts drift. It would be so easy to let go."),
+    (20, "You can barely feel your body now. Something vast is waiting."),
+    (25, "The last of your strength is nearly gone. Act now, or not at all."),
+    (26, "Your vision narrows to a single point of light."),
+    (27, "The light is fading."),
+    (28, "So faint now."),
+    (29, "Darkness."),
+]
+
+
+def _room_title(room):
+    if room is None:
+        return ''
+    if room.area_id:
+        return f'[ {room.area.name} — {room.name} ]'
+    return f'[ {room.name} ]'
+
 
 class Command(BaseCommand):
     help = 'Run the Shyland tick engine (1-second loop).'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # character_pk -> set of ladder thresholds already sent. In-memory
+        # only: an engine restart loses it, but the elapsed-based check in
+        # process_dying_ladder reseeds from the character's current elapsed
+        # time on next sight, so no lines are replayed or skipped.
+        self._dying_ladder_sent = {}
 
     def handle(self, *args, **options):
         self.stdout.write('Tick engine starting.')
@@ -26,6 +56,7 @@ class Command(BaseCommand):
         await self.process_corpse_decay()
         await self.process_npc_respawn()
         await self.process_effects(tick_number)
+        await self.process_dying_ladder()
 
     # ------------------------------------------------------------------
     # Combat
@@ -113,6 +144,7 @@ class Command(BaseCommand):
         for character in dying_chars:
             broken, recall = await execute_death(character)
             name = character.name
+            await self.send_to_player(character.pk, "The darkness takes you.", 'error', None)
             msg = f"You have died and awakened at {recall.name if recall else 'your recall point'}."
             if broken:
                 msg += f" Your {', '.join(broken)} {'has' if len(broken) == 1 else 'have'} broken."
@@ -204,7 +236,7 @@ class Command(BaseCommand):
             player_actions = await load_player_actions(session, character)
             npc_actions = await generate_npc_actions(session, npcs, character)
 
-            if not player_actions and npcs:
+            if not player_actions and npcs and not character.is_dying:
                 @_dsa
                 def create_auto_attack(session, character, npc):
                     return CombatAction.objects.create(
@@ -242,7 +274,7 @@ class Command(BaseCommand):
                 from datetime import timedelta as _td
                 from django.utils import timezone as _tz
                 from apps.shyland.models import (
-                    CombatAction, ItemInstance, DYING_DURATION_SECS, STAT_POINTS_PER_LEVEL,
+                    CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
                 )
                 from apps.shyland.combat_utils import (
                     get_npc_stats, resolve_hit, calculate_damage,
@@ -266,6 +298,10 @@ class Command(BaseCommand):
 
                     # --- Character attacks NPC ---
                     if action.character_id and action.target_npc_id:
+                        if character.is_dying:
+                            # Falling discards this character's own attacks from
+                            # the moment of falling onward — no posthumous kills.
+                            continue
                         npc = next((n for n in live_npcs if n.pk == action.target_npc_id), None)
                         if npc is None or not npc.is_alive:
                             continue
@@ -394,36 +430,54 @@ class Command(BaseCommand):
 
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 
-                        npc_pool = npc.definition.unarmed_message_pool
-                        raw = get_unarmed_message(
-                            npc_pool, character.name,
-                            attacker_name=npc.definition.name,
-                            fallback_slug='npc-default',
-                        )
-                        flavor = raw.rstrip('.')
-                        if hit_result == 'critical':
-                            msg = f"[Critical] {flavor} for {damage_int} damage!"
-                        else:
-                            msg = f"{flavor} for {damage_int} damage."
-
-                        effect_msgs = apply_npc_effects(npc, character)
-                        if effect_msgs:
-                            msg += " " + " and ".join(effect_msgs) + "."
-
-                        messages.append((character.pk, msg, 'combat', None))
-
                         if character.vitality_current <= 0:
+                            # Falling replaces all combat output for this player —
+                            # no hit line for the killing blow either. Effects on
+                            # the character are canceled and their own queued
+                            # attacks are discarded from this moment onward.
                             character.vitality_current = 0
                             character.is_dying = True
                             character.dying_since = _now
                             character.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
+
+                            active_instances = list(character.active_effects.filter(is_active=True))
+                            for ei in active_instances:
+                                ei.component_instances.filter(is_active=True).update(
+                                    is_active=False, removed_by='dying'
+                                )
+                            character.active_effects.filter(is_active=True).update(
+                                is_active=False, removed_by='dying'
+                            )
+                            CombatAction.objects.filter(character=character, is_processed=False).delete()
+
+                            messages.append((character.pk, '', None, 'clear'))
+                            messages.append((character.pk, _room_title(character.current_room), 'room', None))
                             messages.append((character.pk,
-                                f"You have been brought to the brink of death! You have {DYING_DURATION_SECS} seconds to be revived.",
-                                'combat', 'dying'))
+                                "You have been dealt a fatal blow. Your life force is ebbing away — "
+                                "you have only moments to act.",
+                                'error', 'dying'))
                             room_messages.append((session.room_id,
                                 f"{character.name} has fallen and is dying!", 'combat', character.pk))
                         else:
                             character.save(update_fields=['vitality_current'])
+
+                            npc_pool = npc.definition.unarmed_message_pool
+                            raw = get_unarmed_message(
+                                npc_pool, character.name,
+                                attacker_name=npc.definition.name,
+                                fallback_slug='npc-default',
+                            )
+                            flavor = raw.rstrip('.')
+                            if hit_result == 'critical':
+                                msg = f"[Critical] {flavor} for {damage_int} damage!"
+                            else:
+                                msg = f"{flavor} for {damage_int} damage."
+
+                            effect_msgs = apply_npc_effects(npc, character)
+                            if effect_msgs:
+                                msg += " " + " and ".join(effect_msgs) + "."
+
+                            messages.append((character.pk, msg, 'combat', None))
 
                         statuses.append((character.pk, self._build_status(character)))
 
@@ -585,10 +639,32 @@ class Command(BaseCommand):
                     'effect_instance__definition',
                 ))
 
+            @database_sync_to_async
+            def fall_and_cancel(char):
+                char.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
+                active_instances = list(char.active_effects.filter(is_active=True))
+                for ei in active_instances:
+                    ei.component_instances.filter(is_active=True).update(
+                        is_active=False, removed_by='dying'
+                    )
+                char.active_effects.filter(is_active=True).update(
+                    is_active=False, removed_by='dying'
+                )
+                from apps.shyland.models import CombatAction
+                CombatAction.objects.filter(character=char, is_processed=False).delete()
+
             ticking = await get_ticking_component_instances()
+
+            # Characters who fell to a component processed earlier in this
+            # same phase: skip any further ticking components on them this
+            # tick (their effects are already canceled — a second component
+            # of the same effect must not still apply/message).
+            newly_dying = set()
 
             for ci in ticking:
                 character = ci.effect_instance.target
+                if character.pk in newly_dying:
+                    continue
                 definition = ci.effect_instance.definition
                 ctype = ci.component.component_type
                 magnitude = ci.magnitude
@@ -599,22 +675,33 @@ class Command(BaseCommand):
                         character.vitality_current = 0
                         character.is_dying = True
                         character.dying_since = now
-                        await database_sync_to_async(character.save)(
-                            update_fields=['vitality_current', 'is_dying', 'dying_since']
+                        newly_dying.add(character.pk)
+
+                        await fall_and_cancel(character)
+
+                        await self.send_to_player(character.pk, '', None, None, event='clear')
+                        await self.send_to_player(
+                            character.pk, _room_title(character.current_room), 'room', None,
                         )
                         await self.send_to_player(
                             character.pk,
-                            "You are critically wounded and dying!", 'combat',
-                            self._build_status(character), event='dying',
+                            "You have been dealt a fatal blow. Your life force is ebbing away — "
+                            "you have only moments to act.",
+                            'error', self._build_status(character), event='dying',
+                        )
+                        await self.broadcast_to_room(
+                            character.current_room_id,
+                            f"{character.name} has fallen and is dying!", 'combat',
+                            exclude_pk=character.pk,
                         )
                     else:
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
-                    status = self._build_status(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
-                        status,
-                    )
+                        status = self._build_status(character)
+                        await self.send_to_player(
+                            character.pk,
+                            f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
+                            status,
+                        )
 
                 elif ctype == 'dot_longevity':
                     character.longevity_current = max(0, character.longevity_current - magnitude)
@@ -868,6 +955,45 @@ class Command(BaseCommand):
                 await self.send_to_player(
                     character.pk, '', 'status', self._build_status(character)
                 )
+
+    # ------------------------------------------------------------------
+    # Dying lore ladder
+    # ------------------------------------------------------------------
+
+    async def process_dying_ladder(self):
+        from django.utils import timezone
+        from apps.shyland.models import Character
+
+        now = timezone.now()
+
+        @database_sync_to_async
+        def get_dying_characters():
+            return list(Character.objects.filter(is_dying=True).only('id', 'dying_since'))
+
+        dying = await get_dying_characters()
+        current_pks = set()
+
+        for character in dying:
+            pk = character.pk
+            current_pks.add(pk)
+            elapsed = int((now - character.dying_since).total_seconds())
+
+            sent = self._dying_ladder_sent.get(pk)
+            if sent is None:
+                # First sight of this dying character in this process — seed
+                # with every threshold already passed so a late tick or an
+                # engine restart mid-window doesn't replay earlier lines.
+                sent = {threshold for threshold, _ in DYING_LADDER if threshold <= elapsed}
+                self._dying_ladder_sent[pk] = sent
+
+            for threshold, line in DYING_LADDER:
+                if threshold <= elapsed and threshold not in sent:
+                    sent.add(threshold)
+                    await self.send_to_player(pk, line, 'error', None)
+
+        for pk in list(self._dying_ladder_sent.keys()):
+            if pk not in current_pks:
+                del self._dying_ladder_sent[pk]
 
     def _build_status(self, character):
         return {
