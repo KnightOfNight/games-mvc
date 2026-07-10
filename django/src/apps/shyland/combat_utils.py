@@ -1,5 +1,11 @@
 import random
 
+TO_HIT_DEFENSE_BASE = 10   # static defense = base + defender DEX
+GRAZE_WINDOW = 3           # miss the defense by 1..GRAZE_WINDOW -> graze
+CRIT_BASE = 0.05           # critical chance floor on any successful hit
+CRIT_PER_DEX_ADVANTAGE = 0.01
+CRIT_CAP = 0.25
+
 
 def get_acuity_modifier(character):
     """Return acuity_current clamped to [0.1, 1.9], rounded to 1dp."""
@@ -12,16 +18,22 @@ def roll_initiative(stat_dex, stat_per):
 
 
 def resolve_hit(attacker_dex, target_dodge):
-    """Return 'miss', 'graze', 'hit', or 'critical'."""
-    roll = random.randint(1, 100) + attacker_dex
-    if roll < target_dodge:
-        return 'miss'
-    elif roll < target_dodge + 10:
+    """Return 'miss', 'graze', 'hit', or 'critical'.
+
+    Contested to-hit: d20 + attacker DEX vs static defense
+    (TO_HIT_DEFENSE_BASE + defender DEX). Critical is a separate
+    independent roll on any successful hit, floored at CRIT_BASE and
+    capped at CRIT_CAP.
+    """
+    total = random.randint(1, 20) + attacker_dex
+    defense = TO_HIT_DEFENSE_BASE + target_dodge
+    if total >= defense:
+        crit_chance = min(CRIT_CAP, max(CRIT_BASE,
+            CRIT_BASE + CRIT_PER_DEX_ADVANTAGE * (attacker_dex - target_dodge)))
+        return 'critical' if random.random() < crit_chance else 'hit'
+    if defense - total <= GRAZE_WINDOW:
         return 'graze'
-    elif roll < target_dodge + 30:
-        return 'hit'
-    else:
-        return 'critical'
+    return 'miss'
 
 
 def calculate_damage(base_damage, stat_bonus, acuity_mod, durability_mod, hit_result, is_focus_target=True):
