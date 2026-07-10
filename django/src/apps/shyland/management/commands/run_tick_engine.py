@@ -116,7 +116,7 @@ class Command(BaseCommand):
             msg = f"You have died and awakened at {recall.name if recall else 'your recall point'}."
             if broken:
                 msg += f" Your {', '.join(broken)} {'has' if len(broken) == 1 else 'have'} broken."
-            await self.send_to_player(character.pk, msg, 'system', {
+            status_payload = {
                 'type': 'status',
                 'vitality': character.vitality_current,
                 'vitality_max': character.vitality_max,
@@ -128,7 +128,8 @@ class Command(BaseCommand):
                 'longevity_max': character.longevity_max,
                 'room_name': recall.name if recall else '',
                 'area_name': None,
-            })
+            }
+            await self.send_to_player(character.pk, msg, 'system', status_payload, event='respawn')
             logger.info(f"Character {name} died and respawned at room {recall.pk if recall else 'None'}")
 
         # --- Active combat sessions ---
@@ -281,7 +282,7 @@ class Command(BaseCommand):
                         hit_result = resolve_hit(character.stat_dex, npc_stats['dex'])
 
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"You miss the {npc.definition.name}.", 'combat'))
+                            messages.append((character.pk, f"You miss the {npc.definition.name}.", 'combat', None))
                             continue
 
                         if weapon_item:
@@ -321,7 +322,7 @@ class Command(BaseCommand):
                         msg = f"{flavor} for {damage_int} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" The {npc.definition.name} {health_desc}."
-                        messages.append((character.pk, msg, 'combat'))
+                        messages.append((character.pk, msg, 'combat', None))
 
                         if npc.vitality_current <= 0:
                             npc.is_alive = False
@@ -348,12 +349,14 @@ class Command(BaseCommand):
                                     f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}. "
                                     f"You have {pts} unspent stat point{'s' if pts != 1 else ''}. "
                                     f"Type 'spend' to allocate them.",
-                                    'system'
+                                    'system', None
                                 ))
+
+                            statuses.append((character.pk, self._build_status(character)))
 
                             create_corpse(npc, character)
 
-                            messages.append((character.pk, f"You have slain the {npc.definition.name}! (+{xp} XP)", 'combat'))
+                            messages.append((character.pk, f"You have slain the {npc.definition.name}! (+{xp} XP)", 'combat', None))
                             room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat'))
                             if npc_def.death_message:
                                 room_messages.append((session.room_id, npc_def.death_message, 'combat'))
@@ -364,7 +367,7 @@ class Command(BaseCommand):
                             if not live_npcs:
                                 session.is_active = False
                                 session.save(update_fields=['is_active'])
-                                messages.append((character.pk, "Combat has ended.", 'system'))
+                                messages.append((character.pk, "Combat has ended.", 'system', None))
                                 break
 
                     # --- NPC attacks character ---
@@ -379,7 +382,7 @@ class Command(BaseCommand):
                         hit_result = resolve_hit(npc_stats['dex'], character.stat_dex)
 
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"The {npc.definition.name} misses you.", 'combat'))
+                            messages.append((character.pk, f"The {npc.definition.name} misses you.", 'combat', None))
                             continue
 
                         base_damage = _random.uniform(
@@ -403,7 +406,7 @@ class Command(BaseCommand):
                         if effect_msgs:
                             msg += " " + " and ".join(effect_msgs) + "."
 
-                        messages.append((character.pk, msg, 'combat'))
+                        messages.append((character.pk, msg, 'combat', None))
 
                         if character.vitality_current <= 0:
                             character.vitality_current = 0
@@ -412,7 +415,7 @@ class Command(BaseCommand):
                             character.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
                             messages.append((character.pk,
                                 f"You have been brought to the brink of death! You have {DYING_DURATION_SECS} seconds to be revived.",
-                                'combat'))
+                                'combat', 'dying'))
                             room_messages.append((session.room_id,
                                 f"{character.name} has fallen and is dying!", 'combat'))
                         else:
@@ -426,8 +429,8 @@ class Command(BaseCommand):
                 session, ordered_actions, character, npcs
             )
 
-            for char_pk, text, category in messages:
-                await self.send_to_player(char_pk, text, category, None)
+            for char_pk, text, category, event in messages:
+                await self.send_to_player(char_pk, text, category, None, event=event)
             for char_pk, status in statuses:
                 await self.send_to_player(char_pk, '', 'status', status)
             for room_id, text, category in room_messages:
@@ -597,7 +600,8 @@ class Command(BaseCommand):
                         )
                         await self.send_to_player(
                             character.pk,
-                            "You are critically wounded and dying!", 'combat'
+                            "You are critically wounded and dying!", 'combat',
+                            self._build_status(character), event='dying',
                         )
                     else:
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
@@ -876,7 +880,7 @@ class Command(BaseCommand):
             'area_name': character.current_room.area.name if character.current_room and character.current_room.area_id else None,
         }
 
-    async def send_to_player(self, character_pk, text, category, status):
+    async def send_to_player(self, character_pk, text, category, status, event=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
         await channel_layer.group_send(
@@ -886,6 +890,7 @@ class Command(BaseCommand):
                 'text': text,
                 'category': category,
                 'status': status,
+                'event': event,
             }
         )
 

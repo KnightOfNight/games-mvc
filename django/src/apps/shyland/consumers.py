@@ -1538,6 +1538,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if event.get('status') is not None:
             await self.send_json(event['status'])
 
+        event_type = event.get('event')
+        if event_type == 'dying':
+            self._character_is_dying = True
+        elif event_type == 'respawn':
+            char = await self.get_character_fresh()
+            await self.channel_layer.group_discard(self.room_group, self.channel_name)
+            self.room_group = f'room_{char.current_room_id}'
+            await self.channel_layer.group_add(self.room_group, self.channel_name)
+            self.last_direction = None
+            room = await self.get_current_room()
+            await self.send_room_description(room, entering=True)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -1561,7 +1573,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({'type': 'output', 'text': text, 'category': category})
 
     async def send_room_description(self, room, entering=False, force_long=False):
-        char = self.character
+        char = await self.get_character_fresh()
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
         others_db = await self.get_others_in_room(room)
