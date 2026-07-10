@@ -1,5 +1,7 @@
 import asyncio
+import json
 import random
+import uuid
 
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
@@ -89,6 +91,41 @@ def _item_suffix(item, defn):
     return ''
 
 
+def parse_presence_name(raw: bytes) -> str:
+    """Extract the character name from a presence value.
+    Tolerates legacy values that are a bare name string."""
+    text = raw.decode()
+    try:
+        return json.loads(text)["name"]
+    except (ValueError, KeyError, TypeError):
+        return text
+
+
+# Guarded heartbeat: self-heals a missing key, refreshes TTL only if this
+# session still owns the key, and never clobbers a different session's value.
+PRESENCE_HEARTBEAT_LUA = """
+local v = redis.call('GET', KEYS[1])
+if v == false then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', 90)
+  return 1
+elseif v == ARGV[1] then
+  redis.call('EXPIRE', KEYS[1], 90)
+  return 1
+else
+  return 0
+end
+"""
+
+# Guarded delete: only removes the key if it still holds this session's value.
+PRESENCE_DELETE_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+else
+  return 0
+end
+"""
+
+
 class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     # ------------------------------------------------------------------
@@ -128,9 +165,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.player_group, self.channel_name)
 
         self.redis = aioredis.from_url("redis://redis:6379")
+        self.session_token = uuid.uuid4().hex
+        self.presence_value = json.dumps({
+            "name": self.character.name,
+            "token": self.session_token,
+        })
         await self.redis.set(
             f"shyland:online:{self.character_pk}",
-            self.character.name,
+            self.presence_value,
             ex=90,
         )
         self.heartbeat_task = asyncio.ensure_future(self.presence_heartbeat())
@@ -141,7 +183,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if hasattr(self, 'heartbeat_task'):
             self.heartbeat_task.cancel()
         if hasattr(self, 'character_pk') and hasattr(self, 'redis'):
-            await self.redis.delete(f"shyland:online:{self.character_pk}")
+            await self.redis.eval(
+                PRESENCE_DELETE_LUA,
+                1,
+                f"shyland:online:{self.character_pk}",
+                self.presence_value,
+            )
         if hasattr(self, 'player_group'):
             await self.channel_layer.group_discard(self.player_group, self.channel_name)
         if hasattr(self, 'room_group'):
@@ -179,6 +226,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_who()
         elif verb in ('inventory', 'inv'):
             await self.cmd_inventory()
+        elif verb == 'wallet':
+            await self.cmd_wallet()
         elif verb in ('pickup', 'p'):
             await self.cmd_pickup(args)
         elif verb == 'drop':
@@ -376,7 +425,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output("No players are currently online.", "system")
             return
         names = await self.redis.mget(*keys)
-        online = sorted(n.decode() for n in names if n)
+        online = sorted(parse_presence_name(n) for n in names if n)
         count = len(online)
         lines = [f"Players online ({count}):"] + [f"  {name}" for name in online]
         await self.output("\n".join(lines), "system")
@@ -384,9 +433,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def presence_heartbeat(self):
         while True:
             await asyncio.sleep(60)
-            await self.redis.expire(
+            await self.redis.eval(
+                PRESENCE_HEARTBEAT_LUA,
+                1,
                 f"shyland:online:{self.character_pk}",
-                90,
+                self.presence_value,
             )
 
     async def cmd_inventory(self):
@@ -464,7 +515,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     lines.append(f'             {name_str}  {bind_tag}')
                 idx += 1
 
+        wallet_char = await self.get_character_fresh()
+        lines.append('')
+        lines.append('Wallet:')
+        lines.append(f'  {self.format_wallet(wallet_char)}')
+
         await self.output('\n'.join(lines), 'system')
+
+    async def cmd_wallet(self):
+        char = await self.get_character_fresh()
+        await self.output(f'Wallet: {self.format_wallet(char)}', 'system')
 
     async def cmd_help(self):
         room = await self.get_current_room()
@@ -480,6 +540,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  say <text>                 — speak to players here\n'
             '  who                        — list players online\n'
             '  inventory / inv            — show carried items and equipment\n'
+            '  wallet                     — show your copper\n'
             '  pickup (p) <item>          — pick up an item from the room\n'
             '  drop <item>                — drop a carried item (unbound items only)\n'
             '  equip (eq) <item>          — equip a carried item\n'
@@ -1072,14 +1133,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.output('\n'.join(lines), 'system')
 
     async def cmd_buy(self, args):
-        if not args:
-            await self.output('Buy what?', 'system')
-            return
-
         room = await self.get_current_room()
         vendor = await self.get_vendor_in_room(room)
         if vendor is None:
             await self.output('There is no one here to trade with.', 'error')
+            return
+
+        if not args:
+            await self.output('Buy what?', 'system')
             return
 
         entries = await self.get_vendor_entries(vendor)
@@ -1125,14 +1186,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def cmd_sell(self, args):
-        if not args:
-            await self.output('Sell what?', 'system')
-            return
-
         room = await self.get_current_room()
         vendor = await self.get_vendor_in_room(room)
         if vendor is None:
             await self.output('There is no one here to trade with.', 'error')
+            return
+
+        if not args:
+            await self.output('Sell what?', 'system')
             return
 
         char = self.character
@@ -1510,7 +1571,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             keys = await self.redis.keys("shyland:online:*")
             if keys:
                 values = await self.redis.mget(*keys)
-                online_names = {v.decode() for v in values if v}
+                online_names = {parse_presence_name(v) for v in values if v}
         others = [name for name in others_db if name in online_names]
         npcs = await self.get_npcs_in_room(room)
         corpses = await self.get_corpses_in_room(room)
