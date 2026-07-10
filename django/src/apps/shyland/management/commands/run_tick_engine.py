@@ -357,9 +357,9 @@ class Command(BaseCommand):
                             create_corpse(npc, character)
 
                             messages.append((character.pk, f"You have slain the {npc.definition.name}! (+{xp} XP)", 'combat', None))
-                            room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat'))
+                            room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat', character.pk))
                             if npc_def.death_message:
-                                room_messages.append((session.room_id, npc_def.death_message, 'combat'))
+                                room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
 
                             live_npcs = [n for n in live_npcs if n.pk != npc.pk]
                             session.npcs.remove(npc)
@@ -395,7 +395,11 @@ class Command(BaseCommand):
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 
                         npc_pool = npc.definition.unarmed_message_pool
-                        raw = get_unarmed_message(npc_pool, character.name)
+                        raw = get_unarmed_message(
+                            npc_pool, character.name,
+                            attacker_name=npc.definition.name,
+                            fallback_slug='npc-default',
+                        )
                         flavor = raw.rstrip('.')
                         if hit_result == 'critical':
                             msg = f"[Critical] {flavor} for {damage_int} damage!"
@@ -417,7 +421,7 @@ class Command(BaseCommand):
                                 f"You have been brought to the brink of death! You have {DYING_DURATION_SECS} seconds to be revived.",
                                 'combat', 'dying'))
                             room_messages.append((session.room_id,
-                                f"{character.name} has fallen and is dying!", 'combat'))
+                                f"{character.name} has fallen and is dying!", 'combat', character.pk))
                         else:
                             character.save(update_fields=['vitality_current'])
 
@@ -433,8 +437,8 @@ class Command(BaseCommand):
                 await self.send_to_player(char_pk, text, category, None, event=event)
             for char_pk, status in statuses:
                 await self.send_to_player(char_pk, '', 'status', status)
-            for room_id, text, category in room_messages:
-                await self.broadcast_to_room(room_id, text, category)
+            for room_id, text, category, exclude_pk in room_messages:
+                await self.broadcast_to_room(room_id, text, category, exclude_pk=exclude_pk)
 
     # ------------------------------------------------------------------
     # Corpse decay
@@ -894,7 +898,7 @@ class Command(BaseCommand):
             }
         )
 
-    async def broadcast_to_room(self, room_id, text, category='room'):
+    async def broadcast_to_room(self, room_id, text, category='room', exclude_pk=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
         await channel_layer.group_send(
@@ -903,5 +907,6 @@ class Command(BaseCommand):
                 'type': 'room_message',
                 'text': text,
                 'category': category,
+                'exclude_pk': exclude_pk,
             }
         )

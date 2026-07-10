@@ -1845,6 +1845,102 @@ class Command(BaseCommand):
                 )
         self.stdout.write(f'  Seeded {len(vr_pools)} Verdant Reach unarmed pools.')
 
+        # NPC attack fallback pool (v19 brief 3) — NPC attacks never fall
+        # back to the player-perspective "default" pool.
+        npc_default_templates = [
+            'The {attacker} strikes {target}',
+            'The {attacker} lashes out at {target}',
+            'The {attacker} slams into {target}',
+            'The {attacker} tears at {target}',
+        ]
+        # Verdant surface animal species pools (v19 brief 3), third person.
+        animal_templates = {
+            'sp-river-otter': (
+                'River Otter Attacks',
+                [
+                    'The river otter darts in and rakes {target} with quick claws',
+                    "The river otter twists around {target}'s legs and bites hard",
+                    'The river otter snaps at {target} with surprising ferocity',
+                    'The river otter slams its sleek body against {target}',
+                ],
+            ),
+            'sp-black-bear': (
+                'Black Bear Attacks',
+                [
+                    'The black bear rakes {target} with a heavy paw',
+                    'The black bear clamps its jaws down on {target}',
+                    'The black bear rears up and slams its weight into {target}',
+                    'The black bear swats {target} aside with terrible strength',
+                ],
+            ),
+            'sp-mountain-lion': (
+                'Young Mountain Lion Attacks',
+                [
+                    'The young mountain lion rakes {target} with both sets of claws',
+                    'The young mountain lion sinks its teeth into {target}',
+                    'The young mountain lion pounces, driving {target} back',
+                    'The young mountain lion slashes at {target} in a blur',
+                ],
+            ),
+            'sp-wild-boar': (
+                'Wild Boar Attacks',
+                [
+                    'The wild boar gores {target} with a slashing tusk',
+                    'The wild boar charges headlong into {target}',
+                    'The wild boar hooks its tusks upward into {target}',
+                    'The wild boar tramples over {target} in a frenzy',
+                ],
+            ),
+            'sp-plains-deer': (
+                'Plains Deer Attacks',
+                [
+                    'The plains deer lashes out at {target} with sharp hooves',
+                    'The plains deer rears and strikes {target} hard',
+                    'The plains deer drives its antlers at {target}',
+                    'The plains deer kicks {target} with startling force',
+                ],
+            ),
+            'sp-plains-rabbit': (
+                'Plains Rabbit Attacks',
+                [
+                    'The plains rabbit rakes {target} with powerful hind claws',
+                    'The plains rabbit bites {target} and darts away',
+                    'The plains rabbit thumps into {target} at full speed',
+                    'The plains rabbit scratches furiously at {target}',
+                ],
+            ),
+            'sp-prairie-dog': (
+                'Prairie Dog Attacks',
+                [
+                    'The prairie dog nips at {target} with chisel teeth',
+                    "The prairie dog darts between {target}'s feet, biting",
+                    'The prairie dog scratches at {target} in a fury',
+                    "The prairie dog latches onto {target} and won't let go",
+                ],
+            ),
+            'sp-buffalo': (
+                'Buffalo Attacks',
+                [
+                    'The buffalo drives its horns into {target}',
+                    'The buffalo slams a ton of muscle into {target}',
+                    'The buffalo hooks {target} and tosses them aside',
+                    'The buffalo tramples {target} beneath heavy hooves',
+                ],
+            ),
+        }
+        npc_pools = {'npc-default': ('NPC Default Attacks', npc_default_templates)}
+        npc_pools.update(animal_templates)
+        for slug, (name, templates) in npc_pools.items():
+            pool, _ = UnarmedMessagePool.objects.get_or_create(
+                slug=slug, defaults={'name': name},
+            )
+            for i, template in enumerate(templates):
+                UnarmedMessage.objects.get_or_create(
+                    pool=pool, template=template, defaults={'order': i},
+                )
+        self.stdout.write(f'  Seeded {len(npc_pools)} NPC unarmed pools '
+                          f'(npc-default + {len(animal_templates)} species).')
+
     def _seed_origins(self):
         origins = [
             {
@@ -4508,35 +4604,35 @@ class Command(BaseCommand):
         npcs = [
             # Surface creatures — passive
             ('river-otter', 'river otter', 'normal', False,
-             (15, 4, 10, 5, 3, 3, 8), 1.0, None, 'animal-drops', (0, 0), 1,
+             (15, 4, 10, 5, 3, 3, 8), 1.0, 'sp-river-otter', 'animal-drops', (0, 0), 1,
              'Sleek, whiskered, and entirely certain the river was made for it. '
              'It watches you upside down, mid-float, unimpressed.', {}),
             ('black-bear', 'black bear', 'normal', False,
-             (35, 10, 6, 9, 3, 3, 6), 2.0, None, 'animal-drops', (0, 0), 1,
+             (35, 10, 6, 9, 3, 3, 6), 2.0, 'sp-black-bear', 'animal-drops', (0, 0), 1,
              'A black bear, big as a haystack and about as hurried. Its attention '
              "is on the fish, until it isn't.", {}),
             ('young-mountain-lion', 'young mountain lion', 'normal', False,
-             (28, 8, 11, 7, 3, 3, 9), 2.0, None, 'animal-drops', (0, 0), 1,
+             (28, 8, 11, 7, 3, 3, 9), 2.0, 'sp-mountain-lion', 'animal-drops', (0, 0), 1,
              'Lean and tawny, all shoulder and patience, moving over the rock '
              'like it weighs nothing and owes nothing.', {}),
             ('wild-boar', 'wild boar', 'elite', False,
-             (55, 12, 7, 12, 2, 2, 6), 3.0, None, 'animal-drops', (0, 0), 1,
+             (55, 12, 7, 12, 2, 2, 6), 3.0, 'sp-wild-boar', 'animal-drops', (0, 0), 1,
              'Bristled, tusked, and built like a barrel full of grudges. It does '
              'not startle. It commits.', {}),
             ('plains-deer', 'plains deer', 'normal', False,
-             (45, 8, 13, 10, 3, 3, 11), 4.0, None, 'animal-drops', (0, 0), 1,
+             (45, 8, 13, 10, 3, 3, 11), 4.0, 'sp-plains-deer', 'animal-drops', (0, 0), 1,
              'A plains deer, ears up, legs coiled, already halfway into the '
              'decision to be somewhere else.', {}),
             ('plains-rabbit', 'plains rabbit', 'normal', False,
-             (18, 4, 15, 6, 2, 2, 12), 4.0, None, 'animal-drops', (0, 0), 1,
+             (18, 4, 15, 6, 2, 2, 12), 4.0, 'sp-plains-rabbit', 'animal-drops', (0, 0), 1,
              'A rabbit of the flats — grass-fat, absurdly quick, running errands '
              'of tremendous urgency and no discernible purpose.', {}),
             ('prairie-dog', 'prairie dog', 'normal', False,
-             (16, 4, 14, 6, 3, 3, 13), 4.0, None, 'animal-drops', (0, 0), 1,
+             (16, 4, 14, 6, 3, 3, 13), 4.0, 'sp-prairie-dog', 'animal-drops', (0, 0), 1,
              'It stands bolt upright on its mound, whistling civic outrage at '
              'your existence to the entire town.', {}),
             ('buffalo', 'buffalo', 'elite', False,
-             (90, 16, 6, 16, 2, 2, 8), 5.0, None, 'animal-drops', (0, 0), 1,
+             (90, 16, 6, 16, 2, 2, 8), 5.0, 'sp-buffalo', 'animal-drops', (0, 0), 1,
              'A hill that eats grass. It regards you with one enormous, '
              'incurious eye and continues chewing.', {}),
             # Villagers — passive

@@ -128,11 +128,13 @@ def apply_npc_effects(npc_instance, target_character):
     return messages
 
 
-def get_unarmed_message(attacker_pool, target_name):
+def get_unarmed_message(attacker_pool, target_name, attacker_name=None, fallback_slug='default'):
     """
     Select a random unarmed attack message from the given pool.
-    Falls back to the 'default' pool if attacker_pool is None or has no messages.
-    Returns a formatted string with target_name substituted.
+    Falls back to the pool named by fallback_slug if attacker_pool is None or
+    has no messages ('default' for player attacks, 'npc-default' for NPC attacks).
+    Substitution is literal str.replace, not .format: '{target}' -> target_name,
+    '{attacker}' -> attacker_name when provided. Stray braces in prose are harmless.
     Caller is responsible for prefetching pool.messages before calling.
     """
     import random
@@ -140,13 +142,19 @@ def get_unarmed_message(attacker_pool, target_name):
     if not messages:
         from apps.shyland.models import UnarmedMessagePool
         try:
-            default_pool = UnarmedMessagePool.objects.prefetch_related('messages').get(slug='default')
-            messages = list(default_pool.messages.all())
+            fallback_pool = UnarmedMessagePool.objects.prefetch_related('messages').get(slug=fallback_slug)
+            messages = list(fallback_pool.messages.all())
         except UnarmedMessagePool.DoesNotExist:
-            return f"You strike {target_name}."
+            messages = []
     if not messages:
+        if attacker_name:
+            return f"The {attacker_name} strikes {target_name}."
         return f"You strike {target_name}."
-    return random.choice(messages).template.format(target=target_name)
+    template = random.choice(messages).template
+    text = template.replace('{target}', target_name)
+    if attacker_name:
+        text = text.replace('{attacker}', attacker_name)
+    return text
 
 
 def xp_for_kill(npc_instance, character):

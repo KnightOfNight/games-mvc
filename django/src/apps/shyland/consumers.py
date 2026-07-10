@@ -91,6 +91,24 @@ def _item_suffix(item, defn):
     return ''
 
 
+ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
+
+
+def npc_display_name(npc, npcs_in_room):
+    """'the black bear' when unique in the room, 'the second black bear'
+    when multiple NPCs share the definition name. Positional: index within
+    the same-name NPCs in room parse order (the order parse_npc_noun uses).
+    Not a stable per-instance number — it shifts as same-name NPCs die."""
+    name = npc.definition.name
+    same_name = [n for n in npcs_in_room if n.definition.name == name]
+    if len(same_name) <= 1:
+        return f"the {name}"
+    index = next((i for i, n in enumerate(same_name) if n.pk == npc.pk), None)
+    if index is None or index >= len(ORDINALS):
+        return f"the {name}"
+    return f"the {ORDINALS[index]} {name}"
+
+
 def parse_presence_name(raw: bytes) -> str:
     """Extract the character name from a presence value.
     Tolerates legacy values that are a bare name string."""
@@ -1296,6 +1314,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_attack(self, args):
         character = await self.get_character_fresh()
+        room = await self.get_current_room()
+        npcs_in_room = await self.get_live_npcs_in_room(room)
 
         if not args:
             # Targetless attack only auto-targets under aggro: the
@@ -1305,17 +1325,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_output("Attack what?", 'error')
                 return
         else:
-            room = await self.get_current_room()
-            npcs = await self.get_live_npcs_in_room(room)
-            npc = await self.parse_npc_noun(args, npcs)
+            npc = await self.parse_npc_noun(args, npcs_in_room)
 
             if npc is None:
                 await self.send_output("You don't see that here.", 'error')
                 return
 
-        await self.send_output(f"You attack the {npc.definition.name}!", 'combat')
+        display = npc_display_name(npc, npcs_in_room)
+
+        session = await self.get_active_combat_session(character)
+        if session and await self.npc_in_session(session, npc):
+            await self.send_output(f"You're already fighting {display}.", 'combat')
+            return
+
+        await self.send_output(f"You move to attack {display}!", 'combat')
         await self.broadcast_to_room_exclude(
-            f"{character.name} attacks the {npc.definition.name}!", 'combat'
+            f"{character.name} moves to attack the {npc.definition.name}!", 'combat'
         )
         await self.start_combat([npc], first_attacker='character')
 
@@ -1524,6 +1549,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def room_message(self, event):
         if event.get('exclude') == self.channel_name:
+            return
+        exclude_pk = event.get('exclude_pk')
+        if exclude_pk is not None and exclude_pk == self.character_pk:
             return
         await self.output(event['text'], event.get('category', 'system'))
 
@@ -2073,6 +2101,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_active_combat_session(self, character):
         return CombatSession.objects.filter(is_active=True, characters=character).first()
+
+    @database_sync_to_async
+    def npc_in_session(self, session, npc):
+        return session.npcs.filter(pk=npc.pk).exists()
 
     @database_sync_to_async
     def get_first_attacker_npc(self, character):
