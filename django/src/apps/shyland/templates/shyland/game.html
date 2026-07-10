@@ -206,7 +206,7 @@
     if (msg.type === 'clear') {
       output.innerHTML = '';
     } else if (msg.type === 'output') {
-      if (msg.category === 'room' && msg.exits !== undefined) {
+      if (msg.category === 'room') {
         if (msg.enter) output.innerHTML = '';
         renderRoom(msg);
       } else if (msg.category === 'who') {

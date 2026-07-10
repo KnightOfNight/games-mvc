@@ -21,14 +21,6 @@ DYING_LADDER = [
 ]
 
 
-def _room_title(room):
-    if room is None:
-        return ''
-    if room.area_id:
-        return f'[ {room.area.name} — {room.name} ]'
-    return f'[ {room.name} ]'
-
-
 class Command(BaseCommand):
     help = 'Run the Shyland tick engine (1-second loop).'
 
@@ -451,7 +443,6 @@ class Command(BaseCommand):
                             CombatAction.objects.filter(character=character, is_processed=False).delete()
 
                             messages.append((character.pk, '', None, 'clear'))
-                            messages.append((character.pk, _room_title(character.current_room), 'room', None))
                             messages.append((character.pk,
                                 "You have been dealt a fatal blow. Your life force is ebbing away — "
                                 "you have only moments to act.",
@@ -680,9 +671,6 @@ class Command(BaseCommand):
                         await fall_and_cancel(character)
 
                         await self.send_to_player(character.pk, '', None, None, event='clear')
-                        await self.send_to_player(
-                            character.pk, _room_title(character.current_room), 'room', None,
-                        )
                         await self.send_to_player(
                             character.pk,
                             "You have been dealt a fatal blow. Your life force is ebbing away — "
