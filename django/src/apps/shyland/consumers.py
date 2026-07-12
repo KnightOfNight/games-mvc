@@ -16,9 +16,9 @@ from .combat_utils import npc_display_name
 from .currency import display_for_zone
 from .item_utils import (
     format_slot_name, generate_item_instance, get_display_name,
-    get_display_name_with_tier, get_display_description, get_repair_cost,
-    get_repair_success_chance, get_sale_price, parse_item_noun,
-    parse_corpse_noun, STAT_LABELS,
+    get_display_name_with_tier, get_display_description, get_item_value,
+    get_repair_cost, get_repair_success_chance, get_sale_price,
+    parse_item_noun, parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
@@ -41,6 +41,44 @@ RARITY_RANK = {
     'common': 1, 'uncommon': 2, 'rare': 3,
     'epic': 4, 'legendary': 5, 'artifact': 6,
 }
+
+# v19 brief 10: kibitz lines (gazebo double-vendor transactions) and
+# pity-repair lines (repairs whose computed value is 0). Not part of the
+# brief 9 dialogue engine — plain authored pools, keyed and consumed here.
+KIBITZ_LINES = [
+    '{other} watches the exchange and nods approvingly.',
+    '{other} pretends not to supervise, and supervises.',
+    '{other} rearranges the shelf, satisfied.',
+]
+
+PITY_REPAIR_LINES = {
+    'morra': (
+        'Morra turns the piece over once, snorts softly, and fixes it for '
+        'nothing. "Come back when you\'ve got something worth charging for."'
+    ),
+    'pella': (
+        "Pella tuts over the wear like it's a personal affront and mends it "
+        'free. "There. Don\'t thank me, just eat something."'
+    ),
+    'ferwick': (
+        'Ferwick waves off payment before you can reach for your purse. '
+        '"The city gave it to you; the city can keep it standing."'
+    ),
+    'repairbot-prime': (
+        'Repairbot Prime completes the work in silence. "COST: NEGLIGIBLE. '
+        'WAIVED. MAINTAIN YOUR EQUIPMENT."'
+    ),
+}
+PITY_REPAIR_FALLBACK = (
+    '{name} looks your battered gear over, takes pity, and repairs it for nothing.'
+)
+
+
+def _pity_repair_line(repairer):
+    template = PITY_REPAIR_LINES.get(repairer.definition.slug)
+    if template:
+        return template
+    return PITY_REPAIR_FALLBACK.replace('{name}', repairer.name)
 
 
 DIRECTIONS = {
@@ -1153,9 +1191,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(f'{vendor.name} has nothing left for sale.', 'system')
             return
 
+        char = await self.get_character_fresh()
         lines = [f'{vendor.name} offers:']
         for entry in listable:
-            line = f'  {self._entry_display_name(entry)} — {entry.price} copper'
+            line = f'  {self._entry_display_name(entry)} — {self.format_amount(char, entry.price)}'
             if entry.stock_limit is not None:
                 line += f' ({entry.stock_limit - entry.sold_count} left)'
             lines.append(line)
@@ -1188,7 +1227,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = await self.get_character_fresh()
         if entry.price > char.copper:
             await self.output(
-                f"You can't afford that — it costs {entry.price} copper.", 'system',
+                f"You can't afford that — it costs {self.format_amount(char, entry.price)}.",
+                'system',
             )
             return
 
@@ -1203,16 +1243,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         result = await self.do_buy(entry, char)
         if result == 'poor':
             await self.output(
-                f"You can't afford that — it costs {entry.price} copper.", 'system',
+                f"You can't afford that — it costs {self.format_amount(char, entry.price)}.",
+                'system',
             )
             return
         if result == 'sold_out':
             await self.output('Sold out.', 'system')
             return
         await self.output(
-            f'You buy {get_display_name_with_tier(result)} for {entry.price} copper.',
+            f'You buy {get_display_name_with_tier(result)} for {self.format_amount(char, entry.price)}.',
             'system',
         )
+        await self.maybe_kibitz(room, vendor)
 
     async def cmd_sell(self, args):
         room = await self.get_current_room()
@@ -1239,9 +1281,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         item = unequipped[0]
+        if get_item_value(item) == 0:
+            await self.output("That's not worth anything to me.", 'error')
+            return
+
         name = get_display_name_with_tier(item)
         price = await self.do_sell(item, char)
-        await self.output(f'You sell {name} for {price} copper.', 'system')
+        await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'system')
+        await self.maybe_kibitz(room, vendor)
 
     async def cmd_repair(self, args):
         char = await self.get_character_fresh()
@@ -1265,21 +1312,30 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 outcome, cost = await self.do_repair_attempt(item, char)
                 if outcome == 'poor':
                     lines.append(
-                        f"You can't afford to repair {name} ({cost} copper) — "
-                        'you stop there.'
+                        f"You can't afford to repair {name} "
+                        f"({self.format_amount(char, cost)}) — you stop there."
                     )
                     break
                 spent += cost
                 if outcome == 'success':
                     repaired += 1
-                    lines.append(f'{name} is restored to full condition. ({cost} copper)')
+                    if get_item_value(item) == 0:
+                        lines.append(_pity_repair_line(repairer))
+                    else:
+                        lines.append(
+                            f'{name} is restored to full condition. '
+                            f'({self.format_amount(char, cost)})'
+                        )
                 else:
                     failed += 1
-                    lines.append(f"The mending on {name} didn't take. ({cost} copper)")
+                    lines.append(
+                        f"The mending on {name} didn't take. "
+                        f"({self.format_amount(char, cost)})"
+                    )
             lines.append(
                 f'Repaired {repaired} item{"s" if repaired != 1 else ""}, '
                 f'{failed} attempt{"s" if failed != 1 else ""} failed, '
-                f'{spent} copper spent.'
+                f'{self.format_amount(char, spent)} spent.'
             )
             await self.output('\n'.join(lines), 'system')
             return
@@ -1305,18 +1361,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         outcome, cost = await self.do_repair_attempt(item, char)
         if outcome == 'poor':
             await self.output(
-                f"Repairing your {name} costs {cost} copper — you can't afford it.",
+                f"Repairing your {name} costs {self.format_amount(char, cost)} — "
+                "you can't afford it.",
                 'system',
             )
         elif outcome == 'success':
-            await self.output(
-                f'{repairer.name} restores your {name} to full condition. '
-                f'({cost} copper)', 'system',
-            )
+            if get_item_value(item) == 0:
+                await self.output(_pity_repair_line(repairer), 'system')
+            else:
+                await self.output(
+                    f'{repairer.name} restores your {name} to full condition. '
+                    f'({self.format_amount(char, cost)})', 'system',
+                )
         else:
             await self.output(
                 f"{repairer.name} works on your {name}, but the mending didn't "
-                f'take. ({cost} copper)', 'system',
+                f'take. ({self.format_amount(char, cost)})', 'system',
             )
 
     # ------------------------------------------------------------------
@@ -1626,6 +1686,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def format_wallet(self, character):
         zone_slug = character.current_room.zone.slug if character.current_room_id else None
         return display_for_zone(character.copper, zone_slug)
+
+    def format_amount(self, character, amount):
+        zone_slug = character.current_room.zone.slug if character.current_room_id else None
+        return display_for_zone(amount, zone_slug)
+
+    async def maybe_kibitz(self, room, vendor):
+        """v19 brief 10: after a completed buy/sell, the room's other living
+        vendor (the gazebo's spouse) gets one flavor line, if present."""
+        other = await self.get_other_vendor_in_room(room, vendor.pk)
+        if other is None:
+            return
+        line = random.choice(KIBITZ_LINES).replace('{other}', other.definition.name)
+        await self.channel_layer.group_send(self.room_group, {
+            'type': 'room_message',
+            'text': line,
+            'category': 'room',
+        })
 
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category})
@@ -1977,6 +2054,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
 
     @database_sync_to_async
+    def get_other_vendor_in_room(self, room, exclude_instance_pk):
+        """Another living vendor in the room besides the one serving the
+        transaction — v19 brief 10 kibitz (the gazebo's non-serving spouse)."""
+        return (
+            NpcInstance.objects.filter(
+                current_room=room,
+                is_alive=True,
+                definition__vendor_entries__is_active=True,
+            )
+            .exclude(pk=exclude_instance_pk)
+            .select_related('definition')
+            .order_by('pk')
+            .distinct()
+            .first()
+        )
+
+    @database_sync_to_async
     def get_repairer_in_room(self, room):
         return (
             NpcInstance.objects.filter(
@@ -2058,7 +2152,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'poor' (refused, nothing charged), 'success', or 'fail' (copper spent,
         item unchanged)."""
         from django.db import transaction
-        cost = get_repair_cost(item)
+        # v19 brief 10: get_repair_cost floors to a minimum of 1 copper, but
+        # a genuinely worthless item (base_value 0 — the newbie kit) repairs
+        # for real zero, not a token copper, so the pity framing is honest.
+        cost = 0 if get_item_value(item) == 0 else get_repair_cost(item)
         with transaction.atomic():
             char = Character.objects.select_for_update().get(pk=character.pk)
             try:

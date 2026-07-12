@@ -264,6 +264,7 @@ class Command(BaseCommand):
         self._seed_archetypes()
         self._seed_effects()
         self._seed_items()
+        self._seed_convergence_vendors()
 
         self._seed_verdant_loot_tables()
         self._seed_verdant_npcs()
@@ -1257,6 +1258,40 @@ class Command(BaseCommand):
     # NPCs
     # ------------------------------------------------------------------
 
+    # v19 brief 10: Morra, Pella, Ferwick, and Repairbot Prime gain
+    # is_repairer=True / attackable=False (Part 1).
+    CONVERGENCE_SERVICE_NPCS = {'morra', 'pella', 'ferwick', 'repairbot-prime'}
+
+    # v19 brief 10 Part 5: one-sentence listening hint appended to each of
+    # the six mapped NPCs' descriptions. Aldric and Info Prime keep their
+    # brief 9 descriptions unchanged, per this brief's explicit ruling.
+    CONVERGENCE_EXAMINE_HINTS = {
+        'morra': (
+            'She glances up between hammer-falls when people speak nearby; '
+            'she is listening, in her way.'
+        ),
+        'pella': (
+            'She catches every word said within earshot of the gazebo, and '
+            'most of the ones said beyond it.'
+        ),
+        'ferwick': (
+            'He affects not to listen, which is how you can tell he hears '
+            'everything.'
+        ),
+        'repairbot-prime': (
+            'Its audio receptors track nearby speech with a faint servo '
+            'whir; it is always listening, and says so on request.'
+        ),
+        'seris': (
+            'The crystal of them chimes faintly at the sound of voices, as '
+            'if speech were weather.'
+        ),
+        'veris': (
+            'The crystal of them stills entirely when someone speaks, the '
+            'way a pond stills to listen.'
+        ),
+    }
+
     def _seed_convergence_npcs(self):
         npcs = [
             (
@@ -1322,6 +1357,12 @@ class Command(BaseCommand):
         for slug, name, genre_tag, room_key, description in npcs:
             # v19 brief 8: every obelisk is a fixture and cannot be attacked.
             is_obelisk = (slug == 'the-obelisk')
+            # v19 brief 10: Morra, Pella, Ferwick, and Repairbot Prime offer
+            # repairs; a repairer must be unattackable per brief 8's seed
+            # verification rule.
+            is_service_npc = slug in self.CONVERGENCE_SERVICE_NPCS
+            if slug in self.CONVERGENCE_EXAMINE_HINTS:
+                description = description + ' ' + self.CONVERGENCE_EXAMINE_HINTS[slug]
             content = {
                 'name': name,
                 'genre_tag': genre_tag,
@@ -1329,10 +1370,11 @@ class Command(BaseCommand):
                 'is_aggressive': False,
                 'is_unique': True,
                 'wanders': False,
+                'is_repairer': is_service_npc,
                 'combat_tier': 'normal',
                 'loot_table': None,
                 'is_fixture': is_obelisk,
-                'attackable': not is_obelisk,
+                'attackable': not (is_obelisk or is_service_npc),
                 **MINIMAL_STATS,
                 'currency_drop_min': 0,
                 'currency_drop_max': 0,
@@ -1421,9 +1463,9 @@ class Command(BaseCommand):
                     'the ring road. Talk to who you meet. The paths are honest here, which '
                     'is more than I can say for most places.',
                     "You look sturdy enough to figure things out the hard way. But fine: "
-                    "the gate south of the Heart leads to the Verdant Reach. Green place. "
+                    "the gate north of the Heart leads to the Verdant Reach. Green place. "
                     "Things in it will kill you politely.",
-                    "Ask the machine on the north side if you want facts. Ask me if you "
+                    "Ask the machine on the eastern side if you want facts. Ask me if you "
                     "want the truth. They overlap less than you'd hope.",
                 ],
             },
@@ -1464,7 +1506,7 @@ class Command(BaseCommand):
                 'keywords': ['help', 'information', 'directions', 'where'],
                 'responses': [
                     'QUERY ACKNOWLEDGED. The Convergence ring road connects all districts. '
-                    'The southern gate accesses the Verdant Reach, hazard rating: moderate. '
+                    'The northern gate accesses the Verdant Reach, hazard rating: moderate. '
                     'Further queries accepted.',
                     'INFORMATION SERVICE ACTIVE. State a subject: the Obelisk. The '
                     'districts. The Verdant Reach. This unit does not editorialize. The old '
@@ -1500,7 +1542,304 @@ class Command(BaseCommand):
                 ],
             },
         ])
-        self.stdout.write('  Dialogue seeded: connectives, Aldric, Info Prime.')
+        self._seed_npc_dialogue('morra', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'repair',
+                'keywords': ['repair', 'mend', 'fix', 'broken'],
+                'responses': [
+                    "Bring it here. If it's metal I can save it, if it's leather I can "
+                    "shame it into holding together another week.",
+                    "Repairs, aye. I fix what's broken. The price depends on how "
+                    "insulted the item is.",
+                    "Everything breaks. The trick is breaking slower than your gear. "
+                    "Hand it over.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'wares',
+                'keywords': ['weapon', 'armor', 'buy', 'sell', 'wares'],
+                'responses': [
+                    "The rack's what I've got: honest iron, no engraving, no "
+                    "nonsense. The castoff bin's free to anyone who needs it — no "
+                    "shame in starting somewhere.",
+                    "Buy what you can afford, sell me what you've outgrown. I'll "
+                    "give fair thirds; don't haggle, it bores me.",
+                    "If you're new, take the worn things — free. When you've earned "
+                    "better, the shortsword will be waiting.",
+                ],
+            },
+            {
+                # v19 brief 10 amendment 1 (issue #34): first response corrected
+                # to "gate north" — the Green Gate is north of the Heart.
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help', 'work', 'smith'],
+                'responses': [
+                    "Help is what the anvil's for. Yours is the gate north, if "
+                    "you're the adventuring kind — go bleed on something and bring "
+                    "me the pieces after.",
+                    "I smith, I mend, I mind my fire. Anything cleverer, ask the "
+                    "old man or the machine.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Morra looks up from the anvil, takes your measure like stock '
+                    'to be worked, and returns to her hammering.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Morra shakes her head at the empty doorway and strikes the '
+                    'next blow a little harder.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('pella', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help', 'welcome', 'new'],
+                'responses': [
+                    "Oh, a new face! Sit, look, touch anything — Ferwick pretends "
+                    "the stock is delicate but it's survived him, hasn't it.",
+                    "Welcome, dear. The city's kinder than it looks and meaner "
+                    "than it admits. Take a trinket, take a bag, take your time.",
+                    "Lost? Everyone is, at first. That's what the ring road is "
+                    "for — it always brings you back around.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'wares',
+                'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
+                'responses': [
+                    "The little things are free to the new — the band, the "
+                    "pendant. They're not much, but nothing's nothing, is it.",
+                    "Every piece on this table had a life before. Take one and "
+                    "give it another.",
+                    "Ferwick says I'd give the whole table away. Ferwick is right "
+                    "and I don't care.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'bag',
+                'keywords': ['bag', 'satchel', 'pouch', 'carry'],
+                'responses': [
+                    "You'll want the satchel, love — small, but it's carried "
+                    "worse than your future through this city.",
+                    "A body can't adventure with full hands. Take the patchwork "
+                    "one; it means well.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Pella brightens the moment she sees you, as if you were '
+                    'expected and slightly late.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Pella presses a hand to her chest. "Well I never," she says, '
+                    'delighted to be scandalized.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('ferwick', [
+            {
+                # v19 brief 10 amendment 1 (issue #34): second response corrected
+                # to "north of the gate" — the Green Gate is north of the Heart.
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help', 'welcome', 'new'],
+                'responses': [
+                    "Mind the table legs, mind the missus, and mind that the "
+                    "free things are for them as need them. You look like you "
+                    "qualify. No offense meant.",
+                    "Advice? Keep your gear mended and your opinions few. Both "
+                    "are cheaper here than anywhere north of the gate.",
+                    "New, are you. The city will explain itself if you let it. "
+                    "We're merely the friendliest part of the explanation.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'wares',
+                'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
+                'responses': [
+                    "Everything Pella hasn't given away yet is for sale, and "
+                    "everything for sale she's about to give away. Choose "
+                    "quickly.",
+                    "The glass pendant's fogged, the band's tarnished, and both "
+                    "are free. Quality costs; kindness doesn't. House policy.",
+                    "I keep the ledger. The ledger says we lose money on charm. "
+                    "I've been outvoted.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'bag',
+                'keywords': ['bag', 'satchel', 'pouch', 'carry'],
+                'responses': [
+                    "The satchel's four bags' worth of survivors sewn together. "
+                    "Sentimental value nil, carrying value modest, price "
+                    "nothing.",
+                    "Take the bag. Pella will worry about your pockets "
+                    "otherwise, and then I have to hear about your pockets.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    "Ferwick gives you a shopkeeper's nod — cordial, appraising, "
+                    "and already calculating what you need.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Ferwick sighs at the doorway. "They never buy the good '
+                    'shelf," he informs the stock.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('repairbot-prime', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'repair',
+                'keywords': ['repair', 'fix', 'broken', 'mend'],
+                'responses': [
+                    'REPAIR SERVICE ACTIVE. PRESENT DAMAGED EQUIPMENT. THIS UNIT '
+                    'HAS MAINTAINED THE DISTRICT FOR THREE CENTURIES. YOUR BOOTS '
+                    'ARE NOT A CHALLENGE.',
+                    'DIAGNOSIS AVAILABLE ON PRESENTATION. PROGNOSIS: REPAIRABLE. '
+                    'EVERYTHING IS REPAIRABLE. SOME THINGS TWICE.',
+                    "STATE OF EQUIPMENT: YOUR CONCERN. RESTORATION OF EQUIPMENT: "
+                    "THIS UNIT'S FUNCTION. AN EFFICIENT ARRANGEMENT.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help'],
+                'responses': [
+                    'ASSISTANCE PARAMETERS: MECHANICAL. FOR NAVIGATION, CONSULT '
+                    'INFO PRIME. FOR OPINIONS, CONSULT THE OLD MAN. FOR REPAIRS, '
+                    'YOU HAVE ARRIVED.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    "Repairbot Prime's sensors sweep you once, head to boots. "
+                    '"EQUIPMENT LOGGED. WEAR PATTERNS: PREDICTABLE."',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    "Repairbot Prime's servos settle. \"CLIENT DEPARTED "
+                    'MID-CONSULTATION. NOTED. NOT TAKEN PERSONALLY."',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('seris', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'obelisk',
+                'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
+                'responses': [
+                    'The stone remembers the falling-together. We remember the '
+                    'stone.',
+                    'Ask the sphere nothing. It is an answer, not a listener.',
+                    'All the worlds arrived at once, and only this square '
+                    'forgave them for it.',
+                ],
+            },
+            {
+                # v19 brief 10 amendment 1 (issue #34): first response corrected
+                # to "north" — the Green Gate is north of the Heart.
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help'],
+                'responses': [
+                    'Help is a direction. Yours is north, then onward.',
+                    'We are poor at help and rich at witness. Choose your '
+                    'question accordingly.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Seris turns with a sound like a struck glass, regarding you '
+                    'with light instead of eyes.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('veris', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'obelisk',
+                'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
+                'responses': [
+                    'Seris says the stone remembers. I say the stone forgives. '
+                    'We are both guessing.',
+                    'The rifts did not break the worlds. They introduced them. '
+                    'Rudely.',
+                    'Stand near the obelisk at night. What you feel is not '
+                    'humming. It is counting.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help'],
+                'responses': [
+                    'The bright ones sell, the loud one mends, the old one '
+                    'judges, the machine recites. We — attend.',
+                    'You will not need our help until much later. We will '
+                    'still be here.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Veris inclines toward you by a degree, and the light '
+                    'within shifts to something like attention.',
+                ],
+            },
+        ])
+        self.stdout.write(
+            '  Dialogue seeded: connectives, Aldric, Info Prime, Morra, Pella, '
+            'Ferwick, Repairbot Prime, Seris, Veris.'
+        )
 
     def _seed_dialogue_connectives(self):
         for position_class, templates in self.DIALOGUE_CONNECTIVES.items():
@@ -2753,6 +3092,253 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [],
                 'description': 'A plate of chitin, dark and glossy. Traders buy them by the stack.',
             },
+            # v19 brief 10: the freebie newbie kit — Common, Mk 1, base_value 0,
+            # takes_durability_loss True, no secondary stat pool. Each anchors
+            # to an existing definition's field structure, scaled to 60%
+            # (rounded down), per the brief's firm anchor-and-scale directive.
+            {
+                'slug': 'worn-cudgel',
+                'name': 'Worn Cudgel',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['MAIN_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 4.8,
+                'scaling_factor': 1.8,
+                'damage_spread': 1.8,
+                'is_ranged': False,
+                'takes_durability_loss': True,
+                'durability_table': WEAPON_DUR,
+                'primary_stats': [{'stat': 'str', 'base': 1.8, 'factor': 0.6}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'A length of hardwood polished by many desperate grips. It '
+                    'has ended arguments before, none of them well.'
+                ),
+            },
+            {
+                'slug': 'patched-cap',
+                'name': 'Patched Cap',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['HEAD'],
+                'scaling_base': 2.4,
+                'scaling_factor': 0.9,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'A leather cap mended so many times the patches have '
+                    'patches. It keeps the rain off, mostly.'
+                ),
+            },
+            {
+                'slug': 'threadbare-vest',
+                'name': 'Threadbare Vest',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['CHEST'],
+                'scaling_base': 3.0,
+                'scaling_factor': 1.2,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.8, 'factor': 0.6}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'The padding has gone thin where it matters most, but it '
+                    'still turns a glancing blow — and it smells only faintly '
+                    'of its previous owners.'
+                ),
+            },
+            {
+                'slug': 'mended-leggings',
+                'name': 'Mended Leggings',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['LEGS'],
+                'scaling_base': 3.0,
+                'scaling_factor': 1.2,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.8, 'factor': 0.6}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'Sturdy once, and stubborn still. The seams are honest '
+                    'work; the leather is tired.'
+                ),
+            },
+            {
+                'slug': 'scuffed-boots',
+                'name': 'Scuffed Boots',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['FEET'],
+                'scaling_base': 2.7,
+                'scaling_factor': 1.0,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'Someone walked a very long way in these. They are broken '
+                    'in, which is the polite word for broken.'
+                ),
+            },
+            {
+                'slug': 'frayed-gloves',
+                'name': 'Frayed Gloves',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['HANDS'],
+                'scaling_base': 2.4,
+                'scaling_factor': 0.9,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'Fingerless by design or by attrition — it is no longer '
+                    'possible to say.'
+                ),
+            },
+            {
+                'slug': 'moth-eaten-shoulder-wrap',
+                'name': 'Moth-eaten Shoulder Wrap',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['SHOULDERS'],
+                'scaling_base': 2.7,
+                'scaling_factor': 1.0,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'A wool wrap that has fed generations of moths and still '
+                    'has some warmth left in it out of spite.'
+                ),
+            },
+            {
+                'slug': 'rope-belt',
+                'name': 'Rope Belt',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['WAIST'],
+                'scaling_base': 2.4,
+                'scaling_factor': 0.9,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'Good rope, honest knot. It will hold your trousers and '
+                    'your dignity, in that order.'
+                ),
+            },
+            {
+                'slug': 'patchwork-satchel',
+                'name': 'Patchwork Satchel',
+                'item_type': 'bag',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['BACK'],
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'carry_bonus': 10,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': (
+                    'Sewn from the surviving corners of at least four older '
+                    'bags. Small, but it means well.'
+                ),
+            },
+            # v19 brief 10: Morra's priced tier — normal authored values,
+            # anchor-and-scale at 90% of anchor (vendor gear sits just under
+            # drop-quality). base_value = 3x price (Part 3's directive).
+            {
+                'slug': 'iron-shortsword',
+                'name': 'Iron Shortsword',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['MAIN_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 7.2,
+                'scaling_factor': 2.7,
+                'damage_spread': 3.6,
+                'is_ranged': False,
+                'takes_durability_loss': True,
+                'durability_table': WEAPON_DUR,
+                'primary_stats': [{'stat': 'str', 'base': 2.7, 'factor': 0.9}],
+                'secondary_stat_pool': [
+                    {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
+                    {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'lifesteal', 'base': 0.2, 'factor': 0.1},
+                ],
+                'description': 'A plain iron blade fresh off Morra\'s rack. No engraving, no nonsense.',
+            },
+            {
+                'slug': 'oak-round-shield',
+                'name': 'Oak Round Shield',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['OFF_HAND'],
+                'scaling_base': 4.5,
+                'scaling_factor': 1.8,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 2.7, 'factor': 0.9}],
+                'secondary_stat_pool': [
+                    {'stat': 'physical_resist', 'base': 1.0, 'factor': 0.4},
+                    {'stat': 'str', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'magic_resist', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': 'A round shield of banded oak, fresh from Morra\'s smithy. Ready for real work.',
+            },
+            {
+                'slug': 'hunting-sling',
+                'name': 'Hunting Sling',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['RANGED'],
+                'is_two_handed': True,
+                'scaling_base': 6.3,
+                'scaling_factor': 2.7,
+                'damage_spread': 3.6,
+                'is_ranged': True,
+                'takes_durability_loss': True,
+                'durability_table': RANGED_DUR,
+                'primary_stats': [
+                    {'stat': 'dex', 'base': 1.8, 'factor': 0.7},
+                    {'stat': 'per', 'base': 1.8, 'factor': 0.7},
+                ],
+                'secondary_stat_pool': [
+                    {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
+                    {'stat': 'per', 'base': 1.0, 'factor': 0.4},
+                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': 'A simple leather sling, well-balanced. Morra swears by the pouch stitching.',
+            },
+            {
+                'slug': 'quilted-jerkin',
+                'name': 'Quilted Jerkin',
+                'item_type': 'armor',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['CHEST'],
+                'scaling_base': 4.5,
+                'scaling_factor': 1.8,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'end', 'base': 2.7, 'factor': 0.9}],
+                'secondary_stat_pool': [
+                    {'stat': 'str', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'dex', 'base': 1.0, 'factor': 0.3},
+                    {'stat': 'physical_resist', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': 'Densely quilted padding under a canvas shell. Sturdier than it looks.',
+            },
         ]
 
         # v18 copper accessories (tier-material items — no Mk suffix shown).
@@ -2975,6 +3561,47 @@ class Command(BaseCommand):
                 ],
                 'description': 'A copper pendant on a leather cord, faintly warm. Sounds at the edge of hearing come clear.',
             },
+            # v19 brief 10: the freebie kit's two accessory pieces — Common,
+            # Mk 1, base_value 0, no secondary stat pool, anchored to the
+            # copper ring/amulet-of-strength field structure at 60% (rounded
+            # down). Unlike their anchors, these DO take durability loss
+            # (Part 2's kit-wide directive).
+            {
+                'slug': 'tarnished-band',
+                'name': 'Tarnished Band',
+                'item_type': 'accessory',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['RING'],
+                'suppress_mk_suffix': True,
+                'scaling_base': 1.2,
+                'scaling_factor': 0.4,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'str', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'A ring of some pale metal, long past polishing. It fits, '
+                    'which is the main thing.'
+                ),
+            },
+            {
+                'slug': 'cloudy-glass-pendant',
+                'name': 'Cloudy Glass Pendant',
+                'item_type': 'accessory',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['NECK'],
+                'suppress_mk_suffix': True,
+                'scaling_base': 1.2,
+                'scaling_factor': 0.4,
+                'takes_durability_loss': True,
+                'durability_table': ARMOR_DUR,
+                'primary_stats': [{'stat': 'str', 'base': 1.2, 'factor': 0.4}],
+                'secondary_stat_pool': [],
+                'description': (
+                    'A drop of glass on a cord, fogged with age. Hold it to '
+                    'the light and something inside almost glitters.'
+                ),
+            },
         ]
 
         for data in items:
@@ -3008,6 +3635,24 @@ class Command(BaseCommand):
             'leather-boots': 40,
             'animal-hide': 6,
             'insect-carapace': 8,
+            # v19 brief 10: the freebie newbie kit — exchange-safe by
+            # construction (base_value 0 sells and repairs for nothing).
+            'worn-cudgel': 0,
+            'patched-cap': 0,
+            'threadbare-vest': 0,
+            'mended-leggings': 0,
+            'scuffed-boots': 0,
+            'frayed-gloves': 0,
+            'moth-eaten-shoulder-wrap': 0,
+            'rope-belt': 0,
+            'patchwork-satchel': 0,
+            'tarnished-band': 0,
+            'cloudy-glass-pendant': 0,
+            # v19 brief 10: Morra's priced tier — base_value = 3x price.
+            'iron-shortsword': 360,
+            'oak-round-shield': 270,
+            'hunting-sling': 225,
+            'quilted-jerkin': 300,
         }
         for stat in ('strength', 'dexterity', 'endurance',
                      'intelligence', 'wisdom', 'perception'):
@@ -3016,13 +3661,82 @@ class Command(BaseCommand):
 
         for slug, value in base_values.items():
             ItemDefinition.objects.filter(slug=slug).update(base_value=value)
-        ItemDefinition.objects.filter(item_type='consumable').update(base_value=12)
-        ItemDefinition.objects.filter(item_type='bag').update(base_value=50)
+        # v19 brief 10: exclude authored slugs from the type-wide overrides
+        # below so the newbie kit's base_value 0 (including the bag piece)
+        # and the priced tier's authored values survive this back-fill pass.
+        ItemDefinition.objects.filter(item_type='consumable').exclude(
+            slug__in=base_values,
+        ).update(base_value=12)
+        ItemDefinition.objects.filter(item_type='bag').exclude(
+            slug__in=base_values,
+        ).update(base_value=50)
         ItemDefinition.objects.exclude(slug__in=base_values).exclude(
             item_type__in=('consumable', 'bag'),
         ).update(base_value=25)
         self.stdout.write('  base_value back-fill applied to all ItemDefinitions.')
         self.stdout.write(self.style.SUCCESS('Item seed complete.'))
+
+    # ------------------------------------------------------------------
+    # v19 brief 10 — Convergence commerce: Morra's kit + priced tier, the
+    # gazebo's shared stock (Pella and Ferwick, identical entries, split
+    # voices). All prices/entries below are unlimited stock (stock_limit
+    # None) — the brief's non-depleting-newbie-kit directive.
+    # ------------------------------------------------------------------
+
+    def _seed_convergence_vendors(self):
+        morra_kit = [
+            'worn-cudgel', 'patched-cap', 'threadbare-vest', 'mended-leggings',
+            'scuffed-boots', 'frayed-gloves', 'moth-eaten-shoulder-wrap',
+            'rope-belt',
+        ]
+        morra_priced = [
+            ('iron-shortsword', 120),
+            ('oak-round-shield', 90),
+            ('hunting-sling', 75),
+            ('quilted-jerkin', 100),
+        ]
+        gazebo_kit = ['tarnished-band', 'cloudy-glass-pendant', 'patchwork-satchel']
+
+        entry_count = 0
+        morra = NpcDefinition.objects.get(slug='morra')
+        for item_slug in morra_kit:
+            self._reconcile(
+                VendorEntry,
+                {
+                    'npc_definition': morra,
+                    'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                    'mk_tier': 1,
+                },
+                {'price': 0, 'stock_limit': None, 'is_active': True},
+            )
+            entry_count += 1
+        for item_slug, price in morra_priced:
+            self._reconcile(
+                VendorEntry,
+                {
+                    'npc_definition': morra,
+                    'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                    'mk_tier': 1,
+                },
+                {'price': price, 'stock_limit': None, 'is_active': True},
+            )
+            entry_count += 1
+
+        for npc_slug in ('pella', 'ferwick'):
+            npc = NpcDefinition.objects.get(slug=npc_slug)
+            for item_slug in gazebo_kit:
+                self._reconcile(
+                    VendorEntry,
+                    {
+                        'npc_definition': npc,
+                        'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                        'mk_tier': 1,
+                    },
+                    {'price': 0, 'stock_limit': None, 'is_active': True},
+                )
+                entry_count += 1
+
+        self.stdout.write(f'  Convergence: {entry_count} vendor entries seeded (Morra, Pella, Ferwick).')
 
     # ------------------------------------------------------------------
     # The Verdant Reach (Z01) — v18 brief 5: Vale & Flats
