@@ -313,6 +313,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.cmd_spend(args)
         elif verb == 'stats':
             await self.cmd_stats()
+        elif verb == 'quit':
+            await self.cmd_quit()
         elif verb in ('help', '?'):
             await self.cmd_help()
         else:
@@ -610,11 +612,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '  flee                       — attempt to escape from combat\n'
             '  stats                      — show your character stats and XP\n'
             '  spend <stat> <amount>      — spend stat points (e.g. spend dex 2)\n'
+            '  quit                       — leave the game and return to the games lobby\n'
             '  help / ?                   — show this list\n'
             '\n'
             "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
         )
         await self.output(help_text, 'system')
+
+    async def cmd_quit(self):
+        character = await self.get_character_fresh()
+        session = await self.get_active_combat_session(character)
+        if session:
+            await self.send_output(
+                "You cannot leave in the middle of a fight! Break away first — try 'flee'.",
+                'error',
+            )
+            return
+
+        await self.output('The world folds itself away behind you. Come back soon.', 'system')
+        await self.send_json({'event': 'quit'})
+        # Normal close; the disconnect path owns presence delete, group
+        # discards, and heartbeat cancellation.
+        await self.close()
 
     async def cmd_pickup(self, args):
         if not args:
