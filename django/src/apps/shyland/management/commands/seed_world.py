@@ -1,4 +1,7 @@
+from collections import defaultdict
+
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from django.utils.text import slugify
 from apps.shyland.models import (
     Area, Archetype, Character, EffectComponent, EffectDefinition, ItemDefinition,
@@ -6,6 +9,25 @@ from apps.shyland.models import (
     TravelMessage, TravelNode, VendorEntry, Zone,
     UnarmedMessage, UnarmedMessagePool,
 )
+
+# v19 brief 8: "the code is definitive." Every seed-owned table is fully
+# enforced on every run — authored rows are created or updated to their
+# exact authored field values, and rows this run did not author are deleted.
+# SEED_OWNED_MODELS lists every model swept at the end of a run, in an order
+# safe for FK cascades (referenced-by tables before their referrers would be
+# nice, but Django's queryset.delete() cascades correctly regardless of
+# order — this order just keeps the reconciliation report readable).
+SEED_OWNED_MODELS = [
+    Zone, Area, Room,
+    NpcDefinition, RoomSpawn,
+    ItemDefinition,
+    EffectDefinition, EffectComponent,
+    UnarmedMessagePool, UnarmedMessage,
+    Origin, Archetype,
+    TravelNode, TravelMessage,
+    LootTable, LootTableEntry,
+    VendorEntry,
+]
 
 WEAPON_DUR = [
     {'min': 75, 'max': 100, 'penalty': 0.0},
@@ -208,6 +230,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.rooms = {}
+        # v19 brief 8 seed authority: per-model set of pks authored this run
+        # (kept out of the sweep), and a per-model report of what changed.
+        self._touched = defaultdict(set)
+        self._report = defaultdict(lambda: {'created': [], 'updated': [], 'deleted': []})
         self._cleanup_placeholders()
         zone = self._seed_zone()
         areas = self._seed_areas(zone)
@@ -246,7 +272,81 @@ class Command(BaseCommand):
         self._seed_ridge_spawns()
         self._seed_ridge_vendors()
 
+        self._sweep_all()
+        self._print_report()
         self._verify()
+
+    # ------------------------------------------------------------------
+    # Seed authority — enforce-exact reconciliation (v19 brief 8)
+    # ------------------------------------------------------------------
+
+    def _reconcile(self, model, lookup, defaults):
+        """Enforce-exact upsert. Creates the row if it doesn't exist, or
+        updates it in place to the exact authored field values if it does
+        (field-by-field diffing so the reconciliation report can show what
+        changed). Marks the row as authored this run so the end-of-run sweep
+        leaves it alone. `lookup` must uniquely identify the row; `defaults`
+        must contain every authored field — nothing is create-only anymore."""
+        existing = model.objects.filter(**lookup).first()
+        if existing is None:
+            obj = model.objects.create(**lookup, **defaults)
+            self._touched[model].add(obj.pk)
+            self._report[model.__name__]['created'].append(str(obj))
+            return obj
+
+        diffs = []
+        changed_fields = []
+        for field, value in defaults.items():
+            current = getattr(existing, field)
+            if current != value:
+                diffs.append(f'{field}: {current!r} -> {value!r}')
+                changed_fields.append(field)
+                setattr(existing, field, value)
+        if changed_fields:
+            existing.save(update_fields=changed_fields)
+            self._report[model.__name__]['updated'].append((str(existing), diffs))
+        self._touched[model].add(existing.pk)
+        return existing
+
+    def _sweep(self, model, queryset=None):
+        """Delete every row of `model` (optionally scoped by `queryset`)
+        that this run did not author. Cascades apply per the schema; every
+        deletion is recorded for the reconciliation report."""
+        qs = queryset if queryset is not None else model.objects.all()
+        extras = list(qs.exclude(pk__in=self._touched[model]))
+        for obj in extras:
+            self._report[model.__name__]['deleted'].append(str(obj))
+        if extras:
+            model.objects.filter(pk__in=[o.pk for o in extras]).delete()
+        return len(extras)
+
+    def _sweep_all(self):
+        for model in SEED_OWNED_MODELS:
+            self._sweep(model)
+
+    def _print_report(self):
+        self.stdout.write('')
+        self.stdout.write(self.style.SUCCESS('=== Seed Reconciliation Report ==='))
+        any_changes = False
+        for model in SEED_OWNED_MODELS:
+            label = model.__name__
+            entry = self._report.get(label)
+            if not entry or not (entry['created'] or entry['updated'] or entry['deleted']):
+                self.stdout.write(f'  {label}: no differences.')
+                continue
+            any_changes = True
+            self.stdout.write(f'  {label}:')
+            for name in entry['created']:
+                self.stdout.write(f'    created: {name}')
+            for name, diffs in entry['updated']:
+                self.stdout.write(f'    updated: {name} ({"; ".join(diffs)})')
+            for name in entry['deleted']:
+                self.stdout.write(self.style.WARNING(f'    deleted (not authored by this seed): {name}'))
+        if not any_changes:
+            self.stdout.write(self.style.SUCCESS(
+                'No differences — database matches coded configuration exactly.'
+            ))
+        self.stdout.write('')
 
     # ------------------------------------------------------------------
     # Cleanup — remove the pre-Infinity City placeholder content
@@ -280,96 +380,81 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _seed_zone(self):
-        zone, _ = Zone.objects.update_or_create(
-            slug='the-convergence',
-            defaults={
-                'name': 'The Convergence',
-                'genre_tone': 'All genres collide — the world\'s central hub',
-                'danger_level': Zone.DANGER_SANCTUARY,
-                'is_pvp_zone': False,
-                'is_scaled': False,
-                'description': (
-                    'At the exact center of a Venn diagram of colliding universes sits The Convergence — '
-                    'the one point where all the forces cancel out and stillness takes hold. Here, the chaos '
-                    'of genre-collision resolves into an uneasy, permanent peace. No violence is sanctioned. '
-                    'Even the air feels cautiously neutral. Infinity City has grown up around this stillness '
-                    'over generations, accumulating like a city always does at a crossroads — organically, '
-                    'inevitably, and without a plan.'
-                ),
-            },
-        )
+        zone = self._reconcile(Zone, {'slug': 'the-convergence'}, {
+            'name': 'The Convergence',
+            'genre_tone': 'All genres collide — the world\'s central hub',
+            'danger_level': Zone.DANGER_SANCTUARY,
+            'is_pvp_zone': False,
+            'is_scaled': False,
+            'description': (
+                'At the exact center of a Venn diagram of colliding universes sits The Convergence — '
+                'the one point where all the forces cancel out and stillness takes hold. Here, the chaos '
+                'of genre-collision resolves into an uneasy, permanent peace. No violence is sanctioned. '
+                'Even the air feels cautiously neutral. Infinity City has grown up around this stillness '
+                'over generations, accumulating like a city always does at a crossroads — organically, '
+                'inevitably, and without a plan.'
+            ),
+        })
         self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
 
     def _seed_areas(self, zone):
-        wisteria_walk, _ = Area.objects.update_or_create(
-            slug='wisteria-walk',
-            defaults={
-                'zone': zone,
-                'name': 'Wisteria Walk',
-                'area_description': (
-                    'Broad stones of pale grey lead northward through the park, worn smooth by the passage '
-                    'of countless feet across uncounted years. Low trellises line the path on either side, '
-                    'their timber frames dark with age and almost invisible beneath cascading curtains of '
-                    'wisteria. The blooms hang heavy, purple-white, stirred by the faintest movement of air. '
-                    'The scent is persistent without being overwhelming — sweet, clean, faintly floral. Bees '
-                    'move through the blossoms with quiet purpose. The stone underfoot is cool even in warm '
-                    'weather, and the path feels deliberate, unhurried, as though it was laid by someone who '
-                    'believed the walk itself was worth taking.'
-                ),
-            },
-        )
+        wisteria_walk = self._reconcile(Area, {'slug': 'wisteria-walk'}, {
+            'zone': zone,
+            'name': 'Wisteria Walk',
+            'area_description': (
+                'Broad stones of pale grey lead northward through the park, worn smooth by the passage '
+                'of countless feet across uncounted years. Low trellises line the path on either side, '
+                'their timber frames dark with age and almost invisible beneath cascading curtains of '
+                'wisteria. The blooms hang heavy, purple-white, stirred by the faintest movement of air. '
+                'The scent is persistent without being overwhelming — sweet, clean, faintly floral. Bees '
+                'move through the blossoms with quiet purpose. The stone underfoot is cool even in warm '
+                'weather, and the path feels deliberate, unhurried, as though it was laid by someone who '
+                'believed the walk itself was worth taking.'
+            ),
+        })
 
-        bamboo_run, _ = Area.objects.update_or_create(
-            slug='bamboo-run',
-            defaults={
-                'zone': zone,
-                'name': 'Bamboo Run',
-                'area_description': (
-                    'Crushed amber gravel crunches softly underfoot as the path turns east, the small stones '
-                    'warm-toned and catching light in a way that makes the path glow faintly at certain hours. '
-                    'On both sides, bamboo grows in dense stands — tall, straight, their green-gold canes '
-                    'clicking quietly against one another when the air moves. The sound is dry and rhythmic, '
-                    'almost musical. The path is narrow here, the bamboo close enough that the fronds brush '
-                    'your shoulders if you drift from center. It is the shortest way out of the park, and '
-                    'somehow feels like it knows this — brisk, direct, unceremonious.'
-                ),
-            },
-        )
+        bamboo_run = self._reconcile(Area, {'slug': 'bamboo-run'}, {
+            'zone': zone,
+            'name': 'Bamboo Run',
+            'area_description': (
+                'Crushed amber gravel crunches softly underfoot as the path turns east, the small stones '
+                'warm-toned and catching light in a way that makes the path glow faintly at certain hours. '
+                'On both sides, bamboo grows in dense stands — tall, straight, their green-gold canes '
+                'clicking quietly against one another when the air moves. The sound is dry and rhythmic, '
+                'almost musical. The path is narrow here, the bamboo close enough that the fronds brush '
+                'your shoulders if you drift from center. It is the shortest way out of the park, and '
+                'somehow feels like it knows this — brisk, direct, unceremonious.'
+            ),
+        })
 
-        basalt_way, _ = Area.objects.update_or_create(
-            slug='basalt-way',
-            defaults={
-                'zone': zone,
-                'name': 'Basalt Way',
-                'area_description': (
-                    'The path south is paved in wide slabs of dark basalt, nearly black, fitted together '
-                    'without mortar across their entire surface. Between every seam, and in every crack where '
-                    'time has loosened the stone, flowering moss has taken hold — vivid green starred with '
-                    'tiny blooms of white and pale yellow. The contrast is stark and beautiful: dark stone, '
-                    'bright life. The moss does not look accidental. It looks invited. The path is wide enough '
-                    'to walk two abreast and winds gently as it goes, taking its time, finding its way south '
-                    'through the older and larger trees at this end of the park.'
-                ),
-            },
-        )
+        basalt_way = self._reconcile(Area, {'slug': 'basalt-way'}, {
+            'zone': zone,
+            'name': 'Basalt Way',
+            'area_description': (
+                'The path south is paved in wide slabs of dark basalt, nearly black, fitted together '
+                'without mortar across their entire surface. Between every seam, and in every crack where '
+                'time has loosened the stone, flowering moss has taken hold — vivid green starred with '
+                'tiny blooms of white and pale yellow. The contrast is stark and beautiful: dark stone, '
+                'bright life. The moss does not look accidental. It looks invited. The path is wide enough '
+                'to walk two abreast and winds gently as it goes, taking its time, finding its way south '
+                'through the older and larger trees at this end of the park.'
+            ),
+        })
 
-        fern_boards, _ = Area.objects.update_or_create(
-            slug='fern-boards',
-            defaults={
-                'zone': zone,
-                'name': 'Fern Boards',
-                'area_description': (
-                    'Planks of dark aged timber, worn smooth at their centers and raised slightly above the '
-                    'earth on low supports, carry the path westward through the deepest green in the park. '
-                    'Enormous ferns crowd both sides — waist-high, then shoulder-high, their broad fronds '
-                    'reaching across the boardwalk\'s edges so that walking the path means moving through a '
-                    'corridor of living green. The wood gives slightly underfoot, a soft flex with each step, '
-                    'and the sound is muffled here in a way the other paths are not. It smells of damp earth '
-                    'and old growth. The city feels further away than it is.'
-                ),
-            },
-        )
+        fern_boards = self._reconcile(Area, {'slug': 'fern-boards'}, {
+            'zone': zone,
+            'name': 'Fern Boards',
+            'area_description': (
+                'Planks of dark aged timber, worn smooth at their centers and raised slightly above the '
+                'earth on low supports, carry the path westward through the deepest green in the park. '
+                'Enormous ferns crowd both sides — waist-high, then shoulder-high, their broad fronds '
+                'reaching across the boardwalk\'s edges so that walking the path means moving through a '
+                'corridor of living green. The wood gives slightly underfoot, a soft flex with each step, '
+                'and the sound is muffled here in a way the other paths are not. It smells of damp earth '
+                'and old growth. The city feels further away than it is.'
+            ),
+        })
 
         self.stdout.write('Areas seeded: Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards.')
         return {
@@ -386,10 +471,8 @@ class Command(BaseCommand):
     def _room(self, zone, key, x, y, name, brief, description,
               area=None, indoors=False, no_exit=None):
         msgs = no_exit or {}
-        room, _ = Room.objects.update_or_create(
-            zone=zone,
-            coord_x=x, coord_y=y, coord_z=0,
-            defaults={
+        room = self._reconcile(
+            Room, {'zone': zone, 'coord_x': x, 'coord_y': y, 'coord_z': 0}, {
                 'name': name,
                 'brief_description': brief,
                 'description': description,
@@ -1234,6 +1317,8 @@ class Command(BaseCommand):
         ]
 
         for slug, name, genre_tag, room_key, description in npcs:
+            # v19 brief 8: every obelisk is a fixture and cannot be attacked.
+            is_obelisk = (slug == 'the-obelisk')
             content = {
                 'name': name,
                 'genre_tag': genre_tag,
@@ -1243,30 +1328,20 @@ class Command(BaseCommand):
                 'wanders': False,
                 'combat_tier': 'normal',
                 'loot_table': None,
-            }
-            # Stats/drops are balance data — set on create only, matching the
-            # Origin/Archetype convention below.
-            balance = {
+                'is_fixture': is_obelisk,
+                'attackable': not is_obelisk,
                 **MINIMAL_STATS,
                 'currency_drop_min': 0,
                 'currency_drop_max': 0,
                 'respawn_minutes': 0,
             }
-            npc, created = NpcDefinition.objects.update_or_create(
-                slug=slug,
-                defaults=content,
-                create_defaults={**content, **balance},
+            npc = self._reconcile(NpcDefinition, {'slug': slug}, content)
+            self._reconcile(
+                RoomSpawn,
+                {'room': self.rooms[room_key], 'npc_definition': npc, 'mk_tier': 1},
+                {'count': 1, 'is_active': True},
             )
-            RoomSpawn.objects.get_or_create(
-                room=self.rooms[room_key],
-                npc_definition=npc,
-                mk_tier=1,
-                defaults={'count': 1, 'is_active': True},
-            )
-            self.stdout.write(
-                f'  NpcDefinition "{name}" {"created" if created else "updated"}; '
-                f'spawn in {self.rooms[room_key].name}.'
-            )
+            self.stdout.write(f'  NpcDefinition "{name}" seeded; spawn in {self.rooms[room_key].name}.')
 
     def _seed_primordial_sphere(self):
         # The first sphere — origin of the pattern every zone-end obelisk
@@ -1290,8 +1365,10 @@ class Command(BaseCommand):
             'combat_tier': 'normal',
             'loot_table': None,
             'unarmed_message_pool': None,
-        }
-        balance = {
+            # v19 brief 8: the who that cannot be harmed — not a fixture (it
+            # appears under "Who's here?"), but never attackable.
+            'is_fixture': False,
+            'attackable': False,
             'base_vitality': 1,
             'base_str': 1, 'base_dex': 1, 'base_end': 1,
             'base_int': 1, 'base_wis': 1, 'base_per': 1,
@@ -1300,20 +1377,14 @@ class Command(BaseCommand):
             'currency_drop_max': 0,
             'respawn_minutes': 0,
         }
-        sphere, created = NpcDefinition.objects.update_or_create(
-            slug='the-primordial-sphere',
-            defaults=content,
-            create_defaults={**content, **balance},
-        )
-        RoomSpawn.objects.get_or_create(
-            room=self.rooms['heart'],
-            npc_definition=sphere,
-            mk_tier=1,
-            defaults={'count': 1, 'is_active': True},
+        sphere = self._reconcile(NpcDefinition, {'slug': 'the-primordial-sphere'}, content)
+        self._reconcile(
+            RoomSpawn,
+            {'room': self.rooms['heart'], 'npc_definition': sphere, 'mk_tier': 1},
+            {'count': 1, 'is_active': True},
         )
         self.stdout.write(
-            f'  NpcDefinition "the Primordial Sphere" {"created" if created else "updated"}; '
-            f'spawn in {self.rooms["heart"].name}.'
+            f'  NpcDefinition "the Primordial Sphere" seeded; spawn in {self.rooms["heart"].name}.'
         )
 
     # ------------------------------------------------------------------
@@ -1329,17 +1400,11 @@ class Command(BaseCommand):
             ('vr-vc1', 'The Verdant Crown', 'obelisk'),
         ]
         for room_key, travel_name, node_type in nodes:
-            node, created = TravelNode.objects.get_or_create(
-                room=self.rooms[room_key],
-                defaults={
-                    'travel_name': travel_name,
-                    'node_type': node_type,
-                },
+            node = self._reconcile(
+                TravelNode, {'room': self.rooms[room_key]},
+                {'travel_name': travel_name, 'node_type': node_type},
             )
-            self.stdout.write(
-                f'  TravelNode "{node.travel_name}" ({node.node_type}) '
-                f'{"created" if created else "exists"}.'
-            )
+            self.stdout.write(f'  TravelNode "{node.travel_name}" ({node.node_type}) seeded.')
 
     def _seed_travel_messages(self):
         pools = {
@@ -1372,16 +1437,11 @@ class Command(BaseCommand):
                 '{name} coalesces out of the quiet, blinking, entirely here.',
             ],
         }
-        created_count = 0
         for category, texts in pools.items():
             for text in texts:
-                _, created = TravelMessage.objects.get_or_create(
-                    category=category, text=text,
-                )
-                if created:
-                    created_count += 1
+                self._reconcile(TravelMessage, {'category': category, 'text': text}, {})
         total = sum(len(texts) for texts in pools.values())
-        self.stdout.write(f'  TravelMessages: {created_count} created ({total} defined).')
+        self.stdout.write(f'  TravelMessages: {total} seeded.')
 
     # ------------------------------------------------------------------
     # Character starting rooms
@@ -1561,6 +1621,17 @@ class Command(BaseCommand):
             unvalued == 0,
         )
 
+        # v19 brief 8: vendors and repairers must never be attackable.
+        attackable_vendors_or_repairers = NpcDefinition.objects.filter(
+            Q(vendor_entries__isnull=False) | Q(is_repairer=True),
+            attackable=True,
+        ).distinct()
+        self._check(
+            'No vendor or repairer NpcDefinition is attackable '
+            f'(found {attackable_vendors_or_repairers.count()})',
+            not attackable_vendors_or_repairers.exists(),
+        )
+
         self._verify_verdant()
 
         if self._failures:
@@ -1641,7 +1712,7 @@ class Command(BaseCommand):
         ridge_passive_slugs = [
             'mountain-goat', 'mountain-squirrel', 'brown-bear', 'mountain-lion',
             'mountain-villager', 'mountain-hunter', 'old-brammel',
-            'ridda-the-trader', 'the-verdant-sphere',
+            'ridda-the-trader', 'the-verdant-sphere', 'the-verdant-obelisk',
         ]
         ridge_aggro_slugs = [
             'prowling-mountain-lion', 'territorial-brown-bear',
@@ -1652,8 +1723,8 @@ class Command(BaseCommand):
         all_vr_slugs = vr_npc_slugs + ridge_passive_slugs + ridge_aggro_slugs
         vr_npc_count = NpcDefinition.objects.filter(slug__in=all_vr_slugs).count()
         self._check(
-            f'49 Verdant NPC definitions exist (found {vr_npc_count})',
-            vr_npc_count == 49,
+            f'50 Verdant NPC definitions exist (found {vr_npc_count})',
+            vr_npc_count == 50,
         )
 
         aggro_ok = (
@@ -1699,8 +1770,19 @@ class Command(BaseCommand):
 
         vr_spawn_count = RoomSpawn.objects.filter(room__zone__slug=vr).count()
         self._check(
-            f'129 RoomSpawns in the Verdant Reach (found {vr_spawn_count})',
-            vr_spawn_count == 129,
+            f'130 RoomSpawns in the Verdant Reach (found {vr_spawn_count})',
+            vr_spawn_count == 130,
+        )
+
+        obelisk = NpcDefinition.objects.filter(
+            slug='the-verdant-obelisk', is_fixture=True, attackable=False,
+        ).first()
+        obelisk_spawns = RoomSpawn.objects.filter(npc_definition__slug='the-verdant-obelisk')
+        self._check(
+            'The Verdant Obelisk is a fixture, unattackable, with exactly one '
+            'spawn at the Crown',
+            obelisk is not None and obelisk_spawns.count() == 1
+            and obelisk_spawns.first().room_id == self.rooms['vr-vc1'].pk,
         )
 
         gated = RoomSpawn.objects.filter(
@@ -1776,13 +1858,10 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _seed_unarmed_pools(self):
-        default_pool, created = UnarmedMessagePool.objects.get_or_create(
-            slug='default',
-            defaults={'name': 'Default'},
+        default_pool = self._reconcile(
+            UnarmedMessagePool, {'slug': 'default'}, {'name': 'Default'},
         )
-        self.stdout.write(f'  UnarmedMessagePool "Default" {"created" if created else "exists"}.')
 
-        UnarmedMessage.objects.filter(pool=default_pool).delete()
         messages = [
             "You punch {target}.",
             "You kick {target}.",
@@ -1796,7 +1875,9 @@ class Command(BaseCommand):
             "You throw a wild hit at {target}.",
         ]
         for i, template in enumerate(messages):
-            UnarmedMessage.objects.create(pool=default_pool, template=template, order=i)
+            self._reconcile(
+                UnarmedMessage, {'pool': default_pool, 'order': i}, {'template': template},
+            )
         self.stdout.write(f'  Seeded {len(messages)} UnarmedMessages in "Default" pool.')
 
         # Verdant Reach species pools (v18 briefs 5 and 6). The flats and
@@ -1836,12 +1917,10 @@ class Command(BaseCommand):
                 [t.replace(f'The {species}', f'The elder {species}') for t in templates],
             )
         for slug, (name, templates) in vr_pools.items():
-            pool, _ = UnarmedMessagePool.objects.get_or_create(
-                slug=slug, defaults={'name': name},
-            )
+            pool = self._reconcile(UnarmedMessagePool, {'slug': slug}, {'name': name})
             for i, template in enumerate(templates):
-                UnarmedMessage.objects.get_or_create(
-                    pool=pool, template=template, defaults={'order': i},
+                self._reconcile(
+                    UnarmedMessage, {'pool': pool, 'order': i}, {'template': template},
                 )
         self.stdout.write(f'  Seeded {len(vr_pools)} Verdant Reach unarmed pools.')
 
@@ -1931,12 +2010,10 @@ class Command(BaseCommand):
         npc_pools = {'npc-default': ('NPC Default Attacks', npc_default_templates)}
         npc_pools.update(animal_templates)
         for slug, (name, templates) in npc_pools.items():
-            pool, _ = UnarmedMessagePool.objects.get_or_create(
-                slug=slug, defaults={'name': name},
-            )
+            pool = self._reconcile(UnarmedMessagePool, {'slug': slug}, {'name': name})
             for i, template in enumerate(templates):
-                UnarmedMessage.objects.get_or_create(
-                    pool=pool, template=template, defaults={'order': i},
+                self._reconcile(
+                    UnarmedMessage, {'pool': pool, 'order': i}, {'template': template},
                 )
         self.stdout.write(f'  Seeded {len(npc_pools)} NPC unarmed pools '
                           f'(npc-default + {len(animal_templates)} species).')
@@ -1989,16 +2066,9 @@ class Command(BaseCommand):
         for data in origins:
             slug = data.pop('slug')
             name = data.pop('name')
-            # Acuity values are balance data an admin may have tuned in prod —
-            # set them on create only; re-runs update content fields alone.
-            balance = {k: data.pop(k) for k in ('acuity_baseline', 'acuity_band_low', 'acuity_band_high')}
             content = {'name': name, **data}
-            _, created = Origin.objects.update_or_create(
-                slug=slug,
-                defaults=content,
-                create_defaults={**content, **balance},
-            )
-            self.stdout.write(f'  Origin "{name}" {"created" if created else "updated"}.')
+            self._reconcile(Origin, {'slug': slug}, content)
+            self.stdout.write(f'  Origin "{name}" seeded.')
 
     def _seed_archetypes(self):
         archetypes = [
@@ -2041,77 +2111,55 @@ class Command(BaseCommand):
         for data in archetypes:
             slug = data.pop('slug')
             name = data.pop('name')
-            # Primary stats are balance data — set on create only, like Origin
-            # acuity values above.
-            balance = {k: data.pop(k) for k in ('primary_stat_1', 'primary_stat_2')}
             content = {'name': name, **data}
-            _, created = Archetype.objects.update_or_create(
-                slug=slug,
-                defaults=content,
-                create_defaults={**content, **balance},
-            )
-            self.stdout.write(f'  Archetype "{name}" {"created" if created else "updated"}.')
+            self._reconcile(Archetype, {'slug': slug}, content)
+            self.stdout.write(f'  Archetype "{name}" seeded.')
 
     def _seed_effects(self):
         # --- Healing Draught ---
-        healing_draught, created = EffectDefinition.objects.get_or_create(
-            slug='healing-draught',
-            defaults={
-                'name': 'Healing Draught',
-                'description': 'Restores Vitality immediately.',
-            },
-        )
-        healing_draught.components.all().delete()
-        EffectComponent.objects.create(
-            definition=healing_draught,
-            component_type='restore_vitality',
-            magnitude_base=20.0,
-            magnitude_scaling=5.0,
-            duration_base=0.0,
-            duration_scaling=0.0,
-            order=0,
-        )
-        self.stdout.write(f'  EffectDefinition "{healing_draught.name}" {"created" if created else "exists"}.')
+        healing_draught = self._reconcile(EffectDefinition, {'slug': 'healing-draught'}, {
+            'name': 'Healing Draught',
+            'description': 'Restores Vitality immediately.',
+        })
+        self._reconcile(EffectComponent, {'definition': healing_draught, 'order': 0}, {
+            'component_type': 'restore_vitality',
+            'target_stat': '',
+            'magnitude_base': 20.0,
+            'magnitude_scaling': 5.0,
+            'duration_base': 0.0,
+            'duration_scaling': 0.0,
+        })
+        self.stdout.write(f'  EffectDefinition "{healing_draught.name}" seeded.')
 
         # --- Focus Tonic ---
-        focus_tonic, created = EffectDefinition.objects.get_or_create(
-            slug='focus-tonic',
-            defaults={
-                'name': 'Focus Tonic',
-                'description': 'Sharpens Acuity upward over time.',
-            },
-        )
-        focus_tonic.components.all().delete()
-        EffectComponent.objects.create(
-            definition=focus_tonic,
-            component_type='shift_acuity_high',
-            magnitude_base=0.1,
-            magnitude_scaling=0.05,
-            duration_base=30.0,
-            duration_scaling=5.0,
-            order=0,
-        )
-        self.stdout.write(f'  EffectDefinition "{focus_tonic.name}" {"created" if created else "exists"}.')
+        focus_tonic = self._reconcile(EffectDefinition, {'slug': 'focus-tonic'}, {
+            'name': 'Focus Tonic',
+            'description': 'Sharpens Acuity upward over time.',
+        })
+        self._reconcile(EffectComponent, {'definition': focus_tonic, 'order': 0}, {
+            'component_type': 'shift_acuity_high',
+            'target_stat': '',
+            'magnitude_base': 0.1,
+            'magnitude_scaling': 0.05,
+            'duration_base': 30.0,
+            'duration_scaling': 5.0,
+        })
+        self.stdout.write(f'  EffectDefinition "{focus_tonic.name}" seeded.')
 
         # --- Fracture Wraith Poison ---
-        wraith_poison, created = EffectDefinition.objects.get_or_create(
-            slug='fracture-wraith-poison',
-            defaults={
-                'name': 'Fracture Wraith Poison',
-                'description': 'Vitality damage over time from the Fracture Wraith.',
-            },
-        )
-        wraith_poison.components.all().delete()
-        EffectComponent.objects.create(
-            definition=wraith_poison,
-            component_type='dot_vitality',
-            magnitude_base=3.0,
-            magnitude_scaling=2.0,
-            duration_base=15.0,
-            duration_scaling=3.0,
-            order=0,
-        )
-        self.stdout.write(f'  EffectDefinition "{wraith_poison.name}" {"created" if created else "exists"}.')
+        wraith_poison = self._reconcile(EffectDefinition, {'slug': 'fracture-wraith-poison'}, {
+            'name': 'Fracture Wraith Poison',
+            'description': 'Vitality damage over time from the Fracture Wraith.',
+        })
+        self._reconcile(EffectComponent, {'definition': wraith_poison, 'order': 0}, {
+            'component_type': 'dot_vitality',
+            'target_stat': '',
+            'magnitude_base': 3.0,
+            'magnitude_scaling': 2.0,
+            'duration_base': 15.0,
+            'duration_scaling': 3.0,
+        })
+        self.stdout.write(f'  EffectDefinition "{wraith_poison.name}" seeded.')
 
         self._effects = {
             'healing-draught': healing_draught,
@@ -2790,24 +2838,14 @@ class Command(BaseCommand):
             },
         ]
 
-        count_created = 0
         for data in items:
             slug = data.pop('slug')
-            _, created = ItemDefinition.objects.get_or_create(slug=slug, defaults=data)
-            if created:
-                count_created += 1
-            self.stdout.write(
-                f'  ItemDefinition "{data["name"]}" {"created" if created else "exists"}.'
-            )
+            self._reconcile(ItemDefinition, {'slug': slug}, data)
 
         for data in accessories:
             slug = data.pop('slug')
-            _, created = ItemDefinition.objects.update_or_create(slug=slug, defaults=data)
-            if created:
-                count_created += 1
-            self.stdout.write(
-                f'  ItemDefinition "{data["name"]}" {"created" if created else "updated"}.'
-            )
+            self._reconcile(ItemDefinition, {'slug': slug}, data)
+        self.stdout.write(f'  {len(items) + len(accessories)} ItemDefinitions seeded.')
 
         # v18 brief 4: base_value back-fill. get_or_create never updates
         # existing rows, so authored values are forced here on every run.
@@ -2845,33 +2883,27 @@ class Command(BaseCommand):
             item_type__in=('consumable', 'bag'),
         ).update(base_value=25)
         self.stdout.write('  base_value back-fill applied to all ItemDefinitions.')
-
-        self.stdout.write(self.style.SUCCESS(
-            f'Item seed complete: {count_created} new ItemDefinitions created.'
-        ))
+        self.stdout.write(self.style.SUCCESS('Item seed complete.'))
 
     # ------------------------------------------------------------------
     # The Verdant Reach (Z01) — v18 brief 5: Vale & Flats
     # ------------------------------------------------------------------
 
     def _seed_verdant_zone(self):
-        zone, created = Zone.objects.get_or_create(
-            slug='the-verdant-reach',
-            defaults={
-                'name': 'The Verdant Reach',
-                'genre_tone': 'Pastoral fantasy — green wilderness beyond the city',
-                'danger_level': Zone.DANGER_BEGINNER,
-                'is_pvp_zone': False,
-                'is_scaled': False,
-                'description': (
-                    'Beyond the tree arch on Infinity City\'s ring street, the forest simply '
-                    'begins: a green valley folded between high stone walls, an ancient stair, '
-                    'and open grassland running toward the mountains. The first zone beyond '
-                    'the city, and the gentlest — which is not the same as gentle.'
-                ),
-            },
-        )
-        self.stdout.write(f'Zone "{zone.name}" {"created" if created else "exists"}.')
+        zone = self._reconcile(Zone, {'slug': 'the-verdant-reach'}, {
+            'name': 'The Verdant Reach',
+            'genre_tone': 'Pastoral fantasy — green wilderness beyond the city',
+            'danger_level': Zone.DANGER_BEGINNER,
+            'is_pvp_zone': False,
+            'is_scaled': False,
+            'description': (
+                'Beyond the tree arch on Infinity City\'s ring street, the forest simply '
+                'begins: a green valley folded between high stone walls, an ancient stair, '
+                'and open grassland running toward the mountains. The first zone beyond '
+                'the city, and the gentlest — which is not the same as gentle.'
+            ),
+        })
+        self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
 
     def _seed_verdant_areas(self, zone):
@@ -2910,10 +2942,9 @@ class Command(BaseCommand):
         ]
         areas = {}
         for key, name, description in area_defs:
-            area, _ = Area.objects.get_or_create(
-                zone=zone,
-                slug=slugify(name),
-                defaults={'name': name, 'area_description': description},
+            area = self._reconcile(
+                Area, {'zone': zone, 'slug': slugify(name)},
+                {'name': name, 'area_description': description},
             )
             areas[key] = area
         self.stdout.write('Verdant Reach areas seeded: ' + ', '.join(a.name for a in areas.values()) + '.')
@@ -2922,10 +2953,8 @@ class Command(BaseCommand):
     def _vr_room(self, zone, key, x, y, z, name, brief, description,
                  area, safe=False, indoors=False, no_exit=None):
         msgs = no_exit or {}
-        room, _ = Room.objects.update_or_create(
-            zone=zone,
-            coord_x=x, coord_y=y, coord_z=z,
-            defaults={
+        room = self._reconcile(
+            Room, {'zone': zone, 'coord_x': x, 'coord_y': y, 'coord_z': z}, {
                 'name': name,
                 'brief_description': brief,
                 'description': description,
@@ -4579,14 +4608,15 @@ class Command(BaseCommand):
         ]
 
         for table_slug, table_name, entries in tables:
-            table, _ = LootTable.objects.get_or_create(
-                slug=table_slug, defaults={'name': table_name},
-            )
+            table = self._reconcile(LootTable, {'slug': table_slug}, {'name': table_name})
             for item_slug, drop_chance, weights, group in entries:
-                LootTableEntry.objects.get_or_create(
-                    loot_table=table,
-                    item_definition=ItemDefinition.objects.get(slug=item_slug),
-                    defaults={
+                self._reconcile(
+                    LootTableEntry,
+                    {
+                        'loot_table': table,
+                        'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                    },
+                    {
                         'mk_tier_min': 1,
                         'mk_tier_max': 1,
                         'drop_chance': drop_chance,
@@ -4659,23 +4689,23 @@ class Command(BaseCommand):
              'bench worn smooth by work. He came up from the village for the '
              'foot traffic and stayed for the sphere, which he talks to, '
              'quietly, when he thinks no one is listening.',
-             {'is_repairer': True}),
+             {'is_repairer': True, 'attackable': False}),
             ('essa-the-trader', 'Essa the Trader', 'normal', False,
              (30, 7, 7, 7, 6, 6, 6), 2.0, None, 'reedmere-gear', (4, 12), 5,
              'A Reedmere trader with a blanket of goods weighted at the corners '
-             'and an eye that prices you, kindly, as you approach.', {}),
+             'and an eye that prices you, kindly, as you approach.', {'attackable': False}),
             ('tavik-the-mender', 'Tavik the Mender', 'normal', False,
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (4, 12), 5,
              'A Windhome mender, cross-legged on a hide, needle and awl moving '
              'without being watched. Travelers keep appearing beside the green '
              'light, and travelers always need something sewn, hammered, or '
              'talked back into shape.',
-             {'is_repairer': True}),
+             {'is_repairer': True, 'attackable': False}),
             ('sona-the-trader', 'Sona the Trader', 'normal', False,
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (6, 16), 5,
              'A trader of Windhome, goods laid out in painted order against the '
              'wind. She learned three languages from the people who appear '
-             'beside the sphere and is working on a fourth.', {}),
+             'beside the sphere and is working on a fourth.', {'attackable': False}),
             # The Verdant Shard
             ('verdant-shard', 'a Verdant Shard', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
@@ -4684,7 +4714,7 @@ class Command(BaseCommand):
              'the wind, your face — with an attention that feels less like '
              'watching and more like delight. It is a piece of an obelisk '
              'somewhere, gone out to see the world, and gladness comes off it '
-             'like warmth off a stone.', {}),
+             'like warmth off a stone.', {'attackable': False}),
             # Cave insects — aggressive
             ('cave-spider', 'cave spider', 'normal', True,
              (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'insect-drops', (0, 0), 1,
@@ -4758,13 +4788,12 @@ class Command(BaseCommand):
         self._upsert_npc_definitions(npcs, 'Verdant Reach')
 
     def _upsert_npc_definitions(self, npcs, label):
-        created_count = 0
         for (slug, name, tier, aggressive, stats, sf, pool_slug, loot_slug,
              (copper_min, copper_max), respawn, description, extras) in npcs:
             vit, s, d, e, i, w, p = stats
             content = {
                 'name': name,
-                'genre_tag': 'fantasy',
+                'genre_tag': extras.get('genre_tag', 'fantasy'),
                 'description': description,
                 'is_aggressive': aggressive,
                 'is_unique': extras.get('is_unique', False),
@@ -4776,8 +4805,11 @@ class Command(BaseCommand):
                 ),
                 'is_repairer': extras.get('is_repairer', False),
                 'death_message': extras.get('death_message', ''),
-            }
-            balance = {
+                # v19 brief 8: display/combat-protection flags. Defaults are
+                # the plain-villager case; vendors, repairers, and the
+                # spheres/shards override attackable via extras below.
+                'is_fixture': extras.get('is_fixture', False),
+                'attackable': extras.get('attackable', True),
                 'base_vitality': vit,
                 'base_str': s, 'base_dex': d, 'base_end': e,
                 'base_int': i, 'base_wis': w, 'base_per': p,
@@ -4786,17 +4818,8 @@ class Command(BaseCommand):
                 'currency_drop_max': copper_max,
                 'respawn_minutes': respawn,
             }
-            _, created = NpcDefinition.objects.update_or_create(
-                slug=slug,
-                defaults=content,
-                create_defaults={**content, **balance},
-            )
-            if created:
-                created_count += 1
-        self.stdout.write(
-            f'{label}: {len(npcs)} NPC definitions seeded '
-            f'({created_count} created).'
-        )
+            self._reconcile(NpcDefinition, {'slug': slug}, content)
+        self.stdout.write(f'{label}: {len(npcs)} NPC definitions seeded.')
 
     def _seed_verdant_spawns(self):
         # (room key, npc slug, count, gating boss slug or None)
@@ -4862,11 +4885,14 @@ class Command(BaseCommand):
             ('vr-c4h', 'dronemothers-swarm', 2, 'dronemother'),
         ]
         for room_key, npc_slug, count, gate_slug in spawns:
-            RoomSpawn.objects.get_or_create(
-                room=self.rooms[room_key],
-                npc_definition=NpcDefinition.objects.get(slug=npc_slug),
-                mk_tier=1,
-                defaults={
+            self._reconcile(
+                RoomSpawn,
+                {
+                    'room': self.rooms[room_key],
+                    'npc_definition': NpcDefinition.objects.get(slug=npc_slug),
+                    'mk_tier': 1,
+                },
+                {
                     'count': count,
                     'is_active': True,
                     'requires_living_npc': (
@@ -4896,11 +4922,14 @@ class Command(BaseCommand):
         for npc_slug, wares in vendors.items():
             npc = NpcDefinition.objects.get(slug=npc_slug)
             for item_slug, price in wares:
-                VendorEntry.objects.get_or_create(
-                    npc_definition=npc,
-                    item_definition=ItemDefinition.objects.get(slug=item_slug),
-                    mk_tier=1,
-                    defaults={
+                self._reconcile(
+                    VendorEntry,
+                    {
+                        'npc_definition': npc,
+                        'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                        'mk_tier': 1,
+                    },
+                    {
                         'price': price,
                         'stock_limit': None,
                         'is_active': True,
@@ -4954,14 +4983,15 @@ class Command(BaseCommand):
         ]
 
         for table_slug, table_name, entries in tables:
-            table, _ = LootTable.objects.get_or_create(
-                slug=table_slug, defaults={'name': table_name},
-            )
+            table = self._reconcile(LootTable, {'slug': table_slug}, {'name': table_name})
             for item_slug, drop_chance, weights, group in entries:
-                LootTableEntry.objects.get_or_create(
-                    loot_table=table,
-                    item_definition=ItemDefinition.objects.get(slug=item_slug),
-                    defaults={
+                self._reconcile(
+                    LootTableEntry,
+                    {
+                        'loot_table': table,
+                        'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                    },
+                    {
                         'mk_tier_min': 1,
                         'mk_tier_max': 1,
                         'drop_chance': drop_chance,
@@ -5017,12 +5047,12 @@ class Command(BaseCommand):
              "appeared at the crag's foot, set up a bench, and has been "
              "mending travelers' gear beside it ever since. He calls the "
              'sphere "the little lamp" and considers it excellent company.',
-             {'is_repairer': True}),
+             {'is_repairer': True, 'attackable': False}),
             ('ridda-the-trader', 'Ridda the Trader', 'normal', False,
              (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (10, 24), 5,
              "Ridda trades at the mountains' door: tools, iron, and the things "
              "climbers wish they'd bought lower down. Her prices are fair and "
-             'her warnings free.', {}),
+             'her warnings free.', {'attackable': False}),
             # The Verdant Sphere — the summit sphere
             ('the-verdant-sphere', 'the Verdant Sphere', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
@@ -5033,7 +5063,19 @@ class Command(BaseCommand):
              "zone's color the way light wears a leaf. It does not spin, "
              'pulse, or drift. The garden grows toward it. Stand here long '
              'enough and you will understand the impulse.',
-             {'is_unique': True}),
+             {'is_unique': True, 'is_fixture': False, 'attackable': False}),
+            # The Verdant Obelisk — v19 brief 8, the Crown's twin to the
+            # Heart obelisk
+            ('the-verdant-obelisk', 'the Verdant Obelisk', 'normal', False,
+             (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
+             'Twin to the great obelisk at the Heart of the Convergence in every '
+             "proportion, this spire wears the Reach's green where its sibling "
+             "wears the void's black. Vines have claimed its lower reaches and "
+             'been permitted to stay; the stone beneath them hums with the same '
+             'patient attention. Suspended within its upper lattice, the Verdant '
+             'Sphere turns slowly, and the obelisk holds it the way a setting '
+             'holds a stone.',
+             {'is_unique': True, 'is_fixture': True, 'attackable': False, 'genre_tag': 'cosmic'}),
             # Cave insects — aggressive
             ('elder-cave-spider', 'elder cave spider', 'elite', True,
              (110, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
@@ -5129,6 +5171,7 @@ class Command(BaseCommand):
             ('vr-ll2', 'mountain-villager', 1, None),
             ('vr-ll2', 'mountain-hunter', 2, None),
             ('vr-vc1', 'the-verdant-sphere', 1, None),
+            ('vr-vc1', 'the-verdant-obelisk', 1, None),
             # The Undercrag
             ('vr-c5a', 'elder-cave-spider', 1, None),
             ('vr-c5b', 'elder-cave-spider', 2, None),
@@ -5173,11 +5216,14 @@ class Command(BaseCommand):
             ('vr-c7k', 'devourers-drones', 3, 'crowned-devourer'),
         ]
         for room_key, npc_slug, count, gate_slug in spawns:
-            RoomSpawn.objects.get_or_create(
-                room=self.rooms[room_key],
-                npc_definition=NpcDefinition.objects.get(slug=npc_slug),
-                mk_tier=1,
-                defaults={
+            self._reconcile(
+                RoomSpawn,
+                {
+                    'room': self.rooms[room_key],
+                    'npc_definition': NpcDefinition.objects.get(slug=npc_slug),
+                    'mk_tier': 1,
+                },
+                {
                     'count': count,
                     'is_active': True,
                     'requires_living_npc': (
@@ -5202,11 +5248,14 @@ class Command(BaseCommand):
         for npc_slug, wares in vendors.items():
             npc = NpcDefinition.objects.get(slug=npc_slug)
             for item_slug, price in wares:
-                VendorEntry.objects.get_or_create(
-                    npc_definition=npc,
-                    item_definition=ItemDefinition.objects.get(slug=item_slug),
-                    mk_tier=1,
-                    defaults={
+                self._reconcile(
+                    VendorEntry,
+                    {
+                        'npc_definition': npc,
+                        'item_definition': ItemDefinition.objects.get(slug=item_slug),
+                        'mk_tier': 1,
+                    },
+                    {
                         'price': price,
                         'stock_limit': None,
                         'is_active': True,

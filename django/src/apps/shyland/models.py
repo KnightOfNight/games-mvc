@@ -231,7 +231,7 @@ class Character(models.Model):
     is_dead = models.BooleanField(default=False)
     is_dying    = models.BooleanField(default=False)
     dying_since = models.DateTimeField(null=True, blank=True)
-    brief_mode = models.BooleanField(default=False)
+    brief_mode = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
@@ -643,6 +643,16 @@ class NpcDefinition(models.Model):
         default=False,
         help_text='This NPC offers repair services. The repair command routes '
                   'to a living repairer in the room.',
+    )
+    is_fixture      = models.BooleanField(
+        default=False,
+        help_text='Displayed in the room\'s "What\'s here?" section instead of '
+                  '"Who\'s here?". Purely a display distinction.',
+    )
+    attackable      = models.BooleanField(
+        default=True,
+        help_text='If False, this NPC may never be targeted, engaged, or hold '
+                  'aggro. Independent of room safe-flag mechanics.',
     )
 
     combat_tier = models.CharField(

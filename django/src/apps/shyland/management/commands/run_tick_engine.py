@@ -209,6 +209,21 @@ class Command(BaseCommand):
 
             characters, npcs = await load_participants(session)
 
+            # Defense in depth: an unattackable NPC must never hold aggro or
+            # take a combat turn. It should never reach a CombatSession's npc
+            # set (excluded at aggro/attack time), but if one does, drop it
+            # here rather than letting it act or be targeted.
+            safe_npcs = []
+            for npc in npcs:
+                if not npc.definition.attackable:
+                    logger.warning(
+                        f"Unattackable NPC {npc.definition.slug} (instance {npc.pk}) "
+                        f"found in CombatSession {session.pk}; skipping."
+                    )
+                    continue
+                safe_npcs.append(npc)
+            npcs = safe_npcs
+
             if not characters or not npcs:
                 await close_session(session)
                 continue
@@ -313,6 +328,8 @@ class Command(BaseCommand):
                         if npc is None or not npc.is_alive:
                             continue
 
+                        display = npc_display_name(npc, live_npcs)
+
                         equipped_weapons = list(ItemInstance.objects.filter(
                             owner=character,
                             is_equipped=True,
@@ -325,7 +342,7 @@ class Command(BaseCommand):
                         hit_result = resolve_hit(character.stat_dex, npc_stats['dex'])
 
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"You miss the {npc.definition.name}.", 'combat', None))
+                            messages.append((character.pk, f"You miss {display}.", 'combat', None))
                             continue
 
                         if weapon_item:
@@ -352,19 +369,19 @@ class Command(BaseCommand):
 
                         if weapon_item:
                             if hit_result == 'critical':
-                                flavor = f"You land a critical hit on the {npc.definition.name}"
+                                flavor = f"You land a critical hit on {display}"
                             else:
-                                flavor = f"You hit the {npc.definition.name}"
+                                flavor = f"You hit {display}"
                         else:
                             pool = character.archetype.unarmed_message_pool if character.archetype_id else None
-                            raw = get_unarmed_message(pool, f"the {npc.definition.name}")
+                            raw = get_unarmed_message(pool, display)
                             flavor = raw.rstrip('.')
                             if hit_result == 'critical':
                                 flavor = f"[Critical] {flavor}"
 
                         msg = f"{flavor} for {damage_int} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
-                        msg += f" The {npc.definition.name} {health_desc}."
+                        msg += f" {display[0].upper()}{display[1:]} {health_desc}."
                         messages.append((character.pk, msg, 'combat', None))
 
                         if npc.vitality_current <= 0:
@@ -376,6 +393,13 @@ class Command(BaseCommand):
                             xp = xp_for_kill(npc, character)
                             character.xp += xp
                             character.save(update_fields=['xp'])
+
+                            create_corpse(npc, character)
+
+                            messages.append((character.pk, f"You have slain {display}! (+{xp} XP)", 'combat', None))
+                            room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat', character.pk))
+                            if npc_def.death_message:
+                                room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
 
                             while character.xp >= xp_for_next_level(character.level):
                                 character.level += 1
@@ -396,13 +420,6 @@ class Command(BaseCommand):
                                 ))
 
                             statuses.append((character.pk, self._build_status(character)))
-
-                            create_corpse(npc, character)
-
-                            messages.append((character.pk, f"You have slain the {npc.definition.name}! (+{xp} XP)", 'combat', None))
-                            room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat', character.pk))
-                            if npc_def.death_message:
-                                room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
 
                             live_npcs = [n for n in live_npcs if n.pk != npc.pk]
                             session.npcs.remove(npc)

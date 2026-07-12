@@ -1328,6 +1328,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_output("You don't see that here.", 'error')
                 return
 
+        if not npc.definition.attackable:
+            await self.send_output(f"The {npc.definition.name} cannot be attacked.", 'error')
+            return
+
         display = npc_display_name(npc, npcs_in_room)
 
         session = await self.get_active_combat_session(character)
@@ -1537,6 +1541,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_brief(self, args):
         arg = args.strip().lower() if args else ''
+        if not arg:
+            character = await self.get_character_fresh()
+            state = 'on' if character.brief_mode else 'off'
+            await self.send_output(
+                f'Brief mode is {state}. Usage: brief on | brief off', category='system'
+            )
+            return
         if arg not in ('on', 'off'):
             await self.send_output('Usage: brief on | brief off', category='error')
             return
@@ -1626,16 +1637,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         else:
             location_header = f'[ {room.name} ]'
 
-        area_context = ''
-        if room.area and room.area.area_description:
-            area_context = f'{room.area.area_description}\n\n'
-
-        if force_long:
+        show_long = await self._resolve_room_rendering(char, room, force_long)
+        if show_long:
             description_text = room.description
-            await self._record_visit(char, room)
+            area_context = ''
+            if room.area and room.area.area_description:
+                area_context = f'{room.area.area_description}\n\n'
         else:
-            show_brief = await self._check_and_record_visit(char, room)
-            description_text = room.brief_description if show_brief else room.description
+            description_text = room.brief_description
+            area_context = ''
 
         text = (
             f'{location_header}\n'
@@ -1652,8 +1662,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'exits': exit_str,
         })
 
-        for npc in npcs:
-            await self.output(f"{npc.name} is here.", 'room')
+        living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
+        fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
+
+        if living_npcs:
+            await self.output("Who's here?", 'room')
+            for npc in living_npcs:
+                await self.output(f"{npc.name} is here.", 'room')
+
+        if fixture_npcs:
+            await self.output("What's here?", 'room')
+            for npc in fixture_npcs:
+                await self.output(f"{npc.name} is here.", 'room')
 
         for corpse in corpses:
             await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room')
@@ -1739,15 +1759,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return random.choice(texts) if texts else None
 
     @database_sync_to_async
-    def _check_and_record_visit(self, character, room):
+    def _resolve_room_rendering(self, character, room, force_long):
+        """Return True if the long description (+ area description) should
+        render, False for brief-only. Per v19 brief 8 Part 2b: first entry
+        and `look` always show the long form; revisits obey brief_mode."""
         _, created = RoomVisit.objects.get_or_create(character=character, room=room)
-        if character.brief_mode:
+        if force_long or created:
             return True
-        return not created
-
-    @database_sync_to_async
-    def _record_visit(self, character, room):
-        RoomVisit.objects.get_or_create(character=character, room=room)
+        return not character.brief_mode
 
     @database_sync_to_async
     def get_inventory(self):
@@ -2066,6 +2085,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             current_room=room,
             is_alive=True,
             definition__is_aggressive=True,
+            definition__attackable=True,
         ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
 
     @database_sync_to_async
