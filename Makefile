@@ -19,10 +19,6 @@ PROJECT_DIR     := $(shell pwd)
         migrate makemigrations createsuperuser gen-certs check-secrets \
         new-app push-certs reset seed help
 
-# flist
-flist:
-	@scripts/mkflist.sh
-
 # ---------------------------------------------------------------------------
 # First-time setup
 # ---------------------------------------------------------------------------
