@@ -4,7 +4,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from django.utils.text import slugify
 from apps.shyland.models import (
-    Area, Archetype, Character, EffectComponent, EffectDefinition, ItemDefinition,
+    Area, Archetype, Character, DialogueConnective, DialogueEntry,
+    DialogueResponse, EffectComponent, EffectDefinition, ItemDefinition,
     LootTable, LootTableEntry, NpcDefinition, Origin, Room, RoomSpawn,
     TravelMessage, TravelNode, VendorEntry, Zone,
     UnarmedMessage, UnarmedMessagePool,
@@ -20,6 +21,7 @@ from apps.shyland.models import (
 SEED_OWNED_MODELS = [
     Zone, Area, Room,
     NpcDefinition, RoomSpawn,
+    DialogueEntry, DialogueResponse, DialogueConnective,
     ItemDefinition,
     EffectDefinition, EffectComponent,
     UnarmedMessagePool, UnarmedMessage,
@@ -252,6 +254,7 @@ class Command(BaseCommand):
         self._wire_exits()
         self._seed_convergence_npcs()
         self._seed_primordial_sphere()
+        self._seed_dialogue()
         self._seed_travel_nodes()
         self._seed_travel_messages()
         self._set_character_rooms()
@@ -1386,6 +1389,142 @@ class Command(BaseCommand):
         self.stdout.write(
             f'  NpcDefinition "the Primordial Sphere" seeded; spawn in {self.rooms["heart"].name}.'
         )
+
+    # ------------------------------------------------------------------
+    # NPC dialogue (v19 brief 9) — connective pools + starter maps.
+    # Aldric and Info Prime are the brief's minimal authored starter; the
+    # rest of the Convergence roster's maps are Brief 10 content.
+    # ------------------------------------------------------------------
+
+    DIALOGUE_CONNECTIVES = {
+        DialogueConnective.POSITION_SECOND: [
+            '{name} also looks up and answers.',
+            '{name} glances over and adds their piece.',
+            "{name} doesn't wait to be asked.",
+        ],
+        DialogueConnective.POSITION_LATER: [
+            '{name} chimes in, not to be left out.',
+            '{name} adds a word from where they stand.',
+            'Last of all, {name} weighs in.',
+        ],
+    }
+
+    def _seed_dialogue(self):
+        self._seed_dialogue_connectives()
+        self._seed_npc_dialogue('aldric', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help', 'information', 'lost', 'new'],
+                'responses': [
+                    'Help. Hm. Everyone wants the whole world explained before lunch. Walk '
+                    'the ring road. Talk to who you meet. The paths are honest here, which '
+                    'is more than I can say for most places.',
+                    "You look sturdy enough to figure things out the hard way. But fine: "
+                    "the gate south of the Heart leads to the Verdant Reach. Green place. "
+                    "Things in it will kill you politely.",
+                    "Ask the machine on the north side if you want facts. Ask me if you "
+                    "want the truth. They overlap less than you'd hope.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'obelisk',
+                'keywords': ['obelisk', 'sphere', 'heart'],
+                'responses': [
+                    "The Obelisk was here before the city, and the city grew around it the "
+                    "way bark grows around a nail. The sphere inside it watches. Don't ask "
+                    "me what it watches for.",
+                    "Older than me, and I'm older than I look. It hums if you stand close. "
+                    "Some nights it hums back.",
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Aldric looks you over once, unhurried, and nods as if confirming a '
+                    'private guess.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Aldric snorts. "Youth," he mutters, to no one in particular.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('info-prime', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'help',
+                'keywords': ['help', 'information', 'directions', 'where'],
+                'responses': [
+                    'QUERY ACKNOWLEDGED. The Convergence ring road connects all districts. '
+                    'The southern gate accesses the Verdant Reach, hazard rating: moderate. '
+                    'Further queries accepted.',
+                    'INFORMATION SERVICE ACTIVE. State a subject: the Obelisk. The '
+                    'districts. The Verdant Reach. This unit does not editorialize. The old '
+                    'man editorializes.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'network',
+                'keywords': ['obelisk', 'travel', 'network'],
+                'responses': [
+                    'SUBJECT: OBELISK NETWORK. Attune by standing near a node. Travel '
+                    'between revealed nodes is instantaneous and free of charge. This unit '
+                    'finds the pricing model inexplicable and correct.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Info Prime\'s lenses rotate toward you with a soft click. "NEW ENTITY '
+                    'LOGGED. WELCOME."',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_DEPARTED,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Info Prime\'s lenses linger on the empty doorway. "QUERY ABANDONED. '
+                    'LOGGED."',
+                ],
+            },
+        ])
+        self.stdout.write('  Dialogue seeded: connectives, Aldric, Info Prime.')
+
+    def _seed_dialogue_connectives(self):
+        for position_class, templates in self.DIALOGUE_CONNECTIVES.items():
+            for template in templates:
+                self._reconcile(
+                    DialogueConnective,
+                    {'position_class': position_class, 'template': template},
+                    {},
+                )
+
+    def _seed_npc_dialogue(self, npc_slug, entry_specs):
+        npc = NpcDefinition.objects.get(slug=npc_slug)
+        for spec in entry_specs:
+            entry = self._reconcile(
+                DialogueEntry,
+                {
+                    'npc_definition': npc,
+                    'entry_type': spec['entry_type'],
+                    'note': spec['note'],
+                },
+                {'keywords': spec['keywords']},
+            )
+            for text in spec['responses']:
+                self._reconcile(DialogueResponse, {'entry': entry, 'text': text}, {})
 
     # ------------------------------------------------------------------
     # Obelisk Network

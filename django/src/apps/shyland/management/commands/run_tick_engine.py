@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 from channels.db import database_sync_to_async
 from django.core.management.base import BaseCommand
@@ -31,6 +32,11 @@ class Command(BaseCommand):
         # process_dying_ladder reseeds from the character's current elapsed
         # time on next sight, so no lines are replayed or skipped.
         self._dying_ladder_sent = {}
+        # npc_instance_pk -> DialogueResponse pk last delivered by that NPC.
+        # In-memory only, per v19 brief 9: guarantees no *consecutive*
+        # self-repeat; an engine restart just loses the memory, which is
+        # an accepted tradeoff (not a global-novelty guarantee anyway).
+        self._last_dialogue_response = {}
 
     def handle(self, *args, **options):
         self.stdout.write('Tick engine starting.')
@@ -49,6 +55,7 @@ class Command(BaseCommand):
         await self.process_npc_respawn()
         await self.process_effects(tick_number)
         await self.process_dying_ladder()
+        await self.process_dialogue_delivery()
 
     # ------------------------------------------------------------------
     # Combat
@@ -1023,6 +1030,107 @@ class Command(BaseCommand):
         for pk in list(self._dying_ladder_sent.keys()):
             if pk not in current_pks:
                 del self._dying_ladder_sent[pk]
+
+    # ------------------------------------------------------------------
+    # NPC dialogue delivery (v19 brief 9)
+    # ------------------------------------------------------------------
+
+    async def process_dialogue_delivery(self):
+        from django.utils import timezone
+        now = timezone.now()
+        due = await self.get_due_dialogue_responses(now)
+        for row in due:
+            await self.deliver_dialogue_response(row)
+
+    @database_sync_to_async
+    def get_due_dialogue_responses(self, now):
+        from apps.shyland.models import PendingDialogueResponse
+        return list(
+            PendingDialogueResponse.objects.filter(fire_at__lte=now)
+            .select_related('npc_instance__definition', 'entry')
+            .order_by('fire_at', 'position')
+        )
+
+    async def deliver_dialogue_response(self, row):
+        # NPC died mid-stagger: the instance is marked dead well before its
+        # (much later) respawn-timer cleanup deletes the row, so check
+        # liveness explicitly rather than relying on cascade timing alone.
+        if not row.npc_instance.is_alive:
+            await self.delete_pending_dialogue_response(row.pk)
+            return
+
+        response_text = await self.draw_dialogue_response(row.npc_instance_id, row.entry_id)
+        if response_text is None:
+            await self.delete_pending_dialogue_response(row.pk)
+            return
+
+        npc_name = row.npc_instance.definition.name
+
+        if row.position == 1:
+            connective = await self.draw_connective('second')
+            if connective:
+                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+        elif row.position >= 2:
+            connective = await self.draw_connective('later')
+            if connective:
+                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+
+        await self.broadcast_to_room(row.room_id, f'[say] {npc_name}: {response_text}', category='chat')
+
+        if row.is_final:
+            asker_room_id = await self.get_character_current_room_id(row.character_id)
+            if asker_room_id != row.room_id:
+                departure_line = await self.draw_departure_reaction(
+                    row.npc_instance_id, row.npc_instance.definition_id,
+                )
+                if departure_line:
+                    await self.broadcast_to_room(row.room_id, departure_line, category='room')
+
+        await self.delete_pending_dialogue_response(row.pk)
+
+    def _pick_excluding_last(self, npc_instance_pk, responses):
+        last_pk = self._last_dialogue_response.get(npc_instance_pk)
+        pool = [r for r in responses if r.pk != last_pk] if len(responses) > 1 else responses
+        chosen = random.choice(pool)
+        self._last_dialogue_response[npc_instance_pk] = chosen.pk
+        return chosen.text
+
+    @database_sync_to_async
+    def draw_dialogue_response(self, npc_instance_pk, entry_pk):
+        from apps.shyland.models import DialogueResponse
+        responses = list(DialogueResponse.objects.filter(entry_id=entry_pk))
+        if not responses:
+            return None
+        return self._pick_excluding_last(npc_instance_pk, responses)
+
+    @database_sync_to_async
+    def draw_connective(self, position_class):
+        from apps.shyland.models import DialogueConnective
+        pool = list(DialogueConnective.objects.filter(position_class=position_class))
+        return random.choice(pool).template if pool else None
+
+    @database_sync_to_async
+    def get_character_current_room_id(self, character_pk):
+        from apps.shyland.models import Character
+        return Character.objects.filter(pk=character_pk).values_list('current_room_id', flat=True).first()
+
+    @database_sync_to_async
+    def draw_departure_reaction(self, npc_instance_pk, npc_definition_pk):
+        from apps.shyland.models import DialogueEntry, DialogueResponse
+        entry = DialogueEntry.objects.filter(
+            npc_definition_id=npc_definition_pk, entry_type=DialogueEntry.ENTRY_DEPARTED,
+        ).first()
+        if entry is None:
+            return None
+        responses = list(DialogueResponse.objects.filter(entry=entry))
+        if not responses:
+            return None
+        return self._pick_excluding_last(npc_instance_pk, responses)
+
+    @database_sync_to_async
+    def delete_pending_dialogue_response(self, pk):
+        from apps.shyland.models import PendingDialogueResponse
+        PendingDialogueResponse.objects.filter(pk=pk).delete()
 
     def _build_status(self, character):
         return {

@@ -14,6 +14,12 @@ STAT_POINTS_PER_LEVEL = 5
 VITALITY_REGEN_SECS   = 120   # seconds to regen full Vitality from zero out of combat
 LONGEVITY_REGEN_SECS  = 3600  # seconds to regen full Longevity from zero out of combat
 
+# v19 brief 9: NPC dialogue engine timing. Slower than combat's 1-tick
+# cadence, kept sociable rather than interrupty.
+DIALOGUE_FIRST_DELAY_TICKS = 2
+DIALOGUE_STAGGER_TICKS     = 2
+DIALOGUE_RECENT_EXCLUDE    = 1
+
 class Zone(models.Model):
     DANGER_BEGINNER = 'beginner'
     DANGER_INTERMEDIATE = 'intermediate'
@@ -962,3 +968,104 @@ class CombatAction(models.Model):
 
     class Meta:
         ordering = ['queued_at']
+
+
+# ----------------------------------------------------------------------
+# NPC dialogue engine (v19 brief 9)
+# ----------------------------------------------------------------------
+
+class DialogueEntry(models.Model):
+    """A keyword→response map, greeting, or departure reaction for one NPC
+    definition. Seed-owned (enforce-exact) per brief 9."""
+
+    ENTRY_KEYWORD = 'keyword'
+    ENTRY_GREETING = 'greeting'
+    ENTRY_DEPARTED = 'departed'
+    ENTRY_TYPE_CHOICES = [
+        (ENTRY_KEYWORD, 'Keyword'),
+        (ENTRY_GREETING, 'Greeting'),
+        (ENTRY_DEPARTED, 'Departed'),
+    ]
+
+    npc_definition = models.ForeignKey(NpcDefinition, on_delete=models.CASCADE, related_name='dialogue_entries')
+    entry_type = models.CharField(max_length=10, choices=ENTRY_TYPE_CHOICES, default=ENTRY_KEYWORD)
+    keywords = models.JSONField(
+        default=list, blank=True,
+        help_text='Lowercase single-word tokens. Empty for greeting/departed entries.',
+    )
+    note = models.CharField(
+        max_length=100, blank=True,
+        help_text='Authoring aid only.',
+    )
+
+    def __str__(self):
+        return f'{self.npc_definition.name} [{self.entry_type}] {self.note or self.pk}'
+
+
+class DialogueResponse(models.Model):
+    """One line in an entry's response pool. Seed-owned (enforce-exact)."""
+
+    entry = models.ForeignKey(DialogueEntry, on_delete=models.CASCADE, related_name='responses')
+    text = models.TextField()
+
+    def __str__(self):
+        return self.text[:60]
+
+
+class DialogueConnective(models.Model):
+    """Position-aware connective color for the second/later speaker in a
+    multi-NPC response to one utterance. Seed-owned (enforce-exact)."""
+
+    POSITION_SECOND = 'second'
+    POSITION_LATER = 'later'
+    POSITION_CLASS_CHOICES = [
+        (POSITION_SECOND, 'Second speaker'),
+        (POSITION_LATER, 'Third-and-later speaker'),
+    ]
+
+    position_class = models.CharField(max_length=6, choices=POSITION_CLASS_CHOICES)
+    template = models.TextField(help_text="Uses {name}, replaced with the responding NPC's name.")
+
+    def __str__(self):
+        return f'[{self.position_class}] {self.template[:60]}'
+
+
+class PendingDialogueResponse(models.Model):
+    """A scheduled NPC response awaiting tick-engine delivery. Runtime state
+    — never touched by the seed sweep (brief 9, joining brief 8's
+    never-touched list)."""
+
+    utterance_id = models.UUIDField(help_text='Groups every responder to one say or greeting event.')
+    npc_instance = models.ForeignKey(NpcInstance, on_delete=models.CASCADE, related_name='pending_dialogue_responses')
+    entry = models.ForeignKey(DialogueEntry, on_delete=models.CASCADE, related_name='pending_responses')
+    character = models.ForeignKey(
+        Character, on_delete=models.CASCADE, related_name='pending_dialogue_responses',
+        help_text='The character whose speech or room entry triggered this response.',
+    )
+    room = models.ForeignKey(
+        Room, on_delete=models.CASCADE, related_name='pending_dialogue_responses',
+        help_text='Delivery room, captured at scheduling time so a departed asker cannot silence it.',
+    )
+    position = models.PositiveSmallIntegerField(help_text='0 = first speaker in this utterance.')
+    is_final = models.BooleanField(default=False, help_text='Last speaker for this utterance.')
+    fire_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['fire_at', 'position']
+
+    def __str__(self):
+        return f'PendingDialogueResponse {self.pk} (npc={self.npc_instance_id}, fire_at={self.fire_at})'
+
+
+class DialogueGreetingRecord(models.Model):
+    """Marks that an NPC definition has already greeted a character. Runtime
+    state — never touched by the seed sweep (brief 9)."""
+
+    character = models.ForeignKey(Character, on_delete=models.CASCADE, related_name='dialogue_greeting_records')
+    npc_definition = models.ForeignKey(NpcDefinition, on_delete=models.CASCADE, related_name='greeting_records')
+
+    class Meta:
+        unique_together = [('character', 'npc_definition')]
+
+    def __str__(self):
+        return f'{self.character.name} greeted by {self.npc_definition.name}'

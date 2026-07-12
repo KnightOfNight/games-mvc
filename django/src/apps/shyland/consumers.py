@@ -1,7 +1,9 @@
 import asyncio
 import json
 import random
+import re
 import uuid
+from datetime import timedelta
 
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
@@ -19,9 +21,11 @@ from .item_utils import (
     parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
-    Character, CombatSession, ItemInstance,
-    NpcInstance, Room, RoomVisit, TravelMessage, TravelNode, VendorEntry,
-    COMBAT_ROUND_TICKS, FLEE_COOLDOWN_TICKS,
+    Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
+    ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomVisit,
+    TravelMessage, TravelNode, VendorEntry,
+    COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
+    FLEE_COOLDOWN_TICKS,
 )
 
 SLOT_ORDER = [
@@ -90,6 +94,14 @@ def _item_suffix(item, defn):
             return '   — BROKEN'
         return f'   — {int(round(item.durability_current))}% durability'
     return ''
+
+
+_DIALOGUE_WORD_RE = re.compile(r"[a-zA-Z']+")
+
+
+def _tokenize_said_words(text):
+    """Lowercase, punctuation-stripped word set for NPC keyword matching."""
+    return {w.lower() for w in _DIALOGUE_WORD_RE.findall(text)}
 
 
 def parse_presence_name(raw: bytes) -> str:
@@ -419,6 +431,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'text': f'[say] {self.character.name}: {text}',
             'category': 'chat',
         })
+        await self.schedule_npc_dialogue_responses(text)
 
     async def cmd_who(self):
         keys = await self.redis.keys("shyland:online:*")
@@ -539,6 +552,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'Commands:\n'
             '  look / l                   — describe this room\n'
             '  say <text>                 — speak to players here\n'
+            "  Some of the world's inhabitants listen when you speak aloud.\n"
             '  who                        — list players online\n'
             '  inventory / inv            — show carried items and equipment\n'
             '  wallet                     — show your copper\n'
@@ -1692,6 +1706,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'area_name': room.area.name if room.area_id else None,
         })
 
+        if entering and npcs:
+            await self.schedule_npc_greetings(room, npcs)
+
     # ------------------------------------------------------------------
     # DB helpers
     # ------------------------------------------------------------------
@@ -2094,6 +2111,94 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             current_room=room,
             is_alive=True,
         ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
+
+    @database_sync_to_async
+    def schedule_npc_dialogue_responses(self, text):
+        """v19 brief 9: NPCs listen to room say. Entry-first draw per eligible
+        NPC, then a shuffled, tick-staggered delivery queue."""
+        words = _tokenize_said_words(text)
+        if not words:
+            return
+
+        room = Room.objects.get(pk=self.character.current_room_id)
+        npcs = list(
+            NpcInstance.objects.filter(current_room=room, is_alive=True)
+            .select_related('definition')
+            .prefetch_related('definition__dialogue_entries')
+        )
+
+        eligible = []
+        for npc in npcs:
+            matched_entries = [
+                e for e in npc.definition.dialogue_entries.all()
+                if e.entry_type == DialogueEntry.ENTRY_KEYWORD and words.intersection(e.keywords or [])
+            ]
+            if matched_entries:
+                eligible.append((npc, random.choice(matched_entries)))
+
+        if not eligible:
+            return
+
+        random.shuffle(eligible)
+        now = timezone.now()
+        utterance_id = uuid.uuid4()
+        last_index = len(eligible) - 1
+        for position, (npc, entry) in enumerate(eligible):
+            PendingDialogueResponse.objects.create(
+                utterance_id=utterance_id,
+                npc_instance=npc,
+                entry=entry,
+                character=self.character,
+                room=room,
+                position=position,
+                is_final=(position == last_index),
+                fire_at=now + timedelta(
+                    seconds=DIALOGUE_FIRST_DELAY_TICKS + position * DIALOGUE_STAGGER_TICKS,
+                ),
+            )
+
+    @database_sync_to_async
+    def schedule_npc_greetings(self, room, npcs):
+        """v19 brief 9: first-contact greetings, queued through the same
+        pending-response machinery so simultaneous greeters stagger too."""
+        character = self.character
+        greeters = []
+        for npc in npcs:
+            greeting_entries = [
+                e for e in npc.definition.dialogue_entries.all()
+                if e.entry_type == DialogueEntry.ENTRY_GREETING
+            ]
+            if not greeting_entries:
+                continue
+            if DialogueGreetingRecord.objects.filter(
+                character=character, npc_definition_id=npc.definition_id,
+            ).exists():
+                continue
+            greeters.append((npc, random.choice(greeting_entries)))
+
+        if not greeters:
+            return
+
+        random.shuffle(greeters)
+        now = timezone.now()
+        utterance_id = uuid.uuid4()
+        last_index = len(greeters) - 1
+        new_records = []
+        for position, (npc, entry) in enumerate(greeters):
+            PendingDialogueResponse.objects.create(
+                utterance_id=utterance_id,
+                npc_instance=npc,
+                entry=entry,
+                character=character,
+                room=room,
+                position=position,
+                is_final=(position == last_index),
+                fire_at=now + timedelta(
+                    seconds=DIALOGUE_FIRST_DELAY_TICKS + position * DIALOGUE_STAGGER_TICKS,
+                ),
+            )
+            new_records.append(DialogueGreetingRecord(character=character, npc_definition_id=npc.definition_id))
+        DialogueGreetingRecord.objects.bulk_create(new_records)
 
     @database_sync_to_async
     def parse_npc_noun(self, noun_str, npcs):
