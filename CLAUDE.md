@@ -12,6 +12,19 @@ Games currently in this repo:
 
 Docs: `docs/shyland/`
 
+## Session Pre-Flight — Deployment Target
+
+**Check this before starting work on any brief — implementation, verification/test, or ops alike.**
+
+Inspect the `DOCKER_HOST` environment variable:
+
+- **If `DOCKER_HOST` is set:** verify the target is reachable — `docker info` must succeed against it. If it is unreachable, that is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a local Docker daemon. (A common cause is an unloaded SSH key — the operator may only need an `ssh-add` — but diagnosing and fixing connectivity is the operator's call, not yours.)
+- **If `DOCKER_HOST` is not set:** do NOT assume a local Docker installation is the intended target. Ask the operator whether to proceed against the local install or stop the brief, and wait for the answer before touching anything.
+
+Rationale: the deployment target is production infrastructure. A brief that runs migrations, reseeds, or `docker` commands against the wrong daemon fails in the worst way — silently, against the wrong world.
+
+---
+
 ## App Scope Boundaries
 
 This repo hosts multiple independent games. Every Claude Code session has a **target game** — the game the current task is about. These rules apply to all sessions, always.
