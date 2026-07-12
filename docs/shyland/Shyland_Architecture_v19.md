@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit 65a1b26 (v19 brief 10 + amendment 1: dialogue content & Convergence services).
+> Authoritative technical reference as of commit bd32f72 (v19 brief 11: the quit command).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v19 is implemented across multiple briefs; briefs update this file in place. Brief 1 begins the v19 implementation series. Final version-stamp reconciliation and GDD sync happen at closeout in the design chat.**
@@ -308,7 +308,7 @@ Three module-level constants in `models.py`: `DIALOGUE_FIRST_DELAY_TICKS = 2` (d
 
 ### 4.3 WebSocket consumer (`consumers.py`)
 
-Changed in v18: brief 1 rewrote the `equip` command and centralized name-plus-tier display formatting; brief 2 added the `travel` command; brief 4 added the `list`/`buy`/`sell`/`repair` commerce commands and targetless `attack`/`kill` under aggro. Changed in v19: brief 1 added the `wallet` command and an `inventory` wallet section, and reordered the vendor-presence checks in `cmd_buy`/`cmd_sell` ahead of the argument checks; brief 2 made `send_room_description` fresh-fetch its character and extended the personal-group message handler with an `event` field (see below); brief 3 reworked `cmd_attack`'s engagement messaging, added the `npc_display_name` ordinal helper, and extended `room_message` to honor engine-side broadcast exclusion (see below); brief 4 added revival to `cmd_use` and a `'clear'` event on `player_message` (see below); brief 6 gave `cmd_attack` a third outcome — refocusing an in-session target — and moved `npc_display_name`/`ORDINALS` out to `combat_utils.py` (see below); brief 9 added the NPC dialogue engine's `say` hook and room-entry greeting hook (see below); brief 10 added the gazebo kibitz hook, pity-repair lines, the worthless-sell refusal, and a currency-display pass over `list`/`buy`/`sell`/`repair` (see below). All other command handling *(unchanged from v16)*.
+Changed in v18: brief 1 rewrote the `equip` command and centralized name-plus-tier display formatting; brief 2 added the `travel` command; brief 4 added the `list`/`buy`/`sell`/`repair` commerce commands and targetless `attack`/`kill` under aggro. Changed in v19: brief 1 added the `wallet` command and an `inventory` wallet section, and reordered the vendor-presence checks in `cmd_buy`/`cmd_sell` ahead of the argument checks; brief 2 made `send_room_description` fresh-fetch its character and extended the personal-group message handler with an `event` field (see below); brief 3 reworked `cmd_attack`'s engagement messaging, added the `npc_display_name` ordinal helper, and extended `room_message` to honor engine-side broadcast exclusion (see below); brief 4 added revival to `cmd_use` and a `'clear'` event on `player_message` (see below); brief 6 gave `cmd_attack` a third outcome — refocusing an in-session target — and moved `npc_display_name`/`ORDINALS` out to `combat_utils.py` (see below); brief 9 added the NPC dialogue engine's `say` hook and room-entry greeting hook (see below); brief 10 added the gazebo kibitz hook, pity-repair lines, the worthless-sell refusal, and a currency-display pass over `list`/`buy`/`sell`/`repair` (see below); brief 11 added the `quit` command (see below). All other command handling *(unchanged from v16)*.
 
 #### Revival in `cmd_use`, and the `'clear'` event (v19 brief 4)
 
@@ -487,6 +487,17 @@ No eligible responders → nothing is created, byte-identical to pre-brief `say`
 **Worthless-sell refusal.** `cmd_sell` checks `get_item_value(item) == 0` before calling `do_sell`; if true, it refuses with `That's not worth anything to me.` (category `error`) and the item is never touched — `do_sell` (which deletes the sold instance) is not reached. This is a new micro-ruling, not previously specified: `get_sale_price` has the same floor-to-1 behavior as `get_repair_cost`, so without this check a worthless item would have quietly sold for 1 copper.
 
 **Currency display pass.** Every player-facing amount in `list`/`buy`/`sell`/`repair` — vendor entry prices, insufficient-funds refusals, sale proceeds, repair costs (including the `repair all` summary line's total spent) — now renders through a new `format_amount(character, amount)` consumer method (a `format_wallet` sibling: same zone-alias lookup via `display_for_zone`, but for an arbitrary amount rather than the character's full wallet). No command in this group prints a raw `N copper` string directly anymore; zone-local currency aliasing (Section 4.2) applies here for free.
+
+#### The quit command (v19 brief 11)
+
+`cmd_quit`, dispatched on the verb `quit` (no arguments). The dispatch entry sits with the other non-combat commands, below the dying gate — so a dying character's `quit` gets the gate's standard refusal exactly like `north`, with no special-casing and no exemption alongside `use`. Two outcomes:
+
+- **In combat** (an active `CombatSession` contains the character, checked against a fresh fetch): refuse with `You cannot leave in the middle of a fight! Break away first — try 'flee'.` (category `error`) and do nothing else — the fight continues.
+- **Otherwise:** send the farewell `The world folds itself away behind you. Come back soon.` (category `system`), then `{'event': 'quit'}` — the first client-facing use of the `event` field (Brief 2's field previously rode only the internal `player_message` group payload) — then close the WebSocket server-side with the normal close code. Everything past the close is the existing `disconnect` path, none of it duplicated in `cmd_quit`: guarded presence delete, player/room group discards, heartbeat cancellation, `last_seen` touch. Logging back in after a quit is the standard login flow, landing the character where they quit.
+
+**Client-side (`game.html`):** a message carrying `event == 'quit'` sets a `quitting` flag and, after a ~1s delay, navigates to the games server lobby (`{% url "home" %}` — the same target the site's existing navigation uses). The delay lets the farewell line render in, and be announced by, the polite ARIA live region before navigation. The `quitting` flag suppresses only the close handler's "Connection closed. Refresh to reconnect." placeholder for this deliberate close; a socket close *without* the quit event (browser close, network drop, server restart) behaves exactly as before.
+
+**Help text:** `cmd_help` gained a `quit` line (`leave the game and return to the games lobby`), directly above the `help` entry.
 
 #### Display formatting
 
@@ -962,6 +973,8 @@ These are settled. Do not revisit without deliberate consideration.
 **`takes_durability_loss=False` is reserved for rare items and Artifacts — ordinary gear wears, including charity gear; the durability loop is part of onboarding (v19 brief 10).** The newbie kit's 11 pieces are otherwise as weak and disposable as gear gets, but they still take durability loss like any Common item — a new player learns the wear-and-repair loop on equipment that costs nothing to fix, before it matters.
 
 **Free starter gear is exploit-proof by construction: base_value 0 sells for nothing (v19 brief 10).** No flag, no allowlist, no special-cased item check — `get_item_value` reads `base_value` off the definition, and a 0 there means the sell price and the repair cost are both structurally 0 (the worthless-sell refusal and pity-repair lines exist to narrate that 0, not to enforce it).
+
+**The only legitimate exit from combat is `flee` — `quit` refuses, and abandoning the connection abandons the character to the fight (v19 brief 11).** Browser-close mid-combat leaves the character link-dead in the fight — deliberate, pre-existing behavior this brief does not change; it is what makes `quit`'s combat block meaningful rather than ceremonial. Quit itself carries no confirmation prompt: leaving is cheap and rejoining is one click, so friction would protect nothing.
 
 ---
 
