@@ -282,6 +282,7 @@ class Command(BaseCommand):
                 )
                 from apps.shyland.combat_utils import (
                     get_npc_stats, resolve_hit, calculate_damage,
+                    acuity_damage_modifier,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
                     npc_display_name,
@@ -342,7 +343,7 @@ class Command(BaseCommand):
                             dur_mod = 1.0
 
                         is_focus = (npc.pk == focus_npc_pk)
-                        acuity_mod = round(max(0.1, min(1.9, character.acuity_current)), 1)
+                        acuity_mod = acuity_damage_modifier(character)
                         damage = calculate_damage(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
                         damage_int = max(1, int(damage))
 

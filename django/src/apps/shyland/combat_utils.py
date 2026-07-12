@@ -6,6 +6,13 @@ CRIT_BASE = 0.05           # critical chance floor on any successful hit
 CRIT_PER_DEX_ADVANTAGE = 0.01
 CRIT_CAP = 0.25
 
+# v19 brief 7: NPC contest stats scale additively on the same curve players
+# climb (contests add; quantities like vitality multiply).
+NPC_CONTEST_BASE = 18        # matches a level-1 player's primary stat
+NPC_CONTEST_STEP = 2.5       # per level, matches player primary-stat growth
+NPC_TIER_OFFSET = {'normal': 0, 'elite': 3, 'boss': 6}   # blessed: 55% / 40% / 25% at-level hit
+MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
+
 ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
 
 
@@ -24,9 +31,17 @@ def npc_display_name(npc, npcs_in_room):
     return f"the {ORDINALS[index]} {name}"
 
 
-def get_acuity_modifier(character):
-    """Return acuity_current clamped to [0.1, 1.9], rounded to 1dp."""
-    return round(max(0.1, min(1.9, character.acuity_current)), 1)
+def acuity_damage_modifier(character):
+    """Band-relative, deviation-based Acuity modifier (v19 ruling).
+    Inside the Origin band: neutral. Above band_high: bonus by the distance
+    beyond it (applied to focus target only, enforced by calculate_damage).
+    Below band_low: penalty by the distance beyond it (always applies)."""
+    a = min(1.9, max(0.1, character.acuity_current))
+    if a > character.acuity_band_high:
+        return 1.0 + (a - character.acuity_band_high)
+    if a < character.acuity_band_low:
+        return 1.0 - (character.acuity_band_low - a)
+    return 1.0
 
 
 def roll_initiative(stat_dex, stat_per):
@@ -67,15 +82,29 @@ def calculate_damage(base_damage, stat_bonus, acuity_mod, durability_mod, hit_re
     return max(1.0, final)
 
 
+def npc_level(npc_instance):
+    """The NPC's effective level. scaling_factor encodes the NPC's
+    within-band level (1-10); Mk tier lifts it by whole bands."""
+    return npc_instance.definition.scaling_factor + MK_LEVEL_SPAN * (npc_instance.mk_tier - 1)
+
+
 def get_npc_stats(npc_instance):
-    """Return effective NPC stats scaled by Mk tier."""
+    """Return effective NPC stats. DEX (the difficulty dial for contests)
+    grows purely off the curve+tier-offset so hit chances hit the blessed
+    targets (55% normal / 40% elite / 25% boss) at every level and Mk tier.
+    STR/PER/INT keep their authored species bases and grow additively on the
+    same per-level slope players climb, so species identity survives while
+    damage stays proportionate. base_dex is no longer read here."""
     d = npc_instance.definition
-    factor = d.scaling_factor * npc_instance.mk_tier
+    L = npc_level(npc_instance)
+    curve = round(NPC_CONTEST_BASE + NPC_CONTEST_STEP * (L - 1))
+    offset = NPC_TIER_OFFSET.get(d.combat_tier, 0)
+    growth = round(NPC_CONTEST_STEP * (L - 1))
     return {
-        'dex':      int(d.base_dex * factor),
-        'str':      int(d.base_str * factor),
-        'per':      int(d.base_per * factor),
-        'int':      int(d.base_int * factor),
+        'dex':      curve + offset,
+        'str':      d.base_str + growth,
+        'per':      d.base_per + growth,
+        'int':      d.base_int + growth,
         'vitality': npc_instance.vitality_current,
     }
 

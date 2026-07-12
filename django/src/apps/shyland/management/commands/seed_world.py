@@ -4712,7 +4712,7 @@ class Command(BaseCommand):
              'your chest before your ears.', {}),
             # Bosses — aggressive
             ('silk-matron', 'the Silk Matron', 'boss', True,
-             (120, 12, 14, 11, 4, 4, 12), 9.0, 'vale-spider', 'matron-loot', (50, 150), 10,
+             (120, 12, 14, 11, 4, 4, 12), 3.0, 'vale-spider', 'matron-loot', (50, 150), 10,
              'Pale and vast in the crown of her own silk, legs spanning more '
              'shadow than your light can argue with. She holds one wrapped '
              'bundle apart from all the rest, close, the way anything holds '
@@ -4722,7 +4722,7 @@ class Command(BaseCommand):
               'her falls the bundle she guarded, splitting open on the stone '
               'in a spill of silk and stolen things.'}),
             ('whistler-below', 'the Whistler Below', 'boss', True,
-             (260, 16, 15, 15, 4, 4, 12), 15.0, 'flats-centipede', 'whistler-loot', (50, 150), 10,
+             (260, 16, 15, 15, 4, 4, 12), 6.0, 'flats-centipede', 'whistler-loot', (50, 150), 10,
              'A centipede beyond sense, coiled through the fluted stone in '
              "glossy yards, antennae reading the wind's one endless note. This "
              'is its hollow. Everything in it, it kept.',
@@ -4732,7 +4732,7 @@ class Command(BaseCommand):
               'woven grass gives way, and a hide-wrapped cache drops to the '
               'floor.'}),
             ('dronemother', 'the Dronemother', 'boss', True,
-             (320, 18, 12, 18, 5, 5, 11), 15.0, 'flats-beetle', 'dronemother-loot', (50, 150), 10,
+             (320, 18, 12, 18, 5, 5, 11), 6.0, 'flats-beetle', 'dronemother-loot', (50, 150), 10,
              'The hive made flesh: a beetle vast as a wagon, plated in '
              'iron-dark chitin, the hum bending deeper around her. Her wings '
              'are furled like banners before a war.',
@@ -5049,7 +5049,7 @@ class Command(BaseCommand):
              'that open with a sound like a door to somewhere worse.', {}),
             # Bosses — aggressive
             ('undercrag-weaver', 'the Undercrag Weaver', 'boss', True,
-             (500, 20, 22, 18, 5, 5, 18), 21.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
+             (500, 20, 22, 18, 5, 5, 18), 9.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
              'A spider of architectural size, pale as the generations of silk '
              'it has spun beneath the mountain. High above it, snared in a '
              'cradle of lines, hangs an iron-strapped strongbox it took whole '
@@ -5059,7 +5059,7 @@ class Command(BaseCommand):
               'web-line holding a snared strongbox parts strand by strand — '
               'then all at once, and the box crashes down and bursts open.'}),
             ('chittering-king', 'the Chittering King', 'boss', True,
-             (650, 24, 20, 22, 6, 6, 16), 27.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
+             (650, 24, 20, 22, 6, 6, 16), 10.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
              'A centipede of dynastic size, coiled in glossy tiers about a '
              'chest scored soft by a thousand legs across uncountable years. '
              'The deep chitters in his name.',
@@ -5068,7 +5068,7 @@ class Command(BaseCommand):
               'around the chest it has coiled about for years. The lid, '
               'scored by a thousand legs, falls open.'}),
             ('crowned-devourer', 'the Crowned Devourer', 'boss', True,
-             (850, 27, 18, 27, 7, 7, 15), 30.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
+             (850, 27, 18, 27, 7, 7, 15), 10.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
              'Legend, standing on legend: a beetle vast as myth atop a hoard '
              'of every genre the rifts ever spilled, wings holding one '
              'enormous patient chord beneath the light of the Crown itself.',
