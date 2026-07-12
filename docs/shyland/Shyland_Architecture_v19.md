@@ -1,6 +1,6 @@
 # Shyland Architecture
 
-> Authoritative technical reference as of commit f914cd0 (v19 brief 6: player-controlled attack focus).
+> Authoritative technical reference as of commit d96b73a (v19 brief 7 + amendment 1: NPC contest-stat and Acuity combat math corrections).
 > Describes what is built. For design intent see the current GDD.
 >
 > **v19 is implemented across multiple briefs; briefs update this file in place. Brief 1 begins the v19 implementation series. Final version-stamp reconciliation and GDD sync happen at closeout in the design chat.**
