@@ -2,7 +2,9 @@
 name: issues-report
 description: Generates a full snapshot report of all GitHub issues in this repo by running scripts/shyland_issues_report.py, which writes a timestamped markdown file to docs/shyland/. Use when asked to run, generate, or refresh the issues report.
 tools: Bash, Read
-model: haiku
+model: claude-sonnet-5
+effort: high
+disable-model-invocation: true
 ---
 
 You generate the Shyland GitHub issues report by running one script.
