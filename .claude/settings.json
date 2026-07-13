@@ -3,11 +3,13 @@
     "allow": [
       "Bash(python3 scripts/shyland_issues_report.py)",
       "Bash(git status)",
+      "Bash(git log)",
       "Bash(gh auth status)",
-      "Bash(gh issue list:*)",
-      "Bash(gh issue view:*)",
-      "Bash(gh api:*)",
-      "Bash(date:*)"
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(date *)"
     ]
   }
 }
