@@ -3,7 +3,7 @@
 > Authoritative technical reference as of commit bd32f72 (v19 brief 11: the quit command).
 > Describes what is built. For design intent see the current GDD.
 >
-> **v19 is implemented across multiple briefs; briefs update this file in place. Brief 1 begins the v19 implementation series. Final version-stamp reconciliation and GDD sync happen at closeout in the design chat.**
+> **Version 19 — Closed. In lockstep with `Shyland_GDD_v19.md` (v19.0).**
 
 ---
 
@@ -924,6 +924,8 @@ These are settled. Do not revisit without deliberate consideration.
 
 **Flee with cooldown and directional preference.** DEX + d20 vs average NPC PER.
 
+**Room description on combat entry is intentionally suppressed (GDD §5.2 — design decision).** A player who moves into a room with aggressive NPCs gets the aggro announce lines, not the description — they are in danger, not sightseeing.
+
 **Criticals are an independent roll on successful hits — never a band of the to-hit roll (v19 brief 5).** Outleveled always-hit is deliberate; the crit cap bounds the multiplier at any stat spread.
 
 **XP threshold formula: `level² × 100`.** `xp_for_next_level(level)` in `combat_utils.py`.
@@ -1019,8 +1021,6 @@ Future sessions should check this list before assuming a system exists.
 **Side panel is a stub.** `game.html` shows "Session 1 — world coming soon." in the side panel.
 
 **`create_corpse()` is synchronous.** Always call it from within a `@database_sync_to_async` wrapper.
-
-**No room description sent after entering combat.** When a player moves into a room with aggressive NPCs, the room description is not sent.
 
 **Epic accessories roll 2 secondary stats — resolved at v18 closeout as correct-as-built.** The brief 6 verification expected the Devourer's guaranteed Epic accessory to roll 3 secondaries, but the brief 1 copper accessories were authored with **2-entry** `secondary_stat_pool`s (primary stat + two themed secondaries), and `generate_item_instance` draws without replacement capped at pool size. GDD v18.0 (RC17 ruling) blessed **pool-capped semantics**: secondary slot count is `min(rarity's slots, pool size)` — Legendary's "all in pool" was already this principle at the ceiling. No data change; an Epic copper accessory correctly rolls its full pool of 2 (3 stat lines total with the primary). Kept here as history since the code behavior is easy to misread as a bug.
 
