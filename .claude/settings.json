@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/shyland_issues_report.py)",
+      "Bash(git status)",
+      "Bash(gh auth status)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh api:*)",
+      "Bash(date:*)"
+    ]
+  }
+}
