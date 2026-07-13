@@ -10,4 +10,3 @@ __pycache__/
 .DS_Store
 django/src/staticfiles/
 .claude/worktrees/
-docs/shyland/Shyland_Issues_Report_*
