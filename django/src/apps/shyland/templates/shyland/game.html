@@ -24,10 +24,13 @@
 
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
 
+  /* v20 brief 1 (#36): right pane is fixed 300px content width, top to
+     bottom; baseline layout is 1000px total (left 700 + right 300). When
+     the window widens only the left regions grow. */
   #shell {
     display: grid;
     grid-template-rows: 44px 1fr 42px;
-    grid-template-columns: 1fr 220px;
+    grid-template-columns: 1fr 300px;
     height: 100vh;
     gap: 0;
   }
@@ -43,8 +46,8 @@
     border-bottom: 1px solid var(--border);
   }
   #room-name { font-weight: bold; color: var(--room); font-size: 15px; }
-  #bars { display: flex; gap: 12px; font-size: 12px; }
-  .bar { display: flex; align-items: center; gap: 4px; }
+  #bars { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-top: 8px; }
+  .bar { display: flex; align-items: center; gap: 6px; }
   .bar-label { color: var(--muted); }
   .bar-v { color: var(--bar-v); }
   .bar-a { color: var(--bar-a); }
@@ -68,15 +71,35 @@
   #cmd::placeholder            { color: var(--muted); }
   #cmd.disconnected::placeholder { color: var(--error); font-weight: bold; }
 
-  /* Side panel */
+  /* Side panel: stats at top, map fixed 300×300 at the bottom. The space
+     between is left as-is for now (a later v20 brief fills it). */
   #side {
-    padding: 10px;
+    display: flex;
+    flex-direction: column;
     background: var(--surface);
     overflow-y: auto;
     font-size: 12px;
     color: var(--muted);
   }
   #side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+  #side-stats { padding: 10px; }
+  #side-spacer { flex: 1; }
+  #map-wrap {
+    flex: none;
+    width: 300px;
+    height: 300px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  #map { display: block; }
+  .map-open  { stroke: var(--room); stroke-width: 2; }
+  .map-stub  { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 3 3; }
+  .map-tick  { stroke: var(--muted); stroke-width: 2; }
+  .map-room  { fill: var(--surface); stroke: var(--room); stroke-width: 1.5; }
+  .map-room.here { fill: var(--room); }
+  .map-here-ring { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .map-badge { fill: var(--muted); font-size: 8px; font-family: 'Courier New', Courier, monospace; }
+  .map-badge.here { fill: var(--bg); font-weight: bold; }
 
   /* Input row */
   #input-row {
@@ -118,12 +141,13 @@
     clip: rect(0,0,0,0); white-space: nowrap; border: 0;
   }
 
-  /* Phone: hide side panel by default, show via toggle */
+  /* Phone: hide side panel by default, show via toggle (the map lives in
+     the panel and must never break the terminal) */
   #side-toggle { display: none; }
   @media (max-width: 600px) {
     #shell { grid-template-columns: 1fr; }
-    #side { display: none; position: fixed; top: 44px; right: 0; bottom: 42px; width: 200px; z-index: 10; border-left: 1px solid var(--border); }
-    #side.open { display: block; }
+    #side { display: none; position: fixed; top: 44px; right: 0; bottom: 42px; width: 300px; max-width: 100vw; z-index: 10; border-left: 1px solid var(--border); }
+    #side.open { display: flex; }
     #side-toggle { display: inline-block; cursor: pointer; color: var(--muted); font-size: 18px; background: none; border: none; }
   }
 </style>
@@ -134,11 +158,6 @@
 
   <header id="header">
     <span id="room-name">Connecting…</span>
-    <div id="bars">
-      <span class="bar"><span class="bar-label">V</span><span id="bar-v" class="bar-v">—</span></span>
-      <span class="bar"><span class="bar-label">A</span><span id="bar-a" class="bar-a">—</span></span>
-      <span class="bar"><span class="bar-label">L</span><span id="bar-l" class="bar-l">—</span></span>
-    </div>
     <button id="side-toggle" aria-label="Toggle side panel">☰</button>
   </header>
 
@@ -147,8 +166,21 @@
   </main>
 
   <aside id="side">
-    <h2>Shyland</h2>
-    <p>Session 1 — world coming soon.</p>
+    <div id="side-stats">
+      <h2>Shyland</h2>
+      <div id="bars">
+        <span class="bar"><span class="bar-label">V</span><span id="bar-v" class="bar-v">—</span></span>
+        <span class="bar"><span class="bar-label">A</span><span id="bar-a" class="bar-a">—</span></span>
+        <span class="bar"><span class="bar-label">L</span><span id="bar-l" class="bar-l">—</span></span>
+      </div>
+    </div>
+    <div id="side-spacer"></div>
+    <!-- v20 brief 1 (#36): the map is decorative for assistive tech — room
+         descriptions and exits in the output remain the accessible source
+         of truth; the map adds no information not already present in text. -->
+    <div id="map-wrap" aria-hidden="true">
+      <svg id="map" width="300" height="300" viewBox="0 0 300 300"></svg>
+    </div>
   </aside>
 
   <!-- Assertive live region for combat alerts (off-screen) -->
@@ -176,6 +208,7 @@
   const combatLive = document.getElementById('combat-live');
   const sidePanel  = document.getElementById('side');
   const sideToggle = document.getElementById('side-toggle');
+  const mapSvg     = document.getElementById('map');
 
   const history = [];
   let histIdx = -1;
@@ -229,6 +262,8 @@
       }
     } else if (msg.type === 'redirect' && msg.url) {
       window.location.href = msg.url;
+    } else if (msg.type === 'map') {
+      renderMap(msg);
     } else if (msg.type === 'status') {
       if (msg.room_name) roomName.textContent = msg.room_name;
       barV.textContent = msg.vitality_max !== undefined
@@ -240,6 +275,77 @@
         : `${msg.longevity}`;
     }
   });
+
+  // v20 brief 1 (#36): map renderer. North is up; fixed 9×9 cell window
+  // (radius 4) centered on the current room, no zoom; rooms outside the
+  // window are not drawn. Every map message discards and fully re-renders.
+  const MAP_SIZE = 300, MAP_RADIUS = 4, CELL = MAP_SIZE / 9;
+  const MAP_DELTA = { north: [0, 1], south: [0, -1], east: [1, 0], west: [-1, 0] };
+
+  function renderMap(msg) {
+    while (mapSvg.firstChild) mapSvg.removeChild(mapSvg.firstChild);
+    if (!msg.current || !msg.rooms) return;
+    const cx0 = msg.current.x, cy0 = msg.current.y;
+    const NS = 'http://www.w3.org/2000/svg';
+    const el = (tag, attrs) => {
+      const e = document.createElementNS(NS, tag);
+      for (const k in attrs) e.setAttribute(k, attrs[k]);
+      return e;
+    };
+    const px = (x) => MAP_SIZE / 2 + (x - cx0) * CELL;
+    const py = (y) => MAP_SIZE / 2 - (y - cy0) * CELL;   // north is up
+    const inWindow = (r) => Math.abs(r.x - cx0) <= MAP_RADIUS && Math.abs(r.y - cy0) <= MAP_RADIUS;
+    const byCell = new Map();
+    msg.rooms.forEach((r) => byCell.set(r.x + ',' + r.y, r));
+    const drawn = msg.rooms.filter(inWindow);
+
+    // Edges first so rooms draw over them.
+    drawn.forEach((r) => {
+      const x = px(r.x), y = py(r.y);
+      for (const dir in r.exits) {
+        const d = MAP_DELTA[dir];
+        if (!d) continue;
+        const status = r.exits[dir];
+        const nb = byCell.get((r.x + d[0]) + ',' + (r.y + d[1]));
+        const ex = x + d[0] * CELL / 2, ey = y - d[1] * CELL / 2;
+        if (status === 'open' && nb && inWindow(nb)) {
+          mapSvg.appendChild(el('line', {
+            x1: x, y1: y, x2: px(nb.x), y2: py(nb.y), class: 'map-open',
+          }));
+        } else if (status === 'open') {
+          // Open exit whose destination is outside the window: solid stub.
+          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-open' }));
+        } else if (status === 'unexplored') {
+          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
+        } else if (status === 'boundary') {
+          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
+          const t = CELL * 0.18;  // perpendicular tick at the stub's end
+          mapSvg.appendChild(el('line', {
+            x1: ex - d[1] * t, y1: ey - d[0] * t,
+            x2: ex + d[1] * t, y2: ey + d[0] * t, class: 'map-tick',
+          }));
+        }
+      }
+    });
+
+    drawn.forEach((r) => {
+      const x = px(r.x), y = py(r.y);
+      if (r.here) {
+        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 12, class: 'map-here-ring' }));
+      }
+      mapSvg.appendChild(el('circle', {
+        cx: x, cy: y, r: 8, class: 'map-room' + (r.here ? ' here' : ''),
+      }));
+      if (r.up || r.down) {
+        const badge = el('text', {
+          x: x, y: y + 3, 'text-anchor': 'middle',
+          class: 'map-badge' + (r.here ? ' here' : ''),
+        });
+        badge.textContent = (r.up && r.down) ? 'UD' : (r.up ? 'U' : 'D');
+        mapSvg.appendChild(badge);
+      }
+    });
+  }
 
   function renderRoom(msg) {
     const lines = msg.text.split('\n').filter(l => !(l.trim().startsWith('[') && l.trim().endsWith(']')));
