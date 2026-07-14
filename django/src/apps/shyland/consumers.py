@@ -214,6 +214,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         room = await self.get_current_room()
+        # Arrival-equivalent (#50): covers a fresh character's spawn room
+        # (creation sets current_room without a visit) and heals any
+        # pre-fix room the character is standing in.
+        first_visit = await self.record_room_visit(self.character, room)
         self.room_group = f'room_{room.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
 
@@ -233,7 +237,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
         self.heartbeat_task = asyncio.ensure_future(self.presence_heartbeat())
 
-        await self.send_room_description(room)
+        await self.send_room_description(room, first_visit=first_visit)
         # v20 brief 1 (#35): full map state on connect, following the v19
         # client-state sync full-state pattern.
         await self.send_map()
@@ -365,6 +369,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
 
         await self.move_character(destination)
+        first_visit = await self.record_room_visit(self.character, destination)
         self.last_direction = DIRECTION_CANONICAL[direction]
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -385,7 +390,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
             await self.start_combat(aggro_npcs, first_attacker='npc')
         else:
-            await self.send_room_description(destination, entering=True)
+            await self.send_room_description(destination, entering=True,
+                                             first_visit=first_visit)
         await self.send_map()
 
     async def cmd_travel(self, args):
@@ -447,6 +453,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
         await self.move_character(destination)
+        first_visit = await self.record_room_visit(self.character, destination)
         self.last_direction = None
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -457,7 +464,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # Re-fetch with full select_related, same as normal movement.
         destination = await self.get_current_room()
-        await self.send_room_description(destination, entering=True)
+        await self.send_room_description(destination, entering=True,
+                                         first_visit=first_visit)
         await self.send_map()
 
         arrival = await self.get_random_travel_message('arrival')
@@ -1498,6 +1506,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.end_combat_session(session)
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
             await self.move_character(destination)
+            first_visit = await self.record_room_visit(self.character, destination)
             self.last_direction = flee_dir
             self.room_group = f"room_{destination.id}"
             await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -1509,7 +1518,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.start_combat(aggro_npcs, first_attacker='npc')
             else:
                 destination_full = await self.get_current_room()
-                await self.send_room_description(destination_full, entering=True)
+                await self.send_room_description(destination_full, entering=True,
+                                                 first_visit=first_visit)
             await self.send_map()
         else:
             await self.send_output("You tried to flee but your enemies are too strong.", 'combat')
@@ -1696,7 +1706,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_add(self.room_group, self.channel_name)
             self.last_direction = None
             room = await self.get_current_room()
-            await self.send_room_description(room, entering=True)
+            first_visit = await self.record_room_visit(char, room)
+            await self.send_room_description(room, entering=True,
+                                             first_visit=first_visit)
             await self.send_map()
 
     # ------------------------------------------------------------------
@@ -1738,7 +1750,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category})
 
-    async def send_room_description(self, room, entering=False, force_long=False):
+    async def send_room_description(self, room, entering=False, force_long=False,
+                                    first_visit=None):
         char = await self.get_character_fresh()
         exits = room.exits()
         exit_str = ', '.join(exits.keys()) if exits else 'none'
@@ -1759,7 +1772,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         else:
             location_header = f'[ {room.name} ]'
 
-        show_long = await self._resolve_room_rendering(char, room, force_long)
+        show_long = await self._resolve_room_rendering(char, room, force_long, first_visit)
         if show_long:
             description_text = room.description
             area_context = ''
@@ -1874,8 +1887,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 character_id=self.character_pk, room_id__in=fragment,
             ).values_list('room_id', flat=True)
         )
-        # The room underfoot is known even before its RoomVisit lands (e.g.
-        # an aggro ambush interrupts the room description that records it).
+        # The room underfoot is always known. Since #50 every arrival path
+        # records its RoomVisit, so this is defense-in-depth for moves that
+        # bypass the consumer (e.g. an admin editing current_room).
         visited.add(current.pk)
         payload_ids = (fragment & visited) | {current.pk}
 
@@ -1946,6 +1960,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.character.current_room_id = destination.pk
 
     @database_sync_to_async
+    def record_room_visit(self, character, room):
+        """Record the fog-of-war visit for an arrival, returning whether it
+        was the first. v20 brief 1 amendment 2 (#50): visits land at arrival
+        time in every arrival path, independent of room-description
+        rendering — an aggro ambush that skips the description must not skip
+        the visit."""
+        _, created = RoomVisit.objects.get_or_create(character=character, room=room)
+        return created
+
+    @database_sync_to_async
     def touch_last_seen(self, character):
         Character.objects.filter(pk=character.pk).update(last_seen=timezone.now())
 
@@ -1976,12 +2000,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return random.choice(texts) if texts else None
 
     @database_sync_to_async
-    def _resolve_room_rendering(self, character, room, force_long):
+    def _resolve_room_rendering(self, character, room, force_long, first_visit=None):
         """Return True if the long description (+ area description) should
         render, False for brief-only. Per v19 brief 8 Part 2b: first entry
-        and `look` always show the long form; revisits obey brief_mode."""
-        _, created = RoomVisit.objects.get_or_create(character=character, room=room)
-        if force_long or created:
+        and `look` always show the long form; revisits obey brief_mode.
+        Read-only with respect to visits (#50): arrival paths record the
+        visit and pass first_visit in; non-arrival renders (look, revive)
+        look it up without creating it."""
+        if first_visit is None:
+            first_visit = not RoomVisit.objects.filter(
+                character=character, room=room,
+            ).exists()
+        if force_long or first_visit:
             return True
         return not character.brief_mode
 
