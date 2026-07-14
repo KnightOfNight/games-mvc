@@ -68,6 +68,9 @@
   .msg-error   { color: var(--error); }
   .msg-section         { color: var(--room); margin-top: 1.55em; }
   .msg-section strong  { color: var(--accent); font-weight: bold; }
+  /* v20 brief 2 (#32): dim local-time prefix on output lines. Muted and
+     slightly faded so it stays visually subordinate to the message text. */
+  .msg-ts { color: var(--muted); opacity: .75; font-weight: normal; }
   #cmd::placeholder            { color: var(--muted); }
   #cmd.disconnected::placeholder { color: var(--error); font-weight: bold; }
 
@@ -347,6 +350,20 @@
     });
   }
 
+  // v20 brief 2 (#32): dim [HH:MM:SS.ss] prefix in the player's local
+  // time, derived from the server's epoch-ms `ts`. aria-hidden so the
+  // live region announces message text clean, without timestamp noise.
+  function tsSpan(ts) {
+    if (typeof ts !== 'number') return null;
+    const d = new Date(ts);
+    const p2 = (n) => String(n).padStart(2, '0');
+    const span = document.createElement('span');
+    span.className = 'msg-ts';
+    span.setAttribute('aria-hidden', 'true');
+    span.textContent = `[${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${p2(Math.floor(d.getMilliseconds() / 10))}] `;
+    return span;
+  }
+
   function renderRoom(msg) {
     const lines = msg.text.split('\n').filter(l => !(l.trim().startsWith('[') && l.trim().endsWith(']')));
     const desc = lines.join('\n').trim();
@@ -354,7 +371,9 @@
     if (desc) {
       const el = document.createElement('div');
       el.className = 'msg-room';
-      el.textContent = desc;
+      const ts = tsSpan(msg.ts);
+      if (ts) el.appendChild(ts);
+      el.appendChild(document.createTextNode(desc));
       output.appendChild(el);
     }
 
@@ -373,7 +392,9 @@
     const el = document.createElement('div');
     el.className = `msg-${msg.category || 'system'}`;
     if (msg.hint_exits) { el.style.marginTop = '1.55em'; el.style.fontWeight = 'bold'; }
-    el.textContent = msg.text;
+    const ts = tsSpan(msg.ts);
+    if (ts) el.appendChild(ts);
+    el.appendChild(document.createTextNode(msg.text));
     output.appendChild(el);
     if (msg.hint_exits) {
       appendSection('Exits:', msg.hint_exits + '.', '1.55em');

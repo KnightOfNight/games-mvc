@@ -5,6 +5,8 @@ import random
 from channels.db import database_sync_to_async
 from django.core.management.base import BaseCommand
 
+from apps.shyland.envelope import envelope_ts
+
 logger = logging.getLogger('shyland.tick')
 
 # Lore-only escalation ladder for the dying window. No numerals, no time
@@ -1150,6 +1152,12 @@ class Command(BaseCommand):
     async def send_to_player(self, character_pk, text, category, status, event=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
+        # v20 brief 2 (#32): ts is stamped here, at creation — the status
+        # payload is delivered as its own client message, so it carries
+        # its own ts too.
+        ts = envelope_ts()
+        if status is not None and 'ts' not in status:
+            status['ts'] = ts
         await channel_layer.group_send(
             f'player_{character_pk}',
             {
@@ -1158,6 +1166,7 @@ class Command(BaseCommand):
                 'category': category,
                 'status': status,
                 'event': event,
+                'ts': ts,
             }
         )
 
@@ -1171,5 +1180,6 @@ class Command(BaseCommand):
                 'text': text,
                 'category': category,
                 'exclude_pk': exclude_pk,
+                'ts': envelope_ts(),
             }
         )

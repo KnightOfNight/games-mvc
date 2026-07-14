@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import random
 import re
 import uuid
@@ -14,6 +15,7 @@ from django.utils import timezone
 
 from . import currency
 from .combat_utils import npc_display_name
+from .envelope import envelope_ts
 from .currency import display_for_zone
 from .item_utils import (
     format_slot_name, generate_item_instance, get_display_name,
@@ -81,6 +83,8 @@ def _pity_repair_line(repairer):
         return template
     return PITY_REPAIR_FALLBACK.replace('{name}', repairer.name)
 
+
+logger = logging.getLogger('shyland.envelope')
 
 DIRECTIONS = {
     'north': 'exit_north', 'n': 'exit_north',
@@ -184,6 +188,37 @@ end
 
 class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # v20 brief 2 (#32): per-connection seq counter. One consumer
+        # instance per connection, so this resets to 0 on every reconnect
+        # and the first message of a connection carries seq 1.
+        self._seq = 0
+
+    # ------------------------------------------------------------------
+    # Delivery choke point (v20 brief 2, #32)
+    # ------------------------------------------------------------------
+
+    async def send_json(self, content, close=False):
+        """The single delivery choke point: every outbound message to the
+        client passes through here — there is no other legal send path.
+        Assigns the per-connection monotonic ``seq`` (authoritative for
+        client render order) and guarantees ``ts`` is present. ``ts`` is
+        supposed to be stamped at each creation site; stamping it here is
+        a fallback and logs a warning so unstamped creation sites get
+        found and fixed. This is the designated tap point for the
+        Firehose Logging milestone (#37/#33)."""
+        self._seq += 1
+        content['seq'] = self._seq
+        if 'ts' not in content:
+            logger.warning(
+                "shyland envelope: message type %r reached delivery without "
+                "ts; stamped at the choke point — fix its creation site",
+                content.get('type', content.get('event')),
+            )
+            content['ts'] = envelope_ts()
+        await super().send_json(content, close=close)
+
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
@@ -200,7 +235,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output('No character found. Create one to play.', 'error')
             # Structured signal so the client can route to the creator instead
             # of sitting on a dead socket.
-            await self.send_json({'type': 'redirect', 'url': reverse('shyland:create_character')})
+            await self.send_json({'type': 'redirect', 'url': reverse('shyland:create_character'),
+                                  'ts': envelope_ts()})
             await self.close()
             return
 
@@ -355,6 +391,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'category': 'error',
                 'text': msg,
                 'hint_exits': ', '.join(exits.keys()) if exits else 'none',
+                'ts': envelope_ts(),
             })
             return
 
@@ -365,6 +402,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'text': f'{char_name} has left.',
             'category': 'system',
             'exclude': self.channel_name,
+            'ts': envelope_ts(),
         })
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
 
@@ -379,6 +417,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'text': f'{char_name} has arrived.',
             'category': 'system',
             'exclude': self.channel_name,
+            'ts': envelope_ts(),
         })
 
         # Re-fetch with full select_related (destination from exit FK lacks area pre-fetch)
@@ -488,6 +527,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'type': 'room_message',
             'text': f'[say] {self.character.name}: {text}',
             'category': 'chat',
+            'ts': envelope_ts(),
         })
         await self.schedule_npc_dialogue_responses(text)
 
@@ -648,7 +688,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         await self.output('The world folds itself away behind you. Come back soon.', 'system')
-        await self.send_json({'event': 'quit'})
+        await self.send_json({'event': 'quit', 'ts': envelope_ts()})
         # Normal close; the disconnect path owns presence delete, group
         # discards, and heartbeat cancellation.
         await self.close()
@@ -692,6 +732,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'text': f'{char.name} picks up {display_name}.',
                 'category': 'room',
                 'exclude': self.channel_name,
+                'ts': envelope_ts(),
             })
 
     async def cmd_drop(self, args):
@@ -737,6 +778,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'text': f'{char.name} drops {display_name}.',
                 'category': 'room',
                 'exclude': self.channel_name,
+                'ts': envelope_ts(),
             })
 
     async def cmd_equip(self, args):
@@ -973,6 +1015,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'longevity_max': char_fresh.longevity_max,
             'room_name': room.name,
             'area_name': room.area.name if room.area_id else None,
+            'ts': envelope_ts(),
         })
 
     def _format_identified_item_lines(self, item):
@@ -1162,6 +1205,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     'type': 'room_message',
                     'text': f"{target_corpse.display_name.capitalize()} slowly disappears.",
                     'category': 'room',
+                    'ts': envelope_ts(),
                 })
             return
 
@@ -1651,6 +1695,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'longevity_max': character.longevity_max,
             'room_name': room.name if room else '',
             'area_name': room.area.name if room and room.area_id else None,
+            'ts': envelope_ts(),
         })
 
     async def cmd_brief(self, args):
@@ -1681,19 +1726,36 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         exclude_pk = event.get('exclude_pk')
         if exclude_pk is not None and exclude_pk == self.character_pk:
             return
-        await self.output(event['text'], event.get('category', 'system'))
+        # v20 brief 2 (#32): ts travels with the event from its creation
+        # site (broadcaster); the choke point warns if it's missing rather
+        # than this handler silently restamping.
+        payload = {
+            'type': 'output',
+            'text': event['text'],
+            'category': event.get('category', 'system'),
+        }
+        if 'ts' in event:
+            payload['ts'] = event['ts']
+        await self.send_json(payload)
 
     async def player_message(self, event):
         """Handle messages sent directly to this player (e.g. effect ticks from tick engine)."""
         event_type = event.get('event')
+        ts = event.get('ts')
         if event_type == 'clear':
-            await self.send_json({'type': 'clear'})
+            payload = {'type': 'clear'}
+            if ts is not None:
+                payload['ts'] = ts
+            await self.send_json(payload)
         if event.get('text'):
-            await self.send_json({
+            payload = {
                 'type': 'output',
                 'text': event['text'],
                 'category': event.get('category', 'system'),
-            })
+            }
+            if ts is not None:
+                payload['ts'] = ts
+            await self.send_json(payload)
         if event.get('status') is not None:
             await self.send_json(event['status'])
 
@@ -1716,7 +1778,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # ------------------------------------------------------------------
 
     async def send_output(self, text, category='system'):
-        await self.send_json({'type': 'output', 'text': text, 'category': category})
+        await self.send_json({'type': 'output', 'text': text, 'category': category,
+                              'ts': envelope_ts()})
 
     async def broadcast_to_room_exclude(self, text, category='room'):
         await self.channel_layer.group_send(self.room_group, {
@@ -1724,6 +1787,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'text': text,
             'category': category,
             'exclude': self.channel_name,
+            'ts': envelope_ts(),
         })
 
     def format_wallet(self, character):
@@ -1745,10 +1809,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'type': 'room_message',
             'text': line,
             'category': 'room',
+            'ts': envelope_ts(),
         })
 
     async def output(self, text, category='system'):
-        await self.send_json({'type': 'output', 'text': text, 'category': category})
+        await self.send_json({'type': 'output', 'text': text, 'category': category,
+                              'ts': envelope_ts()})
 
     async def send_room_description(self, room, entering=False, force_long=False,
                                     first_visit=None):
@@ -1795,6 +1861,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'text': text,
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
+            'ts': envelope_ts(),
         })
 
         living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
@@ -1825,6 +1892,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'longevity_max': char.longevity_max,
             'room_name': room.name,
             'area_name': room.area.name if room.area_id else None,
+            'ts': envelope_ts(),
         })
 
         if entering and npcs:
@@ -1921,6 +1989,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'zone': current.zone.slug,
             'current': {'x': current.coord_x, 'y': current.coord_y},
             'rooms': rooms_payload,
+            'ts': envelope_ts(),
         }
 
     # ------------------------------------------------------------------
