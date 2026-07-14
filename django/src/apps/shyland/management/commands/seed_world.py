@@ -4543,9 +4543,9 @@ class Command(BaseCommand):
         self._vr_room(
             zone, 'vr-f01', 0, 20, 0,
             'Stairhead',
-            'A green sphere rides the wind above a trodden waystation.',
+            'A green shard rides the wind above a trodden waystation.',
             'Where the stair meets the plain, a clearing has been worn into the grass by arriving '
-            'feet. A small sphere of green light rides the wind here — climbing it, dropping, '
+            'feet. A small shard of green light rides the wind here — climbing it, dropping, '
             'wobbling upward again, entirely pleased with itself. In its orbit the usual industry '
             "has gathered: a mender's kit spread on a hide, a trader's goods weighted down against "
             'the wind, and the particular calm of a place where nothing bad has ever managed to '
@@ -4971,10 +4971,10 @@ class Command(BaseCommand):
         self._vr_room(
             zone, 'vr-c01', 0, 31, 0,
             'Cragfoot',
-            "A green sphere warms itself by a fire at the mountains' feet.",
+            "A green shard warms itself by a fire at the mountains' feet.",
             'Where the boulders give way to the first true slope, a waystation has grown up '
             "in the lee of a stone the size of a house: a fire ring, a mender's bench, trade "
-            'goods under oilcloth. A small sphere of green light hangs near the flames, '
+            'goods under oilcloth. A small shard of green light hangs near the flames, '
             'swaying gently, to all appearances warming itself — which should not work, and '
             'works. Above, the switchbacks begin their long argument with the mountain.',
             area=ridge, safe=True,
@@ -5941,7 +5941,7 @@ class Command(BaseCommand):
              (30, 7, 7, 7, 6, 6, 6), 2.0, None, 'reedmere-gear', (2, 8), 5,
              'A Reedmere man gone grey at the temples, tool roll spread on a '
              'bench worn smooth by work. He came up from the village for the '
-             'foot traffic and stayed for the sphere, which he talks to, '
+             'foot traffic and stayed for the shard, which he talks to, '
              'quietly, when he thinks no one is listening.',
              {'is_repairer': True, 'attackable': False}),
             ('essa-the-trader', 'Essa the Trader', 'normal', False,
@@ -5959,11 +5959,11 @@ class Command(BaseCommand):
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (6, 16), 5,
              'A trader of Windhome, goods laid out in painted order against the '
              'wind. She learned three languages from the people who appear '
-             'beside the sphere and is working on a fourth.', {'attackable': False}),
+             'beside the shard and is working on a fourth.', {'attackable': False}),
             # The Verdant Shard
             ('verdant-shard', 'a Verdant Shard', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
-             'A small sphere of soft green light, unattached to anything, '
+             'A small shard of soft green light, unattached to anything, '
              'wandering the air at head height. It circles things — the water, '
              'the wind, your face — with an attention that feels less like '
              'watching and more like delight. It is a piece of an obelisk '
@@ -6300,7 +6300,7 @@ class Command(BaseCommand):
              "Old Brammel came down from Lastlight the year the green light "
              "appeared at the crag's foot, set up a bench, and has been "
              "mending travelers' gear beside it ever since. He calls the "
-             'sphere "the little lamp" and considers it excellent company.',
+             'shard "the little lamp" and considers it excellent company.',
              {'is_repairer': True, 'attackable': False}),
             ('ridda-the-trader', 'Ridda the Trader', 'normal', False,
              (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (10, 24), 5,
