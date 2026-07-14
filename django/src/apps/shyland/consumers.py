@@ -3,6 +3,7 @@ import json
 import random
 import re
 import uuid
+from collections import deque
 from datetime import timedelta
 
 import redis.asyncio as aioredis
@@ -104,6 +105,10 @@ REVERSE_DIRECTIONS = {
     'east': 'west',   'west': 'east',
     'up': 'down',     'down': 'up',
 }
+
+# v20 brief 1 (#35): the four directions that can join a MapFrag. Up/down
+# exits always break fragments; non-cardinal movement never joins them.
+MAP_CARDINALS = ('north', 'south', 'east', 'west')
 
 _NO_EXIT_DEFAULTS = {
     'north': "There is no exit in that direction.",
@@ -229,6 +234,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.heartbeat_task = asyncio.ensure_future(self.presence_heartbeat())
 
         await self.send_room_description(room)
+        # v20 brief 1 (#35): full map state on connect, following the v19
+        # client-state sync full-state pattern.
+        await self.send_map()
 
     async def disconnect(self, code):
         if hasattr(self, 'heartbeat_task'):
@@ -378,6 +386,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.start_combat(aggro_npcs, first_attacker='npc')
         else:
             await self.send_room_description(destination, entering=True)
+        await self.send_map()
 
     async def cmd_travel(self, args):
         room = await self.get_current_room()
@@ -449,6 +458,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # Re-fetch with full select_related, same as normal movement.
         destination = await self.get_current_room()
         await self.send_room_description(destination, entering=True)
+        await self.send_map()
 
         arrival = await self.get_random_travel_message('arrival')
         if arrival:
@@ -1500,6 +1510,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             else:
                 destination_full = await self.get_current_room()
                 await self.send_room_description(destination_full, entering=True)
+            await self.send_map()
         else:
             await self.send_output("You tried to flee but your enemies are too strong.", 'combat')
             await self.broadcast_to_room_exclude(
@@ -1686,6 +1697,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             self.last_direction = None
             room = await self.get_current_room()
             await self.send_room_description(room, entering=True)
+            await self.send_map()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1804,6 +1816,98 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if entering and npcs:
             await self.schedule_npc_greetings(room, npcs)
+
+    # ------------------------------------------------------------------
+    # Map (v20 brief 1, #35)
+    # ------------------------------------------------------------------
+
+    async def send_map(self):
+        """Send the full map state for the character's current MapFrag.
+        Called on connect and on every room change (move, flee, travel,
+        respawn) — the client discards and fully re-renders each time."""
+        await self.send_json(await self.build_map_payload())
+
+    @database_sync_to_async
+    def build_map_payload(self):
+        """v20 brief 1 (#35): derive the character's MapFrag fresh — BFS
+        from the current room over unflagged, intra-zone cardinal exits
+        (existence only; positions come from stored coords) — and intersect
+        it with the character's RoomVisit fog-of-war, plus the current room.
+        Zones are small (≤ ~160 rooms); no caching in v1. Geometry only:
+        no room names or keys leave the server."""
+        current = Room.objects.select_related('zone').get(
+            pk=self.character.current_room_id,
+        )
+        zone_rooms = {
+            room.pk: room
+            for room in Room.objects.filter(zone_id=current.zone_id)
+        }
+
+        def cardinal_exit(room, direction):
+            """(destination pk or None, is_boundary) for one cardinal exit.
+            Cross-zone exits are boundaries automatically; a flag on either
+            side of an intra-zone pair makes it a boundary."""
+            dst_id = getattr(room, f'exit_{direction}_id')
+            if dst_id is None:
+                return None, False
+            dst = zone_rooms.get(dst_id)
+            if dst is None:
+                return dst_id, True
+            if (getattr(room, f'exit_{direction}_boundary')
+                    or getattr(dst, f'exit_{REVERSE_DIRECTIONS[direction]}_boundary')):
+                return dst_id, True
+            return dst_id, False
+
+        fragment = {current.pk}
+        queue = deque([current.pk])
+        while queue:
+            room = zone_rooms[queue.popleft()]
+            for direction in MAP_CARDINALS:
+                dst_id, is_boundary = cardinal_exit(room, direction)
+                if dst_id is None or is_boundary or dst_id in fragment:
+                    continue
+                fragment.add(dst_id)
+                queue.append(dst_id)
+
+        visited = set(
+            RoomVisit.objects.filter(
+                character_id=self.character_pk, room_id__in=fragment,
+            ).values_list('room_id', flat=True)
+        )
+        # The room underfoot is known even before its RoomVisit lands (e.g.
+        # an aggro ambush interrupts the room description that records it).
+        visited.add(current.pk)
+        payload_ids = (fragment & visited) | {current.pk}
+
+        rooms_payload = []
+        for pk in sorted(payload_ids):
+            room = zone_rooms[pk]
+            exits = {}
+            for direction in MAP_CARDINALS:
+                dst_id, is_boundary = cardinal_exit(room, direction)
+                if dst_id is None:
+                    continue
+                if is_boundary:
+                    exits[direction] = 'boundary'
+                elif dst_id in visited:
+                    exits[direction] = 'open'
+                else:
+                    exits[direction] = 'unexplored'
+            rooms_payload.append({
+                'x': room.coord_x,
+                'y': room.coord_y,
+                'here': pk == current.pk,
+                'exits': exits,
+                'up': room.exit_up_id is not None,
+                'down': room.exit_down_id is not None,
+            })
+
+        return {
+            'type': 'map',
+            'zone': current.zone.slug,
+            'current': {'x': current.coord_x, 'y': current.coord_y},
+            'rooms': rooms_payload,
+        }
 
     # ------------------------------------------------------------------
     # DB helpers
