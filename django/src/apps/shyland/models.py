@@ -97,6 +97,12 @@ class Room(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField()
     brief_description = models.CharField(max_length=500)
+    # v20 brief 1: coordinates are the map's positional source of truth, in
+    # per-zone map-space (one room per (zone, x, y, z) cell). z is a map
+    # plane index, NOT elevation. Exits remain the connectivity source of
+    # truth; every unflagged intra-zone cardinal exit must land grid-adjacent
+    # at the same z (north (0,+1,0), south (0,-1,0), east (+1,0,0),
+    # west (-1,0,0)) — enforced by seed verification.
     coord_x = models.IntegerField(default=0)
     coord_y = models.IntegerField(default=0)
     coord_z = models.IntegerField(default=0)
@@ -107,6 +113,16 @@ class Room(models.Model):
     exit_west = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='entrance_from_east')
     exit_up = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='entrance_from_below')
     exit_down = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='entrance_from_above')
+
+    # v20 brief 1: MapFrag boundary flags, cardinals only (up/down exits
+    # always break fragments and need no flag). An undirected edge is a
+    # boundary if either side is flagged; the seeder always sets both sides
+    # and verification enforces the symmetry. A flagged exit is exempt from
+    # the grid-adjacency geometry invariant.
+    exit_north_boundary = models.BooleanField(default=False)
+    exit_south_boundary = models.BooleanField(default=False)
+    exit_east_boundary = models.BooleanField(default=False)
+    exit_west_boundary = models.BooleanField(default=False)
 
     no_exit_north_msg = models.CharField(max_length=255, blank=True, default='')
     no_exit_south_msg = models.CharField(max_length=255, blank=True, default='')

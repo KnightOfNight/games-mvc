@@ -65,6 +65,28 @@ OPPOSITE = {
     'up': 'down', 'down': 'up',
 }
 
+# v20 brief 1: cardinal exit deltas in per-zone map-space. Every unflagged
+# intra-zone cardinal exit must land grid-adjacent at the same z.
+CARDINAL_DELTAS = {
+    'north': (0, 1, 0), 'south': (0, -1, 0),
+    'east': (1, 0, 0), 'west': (-1, 0, 0),
+}
+
+# v20 brief 1 (B3): the only boundary-flagged exits in the seeded world —
+# the five cardinal cave mouths of the Verdant Reach, listed in their
+# canonical surface → cave direction. Both directions of each pair are
+# flagged at wiring time, and verification enforces that no other exit
+# anywhere carries the flag. Cross-zone cardinal exits (the Tree Arch) are
+# boundaries automatically and need no flag; up/down exits always break
+# fragments and need no flag.
+BOUNDARY_PAIRS = [
+    ('vr-v20', 'east', 'vr-c1a'),   # The Webbed Gully → Spinner's Hollow
+    ('vr-v22', 'east', 'vr-c2a'),   # The Cleft Mouth → The Entry Cleft
+    ('vr-m13', 'east', 'vr-c5a'),   # The Crag Mouth → The Crag Gate
+    ('vr-m25', 'east', 'vr-c6a'),   # The Chittering Mouth → The Chitter Gate
+    ('vr-m40', 'east', 'vr-c7a'),   # The Crown Mouth → The Crown Gate
+]
+
 # The ring street as a clockwise walk: each entry is (room key, direction of the
 # next clockwise step). The last entry steps back to the first, closing the loop.
 RING_WALK = [
@@ -2111,10 +2133,137 @@ class Command(BaseCommand):
         )
 
         self._verify_verdant()
+        self._verify_map_geometry()
 
         if self._failures:
             raise CommandError(f'{len(self._failures)} verification check(s) failed.')
         self.stdout.write(self.style.SUCCESS('All verification checks passed.'))
+
+    def _verify_map_geometry(self):
+        """v20 brief 1 (C2): the permanent map invariants, enforced against
+        persisted DB state on every reseed. Fails the run loudly on any
+        violation."""
+        rooms = list(Room.objects.all())
+        by_pk = {r.pk: r for r in rooms}
+
+        # 1. Geometry agreement: every unflagged intra-zone cardinal exit
+        # lands grid-adjacent at the same z.
+        geometry_violations = []
+        for room in rooms:
+            for direction, (dx, dy, dz) in CARDINAL_DELTAS.items():
+                dst_id = getattr(room, f'exit_{direction}_id')
+                if dst_id is None:
+                    continue
+                dst = by_pk[dst_id]
+                if dst.zone_id != room.zone_id:
+                    continue  # cross-zone: automatic boundary, exempt
+                if (getattr(room, f'exit_{direction}_boundary')
+                        or getattr(dst, f'exit_{OPPOSITE[direction]}_boundary')):
+                    continue  # flagged: boundary, exempt
+                expected = (room.coord_x + dx, room.coord_y + dy, room.coord_z + dz)
+                actual = (dst.coord_x, dst.coord_y, dst.coord_z)
+                if actual != expected:
+                    geometry_violations.append(
+                        f'{room.name} --{direction}--> {dst.name}: '
+                        f'at {actual}, expected {expected}'
+                    )
+        for line in geometry_violations:
+            self.stdout.write(self.style.ERROR(f'    geometry: {line}'))
+        self._check(
+            f'Map geometry: all unflagged intra-zone cardinal exits '
+            f'grid-adjacent at the same z (found {len(geometry_violations)} '
+            f'violations)',
+            not geometry_violations,
+        )
+
+        # 2. Cell uniqueness: one room per (zone, x, y, z).
+        cells = defaultdict(list)
+        for room in rooms:
+            cells[(room.zone_id, room.coord_x, room.coord_y, room.coord_z)].append(room)
+        collisions = {
+            cell: occupants for cell, occupants in cells.items()
+            if len(occupants) > 1
+        }
+        for cell, occupants in collisions.items():
+            names = ', '.join(r.name for r in occupants)
+            self.stdout.write(self.style.ERROR(f'    cell collision at {cell}: {names}'))
+        self._check(
+            f'Map cells: one room per (zone, x, y, z) '
+            f'(found {len(collisions)} collisions)',
+            not collisions,
+        )
+
+        # 3. Flag symmetry: a flagged exit exists and its reverse is flagged
+        # back along the same pair.
+        symmetry_violations = []
+        for room in rooms:
+            for direction in CARDINAL_DELTAS:
+                if not getattr(room, f'exit_{direction}_boundary'):
+                    continue
+                dst_id = getattr(room, f'exit_{direction}_id')
+                if dst_id is None:
+                    symmetry_violations.append(
+                        f'{room.name}: {direction} flagged but has no exit'
+                    )
+                    continue
+                dst = by_pk[dst_id]
+                reverse = OPPOSITE[direction]
+                if (getattr(dst, f'exit_{reverse}_id') != room.pk
+                        or not getattr(dst, f'exit_{reverse}_boundary')):
+                    symmetry_violations.append(
+                        f'{room.name} --{direction}--> {dst.name}: '
+                        f'reverse not flagged back'
+                    )
+        for line in symmetry_violations:
+            self.stdout.write(self.style.ERROR(f'    flag symmetry: {line}'))
+        self._check(
+            f'Boundary flags symmetric on both sides of every flagged pair '
+            f'(found {len(symmetry_violations)} violations)',
+            not symmetry_violations,
+        )
+
+        # 4. Flag inventory: flagged exits exist on exactly the authored
+        # BOUNDARY_PAIRS (both directions), and nowhere else.
+        expected_flags = set()
+        for src_key, direction, dst_key in BOUNDARY_PAIRS:
+            expected_flags.add((self.rooms[src_key].pk, direction))
+            expected_flags.add((self.rooms[dst_key].pk, OPPOSITE[direction]))
+        actual_flags = {
+            (room.pk, direction)
+            for room in rooms
+            for direction in CARDINAL_DELTAS
+            if getattr(room, f'exit_{direction}_boundary')
+        }
+        for pk, direction in sorted(actual_flags - expected_flags):
+            self.stdout.write(self.style.ERROR(
+                f'    unexpected flag: {by_pk[pk].name} {direction}'
+            ))
+        for pk, direction in sorted(expected_flags - actual_flags):
+            self.stdout.write(self.style.ERROR(
+                f'    missing flag: {by_pk[pk].name} {direction}'
+            ))
+        self._check(
+            f'Boundary flags on exactly the {len(BOUNDARY_PAIRS)} authored '
+            f'cave-mouth pairs (found {len(actual_flags)} flagged exits, '
+            f'expected {len(expected_flags)})',
+            actual_flags == expected_flags,
+        )
+
+        # Room names are the seed's reconcile identity (v20 brief 1) — they
+        # must stay unique per zone or reconciliation would silently merge
+        # two authored rooms.
+        name_counts = defaultdict(list)
+        for room in rooms:
+            name_counts[(room.zone_id, room.name)].append(room)
+        name_dupes = {k: v for k, v in name_counts.items() if len(v) > 1}
+        for (zone_id, name), occupants in name_dupes.items():
+            self.stdout.write(self.style.ERROR(
+                f'    duplicate room name in zone {zone_id}: {name} ×{len(occupants)}'
+            ))
+        self._check(
+            f'Room names unique per zone (found {len(name_dupes)} duplicates)',
+            not name_dupes,
+        )
 
     def _verify_verdant(self):
         vr = 'the-verdant-reach'
