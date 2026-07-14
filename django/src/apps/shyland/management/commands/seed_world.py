@@ -89,23 +89,31 @@ BOUNDARY_PAIRS = [
 
 # The ring street as a clockwise walk: each entry is (room key, direction of the
 # next clockwise step). The last entry steps back to the first, closing the loop.
+# v20 brief 1 (#43): 40 rooms, 10 steps per compass direction, delta sum (0,0)
+# — the walk closes geometrically. The five corner rooms (r36–r40) replace the
+# old diagonal corner steps, and r33 --east--> r06 replaces the mislabelled
+# south step.
 RING_WALK = [
     ('r01', 'east'), ('r02', 'east'), ('r03', 'east'), ('r04', 'east'),
-    ('r05', 'south'), ('r33', 'south'), ('r06', 'south'), ('r07', 'south'),
+    ('r05', 'south'), ('r33', 'east'), ('r06', 'south'), ('r07', 'south'),
     ('r08', 'south'), ('r09', 'south'), ('r10', 'south'), ('r11', 'south'),
-    ('r12', 'south'), ('r34', 'west'), ('r13', 'west'), ('r14', 'west'),
-    ('r15', 'west'), ('r16', 'west'), ('r17', 'west'), ('r18', 'west'),
-    ('r19', 'west'), ('r20', 'west'), ('r35', 'north'), ('r21', 'north'),
+    ('r12', 'south'), ('r34', 'south'), ('r36', 'west'), ('r13', 'west'),
+    ('r14', 'west'), ('r15', 'south'), ('r37', 'west'), ('r16', 'west'),
+    ('r17', 'west'), ('r18', 'west'), ('r19', 'west'), ('r20', 'west'),
+    ('r38', 'north'), ('r35', 'west'), ('r39', 'north'), ('r21', 'north'),
     ('r22', 'north'), ('r23', 'north'), ('r24', 'north'), ('r25', 'north'),
     ('r26', 'north'), ('r27', 'north'), ('r28', 'east'), ('r29', 'east'),
-    ('r30', 'east'), ('r31', 'east'), ('r32', 'east'),
+    ('r30', 'east'), ('r31', 'north'), ('r40', 'east'), ('r32', 'east'),
 ]
 
 # Park paths and the smithy, as (source key, direction, destination key).
+# v20 brief 1 (#43): Wisteria Walk runs straight north (the old NW jog is
+# gone), the Basalt Way jogs west (not east) between BW-1 and BW-2, and the
+# Bamboo Run gains BR-4 so it reaches the ring at (4, 0).
 PATH_EDGES = [
-    # Wisteria Walk (north path; NW jog between WW-1 and WW-2)
+    # Wisteria Walk (north path, straight)
     ('heart', 'north', 'ww1'), ('ww1', 'south', 'heart'),
-    ('ww1', 'west', 'ww2'), ('ww2', 'east', 'ww1'),
+    ('ww1', 'north', 'ww2'), ('ww2', 'south', 'ww1'),
     ('ww2', 'north', 'ww3'), ('ww3', 'south', 'ww2'),
     ('ww3', 'north', 'ww4'), ('ww4', 'south', 'ww3'),
     ('ww4', 'north', 'r01'), ('r01', 'south', 'ww4'),
@@ -113,10 +121,11 @@ PATH_EDGES = [
     ('heart', 'east', 'br1'), ('br1', 'west', 'heart'),
     ('br1', 'east', 'br2'), ('br2', 'west', 'br1'),
     ('br2', 'east', 'br3'), ('br3', 'west', 'br2'),
-    ('br3', 'east', 'r10'), ('r10', 'west', 'br3'),
-    # Basalt Way (south path; east jog between BW-1 and BW-2)
+    ('br3', 'east', 'br4'), ('br4', 'west', 'br3'),
+    ('br4', 'east', 'r10'), ('r10', 'west', 'br4'),
+    # Basalt Way (south path; west jog between BW-1 and BW-2)
     ('heart', 'south', 'bw1'), ('bw1', 'north', 'heart'),
-    ('bw1', 'east', 'bw2'), ('bw2', 'west', 'bw1'),
+    ('bw1', 'west', 'bw2'), ('bw2', 'east', 'bw1'),
     ('bw2', 'south', 'bw3'), ('bw3', 'north', 'bw2'),
     ('bw3', 'south', 'bw4'), ('bw4', 'north', 'bw3'),
     ('bw4', 'south', 'bw5'), ('bw5', 'north', 'bw4'),
@@ -205,10 +214,13 @@ VR_EDGES_ONE_WAY = [
     ('vr-m30', 'west', 'vr-m37'), ('vr-m32', 'west', 'vr-m38'),
     ('vr-m33', 'east', 'vr-m39'), ('vr-m35', 'east', 'vr-m42'),
     # Ridge villages (each with its warned-about aggro offshoot)
-    ('vr-m06', 'east', 'vr-st1'), ('vr-st1', 'north', 'vr-st2'),
+    # v20 brief 1 (#44): Stonestep hangs WEST of the spine and Bear's Hollow
+    # hangs NORTH of Highfold — the old east/west labels forced the village
+    # loops onto cells the spine already occupies.
+    ('vr-m06', 'west', 'vr-st1'), ('vr-st1', 'north', 'vr-st2'),
     ('vr-st2', 'north', 'vr-m11'),
     ('vr-m18', 'east', 'vr-hf1'), ('vr-hf1', 'north', 'vr-hf2'),
-    ('vr-hf2', 'west', 'vr-m24'),
+    ('vr-hf2', 'north', 'vr-m24'),
     ('vr-m31', 'east', 'vr-ll1'), ('vr-ll1', 'north', 'vr-ll2'),
     # The Undercrag
     ('vr-m08', 'east', 'vr-m13'), ('vr-m13', 'east', 'vr-c5a'),
@@ -401,6 +413,19 @@ class Command(BaseCommand):
             f'{npc_deleted} NPC-related rows, {area_deleted} area rows deleted.'
         )
 
+        # v20 brief 1: rooms now reconcile by (zone, name), and the new ring
+        # terminus BR-4 takes over the name "End of the Bamboo Run". One-shot
+        # rename of the pre-v20 BR-3 row (matched by its old coordinates so
+        # this can never touch the new BR-4) so its identity — visits,
+        # occupants — survives the re-lay. No-op once renamed.
+        renamed = Room.objects.filter(
+            zone__slug='the-convergence',
+            name='End of the Bamboo Run',
+            coord_x=3, coord_y=0, coord_z=0,
+        ).update(name='Deeper on the Bamboo Run')
+        if renamed:
+            self.stdout.write('Cleanup: BR-3 renamed to "Deeper on the Bamboo Run" (v20 re-lay).')
+
     # ------------------------------------------------------------------
     # Zone and Areas
     # ------------------------------------------------------------------
@@ -494,12 +519,20 @@ class Command(BaseCommand):
     # Rooms
     # ------------------------------------------------------------------
 
+    # v20 brief 1: rooms reconcile by (zone, name), NOT by coordinates —
+    # room identity follows the authored room, so a coordinate re-lay moves
+    # the existing row (RoomVisits, characters, spawns intact) instead of
+    # creating a duplicate at the new cell and orphaning the old one.
+    # _verify enforces name uniqueness per zone to keep this lookup sound.
+
     def _room(self, zone, key, x, y, name, brief, description,
               area=None, indoors=False, no_exit=None):
         msgs = no_exit or {}
         room = self._reconcile(
-            Room, {'zone': zone, 'coord_x': x, 'coord_y': y, 'coord_z': 0}, {
-                'name': name,
+            Room, {'zone': zone, 'name': name}, {
+                'coord_x': x,
+                'coord_y': y,
+                'coord_z': 0,
                 'brief_description': brief,
                 'description': description,
                 'area': area,
@@ -561,26 +594,26 @@ class Command(BaseCommand):
             'of the park. A trellis arch frames the entrance to the path, its timber dark with age, '
             'wisteria already heavy overhead — purple blooms cascading down on either side close enough '
             'to brush your arms. The scent of them follows you. Behind you, the obelisk still catches '
-            'your eye. Ahead, the path bends gently west and continues into the green. You step '
+            'your eye. Ahead, the path runs straight north and continues into the green. You step '
             'forward, not yet knowing how far it might take you.',
             area=ww,
             no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'ww2', -1, 2,
+            zone, 'ww2', 0, 2,
             'Along the Wisteria Walk',
-            'The pale path curves west under a heavy canopy of wisteria blooms.',
-            'The path has found its westward lean here, the pale stones curving unhurriedly through a '
+            'The pale path runs on north under a heavy canopy of wisteria blooms.',
+            'The path holds its steady northward line here, the pale stones running unhurriedly through a '
             'longer stretch of trellis-work hung so thick with wisteria that the sky above is more '
             'purple than blue. Bees move through the blossoms with quiet authority, paying you no '
             'attention. The fountain is behind you now, the obelisk out of sight. The sounds of the '
             'street ahead are still faint, but present — a murmur at the edge of hearing. You feel '
             'the path drawing toward its end.',
             area=ww,
-            no_exit={'north': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
+            no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'ww3', -1, 3,
+            zone, 'ww3', 0, 3,
             'Deeper on the Wisteria Walk',
             'Wisteria thickens overhead as the pale path continues north.',
             'The wisteria is at its most dense here, the trellises so closely spaced that they form a '
@@ -593,7 +626,7 @@ class Command(BaseCommand):
             no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'ww4', -1, 4,
+            zone, 'ww4', 0, 4,
             'Northern Edge of the Wisteria Walk',
             'The wisteria thins as the pale path approaches the northern street.',
             'The wisteria thins here, the trellises giving way to open sky, and the pale stones broaden '
@@ -632,14 +665,26 @@ class Command(BaseCommand):
         )
         self._room(
             zone, 'br3', 3, 0,
+            'Deeper on the Bamboo Run',
+            'The bamboo is at its tallest along the middle stretch of the run.',
+            'The bamboo stands at its tallest and densest here, canes clicking softly against one '
+            'another in the faint movement of air, the amber gravel glowing warmly in the filtered '
+            'light. Through the thinning green ahead you can just make out the street — the city, '
+            'people moving, the line of trees that borders the park on this side standing patient '
+            'and tall between the park and the storefronts beyond. The run is not quite done with '
+            'you: the last stretch of the path carries on east.',
+            area=br,
+            no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
+        )
+        # v20 brief 1 (#43): BR-4 extends the Bamboo Run one cell so the path
+        # meets the ring street grid-adjacent at (4, 0) → R10 at (5, 0).
+        self._room(
+            zone, 'br4', 4, 0,
             'End of the Bamboo Run',
-            'The bamboo parts ahead as the gravel path reaches the eastern street.',
-            'The bamboo stands tall and dense on both sides, canes clicking softly against one another '
-            'in the faint movement of air, and then ahead the path simply ends — the gravel broadening '
-            'as it meets the street. You can see it clearly now: the city, people moving, the line of '
-            'trees that borders the park on this side standing patient and tall between the park and the '
-            'storefronts beyond. The end of the path is right there. You wonder what\'s waiting on the '
-            'other side.',
+            'The bamboo path opens onto the ring street.',
+            'The bamboo thins here, the green hush of the run giving way to the noise and light of '
+            'the ring street just east. The last stalks are carved with initials and small blessings '
+            'in a dozen scripts — travelers marking the end of the quiet part of their walk.',
             area=br,
             no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
@@ -653,26 +698,26 @@ class Command(BaseCommand):
             'another so the path feels continuous underfoot. Between the seams, flowering moss catches '
             'the light — vivid green, impossibly small white and yellow blooms. The contrast stops you '
             'for a moment. It is one of those things that shouldn\'t be as beautiful as it is. The path '
-            'leads south from the obelisk, already curving gently eastward. You step down it not knowing '
+            'leads south from the obelisk, already curving gently westward. You step down it not knowing '
             'how long the winding might take.',
             area=bw,
-            no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
+            no_exit={'east': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'bw2', 1, -1,
+            zone, 'bw2', -1, -1,
             'Along the Basalt Way',
-            'The basalt path bends east through older, larger park trees.',
-            'The basalt path has bent east here, following some old logic of the park\'s original design '
+            'The basalt path bends west through older, larger park trees.',
+            'The basalt path has bent west here, following some old logic of the park\'s original design '
             '— the moss filling every seam faithfully regardless of direction, as if it made no '
             'distinction. The trees on this side of the park are older and larger, their roots lifting '
             'the edges of the stone in places, the park itself slowly reclaiming the path at its '
             'margins. It has the feeling of something tended but not controlled. You sense the path '
             'beginning to find its way back south.',
             area=bw,
-            no_exit={'north': KEEP_OFF_GRASS, 'east': KEEP_OFF_GRASS},
+            no_exit={'north': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'bw3', 1, -2,
+            zone, 'bw3', -1, -2,
             'Deeper on the Basalt Way',
             'The dark basalt straightens south, the flowering moss vivid between the slabs.',
             'The path has straightened now, heading south once more, the dark stone broader here and the '
@@ -684,7 +729,7 @@ class Command(BaseCommand):
             no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'bw4', 1, -3,
+            zone, 'bw4', -1, -3,
             'Near the Southern Edge of the Basalt Way',
             'Great trees line the final stretch of dark basalt path.',
             'The great trees of the park\'s southern edge rise close on either side here, their roots '
@@ -696,7 +741,7 @@ class Command(BaseCommand):
             no_exit={'east': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'bw5', 1, -4,
+            zone, 'bw5', -1, -4,
             'Southern Edge of the Basalt Way',
             'The basalt path ends here where the park meets the southern street.',
             'The basalt slabs end here in a clean line where the park meets the southern street, the '
@@ -724,20 +769,20 @@ class Command(BaseCommand):
             no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'fb2', -2, 1,
+            zone, 'fb2', -2, 0,
             'Along the Fern Boards',
-            'The boardwalk drifts north through the densest ferns in the park.',
-            'The boardwalk has drifted north here, following a gentle bend through the densest stretch '
+            'The boardwalk runs west through the densest ferns in the park.',
+            'The boardwalk runs steadily westward here, through the densest stretch '
             'of ferns in the park — shoulder-high now, fronds crossing overhead in places to form a '
             'broken canopy of green. The city is muffled here in a way that feels deliberate, as though '
-            'the park decided this corner should stay quiet. The timber is darker with age and moisture, '
+            'the park decided this stretch should stay quiet. The timber is darker with age and moisture, '
             'the grain deep and pronounced. You feel closer to the end of the path, the sound of the '
             'street beginning to find its way through the green.',
             area=fb,
-            no_exit={'north': KEEP_OFF_GRASS, 'west': KEEP_OFF_GRASS},
+            no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'fb3', -3, 1,
+            zone, 'fb3', -3, 0,
             'Deeper on the Fern Boards',
             'Old timber runs through ferns that crowd the boardwalk on all sides.',
             'The ferns reach their tallest here, their fronds meeting overhead in a loose canopy that '
@@ -750,10 +795,10 @@ class Command(BaseCommand):
             no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
         self._room(
-            zone, 'fb4', -4, 1,
+            zone, 'fb4', -4, 0,
             'End of the Fern Boards',
             'The boardwalk broadens as the ferns thin toward the western street.',
-            'The ferns thin as the boardwalk straightens and widens toward the western street, the planks '
+            'The ferns thin as the boardwalk broadens and widens toward the western street, the planks '
             'here lighter in color where more light reaches them. The last of the great trees stands just '
             'off the path\'s edge, its roots running beneath the boards, the timber built around them '
             'rather than through them. Through the remaining green you can see the street ahead clearly '
@@ -764,9 +809,10 @@ class Command(BaseCommand):
             no_exit={'north': KEEP_OFF_GRASS, 'south': KEEP_OFF_GRASS},
         )
 
-        # --- Ring street (35 rooms, clockwise from the north gate) ------------
-        # NOTE: the brief assigned R16 to (1, -4, 0), which collides with BW-5.
-        # R16 sits at (1, -5, 0) instead, keeping it adjacent to the Iron Gate.
+        # --- Ring street (40 rooms, clockwise from the north gate) ------------
+        # v20 brief 1 (#43): the five corner rooms R36–R40 turn the old
+        # diagonal corner steps into true right-angle corners; the walk now
+        # closes geometrically (10 steps per compass direction).
         self._room(
             zone, 'r01', 0, 5,
             'Northern Ring — Wisteria Gate',
@@ -947,6 +993,15 @@ class Command(BaseCommand):
             'pick up again immediately on the other side, unbroken as ever.',
         )
         self._room(
+            zone, 'r36', 5, -4,
+            'The Coppersmith\'s Turn',
+            'The ring street bends west at a chamfered corner.',
+            'The ring street bends here, its flagstones worn bright at the turn where ten thousand '
+            'boots have cut the corner. A verdigris statue of a smith — no one remembers from which '
+            'world — raises a hammer that will never fall. South and west, the street runs on; the '
+            'wall above glitters with rivets from at least three realities.',
+        )
+        self._room(
             zone, 'r13', 4, -4,
             'The Ashgate',
             'A cracked concrete arch opens onto a flat grey expanse. A sign warns: there is no road.',
@@ -986,6 +1041,15 @@ class Command(BaseCommand):
             'things. The carving has no label. Below the building\'s door, just visible at street level, '
             'a brass grate covers a ventilation shaft from which warm air rises steadily, smelling '
             'faintly of oil and hot metal.',
+        )
+        self._room(
+            zone, 'r37', 2, -5,
+            'Lantern Corner',
+            'The street turns beneath a crooked lantern post.',
+            'A single crooked lantern post marks the turn, its flame burning a color that has no '
+            'proper name. Someone has bolted a second lamp — sleek, humming, unmistakably from the '
+            'Sprawl — to the same post, and the two lights argue gently over the cobbles. The street '
+            'bends west toward the Iron Gate and north back along the wall.',
         )
         self._room(
             zone, 'r16', 1, -5,
@@ -1053,6 +1117,15 @@ class Command(BaseCommand):
             'The air has no smell at all, which in a city is more disturbing than any smell would be.',
         )
         self._room(
+            zone, 'r38', -4, -5,
+            'The Long Shadow',
+            'The street angles north where the wall throws shade.',
+            'The city wall leans close here, and its shadow lies across the street at every hour, in '
+            'defiance of any sun. Chalk marks from generations of travelers scale the lower stones: '
+            'names, dates, and arrows pointing to places that may no longer exist. The street turns, '
+            'running north along the wall and east toward the Iron Gate.',
+        )
+        self._room(
             zone, 'r35', -4, -4,
             'Western Ring — Southwest Corner',
             'The ring bends at this corner. The stillness from the east lingers faintly.',
@@ -1062,6 +1135,15 @@ class Command(BaseCommand):
             'closed shutters and an awning that has been carefully rolled and tied. The stillness from '
             'the eastern stretch lingers here — not quite as strong, but present. The air is a degree '
             'cooler than it was a few steps back. It normalizes again to the west.',
+        )
+        self._room(
+            zone, 'r39', -5, -4,
+            'Quiet Corner',
+            'A hushed bend where the street turns north.',
+            'For no reason anyone can explain, sound falls soft at this bend of the ring street. '
+            'Merchants lower their voices; even cart wheels seem to apologize. A small stone bench '
+            'sits against the wall, worn smooth, facing nothing in particular. The street runs north '
+            'toward the Pale Gate and east into the long shadow of the wall.',
         )
         self._room(
             zone, 'r21', -5, -3,
@@ -1209,6 +1291,15 @@ class Command(BaseCommand):
             'person come through and found them all more or less acceptable.',
         )
         self._room(
+            zone, 'r40', -2, 5,
+            'The Painted Bend',
+            'The street curves east past a wall of murals.',
+            'The wall at this corner is a riot of murals — layered, overlapping, painted by hands '
+            'from every world the rifts have swallowed. A knight rides a neon serpent; a rocket lifts '
+            'off from a wheat field; someone has painted the Heart itself, glowing, at the center of '
+            'it all. The street curves east toward the gates and south along the western wall.',
+        )
+        self._room(
             zone, 'r32', -1, 5,
             'Northern Ring — Closing the Loop',
             'The ring street curves back to where it started. The Wisteria Walk is just ahead.',
@@ -1267,14 +1358,27 @@ class Command(BaseCommand):
         for src, direction, dst in PATH_EDGES + self._ring_edges() + vr_edges():
             exit_map[src][direction] = dst
 
+        # v20 brief 1 (B3): boundary flags, enforce-exact — both directions
+        # of every BOUNDARY_PAIRS entry are flagged, every other cardinal
+        # exit flag is forced False.
+        flag_map = defaultdict(set)
+        for src, direction, dst in BOUNDARY_PAIRS:
+            flag_map[src].add(direction)
+            flag_map[dst].add(OPPOSITE[direction])
+
         for key, room in self.rooms.items():
             for direction in DIRECTIONS:
                 target_key = exit_map[key].get(direction)
                 setattr(room, f'exit_{direction}',
                         self.rooms[target_key] if target_key else None)
+            for direction in CARDINAL_DELTAS:
+                setattr(room, f'exit_{direction}_boundary',
+                        direction in flag_map[key])
             room.save()
 
-        self.stdout.write('Exits wired.')
+        self.stdout.write(
+            f'Exits wired; boundary flags set on {len(BOUNDARY_PAIRS)} exit pairs.'
+        )
 
     # ------------------------------------------------------------------
     # NPCs
@@ -1283,6 +1387,21 @@ class Command(BaseCommand):
     # v19 brief 10: Morra, Pella, Ferwick, and Repairbot Prime gain
     # is_repairer=True / attackable=False (Part 1).
     CONVERGENCE_SERVICE_NPCS = {'morra', 'pella', 'ferwick', 'repairbot-prime'}
+
+    # v20 brief 1 (#43): the two ring street-cart vendors — non-attackable
+    # fixtures with the standard commerce wiring.
+    CONVERGENCE_CART_VENDORS = {'vnd-9', 'mother-tansy'}
+
+    # v20 brief 1: standard authored cart prices in copper. Any consumable
+    # not listed sells at the default, which matches the Healing Draught
+    # standard set by Essa, Sona, and Ridda — so newly authored consumables
+    # get a sane price until one is authored here.
+    CART_CONSUMABLE_PRICES = {
+        'healing-draught': 15,
+        'focus-tonic': 15,
+        'repair-kit': 15,
+    }
+    CART_CONSUMABLE_DEFAULT_PRICE = 15
 
     # v19 brief 10 Part 5: one-sentence listening hint appended to each of
     # the six mapped NPCs' descriptions. Aldric and Info Prime keep their
@@ -1374,6 +1493,20 @@ class Command(BaseCommand):
                 'currently looking at whatever you\'ve brought her the way a doctor looks at a patient '
                 '— professionally, without sentiment.'
             ),
+            (
+                'vnd-9', 'VND-9', 'cyber', 'r36',
+                'A chrome-and-brass vending automaton squats beside the coppersmith statue, its '
+                'serving hatch polished by use. A menu screen cycles through potions in four '
+                'languages, two of which no longer exist. Stenciled on its flank: VND-9 — HOT '
+                'DRAUGHTS — COLD LOGIC.'
+            ),
+            (
+                'mother-tansy', 'Mother Tansy', 'fantasy', 'r40',
+                'A hand-painted wooden cart leans against the mural wall, hung with drying herbs '
+                'and stoppered bottles that glow faintly in the shade. Mother Tansy, small and '
+                'sun-browned, watches the street with the patience of someone who has sold remedies '
+                'on six worlds and found the customers identical on all of them.'
+            ),
         ]
 
         for slug, name, genre_tag, room_key, description in npcs:
@@ -1383,6 +1516,8 @@ class Command(BaseCommand):
             # repairs; a repairer must be unattackable per brief 8's seed
             # verification rule.
             is_service_npc = slug in self.CONVERGENCE_SERVICE_NPCS
+            # v20 brief 1: the street carts are non-attackable fixtures.
+            is_cart = slug in self.CONVERGENCE_CART_VENDORS
             if slug in self.CONVERGENCE_EXAMINE_HINTS:
                 description = description + ' ' + self.CONVERGENCE_EXAMINE_HINTS[slug]
             content = {
@@ -1395,8 +1530,8 @@ class Command(BaseCommand):
                 'is_repairer': is_service_npc,
                 'combat_tier': 'normal',
                 'loot_table': None,
-                'is_fixture': is_obelisk,
-                'attackable': not (is_obelisk or is_service_npc),
+                'is_fixture': is_obelisk or is_cart,
+                'attackable': not (is_obelisk or is_service_npc or is_cart),
                 **MINIMAL_STATS,
                 'currency_drop_min': 0,
                 'currency_drop_max': 0,
@@ -1858,9 +1993,66 @@ class Command(BaseCommand):
                 ],
             },
         ])
+        # v20 brief 1 (#43): the two ring street carts.
+        self._seed_npc_dialogue('vnd-9', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'wares',
+                'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
+                'responses': [
+                    'CURRENT INVENTORY: RESTORATIVES. ALL SALES FINAL. ALL '
+                    'CUSTOMERS VALUED.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'thanks',
+                'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
+                'responses': [
+                    'TRANSACTION COMPLETE. DO NOT DIE. RETURN SOON.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'WELCOME, TRAVELER. HYDRATION IS SURVIVAL. SURVIVAL IS '
+                    'CUSTOMER RETENTION.',
+                ],
+            },
+        ])
+        self._seed_npc_dialogue('mother-tansy', [
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'wares',
+                'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
+                'responses': [
+                    'Draughts for what ails you. And something ails everyone '
+                    'who walks this ring twice.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_KEYWORD,
+                'note': 'thanks',
+                'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
+                'responses': [
+                    'Off you go. Try to need me less next time.',
+                ],
+            },
+            {
+                'entry_type': DialogueEntry.ENTRY_GREETING,
+                'note': '',
+                'keywords': [],
+                'responses': [
+                    'Come closer, love — everyone limps past this corner '
+                    'eventually.',
+                ],
+            },
+        ])
         self.stdout.write(
             '  Dialogue seeded: connectives, Aldric, Info Prime, Morra, Pella, '
-            'Ferwick, Repairbot Prime, Seris, Veris.'
+            'Ferwick, Repairbot Prime, Seris, Veris, VND-9, Mother Tansy.'
         )
 
     def _seed_dialogue_connectives(self):
@@ -1995,7 +2187,7 @@ class Command(BaseCommand):
         self._check(f'4 areas exist (found {area_count})', area_count == 4)
 
         room_count = Room.objects.filter(zone__slug='the-convergence').count()
-        self._check(f'54 rooms exist (found {room_count})', room_count == 54)
+        self._check(f'60 rooms exist (found {room_count})', room_count == 60)
 
         heart = Room.objects.filter(
             zone__slug='the-convergence', coord_x=0, coord_y=0, coord_z=0,
@@ -2019,19 +2211,20 @@ class Command(BaseCommand):
             for i, (_, direction) in enumerate(RING_WALK)
         ]
         self._check(
-            'Ring street is a closed 35-room clockwise loop',
+            'Ring street is a closed 40-room clockwise loop',
             self._walk_ok('r01', ring_steps),
         )
 
         self._check('Wisteria Walk connects heart to R01', self._walk_ok('heart', [
-            ('north', 'ww1'), ('west', 'ww2'), ('north', 'ww3'),
+            ('north', 'ww1'), ('north', 'ww2'), ('north', 'ww3'),
             ('north', 'ww4'), ('north', 'r01'),
         ]))
         self._check('Bamboo Run connects heart to R10', self._walk_ok('heart', [
-            ('east', 'br1'), ('east', 'br2'), ('east', 'br3'), ('east', 'r10'),
+            ('east', 'br1'), ('east', 'br2'), ('east', 'br3'),
+            ('east', 'br4'), ('east', 'r10'),
         ]))
         self._check('Basalt Way connects heart to R18', self._walk_ok('heart', [
-            ('south', 'bw1'), ('east', 'bw2'), ('south', 'bw3'),
+            ('south', 'bw1'), ('west', 'bw2'), ('south', 'bw3'),
             ('south', 'bw4'), ('south', 'bw5'), ('south', 'r18'),
         ]))
         self._check('Fern Boards connects heart to R24', self._walk_ok('heart', [
@@ -2042,12 +2235,12 @@ class Command(BaseCommand):
         npc_count = NpcDefinition.objects.filter(slug__in=[
             'the-obelisk', 'aldric', 'info-prime', 'repairbot-prime',
             'pella', 'ferwick', 'seris', 'veris', 'morra',
-            'the-primordial-sphere',
+            'the-primordial-sphere', 'vnd-9', 'mother-tansy',
         ]).count()
-        self._check(f'10 NPC definitions exist (found {npc_count})', npc_count == 10)
+        self._check(f'12 NPC definitions exist (found {npc_count})', npc_count == 12)
 
         spawn_count = RoomSpawn.objects.filter(room__zone__slug='the-convergence').count()
-        self._check(f'10 RoomSpawns in The Convergence (found {spawn_count})', spawn_count == 10)
+        self._check(f'12 RoomSpawns in The Convergence (found {spawn_count})', spawn_count == 12)
 
         sphere_spawns = RoomSpawn.objects.filter(
             npc_definition__slug='the-primordial-sphere',
@@ -2131,6 +2324,32 @@ class Command(BaseCommand):
             f'(found {attackable_vendors_or_repairers.count()})',
             not attackable_vendors_or_repairers.exists(),
         )
+
+        # v20 brief 1 (#43): the ring street carts stock every consumable
+        # ItemDefinition, are non-attackable fixtures, and listen (dialogue
+        # entries present).
+        consumable_slugs = set(
+            ItemDefinition.objects.filter(item_type='consumable')
+            .values_list('slug', flat=True)
+        )
+        for cart_slug in sorted(self.CONVERGENCE_CART_VENDORS):
+            cart = NpcDefinition.objects.filter(slug=cart_slug).first()
+            stocked = set(
+                VendorEntry.objects.filter(
+                    npc_definition__slug=cart_slug, is_active=True,
+                ).values_list('item_definition__slug', flat=True)
+            )
+            self._check(
+                f'{cart_slug} stocks every consumable ItemDefinition '
+                f'({len(stocked)}/{len(consumable_slugs)})',
+                cart is not None and stocked == consumable_slugs,
+            )
+            self._check(
+                f'{cart_slug} is a non-attackable fixture with dialogue',
+                cart is not None and cart.is_fixture and not cart.attackable
+                and cart.dialogue_entries.filter(entry_type='keyword').exists()
+                and cart.dialogue_entries.filter(entry_type='greeting').exists(),
+            )
 
         self._verify_verdant()
         self._verify_map_geometry()
@@ -3885,7 +4104,38 @@ class Command(BaseCommand):
                 )
                 entry_count += 1
 
-        self.stdout.write(f'  Convergence: {entry_count} vendor entries seeded (Morra, Pella, Ferwick).')
+        # v20 brief 1 (#43): the two ring street carts stock EVERY
+        # ItemDefinition of the consumable item type that exists at seed
+        # time — the query re-derives the stock on every reseed, so newly
+        # authored consumables appear on both carts automatically, at their
+        # standard authored price.
+        consumables = list(
+            ItemDefinition.objects.filter(item_type=ItemDefinition.CONSUMABLE)
+        )
+        for npc_slug in sorted(self.CONVERGENCE_CART_VENDORS):
+            npc = NpcDefinition.objects.get(slug=npc_slug)
+            for item in consumables:
+                self._reconcile(
+                    VendorEntry,
+                    {
+                        'npc_definition': npc,
+                        'item_definition': item,
+                        'mk_tier': 1,
+                    },
+                    {
+                        'price': self.CART_CONSUMABLE_PRICES.get(
+                            item.slug, self.CART_CONSUMABLE_DEFAULT_PRICE,
+                        ),
+                        'stock_limit': None,
+                        'is_active': True,
+                    },
+                )
+                entry_count += 1
+
+        self.stdout.write(
+            f'  Convergence: {entry_count} vendor entries seeded '
+            f'(Morra, Pella, Ferwick, VND-9, Mother Tansy).'
+        )
 
     # ------------------------------------------------------------------
     # The Verdant Reach (Z01) — v18 brief 5: Vale & Flats
@@ -3956,8 +4206,10 @@ class Command(BaseCommand):
                  area, safe=False, indoors=False, no_exit=None):
         msgs = no_exit or {}
         room = self._reconcile(
-            Room, {'zone': zone, 'coord_x': x, 'coord_y': y, 'coord_z': z}, {
-                'name': name,
+            Room, {'zone': zone, 'name': name}, {
+                'coord_x': x,
+                'coord_y': y,
+                'coord_z': z,
                 'brief_description': brief,
                 'description': description,
                 'area': area,
@@ -4040,10 +4292,10 @@ class Command(BaseCommand):
         self._vr_room(
             zone, 'vr-v07', 0, 5, 0,
             'Fordwatch',
-            'A green sphere drifts above the crossing where the fog gives way.',
+            'A green shard drifts above the crossing where the fog gives way.',
             'The moment you cross the river the fog lifts — all at once, like a curtain taken by '
             'the wind — and the whole of Fernwater Vale spreads out below the light: green folded '
-            'on green, the river threading it, cliffs rising pale on either side. A small sphere '
+            'on green, the river threading it, cliffs rising pale on either side. A small shard '
             'of soft green light drifts and bobs above the crossing, circling nothing in '
             'particular, delighted by the water. Around it, a trodden clearing has grown up the '
             "way markets grow: a mender's bench, a trader's blanket, the small industry of people "
@@ -4233,7 +4485,7 @@ class Command(BaseCommand):
             area=vale,
         )
         self._vr_room(
-            zone, 'vr-s1', 0, 15, 1,
+            zone, 'vr-s1', 0, 15, 0,
             'The First Steps',
             'Ancient carved steps begin their climb up the valley wall.',
             'The steps are broader than they looked from below, cut deep into the rock by hands '
@@ -4243,7 +4495,7 @@ class Command(BaseCommand):
             area=vale,
         )
         self._vr_room(
-            zone, 'vr-s2', 0, 16, 1,
+            zone, 'vr-s2', 0, 16, 0,
             'The Low Vista',
             'The steps pause at a ledge; the vale spreads out below.',
             'The steps pause at a natural ledge, and the vale rewards you for turning around: the '
@@ -4253,7 +4505,7 @@ class Command(BaseCommand):
             area=vale,
         )
         self._vr_room(
-            zone, 'vr-s3', 0, 17, 2,
+            zone, 'vr-s3', 0, 17, 0,
             'The Long Climb',
             'Switchbacks, wind, and the honest work of climbing.',
             'The steps switch back on themselves and climb without commentary. The wind finds you '
@@ -4263,7 +4515,7 @@ class Command(BaseCommand):
             area=vale,
         )
         self._vr_room(
-            zone, 'vr-s4', 0, 18, 3,
+            zone, 'vr-s4', 0, 18, 0,
             'The High Vista',
             'A high ledge; below, the old road the river ate is plain.',
             "From this height the story of the valley's end is laid bare. The old road is "
@@ -4274,7 +4526,7 @@ class Command(BaseCommand):
             area=vale,
         )
         self._vr_room(
-            zone, 'vr-s5', 0, 19, 4,
+            zone, 'vr-s5', 0, 19, 0,
             'The Rim',
             'The last steps rise into grass and an enormous sky.',
             'The final steps rise through a notch in the rim and the world changes registers: '
@@ -4289,7 +4541,7 @@ class Command(BaseCommand):
         flats = areas['flats']
 
         self._vr_room(
-            zone, 'vr-f01', 0, 20, 4,
+            zone, 'vr-f01', 0, 20, 0,
             'Stairhead',
             'A green sphere rides the wind above a trodden waystation.',
             'Where the stair meets the plain, a clearing has been worn into the grass by arriving '
@@ -4301,7 +4553,7 @@ class Command(BaseCommand):
             area=flats, safe=True,
         )
         self._vr_room(
-            zone, 'vr-f02', 0, 21, 4,
+            zone, 'vr-f02', 0, 21, 0,
             'The Grass Sea',
             'Silver-green grass runs in waves to the horizon.',
             'The grass runs unbroken to the horizon in every direction that matters, moving in '
@@ -4311,7 +4563,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f03', 0, 22, 4,
+            zone, 'vr-f03', 0, 22, 0,
             'The Wind Rows',
             'The wind combs the sage into long parallel rows.',
             'Here the wind has been at work so long it has combed the sage into rows, all leaning '
@@ -4321,7 +4573,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f04', 0, 23, 4,
+            zone, 'vr-f04', 0, 23, 0,
             'The Tall Grass Crossing',
             'Grass overhead-high, threaded by one confident path.',
             'The grass stands taller than you here, and the path through it is a green tunnel '
@@ -4331,7 +4583,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f05', 0, 24, 4,
+            zone, 'vr-f05', 0, 24, 0,
             'Windhome Approach',
             'Painted hide tents rise west, smoke leaning with the wind.',
             'Tents rise out of the grass to the west — tall cones of stitched hide, painted in '
@@ -4342,7 +4594,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f06', 0, 25, 4,
+            zone, 'vr-f06', 0, 25, 0,
             'The Whistling Rise',
             'A low rise where a thin whistle rides under the wind.',
             'The ground swells into a long low rise, and somewhere beneath the ordinary voice of '
@@ -4352,7 +4604,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f07', 0, 26, 4,
+            zone, 'vr-f07', 0, 26, 0,
             'The Dust Trail',
             'A dusty stretch printed over with small, busy tracks.',
             'The grass gives way to a stretch of bare, dusty ground printed all over with small '
@@ -4362,7 +4614,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f08', 0, 27, 4,
+            zone, 'vr-f08', 0, 27, 0,
             'The Low Swale',
             'A dip in the plain where a hum rises through your boots.',
             'The land dips into a shallow swale, and in the bottom of it you feel the sound '
@@ -4372,7 +4624,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f09', 0, 28, 4,
+            zone, 'vr-f09', 0, 28, 0,
             'The Herd Path',
             'A broad trampled avenue cut by generations of buffalo.',
             'The buffalo have been using this route longer than anything else out here has been '
@@ -4382,7 +4634,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f16', 0, 29, 4,
+            zone, 'vr-f16', 0, 29, 0,
             'The Open Sky',
             'The plain runs out its last miles; the mountains have arrived.',
             'The mountains are no longer a suggestion. They stand up out of the plain to the '
@@ -4392,7 +4644,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f18', 0, 30, 4,
+            zone, 'vr-f18', 0, 30, 0,
             'The Boulder Field',
             "Grassy field littered with boulders — the mountains' first word.",
             'Boulders lie scattered across the grass in their hundreds — some hip-high, some the '
@@ -4403,7 +4655,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f10', -1, 22, 4,
+            zone, 'vr-f10', -1, 22, 0,
             'The Rabbit Warrens',
             'Burrow-pocked ground alive with sprinting rabbits.',
             'The ground here is pocked with burrow mouths, and the grass between them is mown '
@@ -4413,7 +4665,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f11', 1, 23, 4,
+            zone, 'vr-f11', 1, 23, 0,
             'The Grazing Grounds',
             'The buffalo herd grazes here, vast and unbothered.',
             'The herd is here — dark, hill-shaped, steam rising off their backs in the cool air. '
@@ -4423,7 +4675,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f12', 1, 25, 4,
+            zone, 'vr-f12', 1, 25, 0,
             'The Sink Mouth',
             'A whistling hole opens straight down into the dark.',
             'The rise ends at a hole in the world. It opens straight down — a sink of raw earth '
@@ -4434,7 +4686,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f13', -1, 26, 4,
+            zone, 'vr-f13', -1, 26, 0,
             'Prairie Dog Town',
             'A metropolis of dirt mounds and outraged sentries.',
             'Dozens of dirt mounds rise in loose streets, each crowned with a sentry standing '
@@ -4444,7 +4696,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f14', 1, 27, 4,
+            zone, 'vr-f14', 1, 27, 0,
             'The Drone Mouth',
             'A bare pit exhales a hum and a smell of wax and acid.',
             'The depression ends in a pit going down — smoother-edged than the sink, its walls '
@@ -4454,7 +4706,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f15', -1, 28, 4,
+            zone, 'vr-f15', -1, 28, 0,
             'The Deer Run',
             'A sheltered draw where the deer gather in numbers.',
             'A shallow draw runs off the herd path, sheltered from the wind, and the deer favor '
@@ -4464,7 +4716,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-f17', 1, 29, 4,
+            zone, 'vr-f17', 1, 29, 0,
             'The Buffalo Wallow',
             'A dust bowl where the buffalo roll and rumble.',
             'Generations of rolling buffalo have worn a bowl of bare dust into the plain, and on '
@@ -4474,7 +4726,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-w1', -1, 24, 4,
+            zone, 'vr-w1', -1, 24, 0,
             'Windhome Circle',
             'The fire circle at the heart of the painted tents.',
             'The tents stand in a ring around a central fire circle, and the life of Windhome '
@@ -4485,7 +4737,7 @@ class Command(BaseCommand):
             area=flats,
         )
         self._vr_room(
-            zone, 'vr-w2', -1, 25, 4,
+            zone, 'vr-w2', -1, 25, 0,
             'Windhome Tents',
             'Among the tents: bows being worked, arrows fletched.',
             'Between the tents the working life of the camp goes on out of the wind: bows being '
@@ -4717,7 +4969,7 @@ class Command(BaseCommand):
         ridge = areas['ridge']
 
         self._vr_room(
-            zone, 'vr-c01', 0, 31, 4,
+            zone, 'vr-c01', 0, 31, 0,
             'Cragfoot',
             "A green sphere warms itself by a fire at the mountains' feet.",
             'Where the boulders give way to the first true slope, a waystation has grown up '
@@ -4728,7 +4980,7 @@ class Command(BaseCommand):
             area=ridge, safe=True,
         )
         self._vr_room(
-            zone, 'vr-m01', 0, 32, 5,
+            zone, 'vr-m01', 0, 32, 0,
             'The First Switchback',
             'The path folds back on itself and begins to climb in earnest.',
             'The path takes the slope the only way paths can: sideways, folding back on '
@@ -4737,7 +4989,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m02', 0, 33, 5,
+            zone, 'vr-m02', 0, 33, 0,
             'The Goat Trail',
             'Goat sign everywhere; a side track climbs to eastern ledges.',
             'Droppings, tufted hair on the thorn bushes, and hoofprints stamped into '
@@ -4747,7 +4999,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m03', 0, 34, 5,
+            zone, 'vr-m03', 0, 34, 0,
             'The Shale Turn',
             'Loose shale slides underfoot at a tight bend.',
             'The path turns tight across a fan of loose shale that moves underfoot with a '
@@ -4756,7 +5008,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m04', 0, 35, 5,
+            zone, 'vr-m04', 0, 35, 0,
             'The Pine Shelf',
             'A level shelf of wind-bent pines, loud with squirrels.',
             'The mountain relents into a level shelf of pines, every one of them bent the '
@@ -4765,7 +5017,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m05', 0, 36, 6,
+            zone, 'vr-m05', 0, 36, 0,
             'The Second Switchback',
             'The path folds again; goats watch from above with contempt.',
             'The path folds back again and gains a hard stretch of height. Goats stand on '
@@ -4774,17 +5026,17 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m06', 0, 37, 6,
+            zone, 'vr-m06', 0, 37, 0,
             'Stonestep Approach',
             'Terraced walls and woodsmoke — a village holds the slope.',
-            'Dry-stone terraces step up the slope to the east, holding soil and a village '
+            'Dry-stone terraces step up the slope to the west, holding soil and a village '
             "against the mountain's preference for neither. Woodsmoke and the clink of tools "
             'drift down. The people of Stonestep built where the mountain allowed and '
             'apologized nowhere.',
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m07', 0, 38, 6,
+            zone, 'vr-m07', 0, 38, 0,
             'The Long Traverse',
             'A long sidelong stretch beneath a bear-clawed slope.',
             'The path runs long and sidelong beneath a slope of berry scrub, and the scrub '
@@ -4794,7 +5046,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m08', 0, 39, 6,
+            zone, 'vr-m08', 0, 39, 0,
             'The Crag Shoulder',
             'The first great shoulder; eastward, a delve mouth gapes.',
             "The path crests the Ridge's first great shoulder and the mountain shows its "
@@ -4804,7 +5056,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m09', 1, 33, 5,
+            zone, 'vr-m09', 1, 33, 0,
             'The Goat Ledges',
             'Ledges at absurd angles, thoroughly owned by goats.',
             'The track ends at a series of ledges stacked at angles that should require '
@@ -4813,7 +5065,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m10', -1, 35, 5,
+            zone, 'vr-m10', -1, 35, 0,
             'The Squirrel Pines',
             'Deep pine shade, administered loudly by squirrels.',
             'The pines grow close here, roofing the light out, and the squirrels administer '
@@ -4823,7 +5075,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m11', 1, 40, 6,
+            zone, 'vr-m11', -1, 39, 0,
             "The Lion's Backyard",
             'The high meadow the villagers warned you about.',
             'Past the last terrace the ground rises into a hanging meadow, sweet grass and '
@@ -4834,7 +5086,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m12', 2, 38, 6,
+            zone, 'vr-m12', 1, 38, 0,
             'The Crag Shelf',
             'A vista shelf: the Flats laid out golden below.',
             'A flat shelf of stone hangs over the drop, and from it the whole of the '
@@ -4844,7 +5096,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m13', 1, 39, 6,
+            zone, 'vr-m13', 1, 39, 0,
             'The Crag Mouth',
             "The Undercrag's entrance: cold breath and old silk.",
             'Up close the mouth is tall as two doors and hung with silk gone grey with '
@@ -4853,7 +5105,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-st1', 1, 37, 6,
+            zone, 'vr-st1', -1, 37, 0,
             'Stonestep Terrace',
             'A terraced village street held up by stubborn stonework.',
             "Stonestep's single street runs along a terrace edge, houses built of the "
@@ -4864,7 +5116,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-st2', 1, 38, 6,
+            zone, 'vr-st2', -1, 38, 0,
             'Stonestep Hearths',
             'Upper terrace hearths; beyond, the path they warn about.',
             'The upper terrace holds the hearth-houses, warm-smelling and close, washing '
@@ -4879,7 +5131,7 @@ class Command(BaseCommand):
         ridge = areas['ridge']
 
         self._vr_room(
-            zone, 'vr-m14', 0, 40, 7,
+            zone, 'vr-m14', 0, 40, 0,
             'The Wind Gap',
             'A notch where the wind crosses the Ridge at speed.',
             'The path threads a notch where the wind crosses the Ridge without slowing down '
@@ -4889,7 +5141,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m15', 0, 41, 7,
+            zone, 'vr-m15', 0, 41, 0,
             'The Third Switchback',
             'Another fold of the path; a goat walk branches east.',
             'The path folds and climbs. The drop below the bend has stopped being '
@@ -4898,7 +5150,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m16', 0, 42, 7,
+            zone, 'vr-m16', 0, 42, 0,
             'The Grey Ridge',
             'Bare grey stone; a brown bear works the slope below.',
             'The green thins across a rib of bare grey stone, lichen-mapped and '
@@ -4908,7 +5160,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m17', 0, 43, 7,
+            zone, 'vr-m17', 0, 43, 0,
             'The Windbreak',
             'A stone windbreak shelters the path; pines crowd west.',
             'Someone, sometime, stacked a long windbreak of dry stone along the path\'s '
@@ -4918,18 +5170,18 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m18', 0, 44, 7,
+            zone, 'vr-m18', 0, 44, 0,
             'Highfold Approach',
             'Goat-folds terrace the slope below a hardy village.',
             "Dry-stone goat-folds step down the slope in neat crescents, and above them "
             "Highfold's houses sit low and round-shouldered against the weather. The bells "
             'of the folds carry down the path. So does a warning, from the first villager '
-            'you meet, friendly and firm: the hollow west of the top fold belongs to the '
+            'you meet, friendly and firm: the hollow north of the top fold belongs to the '
             'bears now, and the bears are not reasonable this season.',
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m19', 0, 45, 8,
+            zone, 'vr-m19', 0, 45, 0,
             'The High Traverse',
             'A long high stretch; a lion crosses at its own pace.',
             'The path runs long and level across the mountain\'s face, the world arranged '
@@ -4939,7 +5191,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m20', 0, 46, 8,
+            zone, 'vr-m20', 0, 46, 0,
             'The Fourth Switchback',
             'The path folds beneath a vista shelf to the west.',
             'The fold gains height in earnest now, the air thinner and bright. A shelf to '
@@ -4948,7 +5200,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m21', 0, 47, 8,
+            zone, 'vr-m21', 0, 47, 0,
             'The Chitter Shoulder',
             'A dry rasping rides the wind from a gate of dark stone.',
             'The path crests the second shoulder and you hear it before you see it: a dry, '
@@ -4959,7 +5211,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m22', 1, 41, 7,
+            zone, 'vr-m22', 1, 41, 0,
             'The Goat Walk',
             'A grassy rib of high pasture, thick with goats.',
             'The rib runs out into hanging pasture, sweet and short-cropped, and the goats '
@@ -4968,7 +5220,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m23', -1, 43, 7,
+            zone, 'vr-m23', -1, 43, 0,
             'The Windbreak Pines',
             'A sheltered pine hollow, squirrel-ruled.',
             'The hollow holds the pines and the pines hold the squirrels, and the squirrels '
@@ -4977,10 +5229,10 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m24', -1, 45, 7,
+            zone, 'vr-m24', 1, 46, 0,
             "Bear's Hollow",
             'The torn-up hollow the folk of Highfold warned about.',
-            'The hollow west of the top fold is torn — earth clawed up in furrows, saplings '
+            'The hollow north of the top fold is torn — earth clawed up in furrows, saplings '
             'snapped at the height of a shoulder much higher than yours, a smell of musk '
             'thick enough to lean on. Highfold warned you. Highfold may already be a '
             'smoking memory behind you, but the warning was true either way: the bears here '
@@ -4988,7 +5240,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m25', 1, 47, 8,
+            zone, 'vr-m25', 1, 47, 0,
             'The Chittering Mouth',
             "Chitterdeep's gate: the rasping is louder here, and layered.",
             'The gate of Chitterdeep stands taller than it needs to, and the sound pours '
@@ -4998,7 +5250,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m26', -1, 46, 8,
+            zone, 'vr-m26', -1, 46, 0,
             'The Grey Vista',
             'The whole zone below: vale, flats, and the climb between.',
             'From the shelf the whole journey lies below you at once — the vale a green '
@@ -5009,22 +5261,22 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-hf1', 1, 44, 7,
+            zone, 'vr-hf1', 1, 44, 0,
             'Highfold Terrace',
             'A village of goatherds among their crescent folds.',
             'Highfold lives with its goats the way Reedmere lives with its river: the folds '
             'come first, the houses fit around them. Bells, hay-smell, and hands that never '
             'stop working hide or rope. They are generous with milk-cheese and warnings, in '
-            'that order — the hollow west of the hearths, they say, is the bears\' now. Do '
+            'that order — the hollow north of the hearths, they say, is the bears\' now. Do '
             'not test it.',
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-hf2', 1, 45, 7,
+            zone, 'vr-hf2', 1, 45, 0,
             'Highfold Hearths',
-            'Round-backed hearth houses; westward, the forbidden hollow.',
+            'Round-backed hearth houses; northward, the forbidden hollow.',
             'The hearth-houses turn their round backs to the weather, doorways low and '
-            'warm-breathed. A track runs west off the top fold toward a pine hollow, and it '
+            'warm-breathed. A track runs north off the top fold toward a pine hollow, and it '
             'is the most warned-about stretch of ground on the mountain: every hearth has a '
             'story about it, and none of the stories end well.',
             area=ridge,
@@ -5035,7 +5287,7 @@ class Command(BaseCommand):
         ridge = areas['ridge']
 
         self._vr_room(
-            zone, 'vr-m27', 0, 48, 9,
+            zone, 'vr-m27', 0, 48, 0,
             'The Thin Air',
             'High country: thin bright air and the summit finally visible.',
             'The air goes thin and glassy and the light gains an edge. Above, for the first '
@@ -5045,7 +5297,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m28', 0, 49, 9,
+            zone, 'vr-m28', 0, 49, 0,
             'The Fifth Switchback',
             'The folds come faster now; goats claim a ledge east.',
             'The switchbacks come tighter and steeper, the mountain done with pretending to '
@@ -5054,7 +5306,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m29', 0, 50, 9,
+            zone, 'vr-m29', 0, 50, 0,
             'The Stone Teeth',
             'The path threads a row of standing stones like teeth.',
             'Weathered pillars stand in a row across the slope like the teeth of something '
@@ -5064,7 +5316,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m30', 0, 51, 10,
+            zone, 'vr-m30', 0, 51, 0,
             'The Stunted Rise',
             'Trees shrink to knee height; the wind means it now.',
             'The pines up here grow to the height of your knee and no higher, ancient and '
@@ -5074,7 +5326,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m31', 0, 52, 10,
+            zone, 'vr-m31', 0, 52, 0,
             'Lastlight Approach',
             "The final village's lights, warm against the height.",
             'Lastlight earns its name at dusk, they say, when its hearths are the last warm '
@@ -5084,7 +5336,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m32', 0, 53, 10,
+            zone, 'vr-m32', 0, 53, 0,
             'The Knife Edge',
             'The path narrows over air on both sides.',
             'For a stretch the path is the top of the mountain — a knife edge with '
@@ -5094,7 +5346,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m33', 0, 54, 10,
+            zone, 'vr-m33', 0, 54, 0,
             'The Sixth Switchback',
             'The last true switchback; a lion owns the bend.',
             'The final switchback folds beneath a wall of green-veined stone. A mountain '
@@ -5104,7 +5356,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m34', 0, 55, 11,
+            zone, 'vr-m34', 0, 55, 0,
             'The Crown Shoulder',
             "The summit's last shoulder; eastward, a gate into the mountain.",
             "The last shoulder before the summit, and the mountain's final door: eastward, "
@@ -5114,7 +5366,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m35', 0, 56, 11,
+            zone, 'vr-m35', 0, 56, 0,
             'The Green Ascent',
             'Impossible green begins: growth where nothing should grow.',
             'The stone gives way to growth. At an altitude that should permit lichen and '
@@ -5125,7 +5377,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m36', 1, 49, 9,
+            zone, 'vr-m36', 1, 49, 0,
             'The High Fold Ledge',
             'The highest goats on the mountain hold this ledge.',
             'The ledge belongs to the highest goats on the mountain, shag-coated and '
@@ -5134,7 +5386,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m37', -1, 51, 10,
+            zone, 'vr-m37', -1, 51, 0,
             'The Stunted Pines',
             "A wind-bonsai'd wood, knee-high and centuries old.",
             'The little wood is centuries old and knee-high, every trunk a fist of '
@@ -5143,7 +5395,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m38', -1, 53, 10,
+            zone, 'vr-m38', -1, 53, 0,
             "Lion's Watch",
             'The sunning shelf Lastlight forbids, and for good reason.',
             'The ledge track ends at a broad shelf where the sun pools all day, and the '
@@ -5153,7 +5405,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m39', 1, 54, 10,
+            zone, 'vr-m39', 1, 54, 0,
             "Bear's Throne",
             "A tumble of boulders ruled by the mountain's largest bears.",
             'The boulders stack into a natural throne against the summit wall, and the '
@@ -5163,7 +5415,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m40', 1, 55, 11,
+            zone, 'vr-m40', 1, 55, 0,
             'The Crown Mouth',
             "Hollowcrown's gate: warm air rising from inside the peak.",
             'The gate into the summit stands pale and veined, and the air moving out of it '
@@ -5173,7 +5425,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m41', 0, 57, 12,
+            zone, 'vr-m41', 0, 57, 0,
             'The Last Stair',
             'Steps of living stone rise through flowers to the crown.',
             'Steps rise through the green — not carved, this time, but grown, stone risers '
@@ -5183,7 +5435,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m42', 1, 56, 11,
+            zone, 'vr-m42', 1, 56, 0,
             'The Cloud Rail',
             'A shelf level with the clouds themselves.',
             'The shelf hangs level with a rail of cloud that streams past close enough to '
@@ -5193,7 +5445,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-m43', -1, 48, 9,
+            zone, 'vr-m43', -1, 48, 0,
             'The Silent Col',
             'A hushed saddle where the wind, for once, does not come.',
             'The col sits in a fold of the mountain that the wind, by some accident of '
@@ -5203,7 +5455,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-ll1', 1, 52, 10,
+            zone, 'vr-ll1', 1, 52, 0,
             'Lastlight Terrace',
             'The highest village: stone houses roped against the sky.',
             "Lastlight's houses are stone to the eaves and roped to the mountain, and its "
@@ -5216,7 +5468,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-ll2', 1, 53, 10,
+            zone, 'vr-ll2', 1, 53, 0,
             'Lastlight Hearths',
             'The last hearths below the summit, warm and watchful.',
             'The hearth-row is the warmest ground on the high mountain, and the most '
@@ -5227,7 +5479,7 @@ class Command(BaseCommand):
             area=ridge,
         )
         self._vr_room(
-            zone, 'vr-vc1', 0, 58, 12,
+            zone, 'vr-vc1', 0, 58, 0,
             'The Verdant Crown',
             'Eden on the roof of the world, and a green sphere in an obelisk.',
             'The summit is a garden. There is no other word and no need for one: at an '
