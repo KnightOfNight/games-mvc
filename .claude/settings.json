@@ -12,5 +12,8 @@
       "Bash(git commit *)",
       "Bash(date *)"
     ]
-  }
+  },
+  "model": "claude-fable-5",
+  "effortLevel": "high",
+  "skipAutoPermissionPrompt": true
 }
