@@ -173,42 +173,45 @@ def get_display_description(item):
     return "You can't determine anything about this item."
 
 
-def parse_item_noun(noun_str, item_list):
-    """
-    Parse a classic MUD item noun against a list of ItemInstance objects.
+def get_item_suffix(item):
+    """The per-item info suffix an item line carries: carry bonus for
+    bags, durability state for gear that wears. Empty for everything else."""
+    defn = item.definition
+    if defn.item_type == 'bag':
+        return f'— +{defn.carry_bonus} carry capacity'
+    if defn.takes_durability_loss:
+        if item.is_broken:
+            return '— BROKEN'
+        return f'— {int(round(item.durability_current))}% durability'
+    return ''
 
-    Returns:
-        ('all', None)              if noun_str == 'all'
-        ('single', ItemInstance)   if a match is found
-        ('not_found', None)        if no match
-        ('bad_index', None)        if N.keyword has N out of range
 
-    Matching is against get_display_name(item) so mystery names work.
-    """
-    noun_str = noun_str.strip().lower()
+def get_item_flags(item):
+    """v20 brief 3 (#48): the trailing flag block. Rarity capitalized;
+    Bound = soulbound by any route, Droppable = unbound. Unidentified
+    items show no rarity. Plain-text form only — styling belongs to the
+    output & messaging brief."""
+    bind = 'Bound' if item.is_soulbound else 'Droppable'
+    if item.is_identified:
+        return f'[{item.rarity.capitalize()}, {bind}]'
+    return f'[{bind}]'
 
-    if noun_str == 'all':
-        return ('all', None)
 
-    index = 1
-    keyword = noun_str
-    if '.' in noun_str:
-        parts = noun_str.split('.', 1)
-        if parts[0].isdigit():
-            index = int(parts[0])
-            keyword = parts[1]
-
-    matches = [
-        item for item in item_list
-        if keyword in get_display_name(item).lower()
-    ]
-
-    if not matches:
-        return ('not_found', None)
-    if index > len(matches):
-        return ('bad_index', None)
-
-    return ('single', matches[index - 1])
+def compose_item_line(item, count=1):
+    """v20 brief 3 (#48): the one shared item-line composition —
+    ``<name with tier>[ xN]  <suffix e.g. durability>  [<Rarity>, Bound|Droppable]``
+    — adopted at every item-line site (inventory, equipment, examine,
+    loot listings, ground listings). The old leading rarity prefix is
+    gone everywhere."""
+    name = get_display_name_with_tier(item)
+    if count > 1:
+        name = f'{name} x{count}'
+    parts = [name]
+    suffix = get_item_suffix(item)
+    if suffix:
+        parts.append(suffix)
+    parts.append(get_item_flags(item))
+    return '  '.join(parts)
 
 
 def get_durability_penalty(item):

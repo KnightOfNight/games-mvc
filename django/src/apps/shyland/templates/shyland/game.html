@@ -222,6 +222,17 @@
   let histIdx = -1;
   let quitting = false;
 
+  // v20 brief 3 (#45): whether stamped categories show their [HH:MM:SS.ss]
+  // prefix. Server-authoritative — carried by the connect-time verbs
+  // message and every status payload.
+  let showTimestamps = true;
+
+  // v20 brief 3 (#19): tab completion. Verb position completes locally
+  // from the server-sent verb list; argument position asks the server.
+  let verbList = [];
+  let tabState = null;        // { base, options, idx }
+  let pendingComplete = null; // line text awaiting a server reply
+
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws/shyland/`);
 
@@ -272,7 +283,13 @@
       window.location.href = msg.url;
     } else if (msg.type === 'map') {
       renderMap(msg);
+    } else if (msg.type === 'verbs') {
+      if (Array.isArray(msg.verbs)) verbList = msg.verbs;
+      if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
+    } else if (msg.type === 'complete') {
+      applyCompletion(msg);
     } else if (msg.type === 'status') {
+      if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
       if (msg.room_name) roomName.textContent = msg.room_name;
       barV.textContent = msg.vitality_max !== undefined
         ? `${msg.vitality} / ${msg.vitality_max}`
@@ -403,7 +420,9 @@
     const el = document.createElement('div');
     el.className = `msg-${msg.category || 'system'}`;
     if (msg.hint_exits) { el.style.marginTop = '1.55em'; el.style.fontWeight = 'bold'; }
-    if (!UNSTAMPED_CATEGORIES.has(msg.category)) {
+    // #45: the toggle governs stamped categories only — unstamped
+    // categories are never stamped regardless.
+    if (showTimestamps && !UNSTAMPED_CATEGORIES.has(msg.category)) {
       const ts = tsSpan(msg.ts);
       if (ts) el.appendChild(ts);
     }
@@ -432,6 +451,7 @@
     history.unshift(text);
     if (history.length > 100) history.pop();
     histIdx = -1;
+    clearCompletion();
     ws.send(JSON.stringify({ text }));
     cmd.value = '';
     cmd.focus();
@@ -439,7 +459,54 @@
 
   sendBtn.addEventListener('click', send);
 
+  // v20 brief 3 (#19): apply a server completion reply. Stale or
+  // cancelled replies (Escape, edited line) are dropped.
+  function applyCompletion(msg) {
+    if (pendingComplete === null || msg.text !== pendingComplete) return;
+    const line = pendingComplete;
+    pendingComplete = null;
+    if (!Array.isArray(msg.options) || !msg.options.length) return;
+    const m = line.match(/^(.*?)(\S*)$/);
+    tabState = { base: m[1], options: msg.options, idx: 0 };
+    cmd.value = tabState.base + tabState.options[0];
+  }
+
+  function clearCompletion() {
+    tabState = null;
+    pendingComplete = null;
+  }
+
+  function handleTab() {
+    if (tabState && tabState.options.length) {
+      tabState.idx = (tabState.idx + 1) % tabState.options.length;
+      cmd.value = tabState.base + tabState.options[tabState.idx];
+      return;
+    }
+    const line = cmd.value;
+    if (!line.trim()) return;
+    if (!/\s/.test(line.trim())) {
+      // Verb position: complete/cycle locally from the server-sent list.
+      const partial = line.trim().toLowerCase();
+      const options = verbList.filter((v) => v.startsWith(partial));
+      if (options.length) {
+        tabState = { base: '', options: options, idx: 0 };
+        cmd.value = options[0];
+      }
+      return;
+    }
+    // Argument position: server-computed candidates.
+    if (ws.readyState !== WebSocket.OPEN) return;
+    pendingComplete = line;
+    ws.send(JSON.stringify({ type: 'complete', text: line }));
+  }
+
   cmd.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') { e.preventDefault(); handleTab(); return; }
+    if (e.key === 'Escape') { clearCompletion(); return; }
+    if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt' && e.key !== 'Meta') {
+      // Typing (or history navigation) resumes normal input.
+      clearCompletion();
+    }
     if (e.key === 'Enter') { send(); return; }
     if (e.key === 'ArrowUp') {
       e.preventDefault();

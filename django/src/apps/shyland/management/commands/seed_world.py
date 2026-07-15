@@ -2351,6 +2351,22 @@ class Command(BaseCommand):
                 and cart.dialogue_entries.filter(entry_type='greeting').exists(),
             )
 
+        # v20 brief 3 (#22) authoring law: rarity words are a closed
+        # grammar vocabulary and never name tokens — no ItemDefinition or
+        # NpcDefinition name may begin with one.
+        rarity_words = ('common', 'uncommon', 'rare', 'epic', 'legendary',
+                        'artifact')
+        for model in (ItemDefinition, NpcDefinition):
+            offenders = [
+                name for name in model.objects.values_list('name', flat=True)
+                if name.split()[0].lower() in rarity_words
+            ]
+            self._check(
+                f'No {model.__name__} name begins with a rarity word '
+                f'(found {len(offenders)}: {offenders})',
+                not offenders,
+            )
+
         self._verify_verdant()
         self._verify_map_geometry()
 
