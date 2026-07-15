@@ -62,6 +62,11 @@
   }
   #output { white-space: pre-wrap; line-height: 1.55; }
   .msg-room    { color: var(--room); }
+  /* v20 brief 2 amendment 1 (#56): 'room-render' is the whole room block
+     (rendering, never stamped) — the styling hook the output & messaging
+     brief (#14) builds on. 'report' is state reports (also unstamped). */
+  .msg-room-render { color: var(--room); }
+  .msg-report  { color: var(--system); }
   .msg-chat    { color: var(--chat); }
   .msg-combat  { color: var(--combat); }
   .msg-system  { color: var(--system); }
@@ -251,7 +256,7 @@
     if (msg.type === 'clear') {
       output.innerHTML = '';
     } else if (msg.type === 'output') {
-      if (msg.category === 'room') {
+      if (msg.category === 'room-render') {
         if (msg.enter) output.innerHTML = '';
         renderRoom(msg);
       } else if (msg.category === 'who') {
@@ -353,6 +358,14 @@
   // v20 brief 2 (#32): dim [HH:MM:SS.ss] prefix in the player's local
   // time, derived from the server's epoch-ms `ts`. aria-hidden so the
   // live region announces message text clean, without timestamp noise.
+  // Amendment 1 (#56): timestamps mark events, not renderings — the
+  // prefix displays only on stamped categories. The server assigns the
+  // category; the client never infers stamping from message text, and an
+  // unknown category defaults to stamped (events are the common case).
+  // The timestamps on|off preference (#45, commands brief) will govern
+  // stamped categories only — unstamped categories are never stamped.
+  const UNSTAMPED_CATEGORIES = new Set(['room-render', 'report']);
+
   function tsSpan(ts) {
     if (typeof ts !== 'number') return null;
     const d = new Date(ts);
@@ -370,10 +383,8 @@
 
     if (desc) {
       const el = document.createElement('div');
-      el.className = 'msg-room';
-      const ts = tsSpan(msg.ts);
-      if (ts) el.appendChild(ts);
-      el.appendChild(document.createTextNode(desc));
+      el.className = 'msg-room-render';
+      el.textContent = desc;
       output.appendChild(el);
     }
 
@@ -392,8 +403,10 @@
     const el = document.createElement('div');
     el.className = `msg-${msg.category || 'system'}`;
     if (msg.hint_exits) { el.style.marginTop = '1.55em'; el.style.fontWeight = 'bold'; }
-    const ts = tsSpan(msg.ts);
-    if (ts) el.appendChild(ts);
+    if (!UNSTAMPED_CATEGORIES.has(msg.category)) {
+      const ts = tsSpan(msg.ts);
+      if (ts) el.appendChild(ts);
+    }
     el.appendChild(document.createTextNode(msg.text));
     output.appendChild(el);
     if (msg.hint_exits) {

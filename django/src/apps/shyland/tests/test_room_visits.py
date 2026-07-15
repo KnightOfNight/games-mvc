@@ -151,7 +151,7 @@ class ArrivalRecordingTests(TransactionTestCase):
             msg = await communicator.receive_json_from(timeout=10)
             if msg.get('type') == 'map':
                 return room_texts
-            if msg.get('type') == 'output' and msg.get('category') == 'room' \
+            if msg.get('type') == 'output' and msg.get('category') == 'room-render' \
                     and msg.get('exits') is not None:
                 room_texts.append(msg['text'])
 
@@ -225,7 +225,7 @@ class ArrivalRecordingTests(TransactionTestCase):
             await communicator.send_json_to({'text': 'look'})
             msg = await communicator.receive_json_from(timeout=10)
             while not (msg.get('type') == 'output'
-                       and msg.get('category') == 'room'
+                       and msg.get('category') == 'room-render'
                        and msg.get('exits') is not None):
                 msg = await communicator.receive_json_from(timeout=10)
             self.assertIn('The long form of room B.', msg['text'])

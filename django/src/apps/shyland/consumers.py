@@ -456,14 +456,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if not destinations:
                 await self.output(
                     'The Obelisk is silent. It has nothing to show you yet — '
-                    'the network reveals itself only to those who walk it.', 'system',
+                    'the network reveals itself only to those who walk it.', 'report',
                 )
                 return
             lines = ['The Obelisk offers passage to:']
             for dest in destinations:
                 suffix = ' (obelisk)' if dest.node_type == 'obelisk' else ''
                 lines.append(f'  {dest.travel_name}{suffix}')
-            await self.output('\n'.join(lines), 'system')
+            await self.output('\n'.join(lines), 'report')
             return
 
         query = args.strip().lower()
@@ -534,13 +534,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def cmd_who(self):
         keys = await self.redis.keys("shyland:online:*")
         if not keys:
-            await self.output("No players are currently online.", "system")
+            await self.output("No players are currently online.", "report")
             return
         names = await self.redis.mget(*keys)
         online = sorted(parse_presence_name(n) for n in names if n)
         count = len(online)
         lines = [f"Players online ({count}):"] + [f"  {name}" for name in online]
-        await self.output("\n".join(lines), "system")
+        await self.output("\n".join(lines), "report")
 
     async def presence_heartbeat(self):
         while True:
@@ -632,11 +632,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         lines.append('Wallet:')
         lines.append(f'  {self.format_wallet(wallet_char)}')
 
-        await self.output('\n'.join(lines), 'system')
+        # v20 brief 2 amendment 1 (#56): state reports carry 'report'
+        # (unstamped on the client) — inventory, wallet, help, who, stats,
+        # vendor list, examine, travel listing, brief query.
+        await self.output('\n'.join(lines), 'report')
 
     async def cmd_wallet(self):
         char = await self.get_character_fresh()
-        await self.output(f'Wallet: {self.format_wallet(char)}', 'system')
+        await self.output(f'Wallet: {self.format_wallet(char)}', 'report')
 
     async def cmd_help(self):
         room = await self.get_current_room()
@@ -675,7 +678,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             '\n'
             "Item syntax: 'sword' = first sword, '2.sword' = second sword, 'all' = everything (where supported)"
         )
-        await self.output(help_text, 'system')
+        await self.output(help_text, 'report')
 
     async def cmd_quit(self):
         character = await self.get_character_fresh()
@@ -1103,7 +1106,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     lines.append('  No known method of identification will reveal its true nature.')
             else:
                 lines = self._format_identified_item_lines(item)
-            await self.output('\n'.join(lines), 'system')
+            await self.output('\n'.join(lines), 'report')
             return
 
         # Search live NPCs
@@ -1113,7 +1116,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if npc_match is not None:
             lines = [npc_match.name, '', f'  {npc_match.definition.description}']
-            await self.output('\n'.join(lines), 'system')
+            await self.output('\n'.join(lines), 'report')
             return
 
         # Search corpses
@@ -1149,7 +1152,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     "  carrying is none of your business — you didn't make this kill."
                 )
 
-            await self.output('\n'.join(lines), 'system')
+            await self.output('\n'.join(lines), 'report')
             return
 
         await self.output("You don't see that here.", 'system')
@@ -1269,7 +1272,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         entries = await self.get_vendor_entries(vendor)
         listable = [e for e in entries if not self._entry_exhausted(e)]
         if not listable:
-            await self.output(f'{vendor.name} has nothing left for sale.', 'system')
+            await self.output(f'{vendor.name} has nothing left for sale.', 'report')
             return
 
         char = await self.get_character_fresh()
@@ -1279,7 +1282,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if entry.stock_limit is not None:
                 line += f' ({entry.stock_limit - entry.sold_count} left)'
             lines.append(line)
-        await self.output('\n'.join(lines), 'system')
+        await self.output('\n'.join(lines), 'report')
 
     async def cmd_buy(self, args):
         room = await self.get_current_room()
@@ -1600,7 +1603,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         ]
         if character.unspent_stat_points > 0:
             lines.append(f"  Type 'spend <stat> <amount>' to allocate. (e.g. 'spend str 2')")
-        await self.send_output('\n'.join(lines), 'system')
+        await self.send_output('\n'.join(lines), 'report')
 
     async def cmd_spend(self, args):
         VALID_STATS = {
@@ -1704,7 +1707,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             character = await self.get_character_fresh()
             state = 'on' if character.brief_mode else 'off'
             await self.send_output(
-                f'Brief mode is {state}. Usage: brief on | brief off', category='system'
+                f'Brief mode is {state}. Usage: brief on | brief off', category='report'
             )
             return
         if arg not in ('on', 'off'):
@@ -1854,9 +1857,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'{description_text}'
         )
 
+        # v20 brief 2 amendment 1 (#56): the whole room block — header,
+        # prose, players, exits, and the occupant/corpse lines below — is a
+        # rendering, not an event, so it carries the 'room-render' category
+        # (unstamped on the client; also the styling hook for #14).
         await self.send_json({
             'type': 'output',
-            'category': 'room',
+            'category': 'room-render',
             'enter': entering,
             'text': text,
             'players': ', '.join(others) if others else None,
@@ -1868,17 +1875,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
 
         if living_npcs:
-            await self.output("Who's here?", 'room')
+            await self.output("Who's here?", 'room-render')
             for npc in living_npcs:
-                await self.output(f"{npc.name} is here.", 'room')
+                await self.output(f"{npc.name} is here.", 'room-render')
 
         if fixture_npcs:
-            await self.output("What's here?", 'room')
+            await self.output("What's here?", 'room-render')
             for npc in fixture_npcs:
-                await self.output(f"{npc.name} is here.", 'room')
+                await self.output(f"{npc.name} is here.", 'room-render')
 
         for corpse in corpses:
-            await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room')
+            await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room-render')
 
         await self.send_json({
             'type': 'status',
