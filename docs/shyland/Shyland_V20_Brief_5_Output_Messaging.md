@@ -51,6 +51,7 @@ a Verdant Shard is here.
 ```
 
 - Blank line between sections; header labels take the structural-header color.
+- **Absorb "On the ground:"** — the interim ground-items section introduced by Brief 3's composition work is replaced by this structure: `What's here?` becomes THE items section (composed item lines per Brief 3's helper, flag blocks and all). After this brief, exactly one items section exists in the room render; do not keep both.
 - **Sections with no content are omitted entirely** — no "Who's here? (nobody)" line, no empty header.
 - Exits list stays comma-separated on one line after its label. Occupant and item lines are one per line, room-content color.
 - Brief mode (`brief on`) is unchanged in its existing behavior; `look` always shows the long description regardless (standing rule).
@@ -96,7 +97,7 @@ The three lines from the issue must render exactly as:
 
 1. Palette: every category in Part A renders its ruled color; no second red anywhere; the stats-panel combat state and combat text visibly belong to one family; zone/area colors in output match the location bar exactly.
 2. Structural headers: `Exits:`, `Who's here?`, `What's here?` all share the header color; no other content uses it.
-3. Look output matches Part B exactly, including omission of empty sections; verify in a room with NPCs and items, a room with neither, and a room with only one of the two.
+3. Look output matches Part B exactly, including omission of empty sections; verify in a room with NPCs and items, a room with neither, and a room with only one of the two. The interim "On the ground:" section no longer exists anywhere — `What's here?` is the sole items section, rendering composed item lines.
 4. Echo: every command appears as `> ...` before its result, including invalid commands; not visible to other players; timestamped.
 5. NPC grammar: the three Part D4 strings render exactly; a full combat against the Silk Matron and her brood produces no doubled or missing articles anywhere (combat lines, aggro lines, corpse lines, room lines, fight-info panel); proper-noun NPCs (Morra, Mother Tansy, VND-9) never gain an article; seed verify enforces the no-leading-article law.
 6. Decay: killing an NPC mid-fight produces no decay line for the fighting player; a non-fighting observer in the room sees it; decay timing unchanged.
