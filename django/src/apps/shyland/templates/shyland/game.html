@@ -86,21 +86,43 @@
     border-right: 1px solid var(--border);
   }
   #output { white-space: pre-wrap; line-height: 1.55; }
-  .msg-room    { color: var(--room); }
-  /* v20 brief 2 amendment 1 (#56): 'room-render' is the whole room block
-     (rendering, never stamped) — the styling hook the output & messaging
-     brief (#14) builds on. 'report' is state reports (also unstamped). */
-  .msg-room-render { color: var(--room); }
-  .msg-report  { color: var(--system); }
+
+  /* ================================================================
+     v20 brief 5 (#13/#14/#39): THE output palette — one block, ruled.
+     Colors are client styling keyed on server-supplied semantic
+     categories; the server never sends hex for message text. The
+     combat reds are one family with the stats panel's combat state
+     (#E24B4A / #3A1212) — never introduce a second red.
+     ================================================================ */
+  .msg-room-render { color: #B8B4A6; }           /* room/area prose */
+  .room-content    { color: #E8E4D8; }           /* names, occupants, items */
+  .room-chrome     { color: #8A887F; }           /* brackets, dashes, colons */
+  .msg-report  { color: #B8B4A6; }
   .msg-chat    { color: var(--chat); }
-  .msg-combat  { color: var(--combat); }
-  .msg-system  { color: var(--system); }
-  .msg-error   { color: var(--error); }
-  .msg-section         { color: var(--room); margin-top: 1.55em; }
-  .msg-section strong  { color: var(--accent); font-weight: bold; }
-  /* v20 brief 2 (#32): dim local-time prefix on output lines. Muted and
-     slightly faded so it stays visually subordinate to the message text. */
-  .msg-ts { color: var(--muted); opacity: .75; font-weight: normal; }
+  .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
+  .msg-combat-hit-out  { color: #C4453F; }       /* your hit */
+  .msg-combat-crit-out { color: #E24B4A; font-weight: bold; } /* your crit */
+  .msg-combat-hit-in   { color: #E0724A; }       /* it hits you */
+  .msg-combat-miss     { color: #8A887F; }       /* miss, either direction */
+  .msg-reward  { color: #D8B45A; }               /* kill / XP / level */
+  .msg-success { color: #8FCF9F; }               /* sales, repairs, pickups */
+  .msg-error   { color: #C08A3E; }               /* amber */
+  .msg-system  { color: #8A887F; }               /* system / ambient */
+  .msg-room    { color: #8A887F; }               /* ambient room events */
+  .msg-echo    { color: #8A887F; }               /* '> command' transcript (#15) */
+  .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
+  .msg-section strong  { color: #7FB3D5; font-weight: bold; }
+  /* Rarity scale — flag block only (#48 composition, colorized here). */
+  .flag-chrome   { color: #9C9A90; }             /* [ , ] Bound Droppable */
+  .rar-common    { color: #9C9A90; }
+  .rar-uncommon  { color: #5FA8D3; }
+  .rar-rare      { color: #B387E8; }
+  .rar-epic      { color: #D8B45A; }
+  .rar-legendary { color: #E0724A; }
+  .rar-artifact  { color: #E24B4A; }
+  /* v20 brief 2 (#32): dim local-time prefix on output lines — the
+     dimmest tone in the palette. */
+  .msg-ts { color: #6E6C64; font-weight: normal; }
   #cmd::placeholder            { color: var(--muted); }
   #cmd.disconnected::placeholder { color: var(--error); font-weight: bold; }
 
@@ -487,11 +509,11 @@
       if (msg.category === 'room-render') {
         if (msg.enter) output.innerHTML = '';
         renderRoom(msg);
-      } else if (msg.category === 'who') {
-        appendSection('Players online:', msg.players + '.', '1.55em');
       } else {
         append(msg);
-        if (msg.category === 'combat') {
+        // v20 brief 5: combat categories are a family (combat-hit-out,
+        // combat-miss, …) — all of them announce assertively.
+        if (msg.category && msg.category.indexOf('combat') === 0) {
           combatLive.textContent = '';
           requestAnimationFrame(() => { combatLive.textContent = msg.text; });
         }
@@ -717,25 +739,114 @@
     return span;
   }
 
+  // v20 brief 5 (#14 rarity rider): the item-line flag block —
+  // "[Rarity, Bound|Droppable]" or "[Bound|Droppable]" — renders its
+  // color scale; brackets, commas, and the bind word stay chrome gray.
+  // Purely presentational: the text content is unchanged.
+  const FLAG_RE = /\[(?:(Common|Uncommon|Rare|Epic|Legendary|Artifact), )?(Bound|Droppable)\]/g;
+
+  function appendFlaggedText(el, text) {
+    let last = 0, m;
+    FLAG_RE.lastIndex = 0;
+    while ((m = FLAG_RE.exec(text)) !== null) {
+      if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const chrome = (t) => {
+        const s = document.createElement('span');
+        s.className = 'flag-chrome';
+        s.textContent = t;
+        el.appendChild(s);
+      };
+      if (m[1]) {
+        chrome('[');
+        const r = document.createElement('span');
+        r.className = 'rar-' + m[1].toLowerCase();
+        r.textContent = m[1];
+        el.appendChild(r);
+        chrome(', ' + m[2] + ']');
+      } else {
+        chrome('[' + m[2] + ']');
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+  }
+
+  // v20 brief 5 (#14/#39): the ruled room structure — header, prose,
+  // Exits, Who's here?, What's here? — from the server's structured
+  // room-render payload. Empty sections were omitted server-side.
   function renderRoom(msg) {
-    const lines = msg.text.split('\n').filter(l => !(l.trim().startsWith('[') && l.trim().endsWith(']')));
-    const desc = lines.join('\n').trim();
+    const block = document.createElement('div');
+    block.className = 'msg-room-render';
 
-    if (desc) {
+    const chromeSpan = (parent, t) => {
+      const s = document.createElement('span');
+      s.className = 'room-chrome';
+      s.textContent = t;
+      parent.appendChild(s);
+    };
+
+    if (msg.header && msg.header.room_name) {
+      const h = document.createElement('div');
+      chromeSpan(h, '[ ');
+      if (msg.header.area_name) {
+        const a = document.createElement('span');
+        a.textContent = msg.header.area_name;
+        // Same model theme color the location bar shows — one source of truth.
+        a.style.color = msg.header.area_color || '#CCCCCC';
+        h.appendChild(a);
+        chromeSpan(h, ' — ');
+      }
+      const r = document.createElement('span');
+      r.className = 'room-content';
+      r.textContent = msg.header.room_name;
+      h.appendChild(r);
+      chromeSpan(h, ' ]');
+      block.appendChild(h);
+    }
+
+    if (msg.text) {
+      const p = document.createElement('div');
+      p.textContent = msg.text;
+      block.appendChild(p);
+    }
+
+    // Inline section: "Label: content" on one line (Exits, Players here).
+    const inlineSection = (label, content) => {
       const el = document.createElement('div');
-      el.className = 'msg-room-render';
-      el.textContent = desc;
-      output.appendChild(el);
-    }
+      el.className = 'msg-section';
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      el.appendChild(strong);
+      const span = document.createElement('span');
+      span.className = 'room-content';
+      span.textContent = ' ' + content;
+      el.appendChild(span);
+      block.appendChild(el);
+    };
 
-    if (msg.players) {
-      appendSection('Players here:', msg.players + '.', '1.55em');
-    }
+    // Block section: header label line, then one content line per entry.
+    const listSection = (label, lines) => {
+      if (!lines || !lines.length) return;
+      const hdr = document.createElement('div');
+      hdr.className = 'msg-section';
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      hdr.appendChild(strong);
+      block.appendChild(hdr);
+      lines.forEach((line) => {
+        const el = document.createElement('div');
+        el.className = 'room-content';
+        appendFlaggedText(el, line);
+        block.appendChild(el);
+      });
+    };
 
-    if (msg.exits) {
-      appendSection('Exits:', msg.exits + '.', '1.55em');
-    }
+    if (msg.exits) inlineSection('Exits:', msg.exits);
+    if (msg.players) inlineSection('Players here:', msg.players);
+    listSection("Who's here?", msg.who);
+    listSection("What's here?", msg.what);
 
+    output.appendChild(block);
     outputWrap.scrollTop = outputWrap.scrollHeight;
   }
 
@@ -749,10 +860,10 @@
       const ts = tsSpan(msg.ts);
       if (ts) el.appendChild(ts);
     }
-    el.appendChild(document.createTextNode(msg.text));
+    appendFlaggedText(el, msg.text);
     output.appendChild(el);
     if (msg.hint_exits) {
-      appendSection('Exits:', msg.hint_exits + '.', '1.55em');
+      appendSection('Exits:', msg.hint_exits, '1.55em');
     }
     outputWrap.scrollTop = outputWrap.scrollHeight;
   }

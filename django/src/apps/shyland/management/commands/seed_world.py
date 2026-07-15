@@ -1439,9 +1439,12 @@ class Command(BaseCommand):
     }
 
     def _seed_convergence_npcs(self):
+        # v20 brief 5 (#24): names are article-free; composed references
+        # come from NpcDefinition.article via npc_display. The roster is
+        # proper nouns (blank article) except the Obelisk.
         npcs = [
             (
-                'the-obelisk', 'The Obelisk', 'cosmic', 'heart',
+                'the-obelisk', 'Obelisk', 'cosmic', 'heart',
                 'It has been here longer than the city. Longer than the paths. Longer than memory. '
                 'It does not seem to notice you noticing it.'
             ),
@@ -1527,6 +1530,8 @@ class Command(BaseCommand):
                 description = description + ' ' + self.CONVERGENCE_EXAMINE_HINTS[slug]
             content = {
                 'name': name,
+                'article': 'the' if is_obelisk else '',
+                'plural_phrase': '',
                 'genre_tag': genre_tag,
                 'description': description,
                 'is_aggressive': False,
@@ -1555,7 +1560,9 @@ class Command(BaseCommand):
         # sphere follows. Unlike the placeholder NPCs above, the brief pins
         # its stats at 1 across the board.
         content = {
-            'name': 'the Primordial Sphere',
+            'name': 'Primordial Sphere',
+            'article': 'the',
+            'plural_phrase': '',
             'genre_tag': 'fantasy',
             'description': (
                 'A perfect sphere of soft white light, suspended at eye level inside '
@@ -2387,6 +2394,30 @@ class Command(BaseCommand):
                 not offenders,
             )
 
+        # v20 brief 5 (#24) authoring law: NpcDefinition names are
+        # article-free — composed references get their article (or
+        # plural_phrase) from the model fields via npc_display.
+        articles = ('a', 'an', 'the')
+        article_offenders = [
+            name for name in NpcDefinition.objects.values_list('name', flat=True)
+            if name.split()[0].lower() in articles
+        ]
+        self._check(
+            'No NpcDefinition name begins with an article '
+            f'(found {len(article_offenders)}: {article_offenders})',
+            not article_offenders,
+        )
+        proper_nouns_ok = not NpcDefinition.objects.filter(
+            slug__in=['morra', 'aldric', 'mother-tansy', 'vnd-9'],
+        ).exclude(article='').exists()
+        self._check('Proper-noun roster NPCs carry blank articles', proper_nouns_ok)
+        brood_ok = NpcDefinition.objects.filter(
+            slug='matrons-brood', plural_phrase="one of the Matron's brood",
+        ).exists() and NpcDefinition.objects.filter(
+            slug='silk-matron', article='the', plural_phrase='',
+        ).exists()
+        self._check('Silk Matron / brood article fields match brief 5 Part D', brood_ok)
+
         self._verify_verdant()
         self._verify_map_geometry()
 
@@ -2527,15 +2558,15 @@ class Command(BaseCommand):
         vr_area_count = Area.objects.filter(zone__slug=vr).count()
         self._check(f'10 Verdant Reach areas exist (found {vr_area_count})', vr_area_count == 10)
 
-        # v20 brief 4 (#1): authored theme colors (location bar).
-        # Spinner's Hollow is deliberately unauthored (#CCCCCC default).
+        # v20 brief 4 (#1) + brief 5 D3 rider (Spinner's Hollow):
+        # authored theme colors (location bar).
         self._check(
             'Verdant Reach zone theme color is #7DC95E',
             Zone.objects.filter(slug=vr, theme_color='#7DC95E').exists(),
         )
         expected_vr_colors = {
             'fernwater-vale': '#8FCF9F', 'the-sagewind-flats': '#B4C79A',
-            'spinners-hollow': '#CCCCCC', 'the-silken-cleft': '#D8D4C8',
+            'spinners-hollow': '#C8CBB8', 'the-silken-cleft': '#D8D4C8',
             'the-whistling-sink': '#9FC4D8', 'the-drone-pit': '#D8B45A',
             'the-viridian-ridge': '#40B58C', 'the-undercrag': '#8FA3B8',
             'chitterdeep': '#C09A6B', 'hollowcrown': '#C4D96B',
@@ -2781,27 +2812,30 @@ class Command(BaseCommand):
             )
         self.stdout.write(f'  Seeded {len(messages)} UnarmedMessages in "Default" pool.')
 
-        # Verdant Reach species pools (v18 briefs 5 and 6). The flats and
-        # ridge pools are the vale pools with the species noun upsized to its
-        # giant/elder variant.
+        # Verdant Reach species pools (v18 briefs 5 and 6). v20 brief 5
+        # (#24): templates never carry their own subject or article — the
+        # composed attacker reference ({attacker} = npc_display_name,
+        # capitalized) supplies both, so one pool text serves the vale,
+        # flats, and ridge variants (and any boss sharing the pool) with
+        # the correct name every time.
         vale_templates = {
             'spider': [
-                'The spider blurs sideways and strikes at {target}, fangs first.',
-                'The spider drops on {target} from above, all legs at once.',
-                'The spider skitters in a half-circle and lunges at {target}.',
-                'The spider feints left, flows right, and bites at {target}.',
+                '{attacker} blurs sideways and strikes at {target}, fangs first.',
+                '{attacker} drops on {target} from above, all legs at once.',
+                '{attacker} skitters in a half-circle and lunges at {target}.',
+                '{attacker} feints left, flows right, and bites at {target}.',
             ],
             'centipede': [
-                'The centipede pours across the stone and whips its body at {target}.',
-                'The centipede rears its front third and rakes at {target} with hooked legs.',
-                "The centipede flows over {target}'s boot and bites upward.",
-                'The centipede coils and springs at {target} in one dry rush.',
+                '{attacker} pours across the stone and whips its body at {target}.',
+                '{attacker} rears its front third and rakes at {target} with hooked legs.',
+                "{attacker} flows over {target}'s boot and bites upward.",
+                '{attacker} coils and springs at {target} in one dry rush.',
             ],
             'beetle': [
-                "The beetle's wings snap open and it swoops down on {target}.",
-                'The beetle drops from the ceiling darkness onto {target}.',
-                "The beetle buzzes past {target}'s ear and rakes back across, clawed legs first.",
-                'The beetle slams into {target} like a thrown stone, wings roaring.',
+                '{attacker} snaps its wings open and swoops down on {target}.',
+                '{attacker} drops from the ceiling darkness onto {target}.',
+                "{attacker} buzzes past {target}'s ear and rakes back across, clawed legs first.",
+                '{attacker} slams into {target} like a thrown stone, wings roaring.',
             ],
         }
         vr_pools = {}
@@ -2810,12 +2844,10 @@ class Command(BaseCommand):
                 f'Vale {species.capitalize()} Attacks', templates,
             )
             vr_pools[f'flats-{species}'] = (
-                f'Flats {species.capitalize()} Attacks',
-                [t.replace(f'The {species}', f'The giant {species}') for t in templates],
+                f'Flats {species.capitalize()} Attacks', templates,
             )
             vr_pools[f'ridge-{species}'] = (
-                f'Ridge {species.capitalize()} Attacks',
-                [t.replace(f'The {species}', f'The elder {species}') for t in templates],
+                f'Ridge {species.capitalize()} Attacks', templates,
             )
         for slug, (name, templates) in vr_pools.items():
             pool = self._reconcile(UnarmedMessagePool, {'slug': slug}, {'name': name})
@@ -2828,83 +2860,83 @@ class Command(BaseCommand):
         # NPC attack fallback pool (v19 brief 3) — NPC attacks never fall
         # back to the player-perspective "default" pool.
         npc_default_templates = [
-            'The {attacker} strikes {target}',
-            'The {attacker} lashes out at {target}',
-            'The {attacker} slams into {target}',
-            'The {attacker} tears at {target}',
+            '{attacker} strikes {target}',
+            '{attacker} lashes out at {target}',
+            '{attacker} slams into {target}',
+            '{attacker} tears at {target}',
         ]
         # Verdant surface animal species pools (v19 brief 3), third person.
         animal_templates = {
             'sp-river-otter': (
                 'River Otter Attacks',
                 [
-                    'The river otter darts in and rakes {target} with quick claws',
-                    "The river otter twists around {target}'s legs and bites hard",
-                    'The river otter snaps at {target} with surprising ferocity',
-                    'The river otter slams its sleek body against {target}',
+                    '{attacker} darts in and rakes {target} with quick claws',
+                    "{attacker} twists around {target}'s legs and bites hard",
+                    '{attacker} snaps at {target} with surprising ferocity',
+                    '{attacker} slams its sleek body against {target}',
                 ],
             ),
             'sp-black-bear': (
                 'Black Bear Attacks',
                 [
-                    'The black bear rakes {target} with a heavy paw',
-                    'The black bear clamps its jaws down on {target}',
-                    'The black bear rears up and slams its weight into {target}',
-                    'The black bear swats {target} aside with terrible strength',
+                    '{attacker} rakes {target} with a heavy paw',
+                    '{attacker} clamps its jaws down on {target}',
+                    '{attacker} rears up and slams its weight into {target}',
+                    '{attacker} swats {target} aside with terrible strength',
                 ],
             ),
             'sp-mountain-lion': (
                 'Young Mountain Lion Attacks',
                 [
-                    'The young mountain lion rakes {target} with both sets of claws',
-                    'The young mountain lion sinks its teeth into {target}',
-                    'The young mountain lion pounces, driving {target} back',
-                    'The young mountain lion slashes at {target} in a blur',
+                    '{attacker} rakes {target} with both sets of claws',
+                    '{attacker} sinks its teeth into {target}',
+                    '{attacker} pounces, driving {target} back',
+                    '{attacker} slashes at {target} in a blur',
                 ],
             ),
             'sp-wild-boar': (
                 'Wild Boar Attacks',
                 [
-                    'The wild boar gores {target} with a slashing tusk',
-                    'The wild boar charges headlong into {target}',
-                    'The wild boar hooks its tusks upward into {target}',
-                    'The wild boar tramples over {target} in a frenzy',
+                    '{attacker} gores {target} with a slashing tusk',
+                    '{attacker} charges headlong into {target}',
+                    '{attacker} hooks its tusks upward into {target}',
+                    '{attacker} tramples over {target} in a frenzy',
                 ],
             ),
             'sp-plains-deer': (
                 'Plains Deer Attacks',
                 [
-                    'The plains deer lashes out at {target} with sharp hooves',
-                    'The plains deer rears and strikes {target} hard',
-                    'The plains deer drives its antlers at {target}',
-                    'The plains deer kicks {target} with startling force',
+                    '{attacker} lashes out at {target} with sharp hooves',
+                    '{attacker} rears and strikes {target} hard',
+                    '{attacker} drives its antlers at {target}',
+                    '{attacker} kicks {target} with startling force',
                 ],
             ),
             'sp-plains-rabbit': (
                 'Plains Rabbit Attacks',
                 [
-                    'The plains rabbit rakes {target} with powerful hind claws',
-                    'The plains rabbit bites {target} and darts away',
-                    'The plains rabbit thumps into {target} at full speed',
-                    'The plains rabbit scratches furiously at {target}',
+                    '{attacker} rakes {target} with powerful hind claws',
+                    '{attacker} bites {target} and darts away',
+                    '{attacker} thumps into {target} at full speed',
+                    '{attacker} scratches furiously at {target}',
                 ],
             ),
             'sp-prairie-dog': (
                 'Prairie Dog Attacks',
                 [
-                    'The prairie dog nips at {target} with chisel teeth',
-                    "The prairie dog darts between {target}'s feet, biting",
-                    'The prairie dog scratches at {target} in a fury',
-                    "The prairie dog latches onto {target} and won't let go",
+                    '{attacker} nips at {target} with chisel teeth',
+                    "{attacker} darts between {target}'s feet, biting",
+                    '{attacker} scratches at {target} in a fury',
+                    "{attacker} latches onto {target} and won't let go",
                 ],
             ),
             'sp-buffalo': (
                 'Buffalo Attacks',
                 [
-                    'The buffalo drives its horns into {target}',
-                    'The buffalo slams a ton of muscle into {target}',
-                    'The buffalo hooks {target} and tosses them aside',
-                    'The buffalo tramples {target} beneath heavy hooves',
+                    '{attacker} drives its horns into {target}',
+                    '{attacker} slams a ton of muscle into {target}',
+                    '{attacker} hooks {target} and tosses them aside',
+                    '{attacker} tramples {target} beneath heavy hooves',
                 ],
             ),
         }
@@ -4216,8 +4248,8 @@ class Command(BaseCommand):
 
     def _seed_verdant_areas(self, zone):
         # v20 brief 4 (#1): the fourth tuple element is the location-bar
-        # theme color. Spinner's Hollow has no authored color in the brief's
-        # table, so it carries the model default (#CCCCCC) until authored.
+        # theme color. Spinner's Hollow was authored by brief 5's Part D3
+        # rider (#C8CBB8 — pale web-green, kin to the Silken Cleft's).
         area_defs = [
             ('vale', 'Fernwater Vale', '#8FCF9F',
              'A green valley folded between high stone walls, its floor stitched with '
@@ -4226,7 +4258,7 @@ class Command(BaseCommand):
             ('flats', 'The Sagewind Flats', '#B4C79A',
              'Open grassland under an enormous sky, silver-green and restless. The wind '
              'never entirely stops, combing the sage in long slow waves toward the mountains.'),
-            ('hollow', "Spinner's Hollow", '#CCCCCC',
+            ('hollow', "Spinner's Hollow", '#C8CBB8',
              'A single pocket of dark beneath the valley wall, hung wall to wall with old silk.'),
             ('cleft', 'The Silken Cleft', '#D8D4C8',
              'A crack in the valley wall that goes back further than it should, silk-strung '
@@ -6003,32 +6035,35 @@ class Command(BaseCommand):
              'bench worn smooth by work. He came up from the village for the '
              'foot traffic and stayed for the shard, which he talks to, '
              'quietly, when he thinks no one is listening.',
-             {'is_repairer': True, 'attackable': False}),
+             {'is_repairer': True, 'attackable': False, 'article': ''}),
             ('essa-the-trader', 'Essa the Trader', 'normal', False,
              (30, 7, 7, 7, 6, 6, 6), 2.0, None, 'reedmere-gear', (4, 12), 5,
              'A Reedmere trader with a blanket of goods weighted at the corners '
-             'and an eye that prices you, kindly, as you approach.', {'attackable': False}),
+             'and an eye that prices you, kindly, as you approach.',
+             {'attackable': False, 'article': ''}),
             ('tavik-the-mender', 'Tavik the Mender', 'normal', False,
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (4, 12), 5,
              'A Windhome mender, cross-legged on a hide, needle and awl moving '
              'without being watched. Travelers keep appearing beside the green '
              'light, and travelers always need something sewn, hammered, or '
              'talked back into shape.',
-             {'is_repairer': True, 'attackable': False}),
+             {'is_repairer': True, 'attackable': False, 'article': ''}),
             ('sona-the-trader', 'Sona the Trader', 'normal', False,
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (6, 16), 5,
              'A trader of Windhome, goods laid out in painted order against the '
              'wind. She learned three languages from the people who appear '
-             'beside the shard and is working on a fourth.', {'attackable': False}),
+             'beside the shard and is working on a fourth.',
+             {'attackable': False, 'article': ''}),
             # The Verdant Shard
-            ('verdant-shard', 'a Verdant Shard', 'normal', False,
+            ('verdant-shard', 'Verdant Shard', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
              'A small shard of soft green light, unattached to anything, '
              'wandering the air at head height. It circles things — the water, '
              'the wind, your face — with an attention that feels less like '
              'watching and more like delight. It is a piece of an obelisk '
              'somewhere, gone out to see the world, and gladness comes off it '
-             'like warmth off a stone.', {'attackable': False}),
+             'like warmth off a stone.',
+             {'attackable': False, 'article': 'a', 'is_fixture': True}),
             # Cave insects — aggressive
             ('cave-spider', 'cave spider', 'normal', True,
              (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'insect-drops', (0, 0), 1,
@@ -6055,7 +6090,7 @@ class Command(BaseCommand):
              'The size of a cart. When the wings open, the sound arrives in '
              'your chest before your ears.', {}),
             # Bosses — aggressive
-            ('silk-matron', 'the Silk Matron', 'boss', True,
+            ('silk-matron', 'Silk Matron', 'boss', True,
              (120, 12, 14, 11, 4, 4, 12), 3.0, 'vale-spider', 'matron-loot', (50, 150), 10,
              'Pale and vast in the crown of her own silk, legs spanning more '
              'shadow than your light can argue with. She holds one wrapped '
@@ -6065,7 +6100,7 @@ class Command(BaseCommand):
               'The Silk Matron curls inward and drops from her web — and with '
               'her falls the bundle she guarded, splitting open on the stone '
               'in a spill of silk and stolen things.'}),
-            ('whistler-below', 'the Whistler Below', 'boss', True,
+            ('whistler-below', 'Whistler Below', 'boss', True,
              (260, 16, 15, 15, 4, 4, 12), 6.0, 'flats-centipede', 'whistler-loot', (50, 150), 10,
              'A centipede beyond sense, coiled through the fluted stone in '
              "glossy yards, antennae reading the wind's one endless note. This "
@@ -6075,7 +6110,7 @@ class Command(BaseCommand):
               'through the sink changes pitch — somewhere above, a rope of '
               'woven grass gives way, and a hide-wrapped cache drops to the '
               'floor.'}),
-            ('dronemother', 'the Dronemother', 'boss', True,
+            ('dronemother', 'Dronemother', 'boss', True,
              (320, 18, 12, 18, 5, 5, 11), 6.0, 'flats-beetle', 'dronemother-loot', (50, 150), 10,
              'The hive made flesh: a beetle vast as a wagon, plated in '
              'iron-dark chitin, the hum bending deeper around her. Her wings '
@@ -6085,18 +6120,21 @@ class Command(BaseCommand):
               'behind her cracks along its seams and sloughs away, revealing '
               'a hollow packed with the shining things she hoarded.'}),
             # Boss minions — aggressive, spawn-gated on their boss
-            ('matrons-brood', "one of the Matron's brood", 'normal', True,
+            ('matrons-brood', "Matron's brood", 'normal', True,
              (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'insect-drops', (0, 0), 3,
              "A spider of the Matron's brood, quick and pale, never straying "
-             'far from the silk she spun it in.', {}),
-            ('whistlers-young', "one of the Whistler's young", 'normal', True,
+             'far from the silk she spun it in.',
+             {'plural_phrase': "one of the Matron's brood"}),
+            ('whistlers-young', "Whistler's young", 'normal', True,
              (50, 13, 12, 11, 2, 2, 10), 4.0, 'flats-centipede', 'insect-drops', (0, 0), 3,
              "Young only by the Whistler's measure — already longer than your "
-             'arm, already sure of what it is.', {}),
-            ('dronemothers-swarm', "one of the Dronemother's swarm", 'normal', True,
+             'arm, already sure of what it is.',
+             {'plural_phrase': "one of the Whistler's young"}),
+            ('dronemothers-swarm', "Dronemother's swarm", 'normal', True,
              (60, 14, 10, 14, 2, 2, 9), 4.0, 'flats-beetle', 'insect-drops', (0, 0), 3,
              'A soldier of the swarm, wings half-open, holding the line its '
-             "mother's hum assigns it.", {}),
+             "mother's hum assigns it.",
+             {'plural_phrase': "one of the Dronemother's swarm"}),
         ]
 
         self._upsert_npc_definitions(npcs, 'Verdant Reach')
@@ -6107,6 +6145,11 @@ class Command(BaseCommand):
             vit, s, d, e, i, w, p = stats
             content = {
                 'name': name,
+                # v20 brief 5 (#24): article-free names; proper nouns pass
+                # article='' in extras, group-phrase minions pass
+                # plural_phrase (used verbatim by npc_display).
+                'article': extras.get('article', 'the'),
+                'plural_phrase': extras.get('plural_phrase', ''),
                 'genre_tag': extras.get('genre_tag', 'fantasy'),
                 'description': description,
                 'is_aggressive': aggressive,
@@ -6361,14 +6404,14 @@ class Command(BaseCommand):
              "appeared at the crag's foot, set up a bench, and has been "
              "mending travelers' gear beside it ever since. He calls the "
              'shard "the little lamp" and considers it excellent company.',
-             {'is_repairer': True, 'attackable': False}),
+             {'is_repairer': True, 'attackable': False, 'article': ''}),
             ('ridda-the-trader', 'Ridda the Trader', 'normal', False,
              (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (10, 24), 5,
              "Ridda trades at the mountains' door: tools, iron, and the things "
              "climbers wish they'd bought lower down. Her prices are fair and "
-             'her warnings free.', {'attackable': False}),
+             'her warnings free.', {'attackable': False, 'article': ''}),
             # The Verdant Sphere — the summit sphere
-            ('the-verdant-sphere', 'the Verdant Sphere', 'normal', False,
+            ('the-verdant-sphere', 'Verdant Sphere', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
              'A sphere of pure deep green, suspended at eye level inside the '
              'stone of the obelisk as though the stone grew around it — and '
@@ -6380,7 +6423,7 @@ class Command(BaseCommand):
              {'is_unique': True, 'is_fixture': False, 'attackable': False}),
             # The Verdant Obelisk — v19 brief 8, the Crown's twin to the
             # Heart obelisk
-            ('the-verdant-obelisk', 'the Verdant Obelisk', 'normal', False,
+            ('the-verdant-obelisk', 'Verdant Obelisk', 'normal', False,
              (1, 1, 1, 1, 1, 1, 1), 1.0, None, None, (0, 0), 1,
              'Twin to the great obelisk at the Heart of the Convergence in every '
              "proportion, this spire wears the Reach's green where its sibling "
@@ -6404,7 +6447,7 @@ class Command(BaseCommand):
              'A beetle at the scale of livestock, chitin black-green, wings '
              'that open with a sound like a door to somewhere worse.', {}),
             # Bosses — aggressive
-            ('undercrag-weaver', 'the Undercrag Weaver', 'boss', True,
+            ('undercrag-weaver', 'Undercrag Weaver', 'boss', True,
              (500, 20, 22, 18, 5, 5, 18), 9.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
              'A spider of architectural size, pale as the generations of silk '
              'it has spun beneath the mountain. High above it, snared in a '
@@ -6414,7 +6457,7 @@ class Command(BaseCommand):
               'The Undercrag Weaver sags into its own silk. High above, the '
               'web-line holding a snared strongbox parts strand by strand — '
               'then all at once, and the box crashes down and bursts open.'}),
-            ('chittering-king', 'the Chittering King', 'boss', True,
+            ('chittering-king', 'Chittering King', 'boss', True,
              (650, 24, 20, 22, 6, 6, 16), 10.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
              'A centipede of dynastic size, coiled in glossy tiers about a '
              'chest scored soft by a thousand legs across uncountable years. '
@@ -6423,7 +6466,7 @@ class Command(BaseCommand):
               'The Chittering King unclenches, segment by segment, from '
               'around the chest it has coiled about for years. The lid, '
               'scored by a thousand legs, falls open.'}),
-            ('crowned-devourer', 'the Crowned Devourer', 'boss', True,
+            ('crowned-devourer', 'Crowned Devourer', 'boss', True,
              (850, 27, 18, 27, 7, 7, 15), 10.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
              'Legend, standing on legend: a beetle vast as myth atop a hoard '
              'of every genre the rifts ever spilled, wings holding one '
@@ -6433,18 +6476,21 @@ class Command(BaseCommand):
               'hoard beneath it shifts — coins and treasures sliding free of '
               'the great shape that will never guard them again.'}),
             # Boss minions — aggressive, spawn-gated on their boss
-            ('weavers-brood', "one of the Weaver's brood", 'elite', True,
+            ('weavers-brood', "Weaver's brood", 'elite', True,
              (90, 15, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'insect-drops', (0, 0), 3,
              "A spider of the Weaver's brood, pale and quick, spun into the "
-             'world for exactly this purpose.', {}),
-            ('kings-skitterlings', "one of the King's skitterlings", 'elite', True,
+             'world for exactly this purpose.',
+             {'plural_phrase': "one of the Weaver's brood"}),
+            ('kings-skitterlings', "King's skitterlings", 'elite', True,
              (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 3,
              "A skitterling of the King's court, already terrible, keeping "
-             'the rhythm its sovereign conducts.', {}),
-            ('devourers-drones', "one of the Devourer's drones", 'elite', True,
+             'the rhythm its sovereign conducts.',
+             {'plural_phrase': "one of the King's skitterlings"}),
+            ('devourers-drones', "Devourer's drones", 'elite', True,
              (120, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 3,
              "A drone of the Devourer's chord, wings tuned to its mother's "
-             "note, holding the hoard's perimeter.", {}),
+             "note, holding the hoard's perimeter.",
+             {'plural_phrase': "one of the Devourer's drones"}),
         ]
         self._upsert_npc_definitions(npcs, 'Viridian Ridge')
 

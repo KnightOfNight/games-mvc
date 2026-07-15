@@ -34,10 +34,13 @@ class DispatchGuardTests(SimpleTestCase):
             with mock.patch.object(SkylandConsumer, 'cmd_look', boom):
                 with self.assertLogs('shyland.commands', level='ERROR') as logs:
                     await consumer.receive_json({'text': 'look'})
-            # The player got exactly one error line…
-            self.assertEqual(len(sent), 1)
-            self.assertEqual(sent[0]['category'], 'error')
-            self.assertEqual(sent[0]['text'],
+            # The player got the echo (v20 brief 5, #15) then exactly
+            # one error line…
+            self.assertEqual(len(sent), 2)
+            self.assertEqual(sent[0]['category'], 'echo')
+            self.assertEqual(sent[0]['text'], '> look')
+            self.assertEqual(sent[1]['category'], 'error')
+            self.assertEqual(sent[1]['text'],
                              'Something went wrong with that command.')
             # …the full traceback landed server-side…
             joined = '\n'.join(logs.output)
@@ -56,9 +59,12 @@ class DispatchGuardTests(SimpleTestCase):
         sent = []
         consumer = make_consumer(sent)
         asyncio.run(consumer.receive_json({'text': 'frobnicate'}))
-        self.assertEqual(len(sent), 1)
-        self.assertEqual(sent[0]['category'], 'system')
-        self.assertIn('Unknown command', sent[0]['text'])
+        # Echo precedes the result even for unrecognized commands (#15).
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[0]['category'], 'echo')
+        self.assertEqual(sent[0]['text'], '> frobnicate')
+        self.assertEqual(sent[1]['category'], 'system')
+        self.assertIn('Unknown command', sent[1]['text'])
 
 
 class CompletionRequestTests(SimpleTestCase):

@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import currency
-from .combat_utils import npc_display_name
+from .combat_utils import npc_display, npc_display_name
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
 )
@@ -79,7 +79,7 @@ def _pity_repair_line(repairer):
     template = PITY_REPAIR_LINES.get(repairer.definition.slug)
     if template:
         return template
-    return PITY_REPAIR_FALLBACK.replace('{name}', repairer.name)
+    return PITY_REPAIR_FALLBACK.replace('{name}', npc_display(repairer, capitalize=True))
 
 
 logger = logging.getLogger('shyland.envelope')
@@ -369,6 +369,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if not raw:
             return
 
+        # v20 brief 5 (#15): command echo — every submitted command, valid
+        # or not, echoes into this player's transcript before its result
+        # (including the dying-gate refusal below). Never re-broadcast to
+        # anyone else; a stamped, displayed-prefix category like output.
+        await self.send_output(f'> {raw}', 'echo')
+
         parts = raw.split(None, 1)
         verb = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ''
@@ -469,7 +475,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         aggro_npcs = await self.get_aggro_npcs_in_room(destination)
         if aggro_npcs:
             for npc in aggro_npcs:
-                await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
+                await self.send_output(
+                    f"{npc_display(npc, capitalize=True)} snarls and moves to attack!",
+                    'combat',
+                )
             session = await self.start_combat(aggro_npcs, first_attacker='npc')
             # v20 brief 4 (#2): engagement — fight feed + combat-red state.
             await self.send_fight(session)
@@ -762,7 +771,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.transfer_to_character(item, char)
             current_count += 1
 
-            await self.output(f"You pick up {display_name}.", 'system')
+            await self.output(f"You pick up {display_name}.", 'success')
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} picks up {display_name}.',
@@ -1098,10 +1107,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # Search live NPCs
         npcs = await self.get_npcs_in_room(room)
         noun_lower = args.strip().lower()
-        npc_match = next((n for n in npcs if noun_lower in n.name.lower()), None)
+        npc_match = next(
+            (n for n in npcs if noun_lower in npc_display(n).lower()), None,
+        )
 
         if npc_match is not None:
-            lines = [npc_match.name, '', f'  {npc_match.definition.description}']
+            lines = [npc_display(npc_match, capitalize=True), '',
+                     f'  {npc_match.definition.description}']
             await self.output('\n'.join(lines), 'report')
             return
 
@@ -1190,15 +1202,26 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if amount > 0:
             zone_slug = room.zone.slug if room.zone_id else None
             copper_str = display_for_zone(amount, zone_slug)
-            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "system")
+            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "success")
         return amount
+
+    @staticmethod
+    def _corpse_npc_ref(corpse, capitalize=False):
+        """Composed reference for the NPC a corpse belonged to. Falls back
+        to the name snapshot (itself composed at death) if the definition
+        has since been deleted."""
+        if corpse.npc_definition_id:
+            return npc_display(corpse.npc_definition, capitalize)
+        text = corpse.npc_name_snapshot
+        return f'{text[0].upper()}{text[1:]}' if (capitalize and text) else text
 
     async def _maybe_dispose_corpse(self, corpse):
         deleted = await self.check_corpse_empty_and_delete(corpse)
         if deleted:
+            name = corpse.display_name
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
-                'text': f"{corpse.display_name.capitalize()} slowly disappears.",
+                'text': f"{name[0].upper()}{name[1:]} slowly disappears.",
                 'category': 'room',
                 'ts': envelope_ts(),
             })
@@ -1210,12 +1233,34 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output("That is not your kill; you may not loot it.", "error")
             return
 
-        await self._loot_corpse_copper(character, room, target_corpse)
+        copper_taken = await self._loot_corpse_copper(character, room, target_corpse)
 
         contents = await self.get_corpse_contents(target_corpse)
 
         if not contents:
-            await self.output(f"{target_corpse.display_name.capitalize()} is already empty.", "system")
+            # v20 brief 5 (#28): an empty corpse answers honestly. A corpse
+            # that never had loot to give (no loot table, no coin capacity —
+            # normal-tier NPCs drop nothing by design) "carried nothing
+            # worth taking"; one this player emptied keeps a distinct,
+            # accurate line. A loot that just took the coin drop needs no
+            # complaint at all.
+            if copper_taken == 0:
+                defn = target_corpse.npc_definition
+                never_had_loot = (
+                    defn is not None
+                    and defn.loot_table_id is None
+                    and defn.currency_drop_max == 0
+                )
+                if never_had_loot:
+                    await self.output(
+                        f"{self._corpse_npc_ref(target_corpse, capitalize=True)} "
+                        "carried nothing worth taking.", "system",
+                    )
+                else:
+                    await self.output(
+                        "You've already taken everything from "
+                        f"{self._corpse_npc_ref(target_corpse)}.", "system",
+                    )
             await self._maybe_dispose_corpse(target_corpse)
             return
 
@@ -1239,7 +1284,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 break
             line = compose_item_line(item)
             await self.do_loot_item(item, character)
-            await self.output(f"You loot {line}.", "system")
+            await self.output(f"You loot {line}.", "success")
             current_count += 1
 
         await self._maybe_dispose_corpse(target_corpse)
@@ -1271,7 +1316,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     break
                 line = compose_item_line(item)
                 await self.do_loot_item(item, character)
-                await self.output(f"You loot {line}.", "system")
+                await self.output(f"You loot {line}.", "success")
                 current_count += 1
             await self._maybe_dispose_corpse(corpse)
             if capacity_hit:
@@ -1318,7 +1363,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             touched[corpse.pk] = corpse
             line = compose_item_line(item)
             await self.do_loot_item(item, character)
-            await self.output(f"You loot {line}.", "system")
+            await self.output(f"You loot {line}.", "success")
             current_count += 1
 
         for corpse in touched.values():
@@ -1342,11 +1387,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         entries = await self.get_vendor_entries(vendor)
         listable = [e for e in entries if not self._entry_exhausted(e)]
         if not listable:
-            await self.output(f'{vendor.name} has nothing left for sale.', 'report')
+            await self.output(
+                f'{npc_display(vendor, capitalize=True)} has nothing left for sale.',
+                'report',
+            )
             return
 
         char = await self.get_character_fresh()
-        lines = [f'{vendor.name} offers:']
+        lines = [f'{npc_display(vendor, capitalize=True)} offers:']
         for entry in listable:
             line = f'  {entry_display_name(entry)} — {self.format_amount(char, entry.price)}'
             if entry.stock_limit is not None:
@@ -1417,7 +1465,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             line = f'You buy {name} for {self.format_amount(char, total)}.'
         else:
             line = f'You buy {qty}x {name} for {self.format_amount(char, total)}.'
-        await self.output(line, 'system')
+        await self.output(line, 'success')
         await self.maybe_kibitz(room, vendor)
 
     async def cmd_sell(self, args):
@@ -1445,7 +1493,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 return
             name = get_display_name_with_tier(item)
             price = await self.do_sell(item, char)
-            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'system')
+            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'success')
             await self.maybe_kibitz(room, vendor)
             return
 
@@ -1466,11 +1514,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             price = await self.do_sell(item, char)
             sold += 1
             total += price
-            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'system')
+            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'success')
         if sold:
             await self.output(
                 f'Sold {sold} item{"s" if sold != 1 else ""} '
-                f'for {self.format_amount(char, total)}.', 'system',
+                f'for {self.format_amount(char, total)}.', 'success',
             )
             if skipped:
                 await self.output(
@@ -1517,12 +1565,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 if outcome == 'success':
                     repaired += 1
                     if get_item_value(item) == 0:
-                        await self.output(_pity_repair_line(repairer), 'system')
+                        await self.output(_pity_repair_line(repairer), 'success')
                     else:
                         await self.output(
                             f'{name} is restored to full condition. '
                             f'({self.format_amount(char, cost)})',
-                            'system',
+                            'success',
                         )
                 else:
                     failed += 1
@@ -1567,16 +1615,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
         elif outcome == 'success':
             if get_item_value(item) == 0:
-                await self.output(_pity_repair_line(repairer), 'system')
+                await self.output(_pity_repair_line(repairer), 'success')
             else:
                 await self.output(
-                    f'{repairer.name} restores your {name} to full condition. '
-                    f'({self.format_amount(char, cost)})', 'system',
+                    f'{npc_display(repairer, capitalize=True)} restores your {name} '
+                    f'to full condition. ({self.format_amount(char, cost)})', 'success',
                 )
         else:
             await self.output(
-                f"{repairer.name} works on your {name}, but the mending didn't "
-                f'take. ({self.format_amount(char, cost)})', 'system',
+                f"{npc_display(repairer, capitalize=True)} works on your {name}, "
+                f"but the mending didn't take. ({self.format_amount(char, cost)})",
+                'system',
             )
 
     # ------------------------------------------------------------------
@@ -1603,7 +1652,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             npc = res.items[0]
 
         if not npc.definition.attackable:
-            await self.send_output(f"The {npc.definition.name} cannot be attacked.", 'error')
+            await self.send_output(f"{npc_display(npc, capitalize=True)} cannot be attacked.", 'error')
             return
 
         display = npc_display_name(npc, npcs_in_room)
@@ -1624,7 +1673,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.send_output(f"You move to attack {display}!", 'combat')
         await self.broadcast_to_room_exclude(
-            f"{character.name} moves to attack the {npc.definition.name}!", 'combat'
+            f"{character.name} moves to attack {npc_display(npc)}!", 'combat'
         )
         session = await self.start_combat([npc], first_attacker='character', focus_npc=npc)
         # v20 brief 4 (#2): engagement — fight feed + combat-red state.
@@ -1691,7 +1740,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             aggro_npcs = await self.get_aggro_npcs_in_room(destination)
             if aggro_npcs:
                 for npc in aggro_npcs:
-                    await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
+                    await self.send_output(
+                        f"{npc_display(npc, capitalize=True)} snarls and moves to attack!",
+                        'combat',
+                    )
                 new_session = await self.start_combat(aggro_npcs, first_attacker='npc')
                 await self.send_fight(new_session)
                 await self.send_status_refresh()
@@ -1865,6 +1917,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         exclude_pk = event.get('exclude_pk')
         if exclude_pk is not None and exclude_pk == self.character_pk:
             return
+        # v20 brief 5 (#28): multi-recipient suppression (corpse decay is
+        # dropped, not deferred, for players in active combat).
+        exclude_pks = event.get('exclude_pks')
+        if exclude_pks and self.character_pk in exclude_pks:
+            return
         # v20 brief 2 (#32): ts travels with the event from its creation
         # site (broadcaster); the choke point warns if it's missing rather
         # than this handler silently restamping.
@@ -1982,7 +2039,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         other = await self.get_other_vendor_in_room(room, vendor.pk)
         if other is None:
             return
-        line = random.choice(KIBITZ_LINES).replace('{other}', other.definition.name)
+        line = random.choice(KIBITZ_LINES).replace('{other}', npc_display(other, capitalize=True))
         await self.channel_layer.group_send(self.room_group, {
             'type': 'room_message',
             'text': line,
@@ -2011,11 +2068,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         npcs = await self.get_npcs_in_room(room)
         corpses = await self.get_corpses_in_room(room)
 
-        if room.area:
-            location_header = f'[ {room.area.name} — {room.name} ]'
-        else:
-            location_header = f'[ {room.name} ]'
-
         show_long = await self._resolve_room_rendering(char, room, force_long, first_visit)
         if show_long:
             description_text = room.description
@@ -2026,57 +2078,53 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             description_text = room.brief_description
             area_context = ''
 
-        text = (
-            f'{location_header}\n'
-            f'{area_context}'
-            f'{description_text}'
-        )
+        # v20 brief 5 (#14): the ruled section order — header, prose,
+        # Exits, Who's here?, What's here? — as ONE structured message.
+        # Sections with no content are omitted entirely; the client renders
+        # the structure (header labels #39, area color from the model —
+        # the same value the location bar shows).
+        living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
+        fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
 
-        # v20 brief 2 amendment 1 (#56): the whole room block — header,
-        # prose, players, exits, and the occupant/corpse lines below — is a
-        # rendering, not an event, so it carries the 'room-render' category
-        # (unstamped on the client; also the styling hook for #14).
+        who_lines = [f'{npc_display(npc)} is here.' for npc in living_npcs]
+
+        # What's here? is THE things/items section: fixtures, corpses, and
+        # the ground items (one composed line per distinct item, identical
+        # lines collapsed to xN). The brief-3 "On the ground:" section is
+        # absorbed here.
+        what_lines = [f'{npc_display(npc)} is here.' for npc in fixture_npcs]
+        what_lines += [
+            f'{corpse.display_name[0].upper()}{corpse.display_name[1:]} lies here.'
+            for corpse in corpses
+        ]
+        room_items = await self.get_room_items(room)
+        grouped = {}
+        for item in room_items:
+            key = compose_item_line(item)
+            if key in grouped:
+                grouped[key][1] += 1
+            else:
+                grouped[key] = [item, 1]
+        what_lines += [compose_item_line(item, count) for item, count in grouped.values()]
+
+        # v20 brief 2 amendment 1 (#56): the whole room block is a
+        # rendering, not an event — 'room-render', unstamped on the client.
         await self.send_json({
             'type': 'output',
             'category': 'room-render',
             'enter': entering,
-            'text': text,
+            'header': {
+                'area_name': room.area.name if room.area else None,
+                'area_color': room.area.theme_color if room.area else None,
+                'room_name': room.name,
+            },
+            'text': f'{area_context}{description_text}',
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
+            'who': who_lines,
+            'what': what_lines,
             'ts': envelope_ts(),
         })
-
-        living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
-        fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
-
-        if living_npcs:
-            await self.output("Who's here?", 'room-render')
-            for npc in living_npcs:
-                await self.output(f"{npc.name} is here.", 'room-render')
-
-        if fixture_npcs:
-            await self.output("What's here?", 'room-render')
-            for npc in fixture_npcs:
-                await self.output(f"{npc.name} is here.", 'room-render')
-
-        for corpse in corpses:
-            await self.output(f"The corpse of {corpse.npc_name_snapshot} lies here.", 'room-render')
-
-        # v20 brief 3 (#48): ground items, one composed line per distinct
-        # item (identical lines collapse to xN). Part of the room
-        # rendering, so 'room-render' like the sections above.
-        room_items = await self.get_room_items(room)
-        if room_items:
-            grouped = {}
-            for item in room_items:
-                key = compose_item_line(item)
-                if key in grouped:
-                    grouped[key][1] += 1
-                else:
-                    grouped[key] = [item, 1]
-            await self.output("On the ground:", 'room-render')
-            for item, count in grouped.values():
-                await self.output(f"  {compose_item_line(item, count)}", 'room-render')
 
         await self.send_json(await self._status_payload(char, room))
 

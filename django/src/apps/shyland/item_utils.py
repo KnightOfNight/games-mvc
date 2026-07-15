@@ -278,6 +278,7 @@ def create_corpse(npc_instance, killer):
     from datetime import timedelta
     from django.utils import timezone
     from .models import Corpse, CORPSE_DECAY_MINUTES
+    from .combat_utils import npc_display
 
     definition = npc_instance.definition
     mk_tier    = npc_instance.mk_tier
@@ -291,7 +292,10 @@ def create_corpse(npc_instance, killer):
 
     corpse = Corpse.objects.create(
         npc_definition=definition,
-        npc_name_snapshot=definition.name,
+        # v20 brief 5 (#24): the snapshot is the composed reference
+        # ("the Silk Matron", "one of the Matron's brood") so corpse lines
+        # stay grammatical even if the definition is later deleted.
+        npc_name_snapshot=npc_display(definition),
         current_room=npc_instance.current_room,
         killed_by=killer,
         decay_at=timezone.now() + timedelta(minutes=CORPSE_DECAY_MINUTES),

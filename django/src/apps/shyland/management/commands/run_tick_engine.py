@@ -75,7 +75,7 @@ class Command(BaseCommand):
         from apps.shyland.combat_utils import (
             get_npc_stats, roll_initiative, resolve_hit, calculate_damage,
             get_npc_health_description, apply_death_penalties,
-            apply_npc_effects, xp_for_kill, npc_display_name,
+            apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
 
@@ -380,7 +380,7 @@ class Command(BaseCommand):
                     acuity_damage_modifier,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
-                    npc_display_name,
+                    npc_display, npc_display_name,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -421,8 +421,11 @@ class Command(BaseCommand):
                         npc_stats = get_npc_stats(npc)
                         hit_result = resolve_hit(character.stat_dex, npc_stats['dex'])
 
+                        # v20 brief 5 (#13): semantic combat categories —
+                        # the client palette colors these; the server never
+                        # sends colors.
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"You miss {display}.", 'combat', None))
+                            messages.append((character.pk, f"You miss {display}.", 'combat-miss', None))
                             continue
 
                         if weapon_item:
@@ -462,7 +465,9 @@ class Command(BaseCommand):
                         msg = f"{flavor} for {damage_int} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" {display[0].upper()}{display[1:]} {health_desc}."
-                        messages.append((character.pk, msg, 'combat', None))
+                        out_category = ('combat-crit-out' if hit_result == 'critical'
+                                        else 'combat-hit-out')
+                        messages.append((character.pk, msg, out_category, None))
 
                         if npc.vitality_current <= 0:
                             npc.is_alive = False
@@ -476,8 +481,8 @@ class Command(BaseCommand):
 
                             create_corpse(npc, character)
 
-                            messages.append((character.pk, f"You have slain {display}! (+{xp} XP)", 'combat', None))
-                            room_messages.append((session.room_id, f"{character.name} has slain the {npc.definition.name}!", 'combat', character.pk))
+                            messages.append((character.pk, f"You have slain {display}! (+{xp} XP)", 'reward', None))
+                            room_messages.append((session.room_id, f"{character.name} has slain {npc_display(npc)}!", 'combat', character.pk))
                             if npc_def.death_message:
                                 room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
 
@@ -496,7 +501,7 @@ class Command(BaseCommand):
                                     f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}. "
                                     f"You have {pts} unspent stat point{'s' if pts != 1 else ''}. "
                                     f"Type 'spend' to allocate them.",
-                                    'system', None
+                                    'reward', None
                                 ))
 
                             statuses.append((character.pk, self._build_status(character)))
@@ -530,8 +535,13 @@ class Command(BaseCommand):
                         npc_stats = get_npc_stats(npc)
                         hit_result = resolve_hit(npc_stats['dex'], character.stat_dex)
 
+                        # v20 brief 5 (#24): attacker references compose
+                        # through the display helper — ordinal-aware,
+                        # article-aware, capitalized sentence-initial.
+                        attacker_ref = npc_display_name(npc, live_npcs, capitalize=True)
+
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"The {npc.definition.name} misses you.", 'combat', None))
+                            messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss', None))
                             continue
 
                         base_damage = _random.uniform(
@@ -576,7 +586,7 @@ class Command(BaseCommand):
                             npc_pool = npc.definition.unarmed_message_pool
                             raw = get_unarmed_message(
                                 npc_pool, character.name,
-                                attacker_name=npc.definition.name,
+                                attacker_name=attacker_ref,
                                 fallback_slug='npc-default',
                             )
                             flavor = raw.rstrip('.')
@@ -589,7 +599,9 @@ class Command(BaseCommand):
                             if effect_msgs:
                                 msg += " " + " and ".join(effect_msgs) + "."
 
-                            messages.append((character.pk, msg, 'combat', None))
+                            # v20 brief 5 (#13): incoming hits are their own
+                            # category — attack direction readable at a glance.
+                            messages.append((character.pk, msg, 'combat-hit-in', None))
 
                         statuses.append((character.pk, self._build_status(character)))
 
@@ -624,10 +636,15 @@ class Command(BaseCommand):
             name = corpse.npc_name_snapshot
             room_id = corpse.current_room_id
             await self.delete_corpse(corpse.pk)
+            # v20 brief 5 (#28): the decay line is noise to anyone mid-fight
+            # — dropped for players in an active combat session, not queued
+            # or deferred. Non-fighting players in the room still see it.
+            fighting_pks = await self.get_fighting_character_pks_in_room(room_id)
             await self.broadcast_to_room(
                 room_id,
                 f"The corpse of {name} slowly crumbles to nothing.",
-                category='room',
+                category='system',
+                exclude_pks=fighting_pks,
             )
             logger.info(f"Corpse decayed: {name} in room {room_id}")
 
@@ -635,6 +652,18 @@ class Command(BaseCommand):
     def get_expired_corpses(self, now):
         from apps.shyland.models import Corpse
         return list(Corpse.objects.filter(decay_at__lte=now).select_related('npc_definition'))
+
+    @database_sync_to_async
+    def get_fighting_character_pks_in_room(self, room_id):
+        from apps.shyland.models import Character
+        if room_id is None:
+            return []
+        return list(
+            Character.objects.filter(
+                current_room_id=room_id,
+                combat_sessions__is_active=True,
+            ).values_list('pk', flat=True).distinct()
+        )
 
     @database_sync_to_async
     def delete_corpse(self, pk):
@@ -1143,7 +1172,10 @@ class Command(BaseCommand):
             await self.delete_pending_dialogue_response(row.pk)
             return
 
-        npc_name = row.npc_instance.definition.name
+        # v20 brief 5 (#24): dialogue attributions compose through the
+        # display helper like every other NPC-naming template.
+        from apps.shyland.combat_utils import npc_display
+        npc_name = npc_display(row.npc_instance.definition, capitalize=True)
 
         if row.position == 1:
             connective = await self.draw_connective('second')
@@ -1267,7 +1299,8 @@ class Command(BaseCommand):
             }
         )
 
-    async def broadcast_to_room(self, room_id, text, category='room', exclude_pk=None):
+    async def broadcast_to_room(self, room_id, text, category='room', exclude_pk=None,
+                                exclude_pks=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
         await channel_layer.group_send(
@@ -1277,6 +1310,7 @@ class Command(BaseCommand):
                 'text': text,
                 'category': category,
                 'exclude_pk': exclude_pk,
+                'exclude_pks': list(exclude_pks) if exclude_pks else None,
                 'ts': envelope_ts(),
             }
         )

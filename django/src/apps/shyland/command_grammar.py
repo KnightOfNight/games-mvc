@@ -132,14 +132,19 @@ class _EntryAccessor:
 
 
 class _NpcAccessor:
-    """NpcInstance candidates (attack/kill)."""
+    """NpcInstance candidates (attack/kill). v20 brief 5 (#24): names are
+    article-free on the model; matching and disambiguation both use the
+    composed reference (article/plural_phrase included) so 'attack the
+    silk matron' keeps working and refusal lists read naturally."""
     @staticmethod
     def tokens(npc):
-        return npc.definition.name.lower().split()
+        from .combat_utils import npc_display
+        return npc_display(npc).lower().split()
 
     @staticmethod
     def base_name(npc):
-        return npc.definition.name
+        from .combat_utils import npc_display
+        return npc_display(npc)
 
     @staticmethod
     def def_key(npc):

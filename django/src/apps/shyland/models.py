@@ -656,8 +656,25 @@ class NpcDefinition(models.Model):
         ('cosmic',    'Cosmic'),
     ]
 
-    name            = models.CharField(max_length=200)
+    name            = models.CharField(
+        max_length=200,
+        help_text='Article-free (authoring law, enforced by the seed verify): '
+                  '"Silk Matron", "cave spider" — never "the Silk Matron".',
+    )
     slug            = models.SlugField(unique=True)
+    # v20 brief 5 (#24): composed references are article + name (or
+    # plural_phrase verbatim) via combat_utils.npc_display — templates
+    # never prepend their own articles.
+    article         = models.CharField(
+        max_length=8, default='the', blank=True,
+        help_text='Article used in composed references ("the", "a", "an"). '
+                  'Blank for proper nouns (Morra, VND-9).',
+    )
+    plural_phrase   = models.CharField(
+        max_length=64, blank=True,
+        help_text='Used verbatim as the composed reference when set — for '
+                  'group-phrase names ("one of the Matron\'s brood").',
+    )
     description     = models.TextField(help_text="Shown when a player examines the NPC.")
     genre_tag       = models.CharField(max_length=20, choices=GENRE_TAG_CHOICES)
 

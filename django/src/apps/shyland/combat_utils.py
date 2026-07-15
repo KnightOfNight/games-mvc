@@ -16,19 +16,46 @@ MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item sy
 ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
 
 
-def npc_display_name(npc, npcs_in_room):
-    """'the black bear' when unique in the room, 'the second black bear'
-    when multiple NPCs share the definition name. Positional: index within
-    the same-name NPCs in room parse order (the order parse_npc_noun uses).
-    Not a stable per-instance number — it shifts as same-name NPCs die."""
-    name = npc.definition.name
+def _capitalize_first(text):
+    return text[0].upper() + text[1:] if text else text
+
+
+def npc_display(npc, capitalize=False):
+    """v20 brief 5 (#24): THE composer for every player-visible NPC
+    reference. Accepts an NpcInstance or an NpcDefinition. plural_phrase
+    verbatim when set; else article + name; else the bare name (proper
+    nouns). capitalize=True uppercases only the first character, for
+    sentence-initial use. Message templates never prepend their own
+    articles — they call this."""
+    definition = getattr(npc, 'definition', npc)
+    if definition.plural_phrase:
+        text = definition.plural_phrase
+    elif definition.article:
+        text = f"{definition.article} {definition.name}"
+    else:
+        text = definition.name
+    return _capitalize_first(text) if capitalize else text
+
+
+def npc_display_name(npc, npcs_in_room, capitalize=False):
+    """npc_display plus ordinal disambiguation: 'the black bear' when
+    unique in the room, 'the second black bear' when multiple NPCs share
+    the definition name. Positional: index within the same-name NPCs in
+    room parse order. Not a stable per-instance number — it shifts as
+    same-name NPCs die. Proper nouns and plural_phrase names never take
+    an ordinal (the phrase is inherently non-specific)."""
+    definition = npc.definition
+    if definition.plural_phrase or not definition.article:
+        return npc_display(npc, capitalize)
+    name = definition.name
     same_name = [n for n in npcs_in_room if n.definition.name == name]
     if len(same_name) <= 1:
-        return f"the {name}"
+        return npc_display(npc, capitalize)
     index = next((i for i, n in enumerate(same_name) if n.pk == npc.pk), None)
     if index is None or index >= len(ORDINALS):
-        return f"the {name}"
-    return f"the {ORDINALS[index]} {name}"
+        return npc_display(npc, capitalize)
+    text = f"{definition.article} {ORDINALS[index]} {name}"
+    return _capitalize_first(text) if capitalize else text
 
 
 def acuity_damage_modifier(character):
@@ -194,6 +221,9 @@ def get_unarmed_message(attacker_pool, target_name, attacker_name=None, fallback
     Substitution is literal str.replace, not .format: '{target}' -> target_name,
     '{attacker}' -> attacker_name when provided. Stray braces in prose are harmless.
     Caller is responsible for prefetching pool.messages before calling.
+    v20 brief 5 (#24): attacker_name must arrive composed (npc_display /
+    npc_display_name, capitalized for sentence-initial use) — no template
+    or fallback prepends an article.
     """
     import random
     messages = list(attacker_pool.messages.all()) if attacker_pool else []
@@ -206,7 +236,7 @@ def get_unarmed_message(attacker_pool, target_name, attacker_name=None, fallback
             messages = []
     if not messages:
         if attacker_name:
-            return f"The {attacker_name} strikes {target_name}."
+            return f"{attacker_name} strikes {target_name}."
         return f"You strike {target_name}."
     template = random.choice(messages).template
     text = template.replace('{target}', target_name)
