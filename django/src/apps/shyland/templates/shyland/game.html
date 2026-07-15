@@ -20,41 +20,61 @@
     --bar-v: #4caf7d;
     --bar-a: #7b68ee;
     --bar-l: #e07040;
+    /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
+       colon separators neutral chrome gray. Zone/area colors arrive from
+       the server per message. */
+    --loc-room: #E8E4D8;
+    --loc-sep: #8A887F;
+    /* v20 brief 4 (#2): combat-red family base values. The v20 output
+       palette derives its shades from this family later. */
+    --combat-bg: #3A1212;
+    --combat-accent: #E24B4A;
+    --conn-green: #4caf7d;
+    --conn-amber: #e0a840;
+    --conn-gray: #6b6b80;
   }
 
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
 
-  /* v20 brief 1 (#36): right pane is fixed 300px content width, top to
-     bottom; baseline layout is 1000px total (left 700 + right 300). When
-     the window widens only the left regions grow. */
+  /* v20 brief 4 (#2): the ruled desktop skeleton. Baseline 1000px total;
+     the right pane keeps a fixed 300px content width top-to-bottom and
+     only the left regions grow when the window widens. Left column,
+     stacked: location bar / output / command bar. */
   #shell {
     display: grid;
-    grid-template-rows: 44px 1fr 42px;
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     height: 100vh;
-    gap: 0;
   }
 
-  /* Header */
-  #header {
-    grid-column: 1 / -1;
+  /* Location bar (#1): one line of text high, per-segment spans. The Area
+     segment truncates first (huge flex-shrink), then Room; Zone never. */
+  #loc-bar {
+    grid-column: 1;
+    grid-row: 1;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
+    padding: 6px 14px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: bold;
   }
-  #room-name { font-weight: bold; color: var(--room); font-size: 15px; }
-  #bars { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-top: 8px; }
-  .bar { display: flex; align-items: center; gap: 6px; }
-  .bar-label { color: var(--muted); }
-  .bar-v { color: var(--bar-v); }
-  .bar-a { color: var(--bar-a); }
-  .bar-l { color: var(--bar-l); }
+  .loc-seg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #loc-zone { flex: 0 0 auto; }
+  #loc-area { flex: 0 10000 auto; min-width: 0; }
+  #loc-room { flex: 0 1 auto; min-width: 0; color: var(--loc-room); }
+  .loc-sep { flex: 0 0 auto; color: var(--loc-sep); white-space: pre; }
+  #loc-bar.no-area #loc-area, #loc-bar.no-area #loc-sep-area { display: none; }
+  #loc-bar.no-zone #loc-zone, #loc-bar.no-zone #loc-sep-zone { display: none; }
 
-  /* Output */
+  /* Output: the one unified scrolling pane for ALL output. */
   #output-wrap {
+    grid-column: 1;
+    grid-row: 2;
     overflow-y: auto;
     padding: 10px 14px;
     background: var(--bg);
@@ -79,19 +99,53 @@
   #cmd::placeholder            { color: var(--muted); }
   #cmd.disconnected::placeholder { color: var(--error); font-weight: bold; }
 
-  /* Side panel: stats at top, map fixed 300×300 at the bottom. The space
-     between is left as-is for now (a later v20 brief fills it). */
+  /* Right pane (v20 brief 4, #2): stats top, fight info middle
+     (scrolling), map fixed 300×300 at the bottom. */
   #side {
+    grid-column: 2;
+    grid-row: 1 / -1;
     display: flex;
     flex-direction: column;
     background: var(--surface);
-    overflow-y: auto;
     font-size: 12px;
     color: var(--muted);
+    min-height: 0;
   }
   #side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
-  #side-stats { padding: 10px; }
-  #side-spacer { flex: 1; }
+  #side-stats {
+    flex: none;
+    padding: 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
+     Stat text colors unchanged. */
+  #side-stats.in-combat { background: var(--combat-bg); border-bottom-color: var(--combat-accent); }
+  #side-stats.in-combat h2 { color: var(--combat-accent); }
+  #bars { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-top: 8px; }
+  .bar { display: flex; align-items: center; gap: 6px; }
+  .bar-label { color: var(--muted); }
+  .bar-v { color: var(--bar-v); }
+  .bar-a { color: var(--bar-a); }
+  .bar-l { color: var(--bar-l); }
+
+  /* Fight info (#2): one row per enemy; scrolls on overflow; completely
+     empty outside combat. */
+  #side-fight {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--surface);
+  }
+  .fight-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .fight-focus { flex: none; width: 10px; color: var(--combat-accent); font-weight: bold; }
+  .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--combat-accent); }
+  .fight-fill { height: 100%; background: var(--combat-accent); }
+  .fight-nums { flex: none; color: var(--muted); font-size: 11px; }
+
+  /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom. */
   #map-wrap {
     flex: none;
     width: 300px;
@@ -109,19 +163,23 @@
   .map-badge { fill: var(--muted); font-size: 8px; font-family: 'Courier New', Courier, monospace; }
   .map-badge.here { fill: var(--bg); font-weight: bold; }
 
-  /* Input row */
-  #input-row {
-    grid-column: 1 / -1;
+  /* Command bar (v20 brief 4): send button lives inside it; the
+     connection indicator (#31) sits at its right end, before the button. */
+  #cmd-bar {
+    grid-column: 1;
+    grid-row: 3;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 10px;
+    padding: 6px 10px;
     background: var(--surface);
     border-top: 1px solid var(--border);
+    border-right: 1px solid var(--border);
   }
   #prompt { color: var(--accent); font-size: 15px; user-select: none; }
   #cmd {
     flex: 1;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
@@ -130,7 +188,16 @@
     font-size: 14px;
     caret-color: var(--accent);
   }
+  #conn { flex: none; display: flex; align-items: center; gap: 5px; }
+  #conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--conn-gray); }
+  #conn-ms { color: var(--muted); font-size: 11px; min-width: 4ch; text-align: right; }
+  #conn.conn-green #conn-dot { background: var(--conn-green); }
+  #conn.conn-amber #conn-dot { background: var(--conn-amber); }
+  #conn.conn-red   #conn-dot { background: var(--combat-accent); animation: conn-pulse 1s ease-in-out infinite; }
+  #conn.conn-gray  #conn-dot { background: var(--conn-gray); }
+  @keyframes conn-pulse { 50% { opacity: .25; } }
   #send-btn {
+    flex: none;
     padding: 4px 14px;
     background: var(--accent);
     color: #fff;
@@ -149,14 +216,29 @@
     clip: rect(0,0,0,0); white-space: nowrap; border: 0;
   }
 
-  /* Phone: hide side panel by default, show via toggle (the map lives in
-     the panel and must never break the terminal) */
-  #side-toggle { display: none; }
+  /* Phone stacking (v20 brief 4 §0): location bar → compact stats strip
+     (fight info directly under it, only while combat is active) →
+     output (flex) → map below the output, reachable by scroll → command
+     bar pinned last (sticky). The terminal is primary. The right pane
+     dissolves (display: contents) so its children join the stack. */
   @media (max-width: 600px) {
-    #shell { grid-template-columns: 1fr; }
-    #side { display: none; position: fixed; top: 44px; right: 0; bottom: 42px; width: 300px; max-width: 100vw; z-index: 10; border-left: 1px solid var(--border); }
-    #side.open { display: flex; }
-    #side-toggle { display: inline-block; cursor: pointer; color: var(--muted); font-size: 18px; background: none; border: none; }
+    #shell {
+      display: flex;
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+      min-height: 100svh;
+    }
+    #side { display: contents; }
+    #loc-bar   { order: 1; border-right: none; }
+    #side-stats { order: 2; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    #side-stats h2 { display: none; }
+    #bars { flex-direction: row; gap: 14px; margin-top: 0; }
+    #side-fight { order: 3; display: none; flex: none; max-height: 96px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    #shell.has-fight #side-fight { display: block; }
+    #output-wrap { order: 4; border-right: none; height: calc(100vh - 150px); height: calc(100svh - 150px); min-height: 240px; }
+    #map-wrap { order: 5; margin: 0 auto; border: 1px solid var(--border); }
+    #cmd-bar { order: 6; position: sticky; bottom: 0; z-index: 10; border-right: none; }
   }
 </style>
 {% endblock %}
@@ -164,10 +246,9 @@
 {% block content %}
 <div id="shell">
 
-  <header id="header">
-    <span id="room-name">Connecting…</span>
-    <button id="side-toggle" aria-label="Toggle side panel">☰</button>
-  </header>
+  <div id="loc-bar" class="no-zone no-area">
+    <span id="loc-zone" class="loc-seg"></span><span id="loc-sep-zone" class="loc-sep">: </span><span id="loc-area" class="loc-seg"></span><span id="loc-sep-area" class="loc-sep">: </span><span id="loc-room" class="loc-seg">Connecting…</span>
+  </div>
 
   <main id="output-wrap">
     <div id="output" role="log" aria-live="polite" aria-label="Game output" aria-atomic="false"></div>
@@ -182,7 +263,10 @@
         <span class="bar"><span class="bar-label">L</span><span id="bar-l" class="bar-l">—</span></span>
       </div>
     </div>
-    <div id="side-spacer"></div>
+    <!-- v20 brief 4 (#2): fight info — the map's accessible source of
+         truth remains the combat text in the output; this pane is a
+         visual summary. -->
+    <div id="side-fight" aria-hidden="true"></div>
     <!-- v20 brief 1 (#36): the map is decorative for assistive tech — room
          descriptions and exits in the output remain the accessible source
          of truth; the map adds no information not already present in text. -->
@@ -194,10 +278,15 @@
   <!-- Assertive live region for combat alerts (off-screen) -->
   <div id="combat-live" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
-  <div id="input-row">
+  <div id="cmd-bar">
     <span id="prompt" aria-hidden="true">&gt;</span>
     <input id="cmd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
            spellcheck="false" aria-label="Command input" placeholder="Connecting…" />
+    <!-- v20 brief 4 (#31): connection indicator. Accessible label updates
+         but this is deliberately NOT a live region — no announcements. -->
+    <span id="conn" class="conn-gray" role="img" aria-label="Connecting">
+      <span id="conn-dot" aria-hidden="true"></span><span id="conn-ms" aria-hidden="true"></span>
+    </span>
     <button id="send-btn">SEND</button>
   </div>
 
@@ -205,18 +294,24 @@
 
 <script>
 (function () {
+  const shell    = document.getElementById('shell');
   const output   = document.getElementById('output');
   const outputWrap = document.getElementById('output-wrap');
   const cmd      = document.getElementById('cmd');
   const sendBtn  = document.getElementById('send-btn');
-  const roomName = document.getElementById('room-name');
+  const locBar   = document.getElementById('loc-bar');
+  const locZone  = document.getElementById('loc-zone');
+  const locArea  = document.getElementById('loc-area');
+  const locRoom  = document.getElementById('loc-room');
   const barV     = document.getElementById('bar-v');
   const barA     = document.getElementById('bar-a');
   const barL     = document.getElementById('bar-l');
+  const sideStats  = document.getElementById('side-stats');
+  const sideFight  = document.getElementById('side-fight');
   const combatLive = document.getElementById('combat-live');
-  const sidePanel  = document.getElementById('side');
-  const sideToggle = document.getElementById('side-toggle');
   const mapSvg     = document.getElementById('map');
+  const conn       = document.getElementById('conn');
+  const connMs     = document.getElementById('conn-ms');
 
   const history = [];
   let histIdx = -1;
@@ -233,32 +328,114 @@
   let tabState = null;        // { base, options, idx }
   let pendingComplete = null; // line text awaiting a server reply
 
+  // ------------------------------------------------------------------
+  // Connection + indicator (v20 brief 4, #31)
+  // ------------------------------------------------------------------
+  // Client pings every 10s with an incrementing nonce; the server echoes
+  // it back and RTT is computed from the round-trip. Green: fresh pong,
+  // RTT < 250ms. Amber: RTT >= 250ms or one missed pong. Red pulsing:
+  // reconnection in progress. Gray: disconnected/closed.
+
+  const PING_INTERVAL_MS = 10000;
+  const RTT_DEGRADED_MS = 250;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws/shyland/`);
+  const wsUrl = `${proto}://${location.host}/ws/shyland/`;
 
-  ws.addEventListener('open', () => {
-    cmd.classList.remove('disconnected');
-    cmd.placeholder = 'Connected to Shyland. Enter a command…';
-    cmd.focus();
-  });
+  let ws = null;
+  let reconnectDelay = 1000;
+  let pingTimer = null;
+  let pingNonce = 0;
+  let awaitingNonce = null;   // last ping not yet answered
+  let pingSent = {};          // nonce -> performance.now() at send
+  let lastRtt = null;
+  let missedPongs = 0;
 
-  ws.addEventListener('close', () => {
-    if (quitting) return;
-    cmd.classList.add('disconnected');
-    cmd.placeholder = 'Connection closed. Refresh to reconnect.';
-  });
+  function setConn(state, label, ms) {
+    conn.className = 'conn-' + state;
+    conn.setAttribute('aria-label', label);
+    connMs.textContent = (ms === null || ms === undefined) ? '' : ms + 'ms';
+  }
 
-  ws.addEventListener('error', () => {
-    cmd.classList.add('disconnected');
-    cmd.placeholder = 'Connection error. Refresh to reconnect.';
-  });
+  function updateConnHealth() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (missedPongs >= 1) {
+      setConn('amber', 'Connection degraded', lastRtt);
+    } else if (lastRtt !== null && lastRtt >= RTT_DEGRADED_MS) {
+      setConn('amber', 'Connected, ' + lastRtt + ' ms (degraded)', lastRtt);
+    } else if (lastRtt !== null) {
+      setConn('green', 'Connected, ' + lastRtt + ' ms', lastRtt);
+    }
+  }
 
-  ws.addEventListener('message', (e) => {
+  function sendPing() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (awaitingNonce !== null) {
+      missedPongs++;
+      updateConnHealth();
+    }
+    pingNonce++;
+    awaitingNonce = pingNonce;
+    pingSent[pingNonce] = performance.now();
+    ws.send(JSON.stringify({ type: 'ping', nonce: pingNonce }));
+  }
+
+  function stopPings() {
+    if (pingTimer !== null) { clearInterval(pingTimer); pingTimer = null; }
+    awaitingNonce = null;
+    pingSent = {};
+  }
+
+  function handlePong(msg) {
+    const sentAt = pingSent[msg.nonce];
+    if (sentAt === undefined) return;
+    delete pingSent[msg.nonce];
+    if (msg.nonce === awaitingNonce) awaitingNonce = null;
+    lastRtt = Math.max(1, Math.round(performance.now() - sentAt));
+    missedPongs = 0;
+    updateConnHealth();
+  }
+
+  function connect() {
+    ws = new WebSocket(wsUrl);
+
+    ws.addEventListener('open', () => {
+      reconnectDelay = 1000;
+      lastRtt = null;
+      missedPongs = 0;
+      cmd.classList.remove('disconnected');
+      cmd.placeholder = 'Connected to Shyland. Enter a command…';
+      cmd.focus();
+      // Indicator returns to green on the first pong.
+      stopPings();
+      sendPing();
+      pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
+    });
+
+    ws.addEventListener('close', () => {
+      stopPings();
+      lastRtt = null;
+      missedPongs = 0;
+      if (quitting) {
+        setConn('gray', 'Disconnected', null);
+        return;
+      }
+      cmd.classList.add('disconnected');
+      cmd.placeholder = 'Connection lost. Reconnecting…';
+      setConn('red', 'Reconnecting', null);
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    });
+
+    ws.addEventListener('message', onMessage);
+  }
+
+  function onMessage(e) {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
 
     if (msg.event === 'quit') {
       quitting = true;
+      setConn('gray', 'Disconnected', null);
       // Let the farewell line render (and be announced) before navigating.
       setTimeout(() => { window.location.href = '{% url "home" %}'; }, 1000);
       return;
@@ -280,9 +457,14 @@
         }
       }
     } else if (msg.type === 'redirect' && msg.url) {
+      quitting = true;
       window.location.href = msg.url;
     } else if (msg.type === 'map') {
       renderMap(msg);
+    } else if (msg.type === 'fight') {
+      renderFight(msg);
+    } else if (msg.type === 'pong') {
+      handlePong(msg);
     } else if (msg.type === 'verbs') {
       if (Array.isArray(msg.verbs)) verbList = msg.verbs;
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
@@ -290,7 +472,12 @@
       applyCompletion(msg);
     } else if (msg.type === 'status') {
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
-      if (msg.room_name) roomName.textContent = msg.room_name;
+      updateLocation(msg);
+      // v20 brief 4 (#2): combat-membership boolean drives the stats
+      // section's combat-red state.
+      if (typeof msg.in_combat === 'boolean') {
+        sideStats.classList.toggle('in-combat', msg.in_combat);
+      }
       barV.textContent = msg.vitality_max !== undefined
         ? `${msg.vitality} / ${msg.vitality_max}`
         : `${msg.vitality}`;
@@ -299,7 +486,65 @@
         ? `${msg.longevity} / ${msg.longevity_max}`
         : `${msg.longevity}`;
     }
-  });
+  }
+
+  // v20 brief 4 (#1): location bar — Zone: Area: Room, colors delivered
+  // by the server (nothing computed client-side). Area (and its colon)
+  // is omitted when the room has no Area.
+  function updateLocation(msg) {
+    if (msg.zone_name !== undefined) {
+      locZone.textContent = msg.zone_name || '';
+      locZone.style.color = msg.zone_color || '#CCCCCC';
+      locBar.classList.toggle('no-zone', !msg.zone_name);
+      const hasArea = !!msg.area_name;
+      locArea.textContent = hasArea ? msg.area_name : '';
+      locArea.style.color = hasArea ? (msg.area_color || '#CCCCCC') : '';
+      locBar.classList.toggle('no-area', !hasArea);
+    }
+    if (msg.room_name !== undefined && msg.room_name !== '') {
+      locRoom.textContent = msg.room_name;
+    }
+  }
+
+  // v20 brief 4 (#2): fight-info pane. One row per enemy: focus marker,
+  // name, hp bar, hp/hp_max numerals. Completely empty when inactive.
+  function renderFight(msg) {
+    sideFight.innerHTML = '';
+    const active = msg.active === true;
+    shell.classList.toggle('has-fight', active);
+    if (!active || !Array.isArray(msg.enemies)) return;
+    msg.enemies.forEach((enemy) => {
+      const row = document.createElement('div');
+      row.className = 'fight-row';
+
+      const focus = document.createElement('span');
+      focus.className = 'fight-focus';
+      focus.textContent = enemy.focused ? '»' : '';
+      row.appendChild(focus);
+
+      const name = document.createElement('span');
+      name.className = 'fight-name';
+      name.textContent = enemy.name;
+      row.appendChild(name);
+
+      const bar = document.createElement('div');
+      bar.className = 'fight-bar';
+      const fill = document.createElement('div');
+      fill.className = 'fight-fill';
+      const hpMax = Number(enemy.hp_max) || 0;
+      const hp = Math.max(0, Math.min(Number(enemy.hp) || 0, hpMax));
+      fill.style.width = hpMax > 0 ? ((hp / hpMax) * 100) + '%' : '0%';
+      bar.appendChild(fill);
+      row.appendChild(bar);
+
+      const nums = document.createElement('span');
+      nums.className = 'fight-nums';
+      nums.textContent = `${hp}/${hpMax}`;
+      row.appendChild(nums);
+
+      sideFight.appendChild(row);
+    });
+  }
 
   // v20 brief 1 (#36): map renderer. North is up; fixed 9×9 cell window
   // (radius 4) centered on the current room, no zoom; rooms outside the
@@ -447,7 +692,7 @@
 
   function send() {
     const text = cmd.value.trim();
-    if (!text || ws.readyState !== WebSocket.OPEN) return;
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
     history.unshift(text);
     if (history.length > 100) history.pop();
     histIdx = -1;
@@ -495,7 +740,7 @@
       return;
     }
     // Argument position: server-computed candidates.
-    if (ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     pendingComplete = line;
     ws.send(JSON.stringify({ type: 'complete', text: line }));
   }
@@ -519,9 +764,7 @@
     }
   });
 
-  sideToggle.addEventListener('click', () => {
-    sidePanel.classList.toggle('open');
-  });
+  connect();
 })();
 </script>
 {% endblock %}

@@ -75,7 +75,7 @@ class Command(BaseCommand):
         from apps.shyland.combat_utils import (
             get_npc_stats, roll_initiative, resolve_hit, calculate_damage,
             get_npc_health_description, apply_death_penalties,
-            apply_npc_effects, xp_for_kill,
+            apply_npc_effects, xp_for_kill, npc_display_name,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
 
@@ -103,12 +103,62 @@ class Command(BaseCommand):
 
         @_dsa
         def close_session(session):
+            """Close the session and return one (char_pk, status) pair per
+            member — v20 brief 4 (#2): disengagement ends combat for the
+            player, so the fight pane and combat-red state must clear."""
             session.is_active = False
             session.save(update_fields=['is_active'])
+            chars = list(session.characters.select_related(
+                'current_room__area', 'current_room__zone',
+            ).all())
+            return [(c.pk, self._build_status(c)) for c in chars]
+
+        # v20 brief 4 (#2): the fight-info feed. One payload per session
+        # member, sent every engine tick; when the session has just ended,
+        # the payload clears the pane and a fresh status clears combat-red.
+        @_dsa
+        def build_fight_payloads(session):
+            chars = list(session.characters.select_related(
+                'current_room__area', 'current_room__zone',
+            ).all())
+            if not session.is_active:
+                return [
+                    (c.pk, {'type': 'fight', 'active': False, 'enemies': []},
+                     self._build_status(c))
+                    for c in chars
+                ]
+            npc_list = list(session.npcs.select_related('definition')
+                            .filter(is_alive=True))
+            focus_pk = session.focus_npc_id
+            if focus_pk is None or all(n.pk != focus_pk for n in npc_list):
+                focus_pk = npc_list[0].pk if npc_list else None
+            enemies = [
+                {
+                    'name': npc_display_name(n, npc_list),
+                    'hp': n.vitality_current,
+                    'hp_max': n.vitality_max,
+                    'focused': n.pk == focus_pk,
+                }
+                for n in npc_list
+            ]
+            return [
+                (c.pk, {'type': 'fight', 'active': True, 'enemies': enemies},
+                 None)
+                for c in chars
+            ]
+
+        async def send_fight_payloads(session):
+            for char_pk, fight, status in await build_fight_payloads(session):
+                await self.send_to_player(char_pk, '', None, status, fight=fight)
 
         stale = await get_stale_sessions()
         for session in stale:
-            await close_session(session)
+            payloads = await close_session(session)
+            for char_pk, status in payloads:
+                await self.send_to_player(
+                    char_pk, '', None, status,
+                    fight={'type': 'fight', 'active': False, 'enemies': []},
+                )
             logger.info(f"Combat session {session.pk} closed (stale)")
 
         # --- Dying state expiry ---
@@ -118,7 +168,7 @@ class Command(BaseCommand):
             return list(Character.objects.filter(
                 is_dying=True,
                 dying_since__lte=cutoff,
-            ).select_related('recall_room'))
+            ).select_related('recall_room__zone', 'recall_room__area'))
 
         @_dsa
         def execute_death(character):
@@ -160,6 +210,11 @@ class Command(BaseCommand):
             msg = f"You have died and awakened at {recall.name if recall else 'your recall point'}."
             if broken:
                 msg += f" Your {', '.join(broken)} {'has' if len(broken) == 1 else 'have'} broken."
+            # v20 brief 4: location of the recall room (#1); death always
+            # ends combat membership (#2), so in_combat is False and the
+            # fight pane clears.
+            recall_zone = recall.zone if recall else None
+            recall_area = recall.area if recall and recall.area_id else None
             status_payload = {
                 'type': 'status',
                 'vitality': character.vitality_current,
@@ -171,9 +226,16 @@ class Command(BaseCommand):
                 'longevity': character.longevity_current,
                 'longevity_max': character.longevity_max,
                 'room_name': recall.name if recall else '',
-                'area_name': None,
+                'zone_name': recall_zone.name if recall_zone else '',
+                'zone_color': recall_zone.theme_color if recall_zone else '#CCCCCC',
+                'area_name': recall_area.name if recall_area else None,
+                'area_color': recall_area.theme_color if recall_area else None,
+                'in_combat': False,
             }
-            await self.send_to_player(character.pk, msg, 'system', status_payload, event='respawn')
+            await self.send_to_player(
+                character.pk, msg, 'system', status_payload, event='respawn',
+                fight={'type': 'fight', 'active': False, 'enemies': []},
+            )
             logger.info(f"Character {name} died and respawned at room {recall.pk if recall else 'None'}")
 
         # --- Active combat sessions ---
@@ -197,12 +259,15 @@ class Command(BaseCommand):
             tick_counter = await update_session_tick(session)
 
             if tick_counter % COMBAT_ROUND_TICKS != 0:
+                # v20 brief 4 (#2): the fight feed updates every engine
+                # tick, not only on round boundaries.
+                await send_fight_payloads(session)
                 continue
 
             @_dsa
             def load_participants(session):
                 chars = list(session.characters.select_related(
-                    'current_room__area',
+                    'current_room__area', 'current_room__zone',
                     'archetype__unarmed_message_pool',
                 ).prefetch_related(
                     'archetype__unarmed_message_pool__messages',
@@ -234,7 +299,12 @@ class Command(BaseCommand):
             npcs = safe_npcs
 
             if not characters or not npcs:
-                await close_session(session)
+                payloads = await close_session(session)
+                for char_pk, status in payloads:
+                    await self.send_to_player(
+                        char_pk, '', None, status,
+                        fight={'type': 'fight', 'active': False, 'enemies': []},
+                    )
                 continue
 
             character = characters[0]
@@ -535,6 +605,11 @@ class Command(BaseCommand):
             for room_id, text, category, exclude_pk in room_messages:
                 await self.broadcast_to_room(room_id, text, category, exclude_pk=exclude_pk)
 
+            # v20 brief 4 (#2): fight feed after the round resolves — enemy
+            # hp is current, and if the round ended the session (victory)
+            # the payload clears the pane and the combat-red state.
+            await send_fight_payloads(session)
+
     # ------------------------------------------------------------------
     # Corpse decay
     # ------------------------------------------------------------------
@@ -677,6 +752,7 @@ class Command(BaseCommand):
                 ).select_related(
                     'component',
                     'effect_instance__target__current_room__area',
+                    'effect_instance__target__current_room__zone',
                     'effect_instance__definition',
                 ))
 
@@ -725,7 +801,7 @@ class Command(BaseCommand):
                             character.pk,
                             "You have been dealt a fatal blow. Your life force is ebbing away — "
                             "you have only moments to act.",
-                            'error', self._build_status(character), event='dying',
+                            'error', await self._build_status_async(character), event='dying',
                         )
                         await self.broadcast_to_room(
                             character.current_room_id,
@@ -734,7 +810,7 @@ class Command(BaseCommand):
                         )
                     else:
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
-                        status = self._build_status(character)
+                        status = await self._build_status_async(character)
                         await self.send_to_player(
                             character.pk,
                             f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
@@ -744,7 +820,7 @@ class Command(BaseCommand):
                 elif ctype == 'dot_longevity':
                     character.longevity_current = max(0, character.longevity_current - magnitude)
                     await database_sync_to_async(character.save)(update_fields=['longevity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"Your stamina drains from {definition.name}. (-{int(magnitude)} Longevity)",
@@ -756,7 +832,7 @@ class Command(BaseCommand):
                         max(0.1, min(1.9, character.acuity_current - magnitude)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"Your focus is disrupted by {definition.name}. "
@@ -769,7 +845,7 @@ class Command(BaseCommand):
                         character.vitality_current + magnitude, character.vitality_max
                     )
                     await database_sync_to_async(character.save)(update_fields=['vitality_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"You recover {int(magnitude)} Vitality from {definition.name}.",
@@ -781,7 +857,7 @@ class Command(BaseCommand):
                         character.longevity_current + magnitude, character.longevity_max
                     )
                     await database_sync_to_async(character.save)(update_fields=['longevity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"You recover {int(magnitude)} Longevity from {definition.name}.",
@@ -795,7 +871,7 @@ class Command(BaseCommand):
                         max(0.1, min(1.9, character.acuity_current + step)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"Your mind clears from {definition.name}. "
@@ -808,7 +884,7 @@ class Command(BaseCommand):
                         max(0.1, min(1.9, character.acuity_current + magnitude)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
@@ -820,7 +896,7 @@ class Command(BaseCommand):
                         max(0.1, min(1.9, character.acuity_current - magnitude)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = self._build_status(character)
+                    status = await self._build_status_async(character)
                     await self.send_to_player(
                         character.pk,
                         f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
@@ -952,7 +1028,7 @@ class Command(BaseCommand):
                 Q(vitality_current__lt=F('vitality_max')) |
                 Q(longevity_current__lt=F('longevity_max'))
             ).select_related(
-                'current_room__area',
+                'current_room__area', 'current_room__zone',
                 'origin',
             ))
             result = []
@@ -991,7 +1067,7 @@ class Command(BaseCommand):
             if changed_fields:
                 await save_regen(character, changed_fields)
                 await self.send_to_player(
-                    character.pk, '', 'status', self._build_status(character)
+                    character.pk, '', 'status', await self._build_status_async(character)
                 )
 
     # ------------------------------------------------------------------
@@ -1135,6 +1211,13 @@ class Command(BaseCommand):
         PendingDialogueResponse.objects.filter(pk=pk).delete()
 
     def _build_status(self, character):
+        # v20 brief 4: carries location names+colors (#1) and the
+        # combat-membership boolean (#2), mirroring the consumer's
+        # _status_payload. Sync-context only — the combat-session lookup
+        # is a query; async call sites use _build_status_async.
+        room = character.current_room
+        zone = room.zone if room else None
+        area = room.area if room and room.area_id else None
         return {
             'type': 'status',
             'vitality': character.vitality_current,
@@ -1145,19 +1228,29 @@ class Command(BaseCommand):
             'acuity_band_high': round(character.acuity_band_high, 2),
             'longevity': character.longevity_current,
             'longevity_max': character.longevity_max,
-            'room_name': character.current_room.name if character.current_room else '',
-            'area_name': character.current_room.area.name if character.current_room and character.current_room.area_id else None,
+            'room_name': room.name if room else '',
+            'zone_name': zone.name if zone else '',
+            'zone_color': zone.theme_color if zone else '#CCCCCC',
+            'area_name': area.name if area else None,
+            'area_color': area.theme_color if area else None,
+            'in_combat': character.combat_sessions.filter(is_active=True).exists(),
         }
 
-    async def send_to_player(self, character_pk, text, category, status, event=None):
+    async def _build_status_async(self, character):
+        return await database_sync_to_async(self._build_status)(character)
+
+    async def send_to_player(self, character_pk, text, category, status, event=None,
+                             fight=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
         # v20 brief 2 (#32): ts is stamped here, at creation — the status
         # payload is delivered as its own client message, so it carries
-        # its own ts too.
+        # its own ts too. v20 brief 4 (#2): same for fight-info payloads.
         ts = envelope_ts()
         if status is not None and 'ts' not in status:
             status['ts'] = ts
+        if fight is not None and 'ts' not in fight:
+            fight['ts'] = ts
         await channel_layer.group_send(
             f'player_{character_pk}',
             {
@@ -1165,6 +1258,7 @@ class Command(BaseCommand):
                 'text': text,
                 'category': category,
                 'status': status,
+                'fight': fight,
                 'event': event,
                 'ts': ts,
             }

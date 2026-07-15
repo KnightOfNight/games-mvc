@@ -188,7 +188,33 @@ Changed in v20 (brief 1): **`Room` coordinates are now the map's positional sour
 - **Extended seed verification (`_verify_map_geometry`).** Runs on every reseed and fails the command loudly on violation: (1) geometry agreement for every unflagged intra-zone cardinal exit; (2) cell uniqueness per `(zone, x, y, z)`; (3) flag symmetry — a flagged exit exists and its reverse is flagged back; (4) flag inventory — flags exist on exactly the five authored cave-mouth pairs (module constant `BOUNDARY_PAIRS`) and nowhere else; plus room-name uniqueness per zone (see the reconcile-identity change in Section 4.8).
 - **MapFrag (derived, never stored).** A connected component over unflagged, intra-zone cardinal exits. Rooms with no cardinal exits are single-room fragments. Fog-of-war remains per-character `RoomVisit`; no new tracking model. See Section 4.12.
 
-`Zone`, `Area`, and `RoomVisit` themselves are *(unchanged from v15)*.
+Changed in v20 (brief 4): **`Zone` and `Area` each gain `theme_color`** (`CharField(max_length=7, default='#CCCCCC')`, hex like `#7DC95E` — migration `0028`), per the data-into-models principle. These are the location bar's server-delivered colors (Section 4.15); nothing is computed client-side. The authored palette (seeded enforce-exact):
+
+| Zone | theme_color |
+|---|---|
+| The Convergence (Z05) | `#B387E8` |
+| The Verdant Reach (Z01) | `#7DC95E` |
+
+| Area | theme_color |
+|---|---|
+| Wisteria Walk | `#C9A0DC` |
+| Bamboo Run | `#A8C77A` |
+| Basalt Way | `#9A9A9A` |
+| Fern Boards | `#7FA86B` |
+| Fernwater Vale | `#8FCF9F` |
+| The Sagewind Flats | `#B4C79A` |
+| Spinner's Hollow | `#CCCCCC` *(unauthored — model default until authored)* |
+| The Silken Cleft | `#D8D4C8` |
+| The Whistling Sink | `#9FC4D8` |
+| The Drone Pit | `#D8B45A` |
+| The Viridian Ridge | `#40B58C` |
+| The Undercrag | `#8FA3B8` |
+| Chitterdeep | `#C09A6B` |
+| Hollowcrown | `#C4D96B` |
+
+Any zone or area created by other briefs inherits the default until authored. The seed verification asserts the authored values on every reseed.
+
+`RoomVisit` itself is *(unchanged from v15)*.
 
 #### `Character`
 
@@ -899,13 +925,13 @@ Exit status per cardinal direction present on the room: `"open"` = leads to a vi
 
 **Delivery events.** Full state on connect (the v19 client-state sync pattern) and on every room change: move (including the aggro-ambush branch that skips the room description), flee, travel, and the `'respawn'` player-message event. `look` does not send a map (the room did not change).
 
-**Client (`game.html`).** The right pane is fixed 300 px content width running top to bottom — ruled in the v20 layout pre-decision as the map's permanent home. Player stats sit at the top of the pane (moved there from the header), a fixed 300×300 px map square sits at the bottom, and the space between is reserved for a later v20 brief (fight information). Baseline layout is 1000 px (left 700 + right 300); widening the window grows only the left regions. Phone widths keep the pre-existing toggle-overlay behavior (widened to fit the map); the terminal is unaffected.
+**Client (`game.html`).** The right pane is fixed 300 px content width running top to bottom — ruled in the v20 layout pre-decision as the map's permanent home. Player stats sit at the top of the pane, a fixed 300×300 px map square sits at the bottom, and the space between holds the fight-info feed (filled by brief 4 — Section 4.15, which also replaced the phone toggle-overlay with a stacked layout and re-homed the map's container; the map component itself — payloads, renderer, accessibility stance — is unchanged). Baseline layout is 1000 px (left 700 + right 300); widening the window grows only the left regions.
 
 **Rendering.** Vanilla JS generating SVG — no framework, no libraries. North is up; a fixed 9×9 cell window (radius 4, cells at one-ninth of 300 px ≈ 33 px) centered on the current room, no zoom; rooms outside the window are not drawn. Rooms are circles; `"open"` exits between two drawn rooms are solid lines (an open exit whose destination lies outside the window renders as a solid half-cell stub); `"unexplored"` exits are dashed half-cell stubs; `"boundary"` exits are dashed stubs with a small perpendicular tick at the end. The current room gets a distinct highlight ring; rooms with up/down show a small U/D letter badge, brighter on the current room. Every `map` message discards and fully re-renders (no incremental diffing in v1).
 
 **Accessibility stance.** The map container carries `aria-hidden="true"`. Room descriptions and exits in the text output remain the accessible source of truth; the map adds no information not already present in text.
 
-**Client message-type inventory** (for reference — the full set the client handles as of v20 brief 3): `output`, `status`, `clear`, `redirect`, `map`, `verbs` (connect-time verb list + `show_timestamps`, brief 3), `complete` (tab-completion reply, brief 3), plus the `quit` event. Since v20 brief 2, every one of these — all types, without exception — additionally carries the `ts` and `seq` envelope fields (Section 4.13). The client also sends one non-command message type upward: `{"type": "complete", "text": "<current line>"}` (Section 4.14).
+**Client message-type inventory** (for reference — the full set the client handles as of v20 brief 4): `output`, `status`, `clear`, `redirect`, `map`, `verbs` (connect-time verb list + `show_timestamps`, brief 3), `complete` (tab-completion reply, brief 3), `fight` (fight-info feed, brief 4 — Section 4.15), `pong` (connection-indicator echo, brief 4 — Section 4.15), plus the `quit` event. Since v20 brief 2, every one of these — all types, without exception — additionally carries the `ts` and `seq` envelope fields (Section 4.13). The client sends two non-command message types upward: `{"type": "complete", "text": "<current line>"}` (Section 4.14) and `{"type": "ping", "nonce": <int>}` (Section 4.15).
 
 ### 4.13 Output message envelope (v20 brief 2, #32)
 
@@ -963,6 +989,34 @@ Two categories are new in Amendment 1, both assigned server-side in `consumers.p
 **Item-line composition (#48).** See Section 4.6: `compose_item_line()` renders every item line as `<name with tier>[ xN]  <suffix>  [<Rarity>, Bound|Droppable]`. Inventory grouping (consumables by definition/tier/rarity) feeds its count through the helper's `xN`; the room render gains an `On the ground:` section (category `room-render`) listing ground items as composed lines, identical lines collapsed to `xN`.
 
 **Tab completion (#19).** Server-authoritative, one source of truth: completion candidates come from the same per-verb providers the resolver uses (`_completion_candidates`), and `command_grammar.complete()` returns word-level options for the line's trailing partial token — name tokens of candidates that still match the already-typed noun tokens, plus grammar qualifier words where valid (`all` for quantifier verbs at first-argument position; rarity words only for rarities actually present in the candidate set). Protocol: on connect the server sends `{"type": "verbs", "verbs": [...], "show_timestamps": bool, "ts": …}` (the dispatch-table verb+alias list plus movement verbs); the client completes/cycles the **verb position locally** from that list, and at **argument position** sends `{"type": "complete", "text": "<current line>"}` upward — `receive_json` routes it by its `type` field before any command parsing, so it is never executed as text — and the server replies `{"type": "complete", "text": "<echo>", "options": [...], "ts": …}` (options capped at 50; verbs without noun arguments, and completion errors, answer `[]`). Client interaction: Tab requests/cycles, Escape or typing resumes normal input; a stale or mismatched reply (the echoed `text` no longer matches the pending request) is dropped. Nothing from the client is trusted beyond the text to complete.
+
+---
+
+### 4.15 UI layout: skeleton, location bar, fight feed, connection indicator (v20 brief 4 — #2, #1, #31)
+
+**The ruled desktop skeleton (`game.html`).** Baseline 1000 px; on window widening the right pane keeps fixed width and only the left regions grow:
+
+- **Left 2/3 (700 px baseline), stacked:** LOCATION BAR (top, one line of text high) → OUTPUT PANE (one unified scrolling pane for ALL output — zone/area/room text, who's/what's here, commands and results; there is no separate description pane) → COMMAND BAR (bottom; the send button lives inside it, and the connection indicator sits at its right end, before the button).
+- **Right pane (fixed 300 px content width, full height):** player stats (top; the whole subsection turns red during combat) → fight info (middle; scrolling) → the map (bottom; the brief-1 component, unmodified — only its container placement was re-homed).
+
+Implemented as CSS grid (`minmax(0,1fr) 300px` columns; location/output/command rows in column 1, the pane spanning all rows in column 2), the pane itself a flex column with the fight region as the flexing middle. **Phone stacking** (breakpoint 600 px): location bar → compact stats strip (fight info directly under it, only while combat is active) → output (fixed-height internal scroll) → the map below the output, reachable by page scroll → command bar pinned last (`position: sticky; bottom: 0`). The right pane dissolves via `display: contents` so its children join the stack by `order`. The pre-brief-4 phone toggle-overlay and the old header row (`#room-name`, `#side-toggle`) are gone. The output pane's `role="log"` / `aria-live="polite"` semantics, categories, and scrollback are untouched by the restructure.
+
+**Location bar (#1).** Format `Zone: Area: Room` — the Area segment and its colon are omitted when the room has no Area. Colors are **server-delivered**: the state-sync (`status`) payload carries `zone_name`, `zone_color`, `area_name`, `area_color`, `room_name`, straight from the Section 4.1 `theme_color` fields — nothing is computed client-side. The room name renders in fixed near-white `#E8E4D8`; the colon separators in neutral chrome gray `#8A887F`. Overflow on the single line truncates the Area segment first (a very large `flex-shrink` on its span), then Room; Zone never truncates (`flex-shrink: 0`); per-segment `text-overflow: ellipsis`.
+
+**Combat-red stats state (#2).** The `status` payload gains `in_combat` — a server-derived combat-session-membership boolean, present in every state sync (consumer `_status_payload` and tick-engine `_build_status`, both of which now run their combat-session lookup in a DB thread; async tick-engine call sites go through `_build_status_async`). The client toggles class `in-combat` on the stats section from it. Fresh statuses are pushed on every membership transition: engagement (attack, aggro move, aggro flee-arrival), flee, victory, death/respawn, and stale-session disengagement. Combat-red family base values (the v20 output palette derives its shades from this family later): background tint `#3A1212`, accent/border `#E24B4A`; stat text colors unchanged.
+
+**Fight-info feed (#2).** New server-generated message to each involved player:
+
+```json
+{"type": "fight", "active": true,
+ "enemies": [{"name": "the cave spider", "hp": 12, "hp_max": 20, "focused": true}]}
+```
+
+Sent on combat engagement (consumer, alongside the status refresh — and immediately on an attack-focus switch so the marker moves without waiting for the tick), on **every engine tick** while the player's session is active (tick engine, after round resolution on round ticks so hp is current), and once with `"active": false, "enemies": []` when combat ends for the player — victory, flee, death (rider on the `respawn` player-message), or disengagement (stale/emptied session close). `enemies` lists every living NPC in the player's combat session; `focused` marks the current attack-focus target resolved exactly as the tick engine resolves it (session focus if alive and present, else first); names use `npc_display_name` as combat messages render them today. Delivery from the tick engine rides the `player_message` event as a `fight` field (like `status`), stamped with its own `ts` in `send_to_player` and delivered as its own client message — fight messages are player-scoped, so a second character in the room never receives them. Client rendering (middle region): one row per enemy — focus marker (`»`), name, a horizontal hp bar (fill proportional to `hp/hp_max` in the combat-red accent), `hp/hp_max` numerals; the region scrolls on overflow and is completely empty when inactive. Server-side only; nothing trusted from the client.
+
+**Connection indicator (#31).** Protocol: the client sends `{"type": "ping", "nonce": <int>}` every 10 s; `receive_json` routes it by type before any command parsing (and before the dying gate) and replies `{"type": "pong", "nonce": <same>, "ts": …}` — echo only, and only for a well-formed integer nonce (bools and non-ints are dropped, never reflected; no client data trusted or stored). RTT is computed client-side from the nonce round-trip. Placement: right end of the command bar, before the send button — a status dot plus latency readout (`42ms`). States: **green** healthy (fresh pong, RTT < 250 ms); **amber** degraded (RTT ≥ 250 ms or one missed pong — a ping still unanswered when the next fires); **red, pulsing** while the client attempts reconnection; **gray** disconnected/closed (quit/redirect). Brief 4 also introduced client auto-reconnect: on close (unless quitting) the client retries with doubling backoff (1 s → 10 s cap); a successful reconnect is a fresh consumer/connection (full-state resync per the v19 pattern, `seq` restarts at 1), and the indicator returns to green on the first pong. Accessibility: the indicator carries an updating `aria-label` ("Connected, 42 ms" / "Reconnecting" / "Disconnected") but is deliberately **not** an announcing live region — no screen-reader spam; the static "Connected to Shyland" line behavior in the output is unchanged.
+
+**Tests.** `tests/test_ui_layout.py`: status-payload location fields with and without an Area, `in_combat` tracking session membership through create/deactivate, fight enemy rows (hp, focus flag and fallback, dead-NPC exclusion, positional same-name display), pong echo, malformed-nonce drop, and ping-while-dying.
 
 ---
 
@@ -1130,8 +1184,6 @@ Future sessions should check this list before assuming a system exists.
 ---
 
 ## 8. Known Issues / Flags for Future Sessions
-
-**Side panel is a stub.** `game.html` shows "Session 1 — world coming soon." in the side panel.
 
 **`create_corpse()` is synchronous.** Always call it from within a `@database_sync_to_async` wrapper.
 
