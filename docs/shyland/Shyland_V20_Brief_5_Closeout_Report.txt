@@ -1,0 +1,123 @@
+SHYLAND V20 BRIEF 5 — OUTPUT & MESSAGING — CLOSEOUT REPORT
+Date: 2026-07-15
+Issues: #13 (combat message colors), #14 (look-command output sections),
+        #39 (section-header label color), #15 (command echo),
+        #24 (NPC article grammar), #28 (corpse decay / empty-loot messaging)
+
+COMMITS
+  2a0a85c  implementation (models/migration 0029, consumer, tick engine,
+           combat_utils, command_grammar, item_utils, seed data pass,
+           client palette + room renderer, tests)
+  dac60e3  architecture doc (Shyland_Architecture_v20.md section 4.16 in
+           place, category-table + helper updates, header hash 2a0a85c)
+
+DEPLOYMENT
+  make build -> make migrate (0029 applied) -> make seed (enforce-exact,
+  all verification checks PASS, including the three new brief-5 checks:
+  no-leading-article law, proper-noun blank articles, Matron/brood field
+  shape). Container restart bounced all three games, including any live
+  Shyland WebSocket sessions (clients auto-reconnect since Brief 4).
+
+PART D3 DATA PASS
+  17 seeded NPC names rewritten article-free:
+    Convergence: Obelisk, Primordial Sphere
+    Verdant/Ridge: Verdant Shard (article 'a'), Verdant Sphere,
+      Verdant Obelisk, Silk Matron, Whistler Below, Dronemother,
+      Undercrag Weaver, Chittering King, Crowned Devourer
+    plural_phrase minions: Matron's brood, Whistler's young,
+      Dronemother's swarm, Weaver's brood, King's skitterlings,
+      Devourer's drones
+  All other seeded names were already article-free; proper nouns
+  (Convergence roster, checkpoint menders/traders) carry blank articles.
+  Unarmed message pools rewritten {attacker}-driven (vale/flats/ridge
+  species pools now share one template text; npc-default and the eight
+  sp-* animal pools no longer hardcode "The <species>").
+  Rider applied: Spinner's Hollow Area.theme_color = #C8CBB8, with a
+  seed-verify assertion.
+
+PART F VERIFICATION RESULTS
+  Automated coverage: 111/111 tests in-container (test_currency,
+  test_area, test_command_grammar incl. the untouched 30-case table,
+  test_dispatch_guard, test_room_visits, test_ui_layout, and the new
+  test_output_messaging); plus a two-phase live verification (phase 1:
+  engine rounds driven in-process against the REAL Silk Matron/brood
+  definitions with forced hit results, ticker stopped; phase 2:
+  WebsocketCommunicator against the prod stack with the live ticker;
+  all throwaway rows deleted, verified zero leftovers).
+
+  1. Palette: PASS (server side). Semantic categories verified arriving
+     per outcome: combat-hit-out, combat-crit-out, combat-hit-in,
+     combat-miss, reward, success, echo, system. Colors are one client
+     CSS block per the ruled table; single combat-red family (the old
+     #e06060 combat color is gone); zone/area colors in the room header
+     come from the same model fields as the location bar. Visual
+     confirmation is the operator's (checklist "After Brief 5").
+  2. Structural headers: PASS. One CSS rule (#7FB3D5) colors every
+     section-header label (Exits:, Who's here?, What's here?, Players
+     here:); no other content uses it.
+  3. Look output: PASS. Structured room-render verified in a room with
+     NPCs and items, items only, and neither — ruled order, empty
+     sections omitted (no empty headers), "On the ground:" absent from
+     every message; What's here? is the sole items section, rendering
+     composed item lines (x2 collapse + flag block verified).
+  4. Echo: PASS. '> look' and '> frobnicate' each precede their result,
+     carry ts, and were never received by a second connected player.
+     Echo also precedes the dying-gate refusal by construction.
+  5. NPC grammar: PASS. All three acceptance strings rendered exactly
+     (crit-on-brood, hit-on-Matron from the real engine; the aggro line
+     from the real consumer path). A full engine round against the
+     Matron + brood produced composed references on every line (hits,
+     crits both directions, misses both directions, kill, focus shift,
+     room broadcast, corpse snapshot); fight-feed names share the same
+     helper. Morra / Mother Tansy / VND-9 / Aldric compose bare. Seed
+     verify enforces the no-leading-article law.
+  6. Decay: PASS. With the tester in an active combat session and a
+     non-fighting observer in the same room, a forced corpse decay
+     reached only the observer (system category). Decay timing
+     untouched (recipients changed, nothing else).
+  7. Empty corpse: PASS. Normal-tier kill (no loot table, no coin
+     capacity): "The test vole carried nothing worth taking." Emptied
+     boss-definition corpse: "You've already taken everything from the
+     Silk Matron."
+  8. Rarity flag block: PASS. Composition unchanged from Brief 3
+     (verified in room render); the color scale is client-side span
+     wrapping (appendFlaggedText), text content identical.
+  9. Screen reader: structural PASS (attack direction is stated in the
+     words; timestamp spans remain aria-hidden; all room-render content
+     is real text nodes in the role="log" region). The live-reader pass
+     is the operator's.
+ 10. No gameplay changes: PASS. Damage, XP, loot, decay timers, and
+     command behavior are text/category composition changes only; the
+     full pre-existing suite passes unmodified except the two
+     dispatch-guard cases updated to expect the echo message.
+
+ISSUES CLOSED
+  #13, #14, #39, #15, #24, #28 — all closed with closing comments
+  referencing this brief and commit 2a0a85c.
+
+JUDGMENT CALLS (flagged for the design chat)
+  - The Verdant Shard was flagged is_fixture=True (display-only flag) so
+    it renders under "What's here?" exactly as Part B's ruled example
+    shows; it previously listed under "Who's here?".
+  - Corpse "... lies here." lines render inside "What's here?" (they had
+    no header before; the ruled structure leaves corpses unplaced, and
+    the things-section is their natural home).
+  - "Players here:" remains its own labeled section (between Exits and
+    Who's here?); its label takes the structural-header color per the
+    #39 general rule.
+  - Outgoing hit lines keep the pre-existing trailing health-state
+    sentence ("... The Silk Matron looks badly wounded.") after the
+    ruled damage sentence — removing it would be a combat-feedback
+    change outside this brief's no-gameplay-change rule.
+  - loot lines and buy confirmations were included in the success-green
+    category alongside the ruled sales/repairs/pickups (acquisitions of
+    the same kind); level-up lines share the reward gold with kill/XP.
+  - msg-report (inventory/help/etc.) moved from its off-palette blue-gray
+    to the palette's prose tone #B8B4A6.
+
+OPERATOR ITEMS (open, in Shyland_V20_Playtest_Checklists.md,
+"After Brief 5"): visual palette read of a real fight, header/content
+color check in the browser, echo privacy with a second account, the
+full Silk Matron read-every-line fight, corpse checks with a second
+account, rarity scale legibility, screen-reader pass, and the
+twenty-minute whole-version regression play.
