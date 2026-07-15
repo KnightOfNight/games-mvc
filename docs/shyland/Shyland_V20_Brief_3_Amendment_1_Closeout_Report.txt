@@ -1,0 +1,31 @@
+Closeout Report — V20 Brief 3 Amendment 1 (Loot Sweep + Bulk-Sale Splitting)
+
+Pre-flight: DOCKER_HOST verified reachable before starting.
+
+Part 1 — Issues filed (perfect, gate passed)
+
+- A = #62 — https://github.com/KnightOfNight/games-mvc/issues/62 — "loot all should sweep every corpse in the room, not one corpse" — verified open, milestone Version 20, assignee KnightOfNight, body exact (byte-identical modulo the API's trailing-newline handling).
+- B = #63 — https://github.com/KnightOfNight/games-mvc/issues/63 — "Bulk sell batches all sale lines into one message; split per-sale like loot" — verified identically, plus the bug label.
+
+Part 2 — Implementation
+
+cmd_loot split into three paths: bare loot / loot <corpse> … byte-identical single-corpse behavior; loot all sweeps every lootable corpse with per-item/coin messages and the ruled summary; noun/N forms resolve over the union of lootable corpse contents, coins riding along from each corpse an item is taken from, ownership enforced per corpse. Bulk sell emits one message per sale, the total as its own message, and the zero-value skip as its own message.
+
+2b emitter audit: buy N — left as one message: the atomic all-or-nothing purchase is a single event, not joined event sentences. The new sweep is per-message by construction. Finding outside scope: repair all also joins its lines into one message, but it predates Brief 3, so per the audit's stated scope I left it alone — it needs its own design-chat ruling (noted in #63's closing comment and the arch doc).
+
+Part 3 — Verification (all 8 pass)
+
+1–7. Live: 30/30 checks — 4-corpse room (one foreign, one carrying nothing): per-item lines with distinct ts, summary Looted 3 corpses; 1 carried nothing worth taking., corpses disappearing as emptied, foreign corpse untouched and uncounted (ownership boundary, 3.4); loot 2 hides taking one hide from each corpse and loot 3 hides refusing all-or-nothing against the union; bare loot unchanged including the empty-corpse line; the exact repro — sell 3 cara → three separately stamped You sell Insect Carapace Mk 1 for 2 coppers. messages plus a stamped Sold 3 items for 6 coppers.; a 9-item sell all common flush with per-sale messages, one summary, separate skip message; seq strictly increasing through sweep and bulk sale with nothing bypassing the choke point.
+8. Brief 3 unit suite untouched and green: 86/86 in the container.
+
+Commits (pushed)
+
+- 0cad421 — implementation
+- 7e1e838 — architecture doc (§4.14 loot semantics + the binding bulk-operation messaging rule; header hash updated)
+- 8279326 — issues report Shyland_Issues_Report_20260715T140001Z.md (41 open / 22 closed)
+
+Issues
+
+#62 and #63 both CLOSED with closing comments referencing this amendment and commit 0cad421.
+
+Deployment note: the amendment required one make build cycle — all three games were bounced, including live Shyland sessions. One behavioral nuance worth knowing: previously loot <noun> took the target corpse's coins even when the noun wasn't found; the union path now takes coins only from corpses it actually loots an item from.
