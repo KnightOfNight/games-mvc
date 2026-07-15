@@ -1131,8 +1131,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.output("You don't see that here.", 'system')
 
     async def cmd_loot(self, args):
-        from .currency import display_for_zone
-
         room = await self.get_current_room()
         character = await self.get_character(self.scope['user'])
         corpses = await self.get_corpses_in_room(room)
@@ -1142,52 +1140,73 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         arg_parts = args.split(None, 1) if args else []
-        target_corpse = None
-        item_noun = None
 
         if not arg_parts:
-            target_corpse = corpses[0]
-        else:
-            first = arg_parts[0]
-            rest = arg_parts[1] if len(arg_parts) > 1 else None
-            code, matched = parse_corpse_noun(first, corpses)
-            if code == 'single':
-                target_corpse = matched
-                item_noun = rest
-            elif code == 'bad_index':
-                await self.output("There aren't that many corpses here.", "error")
-                return
-            else:
-                target_corpse = corpses[0]
-                item_noun = args.strip()
+            # Bare loot: the single/first corpse, unchanged.
+            await self._loot_single_corpse(character, room, corpses[0], None)
+            return
 
+        first = arg_parts[0]
+        rest = arg_parts[1] if len(arg_parts) > 1 else None
+        code, matched = parse_corpse_noun(first, corpses)
+        if code == 'single':
+            await self._loot_single_corpse(character, room, matched, rest)
+            return
+        if code == 'bad_index':
+            await self.output("There aren't that many corpses here.", "error")
+            return
+
+        # v20 brief 3 amendment 1 (#62): no corpse named — item forms
+        # operate room-wide, over the character's own kills only. The
+        # sweep is a convenience over corpse-by-corpse looting, never a
+        # way to take loot that is not the player's.
+        lootable = [c for c in corpses if c.killed_by_id == character.pk]
+        if not lootable:
+            await self.output("That is not your kill; you may not loot it.", "error")
+            return
+        if args.strip().lower() == 'all':
+            await self._loot_sweep(character, room, lootable)
+        else:
+            await self._loot_from_union(character, room, lootable, args.strip())
+
+    async def _loot_corpse_copper(self, character, room, corpse):
+        """Loot a corpse's coin drop, emitting the coin line if any.
+        Returns the amount taken."""
+        from .currency import display_for_zone
+        amount = await self.do_loot_copper(corpse, character)
+        if amount > 0:
+            zone_slug = room.zone.slug if room.zone_id else None
+            copper_str = display_for_zone(amount, zone_slug)
+            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "system")
+        return amount
+
+    async def _maybe_dispose_corpse(self, corpse):
+        deleted = await self.check_corpse_empty_and_delete(corpse)
+        if deleted:
+            await self.channel_layer.group_send(self.room_group, {
+                'type': 'room_message',
+                'text': f"{corpse.display_name.capitalize()} slowly disappears.",
+                'category': 'room',
+                'ts': envelope_ts(),
+            })
+
+    async def _loot_single_corpse(self, character, room, target_corpse, item_noun):
+        """Loot one targeted corpse — bare 'loot' and 'loot <corpse> …',
+        exactly as before the #62 sweep."""
         if target_corpse.killed_by_id != character.pk:
             await self.output("That is not your kill; you may not loot it.", "error")
             return
 
-        copper_amount = await self.do_loot_copper(target_corpse, character)
-        if copper_amount > 0:
-            zone_slug = room.zone.slug if room.zone_id else None
-            copper_str = display_for_zone(copper_amount, zone_slug)
-            await self.output(f"You loot {copper_str} from {target_corpse.display_name}.", "system")
+        await self._loot_corpse_copper(character, room, target_corpse)
 
         contents = await self.get_corpse_contents(target_corpse)
 
         if not contents:
             await self.output(f"{target_corpse.display_name.capitalize()} is already empty.", "system")
-            deleted = await self.check_corpse_empty_and_delete(target_corpse)
-            if deleted:
-                await self.channel_layer.group_send(self.room_group, {
-                    'type': 'room_message',
-                    'text': f"{target_corpse.display_name.capitalize()} slowly disappears.",
-                    'category': 'room',
-                    'ts': envelope_ts(),
-                })
+            await self._maybe_dispose_corpse(target_corpse)
             return
 
         if item_noun:
-            # v20 brief 3 (#3/#22): 'loot all', 'loot 2 hides', rarity
-            # filters, and single nouns all resolve here.
             res = resolve('loot', item_noun, contents)
             if not res.ok:
                 await self.output(res.message, "error")
@@ -1210,14 +1229,87 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(f"You loot {line}.", "system")
             current_count += 1
 
-        deleted = await self.check_corpse_empty_and_delete(target_corpse)
-        if deleted:
-            await self.channel_layer.group_send(self.room_group, {
-                'type': 'room_message',
-                'text': f"{target_corpse.display_name.capitalize()} slowly disappears.",
-                'category': 'room',
-                'ts': envelope_ts(),
-            })
+        await self._maybe_dispose_corpse(target_corpse)
+
+    async def _loot_sweep(self, character, room, lootable):
+        """v20 brief 3 amendment 1 (#62): 'loot all' sweeps every corpse
+        in the room the character may loot. Per-item and coin lines
+        exactly as single-corpse looting emits them (each its own
+        message); empty corpses make no individual noise — the summary
+        counts them. Stops early if the character fills up."""
+        current_count, max_carry = await self.get_carry_counts(character)
+        swept = 0
+        carried_nothing = 0
+        capacity_hit = False
+
+        for corpse in lootable:
+            swept += 1
+            copper = await self._loot_corpse_copper(character, room, corpse)
+            contents = await self.get_corpse_contents(corpse)
+            if copper == 0 and not contents:
+                carried_nothing += 1
+            for item in contents:
+                if current_count >= max_carry:
+                    await self.output(
+                        f"You can't carry any more. ({current_count}/{max_carry} items)",
+                        "error"
+                    )
+                    capacity_hit = True
+                    break
+                line = compose_item_line(item)
+                await self.do_loot_item(item, character)
+                await self.output(f"You loot {line}.", "system")
+                current_count += 1
+            await self._maybe_dispose_corpse(corpse)
+            if capacity_hit:
+                break
+
+        summary = f'Looted {swept} corpse{"s" if swept != 1 else ""}'
+        if carried_nothing:
+            summary += (f'; {carried_nothing} carried nothing worth taking.')
+        else:
+            summary += '.'
+        await self.output(summary, 'system')
+
+    async def _loot_from_union(self, character, room, lootable, item_noun):
+        """v20 brief 3 amendment 1 (#62): item references without a named
+        corpse ('loot all hides', 'loot 2 hides', 'loot hide') resolve
+        over the union of every lootable corpse's contents in the room;
+        quantifiers mean items, all-or-nothing for N as everywhere. Coin
+        drops come along from each corpse an item is taken from."""
+        by_id = {c.pk: c for c in lootable}
+        pool = []
+        for corpse in lootable:
+            pool.extend(await self.get_corpse_contents(corpse))
+
+        res = resolve('loot', item_noun, pool)
+        if not res.ok:
+            await self.output(res.message, "error")
+            return
+
+        current_count, max_carry = await self.get_carry_counts(character)
+        coppered = set()
+        touched = {}
+
+        for item in res.items:
+            if current_count >= max_carry:
+                await self.output(
+                    f"You can't carry any more. ({current_count}/{max_carry} items)",
+                    "error"
+                )
+                break
+            corpse = by_id[item.corpse_id]
+            if corpse.pk not in coppered:
+                coppered.add(corpse.pk)
+                await self._loot_corpse_copper(character, room, corpse)
+            touched[corpse.pk] = corpse
+            line = compose_item_line(item)
+            await self.do_loot_item(item, character)
+            await self.output(f"You loot {line}.", "system")
+            current_count += 1
+
+        for corpse in touched.values():
+            await self._maybe_dispose_corpse(corpse)
 
     # ------------------------------------------------------------------
     # Commerce commands
@@ -1344,10 +1436,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.maybe_kibitz(room, vendor)
             return
 
-        # v20 brief 3 (#21): 'sell all <noun>' / 'sell N <noun>' /
-        # 'sell all <rarity>' — each sale line as before, one total line,
-        # zero-value items skipped with a summary mention.
-        lines = []
+        # v20 brief 3 (#21) + amendment 1 (#63): 'sell all <noun>' /
+        # 'sell N <noun>' / 'sell all <rarity>'. Bulk operations narrate
+        # as streams of events: each sale is its own message (own ts/seq
+        # through the choke point), the total is its own message, and the
+        # zero-value skip summary is its own message — never one joined
+        # batch under a single stamp.
         sold = 0
         total = 0
         skipped = 0
@@ -1359,22 +1453,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             price = await self.do_sell(item, char)
             sold += 1
             total += price
-            lines.append(f'You sell {name} for {self.format_amount(char, price)}.')
+            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'system')
         if sold:
-            summary = (f'Sold {sold} item{"s" if sold != 1 else ""} '
-                       f'for {self.format_amount(char, total)}.')
-            if skipped:
-                summary += (f' ({skipped} worthless item'
-                            f'{"s" if skipped != 1 else ""} skipped.)')
-            lines.append(summary)
-        else:
-            lines.append(
-                f'Nothing sold — {skipped} worthless item'
-                f'{"s" if skipped != 1 else ""} skipped.'
+            await self.output(
+                f'Sold {sold} item{"s" if sold != 1 else ""} '
+                f'for {self.format_amount(char, total)}.', 'system',
             )
-        await self.output('\n'.join(lines), 'system')
-        if sold:
+            if skipped:
+                await self.output(
+                    f'({skipped} worthless item'
+                    f'{"s" if skipped != 1 else ""} skipped.)', 'system',
+                )
             await self.maybe_kibitz(room, vendor)
+        else:
+            await self.output(
+                f'Nothing sold — {skipped} worthless item'
+                f'{"s" if skipped != 1 else ""} skipped.', 'system',
+            )
 
     async def cmd_repair(self, args):
         char = await self.get_character_fresh()
