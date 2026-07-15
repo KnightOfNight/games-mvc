@@ -349,6 +349,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # ------------------------------------------------------------------
 
     async def receive_json(self, content):
+        # v20 brief 4 (#31): connection-indicator ping. Echo the nonce back
+        # and nothing else — no client data is trusted or stored, and a
+        # malformed nonce is dropped rather than reflected.
+        if content.get('type') == 'ping':
+            nonce = content.get('nonce')
+            if isinstance(nonce, int) and not isinstance(nonce, bool):
+                await self.send_json({'type': 'pong', 'nonce': nonce,
+                                      'ts': envelope_ts()})
+            return
+
         # v20 brief 3 (#19): tab-completion requests are their own message
         # type, never treated as command text.
         if content.get('type') == 'complete':
@@ -460,7 +470,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if aggro_npcs:
             for npc in aggro_npcs:
                 await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
-            await self.start_combat(aggro_npcs, first_attacker='npc')
+            session = await self.start_combat(aggro_npcs, first_attacker='npc')
+            # v20 brief 4 (#2): engagement — fight feed + combat-red state.
+            await self.send_fight(session)
+            await self.send_status_refresh()
         else:
             await self.send_room_description(destination, entering=True,
                                              first_visit=first_visit)
@@ -993,7 +1006,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        await self.send_json(self._status_payload(char_fresh, room))
+        await self.send_json(await self._status_payload(char_fresh, room))
 
     def _format_identified_item_lines(self, item):
         defn = item.definition
@@ -1486,39 +1499,44 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if not damaged:
                 await self.output('You have nothing to repair.', 'system')
                 return
-            lines = []
+            # v20 brief 4 amendment 1 (#74): the #63 bulk-operation rule —
+            # each repair attempt is its own message through the choke
+            # point (own ts/seq), and the summary is its own message.
             repaired = failed = spent = 0
             for item in damaged:
                 name = get_display_name_with_tier(item)
                 outcome, cost = await self.do_repair_attempt(item, char)
                 if outcome == 'poor':
-                    lines.append(
+                    await self.output(
                         f"You can't afford to repair {name} "
-                        f"({self.format_amount(char, cost)}) — you stop there."
+                        f"({self.format_amount(char, cost)}) — you stop there.",
+                        'system',
                     )
                     break
                 spent += cost
                 if outcome == 'success':
                     repaired += 1
                     if get_item_value(item) == 0:
-                        lines.append(_pity_repair_line(repairer))
+                        await self.output(_pity_repair_line(repairer), 'system')
                     else:
-                        lines.append(
+                        await self.output(
                             f'{name} is restored to full condition. '
-                            f'({self.format_amount(char, cost)})'
+                            f'({self.format_amount(char, cost)})',
+                            'system',
                         )
                 else:
                     failed += 1
-                    lines.append(
+                    await self.output(
                         f"The mending on {name} didn't take. "
-                        f"({self.format_amount(char, cost)})"
+                        f"({self.format_amount(char, cost)})",
+                        'system',
                     )
-            lines.append(
+            await self.output(
                 f'Repaired {repaired} item{"s" if repaired != 1 else ""}, '
                 f'{failed} attempt{"s" if failed != 1 else ""} failed, '
-                f'{self.format_amount(char, spent)} spent.'
+                f'{self.format_amount(char, spent)} spent.',
+                'system',
             )
-            await self.output('\n'.join(lines), 'system')
             return
 
         if arg:
@@ -1599,13 +1617,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 return
             await self.set_session_focus(session, npc)
             await self.send_output(f"You change your attacks to focus on {display}.", 'combat')
+            # v20 brief 4 (#2): move the fight pane's focus marker now
+            # rather than waiting for the next tick's fight message.
+            await self.send_fight(session)
             return
 
         await self.send_output(f"You move to attack {display}!", 'combat')
         await self.broadcast_to_room_exclude(
             f"{character.name} moves to attack the {npc.definition.name}!", 'combat'
         )
-        await self.start_combat([npc], first_attacker='character', focus_npc=npc)
+        session = await self.start_combat([npc], first_attacker='character', focus_npc=npc)
+        # v20 brief 4 (#2): engagement — fight feed + combat-red state.
+        await self.send_fight(session)
+        await self.send_status_refresh()
 
     async def cmd_flee(self):
         character = await self.get_character_fresh()
@@ -1627,6 +1651,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         npcs = await self.get_session_npcs(session)
         if not npcs:
             await self.end_combat_session(session)
+            # v20 brief 4 (#2): combat ended for the player — clear the
+            # fight pane and the combat-red state.
+            await self.send_fight(None)
+            await self.send_status_refresh()
             return
 
         avg_per = sum(
@@ -1649,6 +1677,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 f"{character.name} fled the room leaving the enemies looking confused.", 'combat'
             )
             await self.end_combat_session(session)
+            # v20 brief 4 (#2): flee ends combat for the player — clear the
+            # fight pane; a fresh engagement below re-fills it if the flee
+            # destination has aggro.
+            await self.send_fight(None)
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
             await self.move_character(destination)
             first_visit = await self.record_room_visit(self.character, destination)
@@ -1660,7 +1692,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if aggro_npcs:
                 for npc in aggro_npcs:
                     await self.send_output(f"A {npc.definition.name} snarls and moves to attack!", 'combat')
-                await self.start_combat(aggro_npcs, first_attacker='npc')
+                new_session = await self.start_combat(aggro_npcs, first_attacker='npc')
+                await self.send_fight(new_session)
+                await self.send_status_refresh()
             else:
                 destination_full = await self.get_current_room()
                 await self.send_room_description(destination_full, entering=True,
@@ -1784,7 +1818,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
 
         room = character.current_room
-        await self.send_json(self._status_payload(character, room))
+        await self.send_json(await self._status_payload(character, room))
 
     async def cmd_brief(self, args):
         arg = args.strip().lower() if args else ''
@@ -1818,7 +1852,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = await self.get_character_fresh()
         # Status first so the confirmation line already renders under the
         # new preference.
-        await self.send_json(self._status_payload(char, char.current_room))
+        await self.send_json(await self._status_payload(char, char.current_room))
         await self.send_output(f'Timestamps are now {arg}.', category='system')
 
     # ------------------------------------------------------------------
@@ -1863,6 +1897,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json(payload)
         if event.get('status') is not None:
             await self.send_json(event['status'])
+        # v20 brief 4 (#2): fight-info messages from the tick engine are
+        # delivered as their own client message, like status payloads.
+        if event.get('fight') is not None:
+            await self.send_json(event['fight'])
 
         if event_type == 'dying':
             self._character_is_dying = True
@@ -1882,12 +1920,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # Helpers
     # ------------------------------------------------------------------
 
+    @database_sync_to_async
     def _status_payload(self, char, room):
         """The client-state sync payload. v20 brief 3 (#45): carries the
         show_timestamps preference so it applies immediately, on
-        reconnect, and across devices."""
+        reconnect, and across devices. v20 brief 4: carries the location
+        names+colors for the location bar (#1) and the combat-membership
+        boolean for the stats section's combat-red state (#2) — runs in a
+        DB thread for the combat-session lookup."""
+        zone = room.zone if room else None
+        area = room.area if room and room.area_id else None
         return {
             'type': 'status',
+            # v20 brief 4 amendment 1 (#71): the stats-pane header renders
+            # this verbatim — byte-for-byte, never client-derived.
+            'character_name': char.name,
             'vitality': char.vitality_current,
             'vitality_max': char.vitality_max,
             'acuity': round(char.acuity_current, 2),
@@ -1897,7 +1944,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'longevity': char.longevity_current,
             'longevity_max': char.longevity_max,
             'room_name': room.name if room else '',
-            'area_name': room.area.name if room and room.area_id else None,
+            'zone_name': zone.name if zone else '',
+            'zone_color': zone.theme_color if zone else '#CCCCCC',
+            'area_name': area.name if area else None,
+            'area_color': area.theme_color if area else None,
+            'in_combat': CombatSession.objects.filter(
+                is_active=True, characters=char,
+            ).exists(),
             'show_timestamps': char.show_timestamps,
             'ts': envelope_ts(),
         }
@@ -2025,7 +2078,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             for item, count in grouped.values():
                 await self.output(f"  {compose_item_line(item, count)}", 'room-render')
 
-        await self.send_json(self._status_payload(char, room))
+        await self.send_json(await self._status_payload(char, room))
 
         if entering and npcs:
             await self.schedule_npc_greetings(room, npcs)
@@ -2764,6 +2817,47 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def set_session_focus(self, session, npc):
         session.focus_npc = npc
         session.save(update_fields=['focus_npc'])
+
+    # ------------------------------------------------------------------
+    # Fight-info feed (v20 brief 4, #2)
+    # ------------------------------------------------------------------
+
+    @database_sync_to_async
+    def _fight_enemies(self, session):
+        """Enemy rows for the fight message: every living NPC in the
+        session, with the focus flag resolved the same way the tick engine
+        resolves it (session focus if alive and present, else the first)."""
+        npcs = list(session.npcs.select_related('definition').filter(is_alive=True))
+        focus_pk = session.focus_npc_id
+        if focus_pk is None or all(n.pk != focus_pk for n in npcs):
+            focus_pk = npcs[0].pk if npcs else None
+        return [
+            {
+                'name': npc_display_name(npc, npcs),
+                'hp': npc.vitality_current,
+                'hp_max': npc.vitality_max,
+                'focused': npc.pk == focus_pk,
+            }
+            for npc in npcs
+        ]
+
+    async def send_fight(self, session):
+        """Send the fight-info message for this player's session; None
+        means combat has ended for the player and clears the pane."""
+        if session is None:
+            await self.send_json({'type': 'fight', 'active': False,
+                                  'enemies': [], 'ts': envelope_ts()})
+            return
+        enemies = await self._fight_enemies(session)
+        await self.send_json({'type': 'fight', 'active': True,
+                              'enemies': enemies, 'ts': envelope_ts()})
+
+    async def send_status_refresh(self):
+        """Re-send the state-sync payload (combat-red state, location bar)
+        after a combat-membership transition."""
+        char = await self.get_character_fresh()
+        room = await self.get_current_room()
+        await self.send_json(await self._status_payload(char, room))
 
     @database_sync_to_async
     def npc_in_session(self, session, npc):

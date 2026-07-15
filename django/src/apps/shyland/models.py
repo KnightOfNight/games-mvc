@@ -41,6 +41,9 @@ class Zone(models.Model):
     is_pvp_zone = models.BooleanField(default=False)
     is_scaled = models.BooleanField(default=False)
     description = models.TextField()
+    # v20 brief 4 (#1): location-bar theme color, server-delivered to the
+    # client via the state-sync payload. Hex like '#7DC95E'.
+    theme_color = models.CharField(max_length=7, default='#CCCCCC')
 
     def __str__(self):
         return self.name
@@ -76,6 +79,10 @@ class Area(models.Model):
             'Shown alongside the room-specific description.'
         ),
     )
+
+    # v20 brief 4 (#1): location-bar theme color, server-delivered to the
+    # client via the state-sync payload. Hex like '#C9A0DC'.
+    theme_color = models.CharField(max_length=7, default='#CCCCCC')
 
     class Meta:
         ordering = ['zone', 'name']

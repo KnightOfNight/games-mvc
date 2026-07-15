@@ -445,6 +445,7 @@ class Command(BaseCommand):
                 'over generations, accumulating like a city always does at a crossroads — organically, '
                 'inevitably, and without a plan.'
             ),
+            'theme_color': '#B387E8',
         })
         self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
@@ -463,6 +464,7 @@ class Command(BaseCommand):
                 'weather, and the path feels deliberate, unhurried, as though it was laid by someone who '
                 'believed the walk itself was worth taking.'
             ),
+            'theme_color': '#C9A0DC',
         })
 
         bamboo_run = self._reconcile(Area, {'slug': 'bamboo-run'}, {
@@ -477,6 +479,7 @@ class Command(BaseCommand):
                 'your shoulders if you drift from center. It is the shortest way out of the park, and '
                 'somehow feels like it knows this — brisk, direct, unceremonious.'
             ),
+            'theme_color': '#A8C77A',
         })
 
         basalt_way = self._reconcile(Area, {'slug': 'basalt-way'}, {
@@ -491,6 +494,7 @@ class Command(BaseCommand):
                 'to walk two abreast and winds gently as it goes, taking its time, finding its way south '
                 'through the older and larger trees at this end of the park.'
             ),
+            'theme_color': '#9A9A9A',
         })
 
         fern_boards = self._reconcile(Area, {'slug': 'fern-boards'}, {
@@ -505,6 +509,7 @@ class Command(BaseCommand):
                 'and the sound is muffled here in a way the other paths are not. It smells of damp earth '
                 'and old growth. The city feels further away than it is.'
             ),
+            'theme_color': '#7FA86B',
         })
 
         self.stdout.write('Areas seeded: Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards.')
@@ -2186,6 +2191,21 @@ class Command(BaseCommand):
         area_count = Area.objects.filter(zone__slug='the-convergence').count()
         self._check(f'4 areas exist (found {area_count})', area_count == 4)
 
+        # v20 brief 4 (#1): authored theme colors (location bar).
+        self._check(
+            'Convergence zone theme color is #B387E8',
+            Zone.objects.filter(slug='the-convergence', theme_color='#B387E8').exists(),
+        )
+        expected_area_colors = {
+            'wisteria-walk': '#C9A0DC', 'bamboo-run': '#A8C77A',
+            'basalt-way': '#9A9A9A', 'fern-boards': '#7FA86B',
+        }
+        colors_ok = all(
+            Area.objects.filter(slug=slug, theme_color=color).exists()
+            for slug, color in expected_area_colors.items()
+        )
+        self._check('Convergence area theme colors match brief 4', colors_ok)
+
         room_count = Room.objects.filter(zone__slug='the-convergence').count()
         self._check(f'60 rooms exist (found {room_count})', room_count == 60)
 
@@ -2506,6 +2526,25 @@ class Command(BaseCommand):
 
         vr_area_count = Area.objects.filter(zone__slug=vr).count()
         self._check(f'10 Verdant Reach areas exist (found {vr_area_count})', vr_area_count == 10)
+
+        # v20 brief 4 (#1): authored theme colors (location bar).
+        # Spinner's Hollow is deliberately unauthored (#CCCCCC default).
+        self._check(
+            'Verdant Reach zone theme color is #7DC95E',
+            Zone.objects.filter(slug=vr, theme_color='#7DC95E').exists(),
+        )
+        expected_vr_colors = {
+            'fernwater-vale': '#8FCF9F', 'the-sagewind-flats': '#B4C79A',
+            'spinners-hollow': '#CCCCCC', 'the-silken-cleft': '#D8D4C8',
+            'the-whistling-sink': '#9FC4D8', 'the-drone-pit': '#D8B45A',
+            'the-viridian-ridge': '#40B58C', 'the-undercrag': '#8FA3B8',
+            'chitterdeep': '#C09A6B', 'hollowcrown': '#C4D96B',
+        }
+        vr_colors_ok = all(
+            Area.objects.filter(zone__slug=vr, slug=slug, theme_color=color).exists()
+            for slug, color in expected_vr_colors.items()
+        )
+        self._check('Verdant Reach area theme colors match brief 4', vr_colors_ok)
 
         vr_room_count = Room.objects.filter(zone__slug=vr).count()
         self._check(f'150 Verdant Reach rooms exist (found {vr_room_count})', vr_room_count == 150)
@@ -4170,49 +4209,54 @@ class Command(BaseCommand):
                 'and open grassland running toward the mountains. The first zone beyond '
                 'the city, and the gentlest — which is not the same as gentle.'
             ),
+            'theme_color': '#7DC95E',
         })
         self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
 
     def _seed_verdant_areas(self, zone):
+        # v20 brief 4 (#1): the fourth tuple element is the location-bar
+        # theme color. Spinner's Hollow has no authored color in the brief's
+        # table, so it carries the model default (#CCCCCC) until authored.
         area_defs = [
-            ('vale', 'Fernwater Vale',
+            ('vale', 'Fernwater Vale', '#8FCF9F',
              'A green valley folded between high stone walls, its floor stitched with '
              'ferns and threaded by a cold, quick river. Mist gathers in the low places. '
              'Everything here grows.'),
-            ('flats', 'The Sagewind Flats',
+            ('flats', 'The Sagewind Flats', '#B4C79A',
              'Open grassland under an enormous sky, silver-green and restless. The wind '
              'never entirely stops, combing the sage in long slow waves toward the mountains.'),
-            ('hollow', "Spinner's Hollow",
+            ('hollow', "Spinner's Hollow", '#CCCCCC',
              'A single pocket of dark beneath the valley wall, hung wall to wall with old silk.'),
-            ('cleft', 'The Silken Cleft',
+            ('cleft', 'The Silken Cleft', '#D8D4C8',
              'A crack in the valley wall that goes back further than it should, silk-strung '
              'and softly rustling.'),
-            ('sink', 'The Whistling Sink',
+            ('sink', 'The Whistling Sink', '#9FC4D8',
              'A sunken cave beneath the plains where wind pours down through the mouth above '
              'and never finds its way out, whistling one thin endless note.'),
-            ('pit', 'The Drone Pit',
+            ('pit', 'The Drone Pit', '#D8B45A',
              'A pit hive under the grass, its galleries carved smooth, the air thick with a '
              'hum felt more in the teeth than the ears.'),
-            ('ridge', 'The Viridian Ridge',
+            ('ridge', 'The Viridian Ridge', '#40B58C',
              'Mountains that refuse to be grey: green climbs them almost to their crowns, '
              'pine and moss and stubborn grass on switchback bones of stone. The wind up '
              'here has edges. So does everything else.'),
-            ('undercrag', 'The Undercrag',
+            ('undercrag', 'The Undercrag', '#8FA3B8',
              'A delve beneath the first shoulder of the Ridge, descending in webbed '
              'galleries where the daylight has never been introduced.'),
-            ('chitterdeep', 'Chitterdeep',
+            ('chitterdeep', 'Chitterdeep', '#C09A6B',
              'A deep of falling passages under the high Ridge, named for the sound that '
              'never entirely stops.'),
-            ('hollowcrown', 'Hollowcrown',
+            ('hollowcrown', 'Hollowcrown', '#C4D96B',
              'The hollow inside the summit itself, climbing in veined galleries toward a '
              'crown of impossible green.'),
         ]
         areas = {}
-        for key, name, description in area_defs:
+        for key, name, color, description in area_defs:
             area = self._reconcile(
                 Area, {'zone': zone, 'slug': slugify(name)},
-                {'name': name, 'area_description': description},
+                {'name': name, 'area_description': description,
+                 'theme_color': color},
             )
             areas[key] = area
         self.stdout.write('Verdant Reach areas seeded: ' + ', '.join(a.name for a in areas.values()) + '.')
