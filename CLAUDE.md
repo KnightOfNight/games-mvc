@@ -16,10 +16,15 @@ Docs: `docs/shyland/`
 
 **Check this before starting work on any brief — implementation, verification/test, or ops alike.**
 
-Inspect the `DOCKER_HOST` environment variable:
+Run the pre-flight check script and gate on its exit code:
 
-- **If `DOCKER_HOST` is set:** verify the target is reachable — `docker info` must succeed against it. If it is unreachable, that is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a local Docker daemon. (A common cause is an unloaded SSH key — the operator may only need an `ssh-add` — but diagnosing and fixing connectivity is the operator's call, not yours.)
-- **If `DOCKER_HOST` is not set:** do NOT assume a local Docker installation is the intended target. Ask the operator whether to proceed against the local install or stop the brief, and wait for the answer before touching anything.
+```
+python3 scripts/check_docker_host.py
+```
+
+- **Exit 0** — `DOCKER_HOST` is set and the target daemon is reachable. Proceed.
+- **Exit 1** — `DOCKER_HOST` is set but the target is unreachable. This is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a local Docker daemon. (A common cause is an unloaded SSH key — the operator may only need an `ssh-add` — but diagnosing and fixing connectivity is the operator's call, not yours.)
+- **Exit 2** — `DOCKER_HOST` is not set. Do NOT assume a local Docker installation is the intended target. Ask the operator whether to proceed against the local install or stop the brief, and wait for the answer before touching anything.
 
 Rationale: the deployment target is production infrastructure. A brief that runs migrations, reseeds, or `docker` commands against the wrong daemon fails in the worst way — silently, against the wrong world.
 
