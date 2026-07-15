@@ -80,6 +80,8 @@ One helper (in the NPC/display utils module) composes every player-visible NPC r
 
 Rewrite every seeded NPC name to be article-free and set `article` / `plural_phrase` appropriately (proper nouns get blank articles; the brood-style names get `plural_phrase`). This touches all seeded NPCs across Z05 and Z01. Reseed enforce-exact.
 
+**Rider (one value, missed by the Brief 4 palette table):** seed `Area.theme_color` for **Spinner's Hollow** = `#C8CBB8` (pale web-green, kin to but distinct from the Silken Cleft's `#D8D4C8`), replacing its `#CCCCCC` default, and add it to the seed-verification color assertions alongside the others.
+
 ### D4. Acceptance strings
 
 The three lines from the issue must render exactly as:
