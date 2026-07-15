@@ -217,6 +217,7 @@ class Command(BaseCommand):
             recall_area = recall.area if recall and recall.area_id else None
             status_payload = {
                 'type': 'status',
+                'character_name': character.name,
                 'vitality': character.vitality_current,
                 'vitality_max': character.vitality_max,
                 'acuity': round(character.acuity_current, 2),
@@ -1220,6 +1221,8 @@ class Command(BaseCommand):
         area = room.area if room and room.area_id else None
         return {
             'type': 'status',
+            # v20 brief 4 amendment 1 (#71): stats-pane header, verbatim.
+            'character_name': character.name,
             'vitality': character.vitality_current,
             'vitality_max': character.vitality_max,
             'acuity': round(character.acuity_current, 2),

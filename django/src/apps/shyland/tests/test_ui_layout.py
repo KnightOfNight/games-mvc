@@ -88,6 +88,31 @@ class StatusPayloadTests(TestCase):
         self.char = make_character('sp', self.room)
         self.consumer = SkylandConsumer()
 
+    def test_character_name_verbatim(self):
+        """v20 brief 4 amendment 1 (#71): the stats-pane header value is
+        server-supplied, byte-for-byte — mixed casing survives."""
+        payload = _status_payload(self.consumer, self.char, self.room)
+        self.assertEqual(payload['character_name'], 'sp Char')
+
+        self.char.name = 'HiMyNameIsMud'
+        self.char.save(update_fields=['name'])
+        payload = _status_payload(self.consumer, self.char, self.room)
+        self.assertEqual(payload['character_name'], 'HiMyNameIsMud')
+
+    def test_acuity_band_is_server_supplied_per_character(self):
+        """v20 brief 4 amendment 1 (#72): band bounds ride state sync from
+        the character's values (seeded from the Origin), not a constant."""
+        payload = _status_payload(self.consumer, self.char, self.room)
+        self.assertEqual(payload['acuity_band_low'], round(self.char.acuity_band_low, 2))
+        self.assertEqual(payload['acuity_band_high'], round(self.char.acuity_band_high, 2))
+
+        self.char.acuity_band_low = 0.6
+        self.char.acuity_band_high = 1.4
+        self.char.save(update_fields=['acuity_band_low', 'acuity_band_high'])
+        payload = _status_payload(self.consumer, self.char, self.room)
+        self.assertEqual(payload['acuity_band_low'], 0.6)
+        self.assertEqual(payload['acuity_band_high'], 1.4)
+
     def test_location_fields_with_area(self):
         payload = _status_payload(self.consumer, self.char, self.room)
         self.assertEqual(payload['zone_name'], 'sp Zone')

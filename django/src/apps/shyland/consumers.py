@@ -1499,39 +1499,44 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if not damaged:
                 await self.output('You have nothing to repair.', 'system')
                 return
-            lines = []
+            # v20 brief 4 amendment 1 (#74): the #63 bulk-operation rule —
+            # each repair attempt is its own message through the choke
+            # point (own ts/seq), and the summary is its own message.
             repaired = failed = spent = 0
             for item in damaged:
                 name = get_display_name_with_tier(item)
                 outcome, cost = await self.do_repair_attempt(item, char)
                 if outcome == 'poor':
-                    lines.append(
+                    await self.output(
                         f"You can't afford to repair {name} "
-                        f"({self.format_amount(char, cost)}) — you stop there."
+                        f"({self.format_amount(char, cost)}) — you stop there.",
+                        'system',
                     )
                     break
                 spent += cost
                 if outcome == 'success':
                     repaired += 1
                     if get_item_value(item) == 0:
-                        lines.append(_pity_repair_line(repairer))
+                        await self.output(_pity_repair_line(repairer), 'system')
                     else:
-                        lines.append(
+                        await self.output(
                             f'{name} is restored to full condition. '
-                            f'({self.format_amount(char, cost)})'
+                            f'({self.format_amount(char, cost)})',
+                            'system',
                         )
                 else:
                     failed += 1
-                    lines.append(
+                    await self.output(
                         f"The mending on {name} didn't take. "
-                        f"({self.format_amount(char, cost)})"
+                        f"({self.format_amount(char, cost)})",
+                        'system',
                     )
-            lines.append(
+            await self.output(
                 f'Repaired {repaired} item{"s" if repaired != 1 else ""}, '
                 f'{failed} attempt{"s" if failed != 1 else ""} failed, '
-                f'{self.format_amount(char, spent)} spent.'
+                f'{self.format_amount(char, spent)} spent.',
+                'system',
             )
-            await self.output('\n'.join(lines), 'system')
             return
 
         if arg:
@@ -1927,6 +1932,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         area = room.area if room and room.area_id else None
         return {
             'type': 'status',
+            # v20 brief 4 amendment 1 (#71): the stats-pane header renders
+            # this verbatim — byte-for-byte, never client-derived.
+            'character_name': char.name,
             'vitality': char.vitality_current,
             'vitality_max': char.vitality_max,
             'acuity': round(char.acuity_current, 2),

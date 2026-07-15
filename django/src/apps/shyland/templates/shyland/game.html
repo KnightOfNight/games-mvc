@@ -34,7 +34,12 @@
     --conn-gray: #6b6b80;
   }
 
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+  /* v20 brief 4 amendment 1 (#73): the app fills the viewport exactly —
+     the page NEVER scrolls; only designated interior panes (output,
+     fight info) scroll themselves. Anchoring the shell to the
+     html→body 100% chain with overflow hidden makes window-level
+     overflow impossible by construction. */
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
 
   /* v20 brief 4 (#2): the ruled desktop skeleton. Baseline 1000px total;
      the right pane keeps a fixed 300px content width top-to-bottom and
@@ -44,7 +49,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    height: 100vh;
+    height: 100%;
   }
 
   /* Location bar (#1): one line of text high, per-segment spans. The Area
@@ -110,8 +115,13 @@
     font-size: 12px;
     color: var(--muted);
     min-height: 0;
+    /* v20 brief 4 amendment 1 (#73/#51): the pane as a whole never
+       scrolls in either axis — only #side-fight scrolls. */
+    overflow: hidden;
   }
-  #side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+  /* v20 brief 4 amendment 1 (#71): the header is the character's name,
+     verbatim — no text-transform or case styling of any kind. */
+  #stats-name { font-size: 12px; font-weight: bold; color: var(--text); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #side-stats {
     flex: none;
     padding: 10px;
@@ -121,13 +131,31 @@
   /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
      Stat text colors unchanged. */
   #side-stats.in-combat { background: var(--combat-bg); border-bottom-color: var(--combat-accent); }
-  #side-stats.in-combat h2 { color: var(--combat-accent); }
-  #bars { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-top: 8px; }
-  .bar { display: flex; align-items: center; gap: 6px; }
-  .bar-label { color: var(--muted); }
-  .bar-v { color: var(--bar-v); }
-  .bar-a { color: var(--bar-a); }
-  .bar-l { color: var(--bar-l); }
+  #side-stats.in-combat #stats-name { color: var(--combat-accent); }
+
+  /* v20 brief 4 amendment 1 (#72): V/L ratio bars + the Acuity band
+     gauge. Numerals stay real text (the accessible values); tracks are
+     decorative (aria-hidden). Bar height matches the fight panel's. */
+  #bars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-top: 8px; }
+  .statbar { display: flex; align-items: center; gap: 6px; }
+  .bar-label { flex: none; width: 10px; color: var(--muted); }
+  .statbar-track, .gauge-track {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    position: relative;
+  }
+  .statbar-track { overflow: hidden; }
+  .statbar-fill { height: 100%; width: 0; }
+  .statbar-fill.v { background: #8FCF9F; }
+  .statbar-fill.l { background: #D8B45A; }
+  /* Acuity band gauge: fixed 0.0–2.0 track, shaded Origin band,
+     position tick clamped to the track. */
+  .gauge-band { position: absolute; top: 0; bottom: 0; background: rgba(64, 181, 140, .3); }
+  .gauge-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #40B58C; }
+  .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--muted); }
 
   /* Fight info (#2): one row per enemy; scrolls on overflow; completely
      empty outside combat. */
@@ -222,18 +250,23 @@
      bar pinned last (sticky). The terminal is primary. The right pane
      dissolves (display: contents) so its children join the stack. */
   @media (max-width: 600px) {
+    /* Amendment 1 (#73): the window still never scrolls at phone width —
+       the shell itself becomes the interior scroll surface, keeping the
+       ruled brief-4 stacking (map below the output, reachable by
+       scrolling the app; command bar stays sticky-pinned). */
     #shell {
       display: flex;
       flex-direction: column;
-      height: auto;
-      min-height: 100vh;
-      min-height: 100svh;
+      height: 100%;
+      overflow-y: auto;
     }
     #side { display: contents; }
     #loc-bar   { order: 1; border-right: none; }
     #side-stats { order: 2; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-    #side-stats h2 { display: none; }
-    #bars { flex-direction: row; gap: 14px; margin-top: 0; }
+    #side-stats #stats-name { display: none; }
+    #bars { flex-direction: row; gap: 10px; margin-top: 0; }
+    #bars .statbar { flex: 1 1 0; min-width: 0; }
+    #bars .bar-num { min-width: 0; }
     #side-fight { order: 3; display: none; flex: none; max-height: 96px; border-bottom: 1px solid var(--border); background: var(--surface); }
     #shell.has-fight #side-fight { display: block; }
     #output-wrap { order: 4; border-right: none; height: calc(100vh - 150px); height: calc(100svh - 150px); min-height: 240px; }
@@ -256,11 +289,13 @@
 
   <aside id="side">
     <div id="side-stats">
-      <h2>Shyland</h2>
+      <!-- v20 brief 4 amendment 1 (#71): the character's name, verbatim
+           from state sync — never client-derived, never case-styled. -->
+      <h2 id="stats-name">&nbsp;</h2>
       <div id="bars">
-        <span class="bar"><span class="bar-label">V</span><span id="bar-v" class="bar-v">—</span></span>
-        <span class="bar"><span class="bar-label">A</span><span id="bar-a" class="bar-a">—</span></span>
-        <span class="bar"><span class="bar-label">L</span><span id="bar-l" class="bar-l">—</span></span>
+        <div class="statbar"><span class="bar-label">V</span><div class="statbar-track" aria-hidden="true"><div id="bar-v-fill" class="statbar-fill v"></div></div><span id="bar-v" class="bar-num">—</span></div>
+        <div class="statbar"><span class="bar-label">A</span><div class="gauge-track" aria-hidden="true"><div id="gauge-band" class="gauge-band"></div><div id="gauge-tick" class="gauge-tick"></div></div><span id="bar-a" class="bar-num">—</span></div>
+        <div class="statbar"><span class="bar-label">L</span><div class="statbar-track" aria-hidden="true"><div id="bar-l-fill" class="statbar-fill l"></div></div><span id="bar-l" class="bar-num">—</span></div>
       </div>
     </div>
     <!-- v20 brief 4 (#2): fight info — the map's accessible source of
@@ -306,6 +341,11 @@
   const barV     = document.getElementById('bar-v');
   const barA     = document.getElementById('bar-a');
   const barL     = document.getElementById('bar-l');
+  const statsName = document.getElementById('stats-name');
+  const barVFill = document.getElementById('bar-v-fill');
+  const barLFill = document.getElementById('bar-l-fill');
+  const gaugeBand = document.getElementById('gauge-band');
+  const gaugeTick = document.getElementById('gauge-tick');
   const sideStats  = document.getElementById('side-stats');
   const sideFight  = document.getElementById('side-fight');
   const combatLive = document.getElementById('combat-live');
@@ -478,13 +518,51 @@
       if (typeof msg.in_combat === 'boolean') {
         sideStats.classList.toggle('in-combat', msg.in_combat);
       }
+      // v20 brief 4 amendment 1 (#71): verbatim server-supplied name.
+      if (typeof msg.character_name === 'string' && msg.character_name) {
+        statsName.textContent = msg.character_name;
+      }
       barV.textContent = msg.vitality_max !== undefined
         ? `${msg.vitality} / ${msg.vitality_max}`
         : `${msg.vitality}`;
-      barA.textContent = msg.acuity;
+      // One decimal, matching the `stats` command's Acuity rendering.
+      barA.textContent = typeof msg.acuity === 'number'
+        ? msg.acuity.toFixed(1) : msg.acuity;
       barL.textContent = msg.longevity_max !== undefined
         ? `${msg.longevity} / ${msg.longevity_max}`
         : `${msg.longevity}`;
+      updateStatBars(msg);
+    }
+  }
+
+  // v20 brief 4 amendment 1 (#72): V/L ratio bars and the Acuity band
+  // gauge (fixed 0.0–2.0 track; shaded Origin band from server-supplied
+  // acuity_band_low/high; position tick clamped to the track).
+  const ACUITY_TRACK_MAX = 2.0;
+
+  function ratioPct(cur, max) {
+    if (typeof cur !== 'number' || typeof max !== 'number' || max <= 0) return null;
+    return Math.max(0, Math.min(100, (cur / max) * 100)) + '%';
+  }
+
+  function trackPct(value) {
+    return Math.max(0, Math.min(100, (value / ACUITY_TRACK_MAX) * 100)) + '%';
+  }
+
+  function updateStatBars(msg) {
+    const v = ratioPct(msg.vitality, msg.vitality_max);
+    if (v !== null) barVFill.style.width = v;
+    const l = ratioPct(msg.longevity, msg.longevity_max);
+    if (l !== null) barLFill.style.width = l;
+    if (typeof msg.acuity_band_low === 'number' && typeof msg.acuity_band_high === 'number'
+        && msg.acuity_band_high >= msg.acuity_band_low) {
+      gaugeBand.style.left = trackPct(msg.acuity_band_low);
+      gaugeBand.style.width = Math.max(0,
+        (Math.min(msg.acuity_band_high, ACUITY_TRACK_MAX) - Math.max(msg.acuity_band_low, 0))
+        / ACUITY_TRACK_MAX * 100) + '%';
+    }
+    if (typeof msg.acuity === 'number') {
+      gaugeTick.style.left = trackPct(msg.acuity);
     }
   }
 
