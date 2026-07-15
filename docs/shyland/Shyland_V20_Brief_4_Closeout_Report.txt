@@ -1,0 +1,94 @@
+SHYLAND V20 BRIEF 4 — UI LAYOUT — CLOSEOUT REPORT
+==================================================
+Date: 2026-07-15
+Brief: Shyland_V20_Brief_4_UI_Layout.md (issues #2, #1, #31)
+
+COMMITS
+-------
+b8073bc  Shyland v20 Brief 4: UI layout — location bar, fight feed,
+         connection indicator (#1, #2, #31)
+         (implementation + migration 0028 + tests + architecture doc 4.15)
+
+DEPLOYMENT
+----------
+Deployed to the DOCKER_HOST target (games.magrathea.com) via make build →
+make makemigrations APP=shyland → make migrate → make seed. The rebuild
+force-recreated all containers — all three games bounced, including any
+live Shyland WebSocket sessions. The ticker crash-looped during the
+~1-minute window between image deploy and migration apply (expected —
+theme_color column not yet present) and has run cleanly since.
+
+PART G RESULTS
+--------------
+G1  PASS (objective) — Migration 0028_area_theme_color_zone_theme_color
+    applied. Enforce-exact reseed seeded every Part A color; new seed
+    verification checks assert them on every reseed:
+      PASS: Convergence zone theme color is #B387E8
+      PASS: Convergence area theme colors match brief 4
+      PASS: Verdant Reach zone theme color is #7DC95E
+      PASS: Verdant Reach area theme colors match brief 4
+    Unlisted-area report: exactly one Area exists in the seed that is not
+    in the brief's table — Spinner's Hollow — seeded #CCCCCC (default).
+
+G2  OPERATOR — desktop layout at 1000px / widening / map 300x300
+    regression: browser check, post-deploy (playtest checklist "After
+    Brief 4").
+
+G3  PARTIAL PASS (objective) — server-delivered payload verified by
+    tests: zone/area names+colors match seeded values, Area omitted
+    (null) for area-less rooms. Visual format and truncation order:
+    OPERATOR.
+
+G4  PARTIAL PASS (objective) — in_combat boolean present in every state
+    sync payload and tracks session membership (tests); fresh statuses
+    pushed on engagement, flee, victory, death, disengagement. Visual
+    red toggle: OPERATOR.
+
+G5  PARTIAL PASS (objective) — fight rows carry name/hp/hp_max/focused
+    for every living session NPC; focus flag follows session focus with
+    first-NPC fallback; dead NPCs excluded; same-name NPCs render
+    positionally ("the first cave spider"); fight messages are
+    player-scoped (player_ group), so other characters in the room never
+    receive them. Per-tick hp tracking and marker movement in the
+    browser: OPERATOR.
+
+G6  PARTIAL PASS (objective) — ping echoed as pong with the same integer
+    nonce; malformed nonces (str/bool/float/None/dict) dropped, never
+    reflected; ping answered while dying. Indicator visuals (green/
+    amber/red-pulsing/gray, recovery on reconnect): OPERATOR.
+
+G7  OPERATOR — phone-width stacking, typing/reading, map by scroll,
+    ARIA live region.
+
+G8  PASS (objective) — full shyland suite green in the deployed
+    container: 95 tests OK (test_ui_layout, test_currency, test_area,
+    test_room_visits, test_command_grammar, test_dispatch_guard). No
+    command surface or gameplay logic changed.
+
+AREAS SEEDED WITH THE DEFAULT COLOR
+-----------------------------------
+Spinner's Hollow (the-verdant-reach) — #CCCCCC, deliberately unauthored
+in the brief's table; flagged here per Part A.
+
+ISSUES
+------
+#1  (location bar)          CLOSED with comment referencing this brief.
+#2  (right pane / layout)   CLOSED with comment referencing this brief.
+#31 (connection indicator)  CLOSED with comment referencing this brief.
+
+ARCHITECTURE DOC
+----------------
+Shyland_Architecture_v20.md updated in place, no version bump: Zone/Area
+theme_color fields + seeded palette (4.1), brief-1 client-layout and
+message-inventory paragraphs reconciled (4.12), new section 4.15 (ruled
+skeleton, phone stacking, location payload, in_combat, fight and
+ping/pong message types, indicator behavior, auto-reconnect), stale
+"side panel is a stub" known-issue removed (8).
+
+NOTES FOR THE OPERATOR
+----------------------
+- Brief 4 introduced client auto-reconnect (doubling backoff, 1s-10s
+  cap); "Refresh to reconnect" is gone. Required by #31's red-pulsing
+  reconnection state.
+- The browser/phone checks in Shyland_V20_Playtest_Checklists.md
+  ("After Brief 4") are yours, post-deploy; the deploy is already live.
