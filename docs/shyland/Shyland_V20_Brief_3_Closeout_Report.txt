@@ -1,0 +1,25 @@
+Closeout Report — Shyland V20 Brief 3 (Commands)
+
+Pre-flight: DOCKER_HOST=ssh://ec2-user@games.magrathea.com verified reachable before any work.
+
+Commits (pushed to main)
+
+- 3616fe5 — implementation: command_grammar.py resolver + all eleven command adoptions, loot all, sell all/N, atomic buy N, COMMAND_TABLE dispatch + guard, combat movement block, Character.show_timestamps (migration 0027) + timestamps on|off, compose_item_line flag block + On-the-ground listing, seed-verify authoring law, tab completion (server + client), and both test suites.
+- a493d5d — docs: Shyland_Architecture_v20.md updated in place (new §4.14, header hash → 3616fe5, Character/item_utils/message-inventory/§4.13 cross-references). No files removed.
+
+Part H results
+
+1. Unit suites: 86/86 green in the container — 54 grammar cases (the authoritative A5 table 1–30 plus the required added coverage), 4 dispatch-guard/completion tests, and the 28 pre-existing tests (currency, area, room-visits) with zero regressions.
+2. Seed verify extended and passed on a live reseed — No ItemDefinition/NpcDefinition name begins with a rarity word (found 0).
+3–8. Live verification: 64/64 checks via an in-container WebSocket script against a throwaway character with the real kit — selection orders (sell axe→Common, equip axe→Uncommon with auto-swap, sell uncommon axe), sell all hides/sell 2 hides/sell 5 hides refusal, buy 10 healing draughts at VND-9 (exactly 10 items, exactly 10× price, one line), loot all listing everything with flag blocks plus copper, sell all common with worthless-item summary, 2.axe stability, cross-definition disambiguation, equipped-mace sell refusal, composed item lines everywhere with a no-leading-rarity regex sweep (incl. the [Droppable]-only unidentified ground form), timestamps usage/off/on with immediate status push, DB persistence, and reconnect carry-over, movement and travel both refusing in combat with flee intact, a forced handler exception producing the error line + server traceback + live connection, garbage-input fuzz with no disconnect, completion for use/buy/sell/attack contexts + qualifier words + empty set, and the full regression sweep (look, say, who, travel, spend, brief, stats, quit, help).
+
+Issues closed
+
+#22, #3, #21, #19, #20, #23, #45, #48 — each with a closing comment referencing the brief and commits.
+
+Notes for you
+
+- One real pre-existing bug found and fixed during verification: check_corpse_empty_and_delete read the stale prefetch_related cache, so a corpse emptied by looting never deleted (no "slowly disappears") until a second loot or decay. Fixed in the same commit; noted in #3's closing comment.
+- Ground items were never listed anywhere before this brief — Part F names "ground listings" as a composition site, so the room render gained an On the ground: section. Flag it back to the design chat if that wasn't intended.
+- Deployment required two make build cycles plus make migrate — all three games were bounced each time, including any live Shyland sessions.
+- The human playtest items in Shyland_V20_Playtest_Checklists.md (browser Tab feel, second-browser timestamps, verbatim-typing spot checks) remain yours, post-deploy — the deployed stack is current and ready for them.
