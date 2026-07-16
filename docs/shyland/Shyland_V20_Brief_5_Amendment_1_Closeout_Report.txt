@@ -1,0 +1,111 @@
+SHYLAND V20 BRIEF 5 AMENDMENT 1 (CONSOLIDATED BATCH) — CLOSEOUT REPORT
+Date: 2026-07-16
+Scope: room header removal (A), zone-colored separator (B), indefinite
+introductions (C), identification-visibility design filing (D, file-only)
+
+PART 1 — ISSUES FILED (hard gate: passed, no deviations)
+  A  #77  https://github.com/KnightOfNight/games-mvc/issues/77
+      Remove the bracketed room header from the output pane
+      milestone Version 20, assignee KnightOfNight — verified
+  B  #78  https://github.com/KnightOfNight/games-mvc/issues/78
+      Add a zone-colored separator between the room block and event lines
+      milestone Version 20, assignee KnightOfNight — verified
+  C  #79  https://github.com/KnightOfNight/games-mvc/issues/79
+      NPC grammar: indefinite article on first presentation; occupant
+      lines capitalized — milestone Version 20, assignee KnightOfNight,
+      label bug — verified
+  D  #80  https://github.com/KnightOfNight/games-mvc/issues/80
+      Design: item identification visibility — knowledge by holding
+      NO milestone, assignee KnightOfNight — verified
+  All four bodies verified byte-identical to the prescribed text
+  (gh issue view diff against the source files; trailing-newline
+  normalization only).
+
+COMMITS
+  873a2f7  (operator) amendment brief file drop
+  07c751f  implementation (migration 0030, consumer, combat_utils,
+           game.html, seed data pass + verify pins, tests)
+  f7a9939  architecture doc touch (4.13 table row, 4.16 rewrite:
+           no-header/separator/introductions/#80 note, header hash)
+  <closeout+report commit>  this report + issues report (final commit;
+           hash in the session summary and git log)
+
+PART 2 — IMPLEMENTATION
+  2a (#77): header removed server-side (no header field in the
+      room-render payload; text begins with prose) and client-side
+      (renderRoom header block deleted). Location bar untouched.
+  2b (#78): .room-sep — solid 5px bar, border-radius 2.5px, opacity
+      .75, margins 0.65em (total ≥ one 1.55em text line at 14px), fill
+      set inline from the render's zone_color, appended once per room
+      render after the final room-block line, aria-hidden, inside the
+      unstamped room-render block. zone_color added to the room-render
+      payload (same Zone.theme_color the location bar shows) because
+      the status payload arrives AFTER the render — reusing the stored
+      location value would race on cross-zone moves.
+  2c (#79): NpcDefinition.indefinite_article (migration 0030;
+      default 'a', blank=True); npc_display(npc, capitalize,
+      introduction) — introduction uses indefinite_article, blank
+      falls back to the definite/bare composition (so bosses,
+      landmarks, and proper nouns keep their definite/bare
+      introductions and the #24 acceptance strings stay
+      byte-identical); occupant lines (who + fixture what lines) and
+      the two aggro-engagement sites compose introduction-capitalized.
+      Data pass: 35 NpcDefinition rows adjusted from the migration
+      default — 3 to 'an' (elder cave spider/centipede/beetle), 32 to
+      blank (16 Convergence proper nouns/Obelisk/Primordial Sphere,
+      6 checkpoint menders/traders, 6 bosses, 6 phrase-named minions,
+      Verdant Sphere/Obelisk, Verdant Shard stays 'a'); the remaining
+      ~30 commons keep 'a'. Seed verify extended: non-null
+      indefinite_article on every definition, elder-'an' pin,
+      boss-blank pin, common-'a' pin; the no-leading-article law
+      still passes.
+  Issue D: ZERO code changes.
+
+PART 3 — VERIFICATION (18/18 live checks + test suites)
+  1. Header/separator: no header field, no bracket text, prose-first
+     (entry and look); zone_color rides the render; verified violet
+     #B387E8 in the Convergence and green #7DC95E in the Verdant
+     Reach (bar rendering itself is client CSS per spec — operator
+     visual check remains). Unstamped and aria-hidden by construction.
+  2. Introductions: "A black bear is here." twice (two bears),
+     "Morra is here.", "One of the Matron's brood is here." — exact,
+     capitalized.
+  3. Aggro vs mid-combat: "A giant cave spider snarls and moves to
+     attack!" then "The giant cave spider misses you." / "You swing at
+     the giant cave spider for 12 damage." — indefinite engagement,
+     definite combat; #24 definite compositions byte-identical
+     (asserted directly against the live definitions).
+  4. Issue D: exists, open, unmilestoned, full body; drop-re-veil
+     verified UNCHANGED live (dropped Iron Sword flipped
+     is_identified False through the real drop command).
+  5. Regressions: empty-section omission, echo-before-result, decay
+     suppression (fighter blind / idle observer sees), seq strictly
+     monotonic across the whole run, map message on move — all pass.
+     Separator appears only in renderRoom (by code). Test suites:
+     109/109 local, 117/117 in-container (incl. 5 new introduction
+     tests; the 30-case grammar table untouched).
+  All throwaway rows (zone, rooms, users, characters, defs, corpses,
+  sessions) deleted and verified zero leftovers.
+
+DEPLOYMENT
+  make build -> make migrate (0030) -> make seed (enforce-exact, all
+  checks PASS). Container restart bounced all three games. Note: the
+  ticker crash-looped during the image-deploy->migrate window (known
+  pattern) and self-healed after migration.
+
+OBSERVATION (not amendment scope): the tick engine's loop currently
+runs slower than 1 tick/second at this world size (~5s/tick observed;
+combat rounds land ~every 15s instead of ~3s). Pre-existing — the
+respawn phase issues several queries per RoomSpawn per tick and the
+world has grown. Worth a design-chat/ops look; flagged here so v20
+playtest pacing observations have context.
+
+ISSUES: #77, #78, #79 closed with amendment-referencing comments;
+#80 OPEN and unmilestoned, as ruled.
+
+ISSUES REPORT: docs/shyland/Shyland_Issues_Report_20260716T002220Z.md
+(41 open / 39 closed at generation time).
+
+OPERATOR ITEMS: visual pass on the separator (thickness, padding,
+rounded ends, both zone colors), the no-header reading feel, and
+occupant-line grammar in real play.
