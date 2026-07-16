@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ISSUE_FIELDS = (
-    "number,title,state,labels,milestone,assignees,"
+    "number,title,state,author,labels,milestone,assignees,"
     "createdAt,updatedAt,body,comments,url"
 )
 LIST_LIMIT = "500"
@@ -91,7 +91,7 @@ def fetch_dependencies(number: int) -> tuple[list[int], list[int]] | None:
 def fetch_closed() -> list[dict]:
     out = run_ok(
         ["gh", "issue", "list", "--state", "closed", "--limit", LIST_LIMIT,
-         "--json", "number,title,closedAt,labels"]
+         "--json", "number,title,author,closedAt,labels"]
     )
     issues = json.loads(out)
     issues.sort(key=lambda i: i.get("closedAt") or "", reverse=True)
@@ -107,6 +107,10 @@ def date_part(iso: str | None) -> str:
 def label_names(issue: dict) -> str:
     names = [lbl["name"] for lbl in issue.get("labels") or []]
     return ", ".join(names)
+
+
+def author_login(issue: dict) -> str:
+    return (issue.get("author") or {}).get("login", "")
 
 
 def milestone_title(issue: dict) -> str:
@@ -149,11 +153,12 @@ def render(stamp: str, repo: str, open_issues: list[dict],
 
     add("## Open Issues — Summary Table")
     add("")
-    add("| # | Title | Labels | Milestone | Updated |")
-    add("|---|---|---|---|---|")
+    add("| # | Title | Author | Labels | Milestone | Updated |")
+    add("|---|---|---|---|---|---|")
     for issue in open_issues:
         add(f"| {issue['number']} "
             f"| {table_cell(issue['title'])} "
+            f"| {table_cell(author_login(issue))} "
             f"| {table_cell(label_names(issue))} "
             f"| {table_cell(milestone_title(issue))} "
             f"| {date_part(issue.get('updatedAt'))} |")
@@ -167,6 +172,7 @@ def render(stamp: str, repo: str, open_issues: list[dict],
         add(f"## Issue #{n}: {issue['title']}")
         add("")
         add("- State: open")
+        add(f"- Author: {author_login(issue) or 'unknown'}")
         add(f"- Labels: {label_names(issue) or 'none'}")
         add(f"- Milestone: {milestone_title(issue) or 'none'}")
         add(f"- Assignees: {assignee_logins(issue) or 'none'}")
@@ -196,11 +202,12 @@ def render(stamp: str, repo: str, open_issues: list[dict],
 
     add("## Closed Issues — Summary Table")
     add("")
-    add("| # | Title | Labels | Closed |")
-    add("|---|---|---|---|")
+    add("| # | Title | Author | Labels | Closed |")
+    add("|---|---|---|---|---|")
     for issue in closed_issues:
         add(f"| {issue['number']} "
             f"| {table_cell(issue['title'])} "
+            f"| {table_cell(author_login(issue))} "
             f"| {table_cell(label_names(issue))} "
             f"| {date_part(issue.get('closedAt'))} |")
     add("")
