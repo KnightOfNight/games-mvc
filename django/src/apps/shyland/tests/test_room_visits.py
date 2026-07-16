@@ -153,7 +153,7 @@ class ArrivalRecordingTests(TransactionTestCase):
                 return room_texts
             if msg.get('type') == 'output' and msg.get('category') == 'room-render' \
                     and msg.get('exits') is not None:
-                room_texts.append(msg['text'])
+                room_texts.append(msg['room_text'])
 
     async def _connect(self, character):
         communicator = WebsocketCommunicator(
@@ -228,7 +228,7 @@ class ArrivalRecordingTests(TransactionTestCase):
                        and msg.get('category') == 'room-render'
                        and msg.get('exits') is not None):
                 msg = await communicator.receive_json_from(timeout=10)
-            self.assertIn('The long form of room B.', msg['text'])
+            self.assertIn('The long form of room B.', msg['room_text'])
 
             visit_count = await sync_to_async(
                 RoomVisit.objects.filter(

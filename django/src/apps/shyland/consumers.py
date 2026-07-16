@@ -472,11 +472,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # Re-fetch with full select_related (destination from exit FK lacks area pre-fetch)
         destination = await self.get_current_room()
 
+        # v21 brief 1 (#81): an aggro room renders like any other entry —
+        # full room render first (its who's-here section introduces the
+        # attackers), then definite-article engagement lines (the render
+        # already introduced the NPCs), then combat state last so the
+        # combat-red status is the final status the client receives.
+        await self.send_room_description(destination, entering=True,
+                                         first_visit=first_visit)
         aggro_npcs = await self.get_aggro_npcs_in_room(destination)
         if aggro_npcs:
             for npc in aggro_npcs:
                 await self.send_output(
-                    f"{npc_display(npc, capitalize=True, introduction=True)} "
+                    f"{npc_display(npc, capitalize=True, introduction=False)} "
                     "snarls and moves to attack!",
                     'combat',
                 )
@@ -484,9 +491,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v20 brief 4 (#2): engagement — fight feed + combat-red state.
             await self.send_fight(session)
             await self.send_status_refresh()
-        else:
-            await self.send_room_description(destination, entering=True,
-                                             first_visit=first_visit)
         await self.send_map()
 
     async def cmd_travel(self, args):
@@ -630,17 +634,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         max_carry = char.stat_str * 10 + bag_bonus
         current_carry = len(unequipped)
 
-        lines = []
-
+        # v21 brief 1 (#90): structured key/value report — section
+        # headers are key-only lines, everything else value lines.
         # v20 brief 3 (#48): every item line renders through the shared
         # composition helper — the old leading rarity column is gone.
-        if equipped:
-            lines.append('Equipment:')
-            for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
-                lines.append(f'  [{item.equipped_slot}]  {compose_item_line(item)}')
-            lines.append('')
+        lines = []
 
-        lines.append(f'Inventory ({current_carry}/{max_carry} items):')
+        if equipped:
+            lines.append({'k': 'Equipment:'})
+            for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
+                lines.append({'v': f'  [{item.equipped_slot}]  {compose_item_line(item)}'})
+            lines.append({})
+
+        lines.append({'k': f'Inventory ({current_carry}/{max_carry} items):'})
 
         unequipped_sorted = sorted(unequipped, key=lambda i: (
             i.definition.item_type,
@@ -665,67 +671,83 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         j += 1
                     else:
                         break
-                lines.append(f'  {compose_item_line(item, count)}')
+                lines.append({'v': f'  {compose_item_line(item, count)}'})
                 idx = j
             else:
-                lines.append(f'  {compose_item_line(item)}')
+                lines.append({'v': f'  {compose_item_line(item)}'})
                 idx += 1
 
         wallet_char = await self.get_character_fresh()
-        lines.append('')
-        lines.append('Wallet:')
-        lines.append(f'  {self.format_wallet(wallet_char)}')
+        lines.append({})
+        lines.append({'k': 'Wallet:'})
+        lines.append({'v': f'  {self.format_wallet(wallet_char)}'})
 
         # v20 brief 2 amendment 1 (#56): state reports carry 'report'
         # (unstamped on the client) — inventory, wallet, help, who, stats,
         # vendor list, examine, travel listing, brief query.
-        await self.output('\n'.join(lines), 'report')
+        await self.send_report_lines(lines)
 
     async def cmd_wallet(self):
+        # v21 brief 1 (#92): key/value form — 'Wallet:' in key-color,
+        # contents in value-color; content unchanged.
         char = await self.get_character_fresh()
-        await self.output(f'Wallet: {self.format_wallet(char)}', 'report')
+        await self.send_report_lines(
+            [{'k': 'Wallet:', 'v': f' {self.format_wallet(char)}'}],
+        )
+
+    # v21 brief 1 (#84): the help text. The movement line is static —
+    # help documents the command set, not the current room. Commands
+    # taking item arguments reference <item selection>; the grammar is
+    # explained once in the Item selection section. Bracketed
+    # alternatives use spaces around the pipe everywhere.
+    HELP_COMMANDS = [
+        ('look / l', 'describe this room'),
+        ('say <text>', 'speak to players here; NPCs may listen too'),
+        ('who', 'list players online'),
+        ('inventory / inv', 'show carried items and equipment'),
+        ('wallet', 'show your copper'),
+        ('pickup (p) <item selection>', 'pick up an item from the room'),
+        ('drop <item selection>', 'drop a carried item (unbound items only)'),
+        ('equip (eq) <item selection>', 'equip a carried item'),
+        ('unequip (uneq) <item selection>', 'unequip an equipped item'),
+        ('use <item selection>', 'use a consumable'),
+        ('examine (ex) <item selection>', 'inspect an item, NPC, or corpse in detail'),
+        ('loot [corpse] [<item selection> | all]',
+         "loot a corpse; bare 'loot' or 'loot all' takes everything from your most recent kill"),
+        ('travel [destination]', 'fast-travel via the Obelisk Network (from an obelisk)'),
+        ('list', 'see what a vendor here has for sale'),
+        ('buy <item selection>', 'buy an item from a vendor here'),
+        ('sell <item selection>', 'sell an unequipped item to a vendor here'),
+        ('repair [<item selection> | all]', 'pay a mender here to repair damaged gear'),
+        ('kill / attack (k) [npc]',
+         'attack an NPC; bare attack strikes back at whatever hit you first'),
+        ('flee', 'attempt to escape from combat'),
+        ('stats', 'show your character stats and XP'),
+        ('spend <stat> <amount>', 'spend stat points (e.g. spend dex 2)'),
+        ('brief on | off', 'short room descriptions for rooms you have seen'),
+        ('timestamps on | off', 'show or hide message timestamps'),
+        ('quit', 'leave the game and return to the games lobby'),
+        ('help / ?', 'show this list'),
+    ]
 
     async def cmd_help(self):
-        room = await self.get_current_room()
-        exits = room.exits()
-        abbrevs = {'north': 'n', 'south': 's', 'east': 'e', 'west': 'w', 'up': 'u', 'down': 'd'}
-        dir_list = ', '.join(f'{d} ({abbrevs[d]})' for d in abbrevs if d in exits)
-        movement = dir_list if dir_list else 'none'
-        help_text = (
-            f'Movement: {movement}\n'
-            '\n'
-            'Commands:\n'
-            '  look / l                   — describe this room\n'
-            '  say <text>                 — speak to players here\n'
-            "  Some of the world's inhabitants listen when you speak aloud.\n"
-            '  who                        — list players online\n'
-            '  inventory / inv            — show carried items and equipment\n'
-            '  wallet                     — show your copper\n'
-            '  pickup (p) <item>          — pick up an item from the room\n'
-            '  drop <item>                — drop a carried item (unbound items only)\n'
-            '  equip (eq) <item>          — equip a carried item\n'
-            '  unequip (uneq) <item>      — unequip an equipped item\n'
-            '  use <item>                 — use a consumable\n'
-            '  examine (ex) <item>        — inspect an item, NPC, or corpse in detail\n'
-            '  loot [corpse] [item|all]   — loot a corpse; bare \'loot\' or \'loot all\' takes everything from your most recent kill\n'
-            '  travel [destination]       — fast-travel via the Obelisk Network (from an obelisk)\n'
-            '  list                       — see what a vendor here has for sale\n'
-            '  buy <item>                 — buy an item from a vendor here\n'
-            '  sell <item>                — sell an unequipped item to a vendor here\n'
-            '  repair [item | all]        — pay a mender here to repair damaged gear\n'
-            '  kill / attack (k) [npc]    — attack an NPC; bare attack strikes back at whatever hit you first\n'
-            '  flee                       — attempt to escape from combat\n'
-            '  stats                      — show your character stats and XP\n'
-            '  spend <stat> <amount>      — spend stat points (e.g. spend dex 2)\n'
-            '  timestamps on|off          — show or hide message timestamps\n'
-            '  quit                       — leave the game and return to the games lobby\n'
-            '  help / ?                   — show this list\n'
-            '\n'
-            "Item syntax: 'axe', 'battle axe', '2.axe' (second match), 'all axes', '3 axes',\n"
-            "and rarity filters: 'sell uncommon axe', 'sell all common'.\n"
-            'Tab completes commands and item names.'
-        )
-        await self.output(help_text, 'report')
+        width = max(len(cmd) for cmd, _ in self.HELP_COMMANDS) + 2
+        lines = [
+            'Movement: north (n), south (s), east (e), west (w), up (u), down (d)',
+            '',
+            'Commands:',
+        ]
+        lines += [f'  {cmd:<{width}}— {desc}' for cmd, desc in self.HELP_COMMANDS]
+        lines += [
+            '',
+            'Item selection:',
+            "  Commands marked <item selection> accept: a name or prefix ('axe', 'battle axe'),",
+            "  an index ('2.axe' — the second match), a quantity ('3 axes'), 'all' ('all axes'),",
+            "  and a rarity filter ('sell uncommon axe', 'sell all common').",
+            '',
+            'Tab completes commands and item names.',
+        ]
+        await self.output('\n'.join(lines), 'report')
 
     async def cmd_quit(self):
         character = await self.get_character_fresh()
@@ -1738,21 +1760,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             self.room_group = f"room_{destination.id}"
             await self.channel_layer.group_add(self.room_group, self.channel_name)
 
+            # v21 brief 1 (#81): flee-into-aggro renders the destination
+            # like any other entry — full render first (who's-here
+            # introduces the attackers), then definite-article engagement
+            # lines, then combat state last.
+            destination_full = await self.get_current_room()
+            await self.send_room_description(destination_full, entering=True,
+                                             first_visit=first_visit)
             aggro_npcs = await self.get_aggro_npcs_in_room(destination)
             if aggro_npcs:
                 for npc in aggro_npcs:
                     await self.send_output(
-                        f"{npc_display(npc, capitalize=True, introduction=True)} "
+                        f"{npc_display(npc, capitalize=True, introduction=False)} "
                         "snarls and moves to attack!",
                         'combat',
                     )
                 new_session = await self.start_combat(aggro_npcs, first_attacker='npc')
                 await self.send_fight(new_session)
                 await self.send_status_refresh()
-            else:
-                destination_full = await self.get_current_room()
-                await self.send_room_description(destination_full, entering=True,
-                                                 first_visit=first_visit)
             await self.send_map()
         else:
             await self.send_output("You tried to flee but your enemies are too strong.", 'combat')
@@ -1770,26 +1795,36 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self._send_stats(character)
 
     async def _send_stats(self, character):
+        # v21 brief 1 (#91): key/value form — 'Character Stats:' header
+        # in key-color, everything under it in value-color (stat labels
+        # included; a subkey-color was explicitly deferred). The Player
+        # line is Origin + Archetype, e.g. 'Level 10 Feral Blade'.
         from .combat_utils import xp_for_next_level
         lines = [
-            f"[ Character Stats — {character.name} (Level {character.level}) ]",
-            f"  Strength     (STR): {character.stat_str}",
-            f"  Dexterity    (DEX): {character.stat_dex}",
-            f"  Endurance    (END): {character.stat_end}",
-            f"  Intelligence (INT): {character.stat_int}",
-            f"  Wisdom       (WIS): {character.stat_wis}",
-            f"  Perception   (PER): {character.stat_per}",
-            f"",
-            f"  Vitality:   {character.vitality_current} / {character.vitality_max}",
-            f"  Longevity:  {character.longevity_current} / {character.longevity_max}",
-            f"  Acuity:     {character.acuity_current:.1f} (baseline {character.acuity_baseline:.1f})",
-            f"",
-            f"  XP: {character.xp} / {xp_for_next_level(character.level)} (next level)",
-            f"  Unspent stat points: {character.unspent_stat_points}",
+            {'k': 'Character Stats:'},
+            {'v': f'  Player: {character.name} - Level {character.level} '
+                  f'{character.origin.name} {character.archetype.name}'},
+            {},
+            {'v': f'  Strength     (STR): {character.stat_str}'},
+            {'v': f'  Dexterity    (DEX): {character.stat_dex}'},
+            {'v': f'  Endurance    (END): {character.stat_end}'},
+            {'v': f'  Intelligence (INT): {character.stat_int}'},
+            {'v': f'  Wisdom       (WIS): {character.stat_wis}'},
+            {'v': f'  Perception   (PER): {character.stat_per}'},
+            {},
+            {'v': f'  Vitality:   {character.vitality_current} / {character.vitality_max}'},
+            {'v': f'  Longevity:  {character.longevity_current} / {character.longevity_max}'},
+            {'v': f'  Acuity:     {character.acuity_current:.1f} '
+                  f'(baseline {character.acuity_baseline:.1f})'},
+            {},
+            {'v': f'  XP: {character.xp} / {xp_for_next_level(character.level)} (next level)'},
+            {'v': f'  Unspent stat points: {character.unspent_stat_points}'},
         ]
         if character.unspent_stat_points > 0:
-            lines.append(f"  Type 'spend <stat> <amount>' to allocate. (e.g. 'spend str 2')")
-        await self.send_output('\n'.join(lines), 'report')
+            lines.append(
+                {'v': "  Type 'spend <stat> <amount>' to allocate. (e.g. 'spend str 2')"},
+            )
+        await self.send_report_lines(lines)
 
     async def cmd_spend(self, args):
         VALID_STATS = {
@@ -2053,6 +2088,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({'type': 'output', 'text': text, 'category': category,
                               'ts': envelope_ts()})
 
+    async def send_report_lines(self, lines):
+        """v21 brief 1 (#90/#91/#92): the structured key/value report
+        form. Each entry is one output line: 'k' renders in key-color,
+        'v' in value-color (concatenated k-then-v when both present);
+        an empty dict is a blank line. Value text still passes the
+        client's flag-block colorizer, so item flag blocks keep their
+        rarity/chrome colors inside value-colored lines."""
+        await self.send_json({'type': 'output', 'category': 'report',
+                              'lines': lines, 'ts': envelope_ts()})
+
     async def send_room_description(self, room, entering=False, force_long=False,
                                     first_visit=None):
         char = await self.get_character_fresh()
@@ -2073,24 +2118,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         show_long = await self._resolve_room_rendering(char, room, force_long, first_visit)
         if show_long:
             description_text = room.description
-            area_context = ''
-            if room.area and room.area.area_description:
-                area_context = f'{room.area.area_description}\n\n'
         else:
             description_text = room.brief_description
-            area_context = ''
 
         # v20 brief 5 (#14) + amendment 1 (#77): the ruled section order —
         # prose first (no bracket header; place identity lives in the
         # location bar alone), Exits, Who's here?, What's here? — as ONE
         # structured message. Sections with no content are omitted
         # entirely. Occupant lines are introductions (#79): indefinite
-        # article, sentence-capitalized.
+        # article, sentence-capitalized. v21 brief 1 (#55): the lines are
+        # bare noun phrases — no "is here"/"lies here" suffixes.
         living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
         fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
 
         who_lines = [
-            f'{npc_display(npc, capitalize=True, introduction=True)} is here.'
+            npc_display(npc, capitalize=True, introduction=True)
             for npc in living_npcs
         ]
 
@@ -2099,11 +2141,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # lines collapsed to xN). The brief-3 "On the ground:" section is
         # absorbed here.
         what_lines = [
-            f'{npc_display(npc, capitalize=True, introduction=True)} is here.'
+            npc_display(npc, capitalize=True, introduction=True)
             for npc in fixture_npcs
         ]
         what_lines += [
-            f'{corpse.display_name[0].upper()}{corpse.display_name[1:]} lies here.'
+            f'{corpse.display_name[0].upper()}{corpse.display_name[1:]}'
             for corpse in corpses
         ]
         room_items = await self.get_room_items(room)
@@ -2122,12 +2164,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # client's closing separator always has the CURRENT zone's color
         # (the status payload that also carries it arrives after this
         # message, so it can't be the source on a cross-zone move).
+        # v21 brief 1 (#86): area and room prose travel as separate
+        # fields (area_color riding along) so the client can color each
+        # to match its location-bar segment; brief mode carries no area
+        # prose, matching the old concatenation's behavior.
         await self.send_json({
             'type': 'output',
             'category': 'room-render',
             'enter': entering,
             'zone_color': room.zone.theme_color if room.zone_id else '#CCCCCC',
-            'text': f'{area_context}{description_text}',
+            'area_text': room.area.area_description
+                         if (show_long and room.area and room.area.area_description)
+                         else None,
+            'area_color': room.area.theme_color
+                          if (room.area_id and room.area.theme_color)
+                          else None,
+            'room_text': description_text,
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
             'who': who_lines,
@@ -2727,9 +2779,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def get_character_fresh(self):
+        # v21 brief 1 (#91): origin joins the select_related set — the
+        # stats Player line renders origin.name + archetype.name.
         char = Character.objects.select_related(
             'current_room__zone', 'current_room__area', 'recall_room',
-            'archetype__unarmed_message_pool',
+            'origin', 'archetype__unarmed_message_pool',
         ).get(pk=self.character_pk)
         self.character = char
         self._character_is_dying = char.is_dying

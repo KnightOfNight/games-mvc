@@ -188,10 +188,11 @@ def get_item_suffix(item):
 
 def get_item_flags(item):
     """v20 brief 3 (#48): the trailing flag block. Rarity capitalized;
-    Bound = soulbound by any route, Droppable = unbound. Unidentified
-    items show no rarity. Plain-text form only — styling belongs to the
-    output & messaging brief."""
-    bind = 'Bound' if item.is_soulbound else 'Droppable'
+    Bound = soulbound by any route, Unbound = not soulbound (bind word
+    renamed in v21, #60). Unidentified items show no rarity.
+    Plain-text form only — styling belongs to the client's flag-block
+    colorizer, whose FLAG_RE must match these words exactly."""
+    bind = 'Bound' if item.is_soulbound else 'Unbound'
     if item.is_identified:
         return f'[{item.rarity.capitalize()}, {bind}]'
     return f'[{bind}]'
@@ -199,7 +200,7 @@ def get_item_flags(item):
 
 def compose_item_line(item, count=1):
     """v20 brief 3 (#48): the one shared item-line composition —
-    ``<name with tier>[ xN]  <suffix e.g. durability>  [<Rarity>, Bound|Droppable]``
+    ``<name with tier>[ xN]  <suffix e.g. durability>  [<Rarity>, Bound|Unbound]``
     — adopted at every item-line site (inventory, equipment, examine,
     loot listings, ground listings). The old leading rarity prefix is
     gone everywhere."""
