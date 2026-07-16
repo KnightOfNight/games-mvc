@@ -670,6 +670,16 @@ class NpcDefinition(models.Model):
         help_text='Article used in composed references ("the", "a", "an"). '
                   'Blank for proper nouns (Morra, VND-9).',
     )
+    # v20 brief 5 amendment 1 (#79): indefinite article for INTRODUCTION
+    # contexts (room occupant lines, aggro engagement). Blank means "no
+    # indefinite introduction" — proper nouns, bosses, and unique
+    # landmarks fall back to their definite/bare composition.
+    indefinite_article = models.CharField(
+        max_length=8, default='a', blank=True,
+        help_text='Article for first-presentation contexts ("a", "an"). '
+                  'Blank for proper nouns, bosses, and unique landmarks — '
+                  'they introduce with their definite/bare form.',
+    )
     plural_phrase   = models.CharField(
         max_length=64, blank=True,
         help_text='Used verbatim as the composed reference when set — for '

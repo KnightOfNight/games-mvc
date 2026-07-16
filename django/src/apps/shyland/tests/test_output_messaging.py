@@ -15,9 +15,10 @@ from apps.shyland.command_grammar import resolve
 from apps.shyland.models import NpcDefinition, NpcInstance
 
 
-def make_npc(pk, name, article='the', plural_phrase=''):
+def make_npc(pk, name, article='the', plural_phrase='', indefinite_article='a'):
     definition = NpcDefinition(pk=pk, name=name, article=article,
-                               plural_phrase=plural_phrase)
+                               plural_phrase=plural_phrase,
+                               indefinite_article=indefinite_article)
     npc = NpcInstance(pk=pk + 100, mk_tier=1, vitality_current=10, vitality_max=10)
     npc.definition = definition
     return npc
@@ -77,6 +78,45 @@ class NpcDisplayTests(SimpleTestCase):
         a = make_npc(15, 'Morra', article='')
         b = make_npc(16, 'Morra', article='')
         self.assertEqual(npc_display_name(a, [a, b]), 'Morra')
+
+
+class IntroductionContextTests(SimpleTestCase):
+    """v20 brief 5 amendment 1 (#79): the first-presentation context —
+    occupant and aggro-engagement lines only."""
+
+    def test_common_introduces_indefinite(self):
+        npc = make_npc(30, 'black bear')
+        self.assertEqual(npc_display(npc, capitalize=True, introduction=True),
+                         'A black bear')
+
+    def test_vowel_sound_uses_an(self):
+        npc = make_npc(31, 'elder cave spider', indefinite_article='an')
+        self.assertEqual(npc_display(npc, capitalize=True, introduction=True),
+                         'An elder cave spider')
+
+    def test_blank_indefinite_falls_back_to_definite(self):
+        # Bosses and landmarks: the #24 definite acceptance strings stay
+        # byte-identical even in introduction contexts.
+        npc = make_npc(32, 'Silk Matron', indefinite_article='')
+        self.assertEqual(npc_display(npc, capitalize=True, introduction=True),
+                         'The Silk Matron')
+
+    def test_proper_noun_introduces_bare(self):
+        npc = make_npc(33, 'Morra', article='', indefinite_article='')
+        self.assertEqual(npc_display(npc, capitalize=True, introduction=True),
+                         'Morra')
+
+    def test_plural_phrase_verbatim_in_introduction(self):
+        npc = make_npc(34, "Matron's brood",
+                       plural_phrase="one of the Matron's brood",
+                       indefinite_article='')
+        self.assertEqual(npc_display(npc, capitalize=True, introduction=True),
+                         "One of the Matron's brood")
+
+    def test_definite_contexts_unchanged(self):
+        npc = make_npc(35, 'black bear')
+        self.assertEqual(npc_display(npc), 'the black bear')
+        self.assertEqual(npc_display(npc, capitalize=True), 'The black bear')
 
 
 class UnarmedFallbackTests(SimpleTestCase):

@@ -20,16 +20,25 @@ def _capitalize_first(text):
     return text[0].upper() + text[1:] if text else text
 
 
-def npc_display(npc, capitalize=False):
+def npc_display(npc, capitalize=False, introduction=False):
     """v20 brief 5 (#24): THE composer for every player-visible NPC
     reference. Accepts an NpcInstance or an NpcDefinition. plural_phrase
     verbatim when set; else article + name; else the bare name (proper
     nouns). capitalize=True uppercases only the first character, for
     sentence-initial use. Message templates never prepend their own
-    articles — they call this."""
+    articles — they call this.
+
+    Amendment 1 (#79): introduction=True is the first-presentation
+    context — room occupant lines and aggro-engagement lines, exactly
+    those two families. It uses indefinite_article ("A black bear is
+    here."); a blank indefinite_article (proper nouns, bosses, unique
+    landmarks) falls back to the definite/bare composition, so "The
+    Silk Matron snarls and moves to attack!" is unchanged."""
     definition = getattr(npc, 'definition', npc)
     if definition.plural_phrase:
         text = definition.plural_phrase
+    elif introduction and definition.indefinite_article:
+        text = f"{definition.indefinite_article} {definition.name}"
     elif definition.article:
         text = f"{definition.article} {definition.name}"
     else:

@@ -96,7 +96,6 @@
      ================================================================ */
   .msg-room-render { color: #B8B4A6; }           /* room/area prose */
   .room-content    { color: #E8E4D8; }           /* names, occupants, items */
-  .room-chrome     { color: #8A887F; }           /* brackets, dashes, colons */
   .msg-report  { color: #B8B4A6; }
   .msg-chat    { color: var(--chat); }
   .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
@@ -112,6 +111,11 @@
   .msg-echo    { color: #8A887F; }               /* '> command' transcript (#15) */
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
   .msg-section strong  { color: #7FB3D5; font-weight: bold; }
+  /* v20 brief 5 amendment 1 (#78): zone-colored separator closing the
+     room block. Solid 5px bar, rounded ends, Zone.theme_color fill (set
+     inline from the render payload) at ~0.75 opacity; the margins bring
+     the divider's total height to at least one text line (1.55em). */
+  .room-sep { height: 5px; border-radius: 2.5px; opacity: .75; margin: 0.65em 0; }
   /* Rarity scale — flag block only (#48 composition, colorized here). */
   .flag-chrome   { color: #9C9A90; }             /* [ , ] Bound Droppable */
   .rar-common    { color: #9C9A90; }
@@ -771,38 +775,14 @@
     if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
   }
 
-  // v20 brief 5 (#14/#39): the ruled room structure — header, prose,
-  // Exits, Who's here?, What's here? — from the server's structured
-  // room-render payload. Empty sections were omitted server-side.
+  // v20 brief 5 (#14/#39) + amendment 1 (#77/#78): the ruled room
+  // structure — prose first (no bracket header; place identity lives in
+  // the location bar), Exits, Who's here?, What's here?, then the
+  // zone-colored separator framing the block against event lines below.
+  // Empty sections were omitted server-side.
   function renderRoom(msg) {
     const block = document.createElement('div');
     block.className = 'msg-room-render';
-
-    const chromeSpan = (parent, t) => {
-      const s = document.createElement('span');
-      s.className = 'room-chrome';
-      s.textContent = t;
-      parent.appendChild(s);
-    };
-
-    if (msg.header && msg.header.room_name) {
-      const h = document.createElement('div');
-      chromeSpan(h, '[ ');
-      if (msg.header.area_name) {
-        const a = document.createElement('span');
-        a.textContent = msg.header.area_name;
-        // Same model theme color the location bar shows — one source of truth.
-        a.style.color = msg.header.area_color || '#CCCCCC';
-        h.appendChild(a);
-        chromeSpan(h, ' — ');
-      }
-      const r = document.createElement('span');
-      r.className = 'room-content';
-      r.textContent = msg.header.room_name;
-      h.appendChild(r);
-      chromeSpan(h, ' ]');
-      block.appendChild(h);
-    }
 
     if (msg.text) {
       const p = document.createElement('div');
@@ -845,6 +825,16 @@
     if (msg.players) inlineSection('Players here:', msg.players);
     listSection("Who's here?", msg.who);
     listSection("What's here?", msg.what);
+
+    // Amendment 1 (#78): zone-colored separator — once per room render,
+    // after the final room-block line. Decorative (aria-hidden), part of
+    // the room-rendering category so it is never stamped. Color is the
+    // server-supplied Zone.theme_color riding this render.
+    const sep = document.createElement('div');
+    sep.className = 'room-sep';
+    sep.setAttribute('aria-hidden', 'true');
+    sep.style.background = msg.zone_color || '#CCCCCC';
+    block.appendChild(sep);
 
     output.appendChild(block);
     outputWrap.scrollTop = outputWrap.scrollHeight;

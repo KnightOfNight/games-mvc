@@ -1531,6 +1531,10 @@ class Command(BaseCommand):
             content = {
                 'name': name,
                 'article': 'the' if is_obelisk else '',
+                # Amendment 1 (#79): the whole roster introduces with its
+                # definite/bare form — proper nouns, and the Obelisk is a
+                # unique landmark ("The Obelisk is here.").
+                'indefinite_article': '',
                 'plural_phrase': '',
                 'genre_tag': genre_tag,
                 'description': description,
@@ -1562,6 +1566,7 @@ class Command(BaseCommand):
         content = {
             'name': 'Primordial Sphere',
             'article': 'the',
+            'indefinite_article': '',
             'plural_phrase': '',
             'genre_tag': 'fantasy',
             'description': (
@@ -2417,6 +2422,29 @@ class Command(BaseCommand):
             slug='silk-matron', article='the', plural_phrase='',
         ).exists()
         self._check('Silk Matron / brood article fields match brief 5 Part D', brood_ok)
+
+        # v20 brief 5 amendment 1 (#79): every NpcDefinition carries a
+        # non-null indefinite_article (blank allowed = introduces with its
+        # definite/bare form); pins on the ruled shapes.
+        self._check(
+            'Every NpcDefinition has a non-null indefinite_article',
+            not NpcDefinition.objects.filter(indefinite_article__isnull=True).exists(),
+        )
+        elders_an = NpcDefinition.objects.filter(
+            slug__in=['elder-cave-spider', 'elder-cave-centipede',
+                      'elder-cave-beetle'],
+            indefinite_article='an',
+        ).count() == 3
+        self._check("Elder cave trio introduce with 'an'", elders_an)
+        bosses_blank = not NpcDefinition.objects.filter(
+            combat_tier='boss',
+        ).exclude(indefinite_article='').exists()
+        self._check('Bosses carry blank indefinite articles (definite introductions)',
+                    bosses_blank)
+        commons_a = NpcDefinition.objects.filter(
+            slug='black-bear', indefinite_article='a',
+        ).exists()
+        self._check("Common NPCs default to 'a' (black bear pin)", commons_a)
 
         self._verify_verdant()
         self._verify_map_geometry()
@@ -6096,7 +6124,8 @@ class Command(BaseCommand):
              'shadow than your light can argue with. She holds one wrapped '
              'bundle apart from all the rest, close, the way anything holds '
              'the thing it loves.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               'The Silk Matron curls inward and drops from her web — and with '
               'her falls the bundle she guarded, splitting open on the stone '
               'in a spill of silk and stolen things.'}),
@@ -6105,7 +6134,8 @@ class Command(BaseCommand):
              'A centipede beyond sense, coiled through the fluted stone in '
              "glossy yards, antennae reading the wind's one endless note. This "
              'is its hollow. Everything in it, it kept.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               'The Whistler Below collapses in a long shudder, and the wind '
               'through the sink changes pitch — somewhere above, a rope of '
               'woven grass gives way, and a hide-wrapped cache drops to the '
@@ -6115,7 +6145,8 @@ class Command(BaseCommand):
              'The hive made flesh: a beetle vast as a wagon, plated in '
              'iron-dark chitin, the hum bending deeper around her. Her wings '
              'are furled like banners before a war.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               "The Dronemother's wings still at last. The honeycomb wall "
               'behind her cracks along its seams and sloughs away, revealing '
               'a hollow packed with the shining things she hoarded.'}),
@@ -6143,12 +6174,24 @@ class Command(BaseCommand):
         for (slug, name, tier, aggressive, stats, sf, pool_slug, loot_slug,
              (copper_min, copper_max), respawn, description, extras) in npcs:
             vit, s, d, e, i, w, p = stats
+            # Amendment 1 (#79): indefinite article for introduction
+            # contexts. Default 'a' for commons; proper nouns and
+            # phrase-named minions introduce with their normal composition
+            # (blank); 'an'/blank overrides come through extras (elder
+            # trio, bosses, landmarks).
+            if 'indefinite_article' in extras:
+                indefinite = extras['indefinite_article']
+            elif extras.get('article', 'the') == '' or extras.get('plural_phrase'):
+                indefinite = ''
+            else:
+                indefinite = 'a'
             content = {
                 'name': name,
                 # v20 brief 5 (#24): article-free names; proper nouns pass
                 # article='' in extras, group-phrase minions pass
                 # plural_phrase (used verbatim by npc_display).
                 'article': extras.get('article', 'the'),
+                'indefinite_article': indefinite,
                 'plural_phrase': extras.get('plural_phrase', ''),
                 'genre_tag': extras.get('genre_tag', 'fantasy'),
                 'description': description,
@@ -6420,7 +6463,8 @@ class Command(BaseCommand):
              "zone's color the way light wears a leaf. It does not spin, "
              'pulse, or drift. The garden grows toward it. Stand here long '
              'enough and you will understand the impulse.',
-             {'is_unique': True, 'is_fixture': False, 'attackable': False}),
+             {'is_unique': True, 'is_fixture': False, 'attackable': False,
+              'indefinite_article': ''}),
             # The Verdant Obelisk — v19 brief 8, the Crown's twin to the
             # Heart obelisk
             ('the-verdant-obelisk', 'Verdant Obelisk', 'normal', False,
@@ -6432,20 +6476,21 @@ class Command(BaseCommand):
              'patient attention. Suspended within its upper lattice, the Verdant '
              'Sphere turns slowly, and the obelisk holds it the way a setting '
              'holds a stone.',
-             {'is_unique': True, 'is_fixture': True, 'attackable': False, 'genre_tag': 'cosmic'}),
+             {'is_unique': True, 'is_fixture': True, 'attackable': False,
+              'genre_tag': 'cosmic', 'indefinite_article': ''}),
             # Cave insects — aggressive
             ('elder-cave-spider', 'elder cave spider', 'elite', True,
              (110, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
              'A spider grown old in the dark under the mountain, pale as deep '
-             'silk and patient as geology.', {}),
+             'silk and patient as geology.', {'indefinite_article': 'an'}),
             ('elder-cave-centipede', 'elder cave centipede', 'elite', True,
              (130, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 1,
              'Length beyond reason, armored in segments the size of shields, '
-             'older than the villages above it.', {}),
+             'older than the villages above it.', {'indefinite_article': 'an'}),
             ('elder-cave-beetle', 'elder cave beetle', 'elite', True,
              (150, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 1,
              'A beetle at the scale of livestock, chitin black-green, wings '
-             'that open with a sound like a door to somewhere worse.', {}),
+             'that open with a sound like a door to somewhere worse.', {'indefinite_article': 'an'}),
             # Bosses — aggressive
             ('undercrag-weaver', 'Undercrag Weaver', 'boss', True,
              (500, 20, 22, 18, 5, 5, 18), 9.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
@@ -6453,7 +6498,8 @@ class Command(BaseCommand):
              'it has spun beneath the mountain. High above it, snared in a '
              'cradle of lines, hangs an iron-strapped strongbox it took whole '
              'and keeps for reasons a spider keeps things.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               'The Undercrag Weaver sags into its own silk. High above, the '
               'web-line holding a snared strongbox parts strand by strand — '
               'then all at once, and the box crashes down and bursts open.'}),
@@ -6462,7 +6508,8 @@ class Command(BaseCommand):
              'A centipede of dynastic size, coiled in glossy tiers about a '
              'chest scored soft by a thousand legs across uncountable years. '
              'The deep chitters in his name.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               'The Chittering King unclenches, segment by segment, from '
               'around the chest it has coiled about for years. The lid, '
               'scored by a thousand legs, falls open.'}),
@@ -6471,7 +6518,8 @@ class Command(BaseCommand):
              'Legend, standing on legend: a beetle vast as myth atop a hoard '
              'of every genre the rifts ever spilled, wings holding one '
              'enormous patient chord beneath the light of the Crown itself.',
-             {'death_message':
+             {'indefinite_article': '',
+             'death_message':
               'The Crowned Devourer crashes down, wings splintering, and the '
               'hoard beneath it shifts — coins and treasures sliding free of '
               'the great shape that will never guard them again.'}),

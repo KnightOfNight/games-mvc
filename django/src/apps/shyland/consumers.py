@@ -476,7 +476,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if aggro_npcs:
             for npc in aggro_npcs:
                 await self.send_output(
-                    f"{npc_display(npc, capitalize=True)} snarls and moves to attack!",
+                    f"{npc_display(npc, capitalize=True, introduction=True)} "
+                    "snarls and moves to attack!",
                     'combat',
                 )
             session = await self.start_combat(aggro_npcs, first_attacker='npc')
@@ -1741,7 +1742,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if aggro_npcs:
                 for npc in aggro_npcs:
                     await self.send_output(
-                        f"{npc_display(npc, capitalize=True)} snarls and moves to attack!",
+                        f"{npc_display(npc, capitalize=True, introduction=True)} "
+                        "snarls and moves to attack!",
                         'combat',
                     )
                 new_session = await self.start_combat(aggro_npcs, first_attacker='npc')
@@ -2078,21 +2080,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             description_text = room.brief_description
             area_context = ''
 
-        # v20 brief 5 (#14): the ruled section order — header, prose,
-        # Exits, Who's here?, What's here? — as ONE structured message.
-        # Sections with no content are omitted entirely; the client renders
-        # the structure (header labels #39, area color from the model —
-        # the same value the location bar shows).
+        # v20 brief 5 (#14) + amendment 1 (#77): the ruled section order —
+        # prose first (no bracket header; place identity lives in the
+        # location bar alone), Exits, Who's here?, What's here? — as ONE
+        # structured message. Sections with no content are omitted
+        # entirely. Occupant lines are introductions (#79): indefinite
+        # article, sentence-capitalized.
         living_npcs = [npc for npc in npcs if not npc.definition.is_fixture]
         fixture_npcs = [npc for npc in npcs if npc.definition.is_fixture]
 
-        who_lines = [f'{npc_display(npc)} is here.' for npc in living_npcs]
+        who_lines = [
+            f'{npc_display(npc, capitalize=True, introduction=True)} is here.'
+            for npc in living_npcs
+        ]
 
         # What's here? is THE things/items section: fixtures, corpses, and
         # the ground items (one composed line per distinct item, identical
         # lines collapsed to xN). The brief-3 "On the ground:" section is
         # absorbed here.
-        what_lines = [f'{npc_display(npc)} is here.' for npc in fixture_npcs]
+        what_lines = [
+            f'{npc_display(npc, capitalize=True, introduction=True)} is here.'
+            for npc in fixture_npcs
+        ]
         what_lines += [
             f'{corpse.display_name[0].upper()}{corpse.display_name[1:]} lies here.'
             for corpse in corpses
@@ -2109,15 +2118,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # v20 brief 2 amendment 1 (#56): the whole room block is a
         # rendering, not an event — 'room-render', unstamped on the client.
+        # Brief 5 amendment 1 (#78): zone_color rides the render so the
+        # client's closing separator always has the CURRENT zone's color
+        # (the status payload that also carries it arrives after this
+        # message, so it can't be the source on a cross-zone move).
         await self.send_json({
             'type': 'output',
             'category': 'room-render',
             'enter': entering,
-            'header': {
-                'area_name': room.area.name if room.area else None,
-                'area_color': room.area.theme_color if room.area else None,
-                'room_name': room.name,
-            },
+            'zone_color': room.zone.theme_color if room.zone_id else '#CCCCCC',
             'text': f'{area_context}{description_text}',
             'players': ', '.join(others) if others else None,
             'exits': exit_str,
