@@ -77,30 +77,52 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
 
 
 def _apply_instant_component(component, target, magnitude):
-    """Apply an instantaneous component immediately. Returns a message string."""
+    """Apply an instantaneous component immediately. Returns a message string.
+
+    v21 brief 3 (#52): bar restores are single atomic UPDATEs (F() with a
+    clamp), never object-arithmetic-then-save — the caller's cached
+    character may be stale against the tick engine's per-round damage
+    writes, and adding the magnitude to a stale read silently resurrects
+    persisted damage. The message prints the magnitude; the bars render
+    truth because every display path re-fetches after mutation.
+    """
+    from django.db.models import Case, DecimalField, F, Value, When
+    from django.db.models.functions import Cast, Greatest, Least, Round
+
+    from .models import Character
+
     ctype = component.component_type
+    row = Character.objects.filter(pk=target.pk)
 
     if ctype == 'restore_vitality':
-        target.vitality_current = min(
-            target.vitality_current + magnitude, target.vitality_max
-        )
-        target.save(update_fields=['vitality_current'])
+        row.update(vitality_current=Least(
+            F('vitality_current') + magnitude, F('vitality_max')))
         return f"You feel your body recover. (+{int(magnitude)} Vitality)"
 
     if ctype == 'restore_longevity':
-        target.longevity_current = min(
-            target.longevity_current + magnitude, target.longevity_max
-        )
-        target.save(update_fields=['longevity_current'])
+        row.update(longevity_current=Least(
+            F('longevity_current') + magnitude, F('longevity_max')))
         return f"Your stamina is restored. (+{int(magnitude)} Longevity)"
 
     if ctype == 'restore_acuity':
-        diff = target.acuity_baseline - target.acuity_current
-        step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
-        target.acuity_current = round(
-            max(0.1, min(1.9, target.acuity_current + step)), 1
+        # Same formula as before, expressed in SQL: move toward the
+        # baseline by up to `magnitude`, never past it, clamped to the
+        # 0.1–1.9 scale and rounded to 1 decimal (Cast to numeric —
+        # Postgres has no round(double, int)).
+        toward_baseline = Case(
+            When(acuity_current__lt=F('acuity_baseline'),
+                 then=Least(F('acuity_current') + magnitude,
+                            F('acuity_baseline'))),
+            When(acuity_current__gt=F('acuity_baseline'),
+                 then=Greatest(F('acuity_current') - magnitude,
+                               F('acuity_baseline'))),
+            default=F('acuity_current'),
         )
-        target.save(update_fields=['acuity_current'])
+        row.update(acuity_current=Round(
+            Cast(Greatest(Value(0.1), Least(Value(1.9), toward_baseline)),
+                 DecimalField(max_digits=8, decimal_places=4)),
+            1))
+        target.refresh_from_db(fields=['acuity_current'])
         return f"Your mind steadies. (Acuity {target.acuity_current:.1f})"
 
     if ctype == 'durability_restore':

@@ -482,8 +482,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         aggro_npcs = await self.get_aggro_npcs_in_room(destination)
         if aggro_npcs:
             for npc in aggro_npcs:
+                # v21 brief 3 (#64): ordinal-aware while duplicates share
+                # the visible name — singles render exactly as before.
                 await self.send_output(
-                    f"{npc_display(npc, capitalize=True, introduction=False)} "
+                    f"{npc_display_name(npc, aggro_npcs, capitalize=True)} "
                     "snarls and moves to attack!",
                     'combat',
                 )
@@ -1780,8 +1782,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             aggro_npcs = await self.get_aggro_npcs_in_room(destination)
             if aggro_npcs:
                 for npc in aggro_npcs:
+                    # v21 brief 3 (#64): ordinal-aware while duplicates
+                    # share the visible name.
                     await self.send_output(
-                        f"{npc_display(npc, capitalize=True, introduction=False)} "
+                        f"{npc_display_name(npc, aggro_npcs, capitalize=True)} "
                         "snarls and moves to attack!",
                         'combat',
                     )
@@ -2812,14 +2816,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             is_alive=True,
             definition__is_aggressive=True,
             definition__attackable=True,
-        ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
+        ).order_by('spawned_at', 'pk')
+         .select_related('definition').prefetch_related('definition__effects__effect_definition'))
 
     @database_sync_to_async
     def get_live_npcs_in_room(self, room):
+        # v21 brief 3 (#64): (spawned_at, pk) is THE canonical NPC order —
+        # the Who's-here listing, the resolver's default pick, the N.noun
+        # index, and message ordinals all derive from it. Every room/session
+        # NPC queryset must carry this order_by.
         return list(NpcInstance.objects.filter(
             current_room=room,
             is_alive=True,
-        ).select_related('definition').prefetch_related('definition__effects__effect_definition'))
+        ).order_by('spawned_at', 'pk')
+         .select_related('definition').prefetch_related('definition__effects__effect_definition'))
 
     @database_sync_to_async
     def schedule_npc_dialogue_responses(self, text):
@@ -2948,7 +2958,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         """Enemy rows for the fight message: every living NPC in the
         session, with the focus flag resolved the same way the tick engine
         resolves it (session focus if alive and present, else the first)."""
-        npcs = list(session.npcs.select_related('definition').filter(is_alive=True))
+        npcs = list(session.npcs.select_related('definition')
+                    .filter(is_alive=True).order_by('spawned_at', 'pk'))
         focus_pk = session.focus_npc_id
         if focus_pk is None or all(n.pk != focus_pk for n in npcs):
             focus_pk = npcs[0].pk if npcs else None
