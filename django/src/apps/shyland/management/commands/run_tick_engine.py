@@ -127,8 +127,9 @@ class Command(BaseCommand):
                      self._build_status(c))
                     for c in chars
                 ]
+            # v21 brief 3 (#64): canonical NPC order everywhere.
             npc_list = list(session.npcs.select_related('definition')
-                            .filter(is_alive=True))
+                            .filter(is_alive=True).order_by('spawned_at', 'pk'))
             focus_pk = session.focus_npc_id
             if focus_pk is None or all(n.pk != focus_pk for n in npc_list):
                 focus_pk = npc_list[0].pk if npc_list else None
@@ -273,13 +274,14 @@ class Command(BaseCommand):
                 ).prefetch_related(
                     'archetype__unarmed_message_pool__messages',
                 ).all())
+                # v21 brief 3 (#64): canonical NPC order everywhere.
                 npcs = list(session.npcs.select_related(
                     'definition',
                     'definition__unarmed_message_pool',
                 ).prefetch_related(
                     'definition__effects__effect_definition',
                     'definition__unarmed_message_pool__messages',
-                ).all())
+                ).order_by('spawned_at', 'pk'))
                 return chars, npcs
 
             characters, npcs = await load_participants(session)
@@ -482,7 +484,9 @@ class Command(BaseCommand):
                             create_corpse(npc, character)
 
                             messages.append((character.pk, f"You have slain {display}! (+{xp} XP)", 'reward', None))
-                            room_messages.append((session.room_id, f"{character.name} has slain {npc_display(npc)}!", 'combat', character.pk))
+                            # v21 brief 3 (#64): ordinal-aware while
+                            # same-name duplicates remain in the encounter.
+                            room_messages.append((session.room_id, f"{character.name} has slain {npc_display_name(npc, live_npcs)}!", 'combat', character.pk))
                             if npc_def.death_message:
                                 room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
 
@@ -676,10 +680,18 @@ class Command(BaseCommand):
 
     async def process_npc_respawn(self):
         created = await self.run_respawn_sweep()
-        for name, mk_tier, room_name in created:
+        for entry in created:
             logger.info(
-                f"NPC spawned: {name} (Mk {mk_tier}) in room {room_name}"
+                f"NPC spawned: {entry['name']} (Mk {entry['mk_tier']}) "
+                f"in room {entry['room_name']}"
             )
+        # v21 brief 3 (#17): an aggressive NPC (re)spawning into a room with
+        # living players engages on the spawn tick — same as a player walking
+        # in. Runs only when a respawn actually fired (zero recurring
+        # per-tick queries, #107 discipline).
+        aggro_room_ids = {e['room_id'] for e in created if e['aggressive']}
+        if aggro_room_ids:
+            await self.engage_respawned_aggro(aggro_room_ids)
 
     @database_sync_to_async
     def run_respawn_sweep(self):
@@ -737,9 +749,129 @@ class Command(BaseCommand):
                     vitality_max=spawn.npc_definition.base_vitality,
                     is_alive=True,
                 )
-                created.append(
-                    (spawn.npc_definition.name, spawn.mk_tier, spawn.room.name))
+                created.append({
+                    'name': spawn.npc_definition.name,
+                    'mk_tier': spawn.mk_tier,
+                    'room_name': spawn.room.name,
+                    'room_id': spawn.room_id,
+                    'aggressive': (spawn.npc_definition.is_aggressive
+                                   and spawn.npc_definition.attackable),
+                })
         return created
+
+    async def _online_character_pks(self, pks):
+        """Presence check against the consumer's Redis keys — a respawned
+        aggressor engages only connected players, exactly like walk-in
+        aggro can only happen to a connected player."""
+        if not pks:
+            return set()
+        if getattr(self, '_presence_redis', None) is None:
+            import redis.asyncio as aioredis
+            self._presence_redis = aioredis.from_url('redis://redis:6379')
+        keys = [f'shyland:online:{pk}' for pk in pks]
+        values = await self._presence_redis.mget(*keys)
+        return {pk for pk, value in zip(pks, values) if value}
+
+    async def engage_respawned_aggro(self, room_ids):
+        """v21 brief 3 (#17): engagement stage of the respawn tick. Ordering
+        mirrors #81's arrival contract: placement (already done), then the
+        engagement lines, then fight/status payloads last. No respawn
+        message precedes the engagement, so the line introduces the NPC
+        (indefinite article, the #79 first-presentation context)."""
+        from apps.shyland.combat_utils import npc_display
+
+        @database_sync_to_async
+        def get_present_characters():
+            from apps.shyland.models import Character
+            return list(Character.objects.filter(
+                current_room_id__in=room_ids,
+            ).select_related('current_room__zone', 'current_room__area'))
+
+        present = await get_present_characters()
+        if not present:
+            return
+        online_pks = await self._online_character_pks([c.pk for c in present])
+        targets = [c for c in present if c.pk in online_pks and not c.is_dying]
+        dying_pks = [c.pk for c in present if c.is_dying]
+        if not targets:
+            return
+
+        @database_sync_to_async
+        def engage(character):
+            """Join/create the character's session with every live aggro
+            NPC in the room not already in it — the same set walk-in aggro
+            would engage. Returns (session, newly-added NPCs, fight rows,
+            status) or None when nothing new engages."""
+            from apps.shyland.combat_utils import npc_display_name
+            from apps.shyland.models import CombatSession, NpcInstance
+
+            room_npcs = list(NpcInstance.objects.filter(
+                current_room_id=character.current_room_id,
+                is_alive=True,
+                definition__is_aggressive=True,
+                definition__attackable=True,
+            ).order_by('spawned_at', 'pk').select_related('definition'))
+            if not room_npcs:
+                return None
+            session = CombatSession.objects.filter(
+                is_active=True, characters=character,
+            ).first()
+            already = (set(session.npcs.values_list('pk', flat=True))
+                       if session else set())
+            new_npcs = [n for n in room_npcs if n.pk not in already]
+            if not new_npcs:
+                return None
+            if session is None:
+                session = CombatSession.objects.create(
+                    room_id=character.current_room_id,
+                    first_attacker='npc',
+                )
+                session.characters.add(character)
+            for npc in new_npcs:
+                session.npcs.add(npc)
+            session_npcs = list(session.npcs.filter(is_alive=True)
+                                .order_by('spawned_at', 'pk')
+                                .select_related('definition'))
+            focus_pk = session.focus_npc_id
+            if focus_pk is None or all(n.pk != focus_pk for n in session_npcs):
+                focus_pk = session_npcs[0].pk if session_npcs else None
+            fight_rows = [
+                {
+                    'name': npc_display_name(n, session_npcs),
+                    'hp': n.vitality_current,
+                    'hp_max': n.vitality_max,
+                    'focused': n.pk == focus_pk,
+                }
+                for n in session_npcs
+            ]
+            return new_npcs, fight_rows, self._build_status(character)
+
+        engaged_rooms = {}
+        payloads = []
+        for character in targets:
+            result = await engage(character)
+            if result is None:
+                continue
+            new_npcs, fight_rows, status = result
+            engaged_rooms.setdefault(character.current_room_id, new_npcs)
+            payloads.append((character.pk, fight_rows, status))
+
+        # Engagement lines to the room (dying players never see combat
+        # output), then combat state last.
+        for room_id, new_npcs in engaged_rooms.items():
+            for npc in new_npcs:
+                await self.broadcast_to_room(
+                    room_id,
+                    f"{npc_display(npc, capitalize=True, introduction=True)} "
+                    "snarls and moves to attack!",
+                    'combat',
+                    exclude_pks=dying_pks or None,
+                )
+        for char_pk, fight_rows, status in payloads:
+            await self.send_to_player(
+                char_pk, '', None, status,
+                fight={'type': 'fight', 'active': True, 'enemies': fight_rows},
+            )
 
     # ------------------------------------------------------------------
     # Effects: per-tick DoT/HoT, Acuity drift, expiry
