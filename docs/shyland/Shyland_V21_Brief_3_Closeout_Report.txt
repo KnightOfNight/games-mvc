@@ -1,0 +1,176 @@
+SHYLAND V21 BRIEF 3 — COMBAT STATE FIXES (B2)
+Closeout Report — 2026-07-17
+
+Branch: worktree-v21-brief-3
+Implementation commit: 0c00107
+Architecture doc commit: 9ed7eb8
+This closeout report is the final commit of the brief (hash recorded in git;
+it follows 9ed7eb8 on the same branch).
+
+No model changes, no migrations. Issues closed: #52, #64, #17.
+
+------------------------------------------------------------------------
+IMPLEMENTATION, PER STEP
+------------------------------------------------------------------------
+
+Step 0 — #52 ruling comment posted verbatim before any code
+(https://github.com/KnightOfNight/games-mvc/issues/52 — Option A, atomic
+updates; Option B row-locking rejected on #107 pace grounds).
+
+Step 1 — #52 atomic bar mutations.
+effect_utils._apply_instant_component: all three restore branches are now
+single atomic queryset UPDATEs on the character row:
+  - restore_vitality:  vitality_current = Least(F('vitality_current') +
+    magnitude, F('vitality_max'))
+  - restore_longevity: same shape on the longevity fields
+  - restore_acuity:    conditional toward-baseline Case/When capped at
+    F('acuity_baseline') both directions, clamped to 0.1-1.9, rounded to
+    1 decimal via Cast-to-numeric + Round (Postgres has no
+    round(double, int)); the branch then refresh_from_db()s the field so
+    the message prints the persisted value.
+Refresh-before-display: cmd_use already re-fetches via
+get_character_fresh() (which reassigns self.character) after applying the
+effect and builds its status payload from the fresh object — the display
+side needed no change; the corruption was entirely the stale write.
+
+AUDIT SWEEP — every write to a character bar *_current field outside the
+tick engine, and its disposition:
+  1. effect_utils restore_vitality        — CONVERTED (atomic).
+  2. effect_utils restore_longevity       — CONVERTED (atomic).
+  3. effect_utils restore_acuity          — CONVERTED (atomic).
+  4. consumers cmd_spend -> combat_utils.recalculate_bars — AUDITED,
+     UNCONVERTED: an absolute set (current := recomputed max, the
+     level-up-refill family), not a read-modify-write — it reads stats,
+     never bar currents, so there is no stale-add to race. Note for the
+     design chat: spending a point in END/STR/WIS mid-combat refills both
+     bars to their new max by this design; if that is unwanted it is a
+     design ruling, not a code race.
+  5. views.py character creation (recalculate_bars on the unsaved
+     character) — AUDITED, UNCONVERTED: creation-time, no engine
+     concurrency exists.
+  6. effect_utils.apply_stat_effect — out of mandate (writes stat_*
+     fields, not bars); noted that it is a cached-object RMW on stats
+     shared with the engine's expiry reversal, a sibling-shaped risk on
+     NON-bar fields, left for a future ruling.
+The tick engine's own bar writes are untouched. apply_effect_definition
+is shared by the consumer and the engine's apply_npc_effects path; the
+atomic branches are strictly safe for both callers.
+
+Regression test (tests/test_combat_state.py, HealLostUpdateTests): tick-
+engine-style damage persisted while the consumer holds a stale cached
+character; heal applied through the consumer path; asserts persisted
+result == damaged_value + magnitude (65, not the old code's resurrected
+100). Plus clamp-at-max, longevity, and two acuity cases (persisted-value
+basis; never overshoots baseline).
+
+Step 2 — #64 one authoritative NPC order.
+Core: order_by('spawned_at', 'pk') added to every room/session NPC
+queryset — consumers.get_live_npcs_in_room, get_aggro_npcs_in_room,
+_fight_enemies, and the tick engine's fight-payload and load_participants
+queries. Verified the resolver already sorts identically (_age_key =
+(spawned_at, pk) in command_grammar.py), so listing, resolver default
+pick, N.noun index, and ordinal words now derive from one order by
+construction. Companion polish: combat messages are ordinal-aware while
+same-name duplicates are present — the engine's kill broadcast converted
+from bare npc_display to npc_display_name, and the two consumer aggro-
+engagement loops (movement entry and flee-into-aggro) converted likewise;
+round messages, personal kill lines, focus-shift lines, and fight-panel
+rows were already ordinal-aware and now share the canonical order.
+Singles render byte-identically (npc_display_name falls back to
+npc_display when the name is unique) — the #79/#81 pinned strings hold.
+Test (NpcOrderingTests): two identical NPCs — listing order, resolver
+default pick, 2.noun selection, and message ordinals all agree on spawn
+order; a solo NPC renders no ordinal.
+
+Step 3 — #17 respawned NPCs engage immediately.
+CONFIRMED MECHANISM: exactly as diagnosed — the tick engine's respawn
+path creates the NpcInstance and stops; no engagement check exists
+anywhere in the engine, and aggro fires only in the consumer's arrival
+paths (movement/flee). No state flag was lagging; the check simply never
+ran. Fix implemented at the true cause: process_npc_respawn now ends
+with an engagement stage (engage_respawned_aggro) that runs ONLY when
+the batched sweep actually created instances — zero recurring per-tick
+queries (#107 discipline preserved; the sweep remains four fixed queries
+per tick). Contract implemented:
+  - Aggressive+attackable respawns into rooms with living, connected,
+    non-dying characters engage that tick: the character's active session
+    gains the room's unengaged aggro NPCs, or a new session is created
+    (first_attacker='npc') — multi-NPC sessions exactly as walk-in aggro
+    builds them.
+  - Connectedness = the consumer's Redis presence keys (shyland:online:
+    <pk>), checked with one mget only when a respawn fired — a respawned
+    aggressor cannot engage (and then kill) an offline character.
+  - Grammar: the respawn path emits no introduction line, so the
+    engagement line introduces — indefinite article via npc_display(...,
+    introduction=True): "A brindled testrat snarls and moves to attack!"
+  - Ordering mirrors #81: placement, then engagement lines (broadcast to
+    the room, dying players excluded via exclude_pks), then fight panel +
+    combat-red status last.
+Tests (RespawnAggroTests, engine-path via asyncio with the send funnels
+and presence check patched): occupied room engages that tick (session,
+line text, indefinite article, fight active, in_combat status); empty
+room engages nothing; passive respawn engages nothing.
+
+------------------------------------------------------------------------
+VERIFICATION
+------------------------------------------------------------------------
+
+1. Full test suite green: 130/130 in container (117 existing + 13 new in
+   tests/test_combat_state.py), run as
+   manage.py test apps.shyland.tests -t /app.
+
+2. Live mid-combat heal — PASS (15-check live WebsocketCommunicator run
+   against the production stack, throwaway world/character, all cleaned
+   up): heal message +25, persisted bar moved from post-damage truth and
+   clamped at max, the post-heal status payload rendered the persisted
+   value exactly (status == DB). The unclamped +25-over-damaged-truth
+   case is pinned exactly by the regression test.
+
+3. Acuity/longevity restore paths — verified via test (no in-game
+   consumable exercises restore_acuity/restore_longevity: Healing
+   Draught is restore_vitality; Focus Tonic is shift_acuity_high, a
+   duration component; permitted by the brief's "or verify via test").
+
+4. Live two-identical-NPCs — PASS: entry engagement lines carried
+   ordinals ("The first/second brindled testrat snarls and moves to
+   attack!"), bare k picked the first ("You change your attacks to focus
+   on the first..."), 2.noun picked the second, round/kill messages
+   ordinal-aware; solo NPCs render no ordinal (unit-tested; also visible
+   live after deaths).
+
+5. Live respawn engagement — PASS: both rats killed, character stood
+   still, the respawn engaged on its tick with "A brindled testrat
+   snarls and moves to attack!" (indefinite ✓), fight panel active ✓,
+   combat-red status delivered ✓. (respawn_minutes=0 on the test
+   definition produced a kill/respawn/engage loop — each respawn engaged
+   immediately, repeatedly, demonstrating the path robustly.)
+
+6. Regression — PASS: movement-triggered aggro preserved #81's
+   render-then-engage ordering (room-render at index 1, snarls at 3-4);
+   combat round timestamps at 3.93s/3.92s — design pace held, no new
+   per-tick load (the engagement stage runs only on respawn events).
+
+------------------------------------------------------------------------
+DEVIATIONS
+------------------------------------------------------------------------
+
+None. Two notes for the record, neither a deviation: (a) the brief's
+"refresh-before-display" was already satisfied by cmd_use's existing
+get_character_fresh() call — no code change was needed on the display
+side; (b) the ordinal polish was extended to the two consumer aggro-
+engagement loops (movement and flee), which are combat messages
+referencing duplicate NPCs and thus inside the ruled scope — pinned
+single-NPC strings are byte-identical via the helper's fallback.
+
+------------------------------------------------------------------------
+OPERATOR PLAYTEST (post-deploy, human steps)
+------------------------------------------------------------------------
+
+- Fight something that hits you, drink a draught mid-fight: the bar
+  rises exactly 25 from where it truly was (no more phantom heals).
+- Find a room with two identical NPCs: k <noun> engages the first and
+  says so; k 2.<noun> the second; round messages name first/second.
+- Kill both spiders in an aggro room and stand still: the respawn
+  attacks you on its tick, "A ... snarls and moves to attack!", fight
+  panel updates.
+- Normal walk-in aggro and round pacing feel unchanged.
