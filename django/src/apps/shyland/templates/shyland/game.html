@@ -32,6 +32,17 @@
     --conn-green: #4caf7d;
     --conn-amber: #e0a840;
     --conn-gray: #6b6b80;
+    /* v21 brief 1: the ruled palette vocabulary — key-color is the
+       structural-header blue (#39), value-color the room-content
+       near-white. No new hex values; these name existing ones.
+       (--loc-room shares value-color's hex by coincidence of ruling
+       and stays independently declared per #1.) */
+    --key-color: #7FB3D5;
+    --value-color: #E8E4D8;
+    /* v21 brief 1 (#85): pane borders take the current zone's theme
+       color at ~0.75 alpha ('BF' appended in JS when zone_color
+       arrives). Fallback matches the render payload's #CCCCCC. */
+    --zone-border: #CCCCCCBF;
   }
 
   /* v20 brief 4 amendment 1 (#73): the app fills the viewport exactly —
@@ -61,8 +72,8 @@
     align-items: center;
     padding: 6px 14px;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    border-right: 1px solid var(--border);
+    border-bottom: 5px solid var(--zone-border);
+    border-right: 5px solid var(--zone-border);
     white-space: nowrap;
     overflow: hidden;
     font-size: 15px;
@@ -83,7 +94,7 @@
     overflow-y: auto;
     padding: 10px 14px;
     background: var(--bg);
-    border-right: 1px solid var(--border);
+    border-right: 5px solid var(--zone-border);
   }
   #output { white-space: pre-wrap; line-height: 1.55; }
 
@@ -94,9 +105,12 @@
      combat reds are one family with the stats panel's combat state
      (#E24B4A / #3A1212) — never introduce a second red.
      ================================================================ */
-  .msg-room-render { color: #B8B4A6; }           /* room/area prose */
-  .room-content    { color: #E8E4D8; }           /* names, occupants, items */
+  .msg-room-render { color: #B8B4A6; }           /* room-render block container */
+  .room-content    { color: var(--value-color); } /* names, occupants, items */
   .msg-report  { color: #B8B4A6; }
+  /* v21 brief 1 (#90/#91/#92): structured key/value report lines. */
+  .msg-key   { color: var(--key-color); }
+  .msg-value { color: var(--value-color); }
   .msg-chat    { color: var(--chat); }
   .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
   .msg-combat-hit-out  { color: #C4453F; }       /* your hit */
@@ -110,14 +124,16 @@
   .msg-room    { color: #8A887F; }               /* ambient room events */
   .msg-echo    { color: #8A887F; }               /* '> command' transcript (#15) */
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
-  .msg-section strong  { color: #7FB3D5; font-weight: bold; }
+  .msg-section strong  { color: var(--key-color); font-weight: bold; }
   /* v20 brief 5 amendment 1 (#78): zone-colored separator closing the
-     room block. Solid 5px bar, rounded ends, Zone.theme_color fill (set
-     inline from the render payload) at ~0.75 opacity; the margins bring
-     the divider's total height to at least one text line (1.55em). */
-  .room-sep { height: 5px; border-radius: 2.5px; opacity: .75; margin: 0.65em 0; }
+     room block. Solid 3px bar (v21 brief 1 amendment 1: reduced from
+     5px to read lighter than the 5px pane borders), rounded ends,
+     Zone.theme_color fill (set inline from the render payload) at
+     ~0.75 opacity; the margins bring the divider's total height to at
+     least one text line (1.55em). */
+  .room-sep { height: 3px; border-radius: 1.5px; opacity: .75; margin: 0.65em 0; }
   /* Rarity scale — flag block only (#48 composition, colorized here). */
-  .flag-chrome   { color: #9C9A90; }             /* [ , ] Bound Droppable */
+  .flag-chrome   { color: #9C9A90; }             /* [ , ] Bound Unbound */
   .rar-common    { color: #9C9A90; }
   .rar-uncommon  { color: #5FA8D3; }
   .rar-rare      { color: #B387E8; }
@@ -152,7 +168,7 @@
     flex: none;
     padding: 10px;
     background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 5px solid var(--zone-border);
   }
   /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
      Stat text colors unchanged. */
@@ -199,13 +215,15 @@
   .fight-fill { height: 100%; background: var(--combat-accent); }
   .fight-nums { flex: none; color: var(--muted); font-size: 11px; }
 
-  /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom. */
+  /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom.
+     v21 brief 1 (#85): +5px zone-colored border-top; height grows to
+     305px so the SVG's 300px content box survives border-box sizing. */
   #map-wrap {
     flex: none;
     width: 300px;
-    height: 300px;
+    height: 305px;
     background: var(--bg);
-    border-top: 1px solid var(--border);
+    border-top: 5px solid var(--zone-border);
   }
   #map { display: block; }
   .map-open  { stroke: var(--room); stroke-width: 2; }
@@ -227,8 +245,8 @@
     gap: 8px;
     padding: 6px 10px;
     background: var(--surface);
-    border-top: 1px solid var(--border);
-    border-right: 1px solid var(--border);
+    border-top: 5px solid var(--zone-border);
+    border-right: 5px solid var(--zone-border);
   }
   #prompt { color: var(--accent); font-size: 15px; user-select: none; }
   #cmd {
@@ -288,15 +306,17 @@
     }
     #side { display: contents; }
     #loc-bar   { order: 1; border-right: none; }
-    #side-stats { order: 2; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    /* v21 brief 1 (#85): the borders that exist in this layout get the
+       same 5px zone-colored treatment as the desktop panes. */
+    #side-stats { order: 2; padding: 6px 10px; border-bottom: 5px solid var(--zone-border); }
     #side-stats #stats-name { display: none; }
     #bars { flex-direction: row; gap: 10px; margin-top: 0; }
     #bars .statbar { flex: 1 1 0; min-width: 0; }
     #bars .bar-num { min-width: 0; }
-    #side-fight { order: 3; display: none; flex: none; max-height: 96px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    #side-fight { order: 3; display: none; flex: none; max-height: 96px; border-bottom: 5px solid var(--zone-border); background: var(--surface); }
     #shell.has-fight #side-fight { display: block; }
     #output-wrap { order: 4; border-right: none; height: calc(100vh - 150px); height: calc(100svh - 150px); min-height: 240px; }
-    #map-wrap { order: 5; margin: 0 auto; border: 1px solid var(--border); }
+    #map-wrap { order: 5; margin: 0 auto; width: 310px; height: 310px; border: 5px solid var(--zone-border); }
     #cmd-bar { order: 6; position: sticky; bottom: 0; z-index: 10; border-right: none; }
   }
 </style>
@@ -744,10 +764,12 @@
   }
 
   // v20 brief 5 (#14 rarity rider): the item-line flag block —
-  // "[Rarity, Bound|Droppable]" or "[Bound|Droppable]" — renders its
+  // "[Rarity, Bound|Unbound]" or "[Bound|Unbound]" — renders its
   // color scale; brackets, commas, and the bind word stay chrome gray.
-  // Purely presentational: the text content is unchanged.
-  const FLAG_RE = /\[(?:(Common|Uncommon|Rare|Epic|Legendary|Artifact), )?(Bound|Droppable)\]/g;
+  // Purely presentational: the text content is unchanged. v21 brief 1
+  // (#60): the bind word is now "Unbound" — this regex changes in
+  // lockstep with item_utils.get_item_flags or colorization breaks.
+  const FLAG_RE = /\[(?:(Common|Uncommon|Rare|Epic|Legendary|Artifact), )?(Bound|Unbound)\]/g;
 
   function appendFlaggedText(el, text) {
     let last = 0, m;
@@ -781,12 +803,33 @@
   // zone-colored separator framing the block against event lines below.
   // Empty sections were omitted server-side.
   function renderRoom(msg) {
+    // v21 brief 1 (#85): the pane borders take the current zone's color
+    // at ~0.75 alpha, from the same server-delivered zone_color the
+    // closing separator consumes.
+    if (typeof msg.zone_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(msg.zone_color)) {
+      document.documentElement.style.setProperty('--zone-border', msg.zone_color + 'BF');
+    }
+
     const block = document.createElement('div');
     block.className = 'msg-room-render';
 
-    if (msg.text) {
+    // v21 brief 1 (#86): area prose in the Area's theme color, then a
+    // blank line, then room prose in value-color — matching the
+    // location bar's segment colors. The payload carries them as
+    // separate fields; the old concatenated `text` is gone.
+    if (msg.area_text) {
+      const a = document.createElement('div');
+      a.style.color = msg.area_color || 'var(--value-color)';
+      a.textContent = msg.area_text;
+      block.appendChild(a);
+      const gap = document.createElement('div');
+      gap.appendChild(document.createElement('br'));
+      block.appendChild(gap);
+    }
+    if (msg.room_text) {
       const p = document.createElement('div');
-      p.textContent = msg.text;
+      p.style.color = 'var(--value-color)';
+      p.textContent = msg.room_text;
       block.appendChild(p);
     }
 
@@ -840,7 +883,43 @@
     outputWrap.scrollTop = outputWrap.scrollHeight;
   }
 
+  // v21 brief 1 (#90/#91/#92): structured key/value report form. Each
+  // `lines` entry renders as one output line — `k` in key-color, `v` in
+  // value-color, concatenated in that order; an entry with neither is a
+  // blank line. Value text passes through appendFlaggedText so item
+  // flag blocks keep their rarity/chrome colorization (design rule 3).
+  function appendReportLines(lines) {
+    lines.forEach((entry) => {
+      const el = document.createElement('div');
+      el.className = 'msg-report';
+      const hasK = typeof entry.k === 'string' && entry.k !== '';
+      const hasV = typeof entry.v === 'string' && entry.v !== '';
+      if (!hasK && !hasV) {
+        el.appendChild(document.createElement('br'));
+      } else {
+        if (hasK) {
+          const k = document.createElement('span');
+          k.className = 'msg-key';
+          k.textContent = entry.k;
+          el.appendChild(k);
+        }
+        if (hasV) {
+          const v = document.createElement('span');
+          v.className = 'msg-value';
+          appendFlaggedText(v, entry.v);
+          el.appendChild(v);
+        }
+      }
+      output.appendChild(el);
+    });
+    outputWrap.scrollTop = outputWrap.scrollHeight;
+  }
+
   function append(msg) {
+    if (msg.category === 'report' && Array.isArray(msg.lines)) {
+      appendReportLines(msg.lines);
+      return;
+    }
     const el = document.createElement('div');
     el.className = `msg-${msg.category || 'system'}`;
     if (msg.hint_exits) { el.style.marginTop = '1.55em'; el.style.fontWeight = 'bold'; }

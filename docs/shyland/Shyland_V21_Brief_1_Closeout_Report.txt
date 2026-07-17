@@ -1,0 +1,181 @@
+SHYLAND V21 BRIEF 1 — OUTPUT AND DISPLAY SWEEP
+Closeout Report — 2026-07-16
+
+Branch: worktree-v21-brief-1
+Implementation commit: e5cf455
+Architecture doc commit: b9ca7f8 (Shyland_Architecture_v21.md created; v20 removed)
+This closeout report is the final commit of the brief (hash recorded in git;
+it follows b9ca7f8 on the same branch).
+
+No model changes, no migrations. Server and client shipped together.
+
+------------------------------------------------------------------------
+IMPLEMENTATION, PER STEP
+------------------------------------------------------------------------
+
+Step 1 — Palette variables. --key-color: #7FB3D5 and --value-color: #E8E4D8
+added to :root in game.html; .msg-section strong and .room-content refactored
+onto the variables (zero visual change — same hexes); .msg-key/.msg-value
+classes added. --loc-room left independently declared per #1's ruling.
+No new hex values introduced (the #85 --zone-border fallback #CCCCCCBF is the
+existing render-payload fallback #CCCCCC plus the ruled BF alpha suffix).
+
+Step 2 — Structured key/value report form. Server: new
+SkylandConsumer.send_report_lines(lines) helper (stamps ts). Client:
+append() routes report messages carrying `lines` to appendReportLines() —
+k in .msg-key, v in .msg-value, {} renders a blank line; every v portion
+passes appendFlaggedText() so flag blocks keep rarity/chrome colors inside
+value lines (design rule 3). Text-only report messages render exactly as
+before; report stays in UNSTAMPED_CATEGORIES.
+
+Step 3 — #55. who_lines and what_lines in send_room_description are bare
+noun phrases: " is here." dropped from living-NPC and fixture lines,
+" lies here." dropped from corpse lines (capitalized display name alone).
+Ground-item lines unchanged. Headers and structure untouched.
+
+Step 4 — #60. item_utils.get_item_flags: 'Droppable' -> 'Unbound'; both
+docstrings updated. game.html FLAG_RE updated in lockstep
+((Bound|Droppable) -> (Bound|Unbound)); .flag-chrome CSS comment updated.
+Repo sweep: grep -rn "Droppable" django/ returns nothing. Historical docs
+(closed briefs, closeout reports, issues reports, GDD) left as written.
+
+Step 5 — #81. Both aggro arrival paths (cmd_move ~line 475; cmd_flee
+~line 1741) now render the destination like any other entry:
+send_room_description(destination, entering=True, first_visit=...) first
+(the flee path fetches the fully-related room via get_current_room()),
+then snarl lines with introduction=False (definite article — the render's
+who's-here just introduced the NPC), then start_combat / send_fight /
+send_status_refresh (combat-red status lands last), then send_map().
+Implementation note: since both the aggro and non-aggro branches now begin
+with the identical send_room_description call, the render call was hoisted
+above the aggro check in both paths — behaviorally identical to the brief's
+if/else structure, verified by the live ordering checks.
+
+Step 6 — #84. cmd_help rewritten from a class-level HELP_COMMANDS table
+with computed em-dash column padding. Static six-direction movement line;
+one-line say entry; brief on | off documented (#83's fix); <item selection>
+on all item-taking commands (pickup, drop, equip, unequip, use, examine,
+loot, buy, sell, repair); single trailing "Item selection:" grammar section
+replacing "Item syntax:"; blank line before the tab-completion note;
+spaces around every bracketed pipe (brief on | off, timestamps on | off,
+[<item selection> | all]). Help remains a plain-text report.
+
+Step 7 — #85. All five pane borders 5px solid var(--zone-border):
+loc-bar bottom; the vertical divider (border-right of #loc-bar,
+#output-wrap, AND #cmd-bar — cmd-bar already had one, all three now
+identical); cmd-bar top; side-stats bottom; map-wrap top. Client sets
+--zone-border to zone_color+'BF' (format-validated) on every room render;
+fallback #CCCCCCBF. #side-stats.in-combat retains precedence on border 4
+(higher specificity; color-only override, valid at 5px). #map-wrap height
+grew to 305px so the 300x300 SVG survives border-box sizing; right-pane
+300px content width and the #73 no-scroll invariant hold (all panes
+border-box inside the fixed 100% height; flexing regions absorb).
+Mobile: #side-stats/#side-fight border-bottoms and #map-wrap's full border
+get the same treatment (map wrap 310x310).
+
+Step 8 — #86. Server: room-render payload replaces the concatenated
+'text' with area_text (long form only; None in brief mode) / area_color /
+room_text, expressions per the brief verbatim. Client renderRoom():
+area_text renders in area_color (fallback value-color), blank line, then
+room_text in var(--value-color). .msg-room-render remains as the block
+container; sections/headers/separator untouched.
+
+Step 9 — #90. cmd_inventory converted to the structured form matching the
+issue's example: Equipment: / Inventory (N/M items): / Wallet: as key-only
+lines, blank lines between sections, all item and wallet content as value
+lines; flag blocks colorize via appendFlaggedText automatically (verified,
+not reimplemented); wallet content line matches #92's format.
+
+Step 10 — #91. _send_stats: bracketed header dropped; key-only
+'Character Stats:'; value Player line
+'  Player: {name} - Level {level} {origin.name} {archetype.name}';
+stats block unchanged in content, all value lines (no subkey-color,
+per the explicit deferral). 'origin' added to get_character_fresh's
+select_related. cmd_spend's no-args path inherits via _send_stats
+(verified live).
+
+Step 11 — #92. cmd_wallet: [{'k': 'Wallet:', 'v': ' <format_wallet>'}].
+Content unchanged.
+
+Ride-along: tests/test_room_visits.py updated for the renamed payload
+field (msg['text'] -> msg['room_text'] in the room-render assertions) —
+required by the no-backward-compatibility payload change.
+
+------------------------------------------------------------------------
+VERIFICATION RESULTS, PER NUMBERED ITEM
+------------------------------------------------------------------------
+
+Deployed to the DOCKER_HOST target (pre-flight exit 0) via make build &&
+make restart. Full container test suite: 117 tests, all passing (the one
+envelope warning during the run is test_room_visits' own simulated respawn
+event omitting ts at the test level — pre-existing, not a product send site).
+Live verification: 50-check WebsocketCommunicator script against the
+deployed stack (throwaway zone/rooms/NPCs/character v21b1test, all deleted
+afterward — leftover check confirmed 0 rows).
+
+1. Palette — PASS (code-level: variables declared; the two refactored rules
+   reference the same hexes byte-for-byte, so computed styles are unchanged
+   by construction; devtools resolution is an operator browser check).
+2. #55 — PASS (live): who/what lines carried no "is here"/"lies here"
+   suffixes with an NPC, fixture, corpse, and ground item present; headers
+   and item lines unchanged.
+3. #60 — PASS (live + grep): unbound item rendered [Common, Unbound] in
+   inventory and the room listing; FLAG_RE updated in lockstep (colorization
+   is client-code-verified); grep -rn "Droppable" django/ returns nothing.
+4. #81 — PASS (live, both paths): cardinal move into an aggro room rendered
+   room (enter=true, attackers introduced in who's-here) -> definite-article
+   snarl -> fight(active) -> final status in_combat=true -> map; flee into a
+   second aggro room produced fled -> render -> snarl -> fight -> map with
+   the combat-red status last. Location bar fields correct in both (status
+   payloads carried the destination room/zone).
+5. #84 — PASS (live): all seven ruled help properties asserted, including a
+   regex sweep proving no pipe anywhere in help lacks surrounding spaces.
+6. #85 — PASS (code-level + payload-level): zone_color rides every render
+   (asserted live, custom theme color #AA5500); border rules and the
+   --zone-border mechanism are client code; visual re-tint on zone crossing,
+   combat-red flip, and no-scrollbar checks are operator browser items.
+7. #86 — PASS (live): area room rendered area_text in the area color with
+   room_text separate; area-less room sent area_text None; brief-mode
+   revisit sent brief prose with no area paragraph. Colors applied
+   client-side per code.
+8. #90 — PASS (live): structure matched the issue example — key-only
+   headers, value lines, blank separators, [MAIN_HAND] Bound line,
+   Unbound consumable line, Wallet section in #92's format.
+9. #91 — PASS (live): 'Character Stats:' single key line; Player line
+   exactly '  Player: <name> - Level <N> <Origin> <Archetype>'; stat labels
+   as value lines; spend (no args) identical shape.
+10. #92 — PASS (live): single {'k': 'Wallet:', 'v': ' ...'} line.
+11. Regression sweep — PASS: 117-test suite green (grammar, dispatch guard,
+    output messaging, room visits, UI layout, currency, area); live run
+    exercised renders, movement, combat engagement, flee, echo, map, and
+    status payloads; timestamps behavior untouched (report remains
+    unstamped; no stamped-category changes).
+
+Operator browser items remaining (visual-only, post-deploy): devtools
+palette resolution, border re-tint on zone crossing and combat flip,
+no-scrollbar at window sizes, mobile layout appearance.
+
+------------------------------------------------------------------------
+ISSUES CLOSED
+------------------------------------------------------------------------
+
+#55, #60, #81, #84, #85, #86, #90, #91, #92 — each closed with a one-line
+comment naming V21 Brief 1 and commit e5cf455.
+
+------------------------------------------------------------------------
+DEVIATIONS
+------------------------------------------------------------------------
+
+None of substance. Three judgment calls, all behavior-identical to the
+brief's text:
+- Step 5: the room-render call was hoisted above the aggro check (both
+  branches began with the identical call) rather than duplicated in an
+  if/else — ordering verified live in both paths.
+- Step 4/verification 3: the grep gate is satisfied absolutely — even the
+  two explanatory code comments about the rename avoid the old word.
+- cmd_help renders from a padded table rather than a hand-aligned literal,
+  guaranteeing the ruled column tidiness under future edits.
+
+Deployment note: make restart bounced all three games (Shyland, Shydle,
+Shyship), including any live Shyland WebSocket sessions, twice during this
+brief (initial deploy + a comment-only rebuild to keep image == commit).

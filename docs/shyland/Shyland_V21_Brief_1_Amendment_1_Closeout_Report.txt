@@ -1,0 +1,89 @@
+SHYLAND V21 BRIEF 1 — AMENDMENT 1 — HELP COLORING/SORTING AND SEPARATOR HEIGHT
+Closeout Report — 2026-07-16
+
+Branch: worktree-v21-brief-1 (same branch/PR as the parent brief, PR #94)
+Implementation commit: 2953ce6
+Architecture doc commit: 7a33be5
+This closeout report is the final commit of the amendment (hash recorded
+in git; it follows 7a33be5 on the same branch).
+
+No model changes, no migrations.
+
+------------------------------------------------------------------------
+PHASE A — ISSUE FILED
+------------------------------------------------------------------------
+
+#SEP = #97 "Reduce the room separator height from 5px to 3px" — created
+open with label B1, milestone Version 21, no assignee, title and body
+verbatim per the amendment. HARD GATE verification passed: exactly one
+issue created (search returned only #97); state OPEN, label B1, milestone
+Version 21, 0 assignees, body byte-identical.
+
+------------------------------------------------------------------------
+PHASE B — IMPLEMENTATION
+------------------------------------------------------------------------
+
+Item 1 — #84 (correction and extension of Brief 1 Step 6). cmd_help now
+renders through send_report_lines (the Brief 1 Step 2 structured form),
+replacing Step 6's plain-text scoping — the ticket's coloring requirement
+is authoritative:
+- {'k': 'Movement:', 'v': ' north (n), ... down (d)'} — one k+v line.
+- Blank, {'k': 'Commands:'}, then every command as a value line, sorted
+  alphabetically by leading command word at render time
+  (sorted(HELP_COMMANDS, key=entry[0].split()[0])) — table order is
+  irrelevant, so the ruling survives future edits.
+- Blank, {'k': 'Item selection:'}, the three explanation lines as values.
+- Blank, then the tab-completion note as a value line.
+All Brief 1 Step 6 content rulings stand unchanged (static movement line,
+one-line say, brief entry, <item selection> convention and section,
+[x | y] spacing, aligned em-dash columns — width computed as before).
+
+Item 2 — #97. game.html .room-sep: height 5px -> 3px, border-radius
+2.5px -> 1.5px. Color source, ~0.75 opacity, margins, and placement
+unchanged. CSS comment updated.
+
+Deployed to the DOCKER_HOST target (pre-flight exit 0) via
+make build && make restart.
+
+------------------------------------------------------------------------
+VERIFICATION RESULTS
+------------------------------------------------------------------------
+
+1. help — PASS (live, 13 dedicated checks in a 16-check
+   WebsocketCommunicator run against the deployed stack, throwaway user
+   v21b1a1test, deleted afterward): message is a structured report; the
+   key lines are exactly ['Movement:', 'Commands:', 'Item selection:'];
+   the Movement entry is one k+v line with the ruled static text; all 25
+   command lines are value lines in strict alphabetical order by leading
+   word (brief, buy, drop, equip, examine, flee, help, inventory, kill,
+   list, look, loot, pickup, quit, repair, say, sell, spend, stats,
+   timestamps, travel, unequip, use, wallet, who); every em-dash sits in
+   the same column; brief on | off, timestamps on | off, the one-line say
+   text, [<item selection> | all], and the no-tight-pipes regex all hold;
+   blank lines precede Item selection: and the tab note; the tab note is
+   the final value line. Key-color/value-color rendering is the existing
+   client .msg-key/.msg-value path (Brief 1 Step 2), exercised unchanged.
+2. Separator — PASS (code-level): .room-sep is 3px with 1.5px radius;
+   color/opacity/margins/placement untouched. The visual
+   lighter-than-borders comparison is an operator browser check.
+3. Regression — PASS: inv/stats/wallet structured rendering re-asserted
+   live; full container suite 117/117 green (flag-block colorization path
+   untouched by this amendment).
+
+------------------------------------------------------------------------
+ISSUES CLOSED / COMMENTED
+------------------------------------------------------------------------
+
+- #97 closed with a comment naming this amendment (2953ce6).
+- #84 was already closed by Brief 1; commented per the amendment:
+  "Amendment 1 completed the key-color/value-color requirement and the
+  alphabetical-sort ruling."
+
+------------------------------------------------------------------------
+DEVIATIONS
+------------------------------------------------------------------------
+
+None.
+
+Deployment note: make restart bounced all three games (Shyland, Shydle,
+Shyship), including any live Shyland WebSocket sessions.
