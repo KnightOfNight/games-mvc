@@ -10,7 +10,7 @@ CRIT_CAP = 0.25
 # climb (contests add; quantities like vitality multiply).
 NPC_CONTEST_BASE = 18        # matches a level-1 player's primary stat
 NPC_CONTEST_STEP = 2.5       # per level, matches player primary-stat growth
-NPC_TIER_OFFSET = {'normal': 0, 'elite': 3, 'boss': 6}   # blessed: 55% / 40% / 25% at-level hit
+NPC_TIER_OFFSET = {'normal': 0, 'elite': 2, 'boss': 2}   # blessed: 55% / 45% / 45% at-level hit
 MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
 
 ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
@@ -127,7 +127,9 @@ def npc_level(npc_instance):
 def get_npc_stats(npc_instance):
     """Return effective NPC stats. DEX (the difficulty dial for contests)
     grows purely off the curve+tier-offset so hit chances hit the blessed
-    targets (55% normal / 40% elite / 25% boss) at every level and Mk tier.
+    targets (55% normal / 45% elite / 45% boss) at every level and Mk tier.
+    v21 B3 (#101): boss and elite share the +2 dodge tier — boss identity
+    lives in HP, damage, and escorts, not the miss rate.
     STR/PER/INT keep their authored species bases and grow additively on the
     same per-level slope players climb, so species identity survives while
     damage stays proportionate. base_dex is no longer read here."""

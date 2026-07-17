@@ -675,79 +675,71 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     async def process_npc_respawn(self):
-        from django.utils import timezone
-        now = timezone.now()
-        spawns = await self.get_active_spawns()
+        created = await self.run_respawn_sweep()
+        for name, mk_tier, room_name in created:
+            logger.info(
+                f"NPC spawned: {name} (Mk {mk_tier}) in room {room_name}"
+            )
 
+    @database_sync_to_async
+    def run_respawn_sweep(self):
+        """v21 #107: the sweep formerly issued ~4 individually-awaited
+        queries per active RoomSpawn on every tick (~500+ transactions/tick
+        at 142 spawns), dominating tick time. Now one thread hop and four
+        fixed queries: expired-dead delete, spawn list, grouped instance
+        counts, gate-aliveness set. Behavior contract unchanged — dead
+        instances hold their slot until respawn_at clears them (counting
+        only live instances would refill the room the tick after a kill and
+        respawn_minutes would never matter), boss gating checks the gate
+        NPC's *current* room, and spawn counts are honored."""
+        from django.db.models import Count
+        from django.utils import timezone
+        from apps.shyland.models import NpcInstance, RoomSpawn
+
+        now = timezone.now()
+        NpcInstance.objects.filter(is_alive=False, respawn_at__lte=now).delete()
+
+        spawns = list(RoomSpawn.objects.filter(is_active=True)
+                      .select_related('npc_definition', 'room'))
+
+        counts = {}
+        for row in (NpcInstance.objects
+                    .values('definition_id', 'spawn_room_id', 'mk_tier')
+                    .annotate(n=Count('id'))):
+            counts[(row['definition_id'], row['spawn_room_id'], row['mk_tier'])] = row['n']
+
+        gate_ids = {s.requires_living_npc_id for s in spawns
+                    if s.requires_living_npc_id}
+        live_gates = set()
+        if gate_ids:
+            live_gates = set(NpcInstance.objects.filter(
+                definition_id__in=gate_ids, is_alive=True,
+            ).values_list('definition_id', 'current_room_id'))
+
+        created = []
         for spawn in spawns:
-            await self.clear_expired_dead(spawn, now)
-            if spawn.requires_living_npc_id and not await self.gate_npc_is_alive(spawn):
+            if (spawn.requires_living_npc_id
+                    and (spawn.requires_living_npc_id, spawn.room_id) not in live_gates):
                 continue
-            live_count, dead_count = await self.count_instances(spawn)
-            # Dead instances hold their slot until clear_expired_dead removes
-            # them at respawn time; counting only live instances here would
-            # refill the room the tick after a kill and respawn_minutes would
-            # never matter.
+            total = counts.get(
+                (spawn.npc_definition_id, spawn.room_id, spawn.mk_tier), 0)
             to_create = min(
-                spawn.count - (live_count + dead_count),
-                (spawn.count * 2) - (live_count + dead_count),
+                spawn.count - total,
+                (spawn.count * 2) - total,
             )
             for _ in range(to_create):
-                await self.create_live_instance(spawn)
-                logger.info(
-                    f"NPC spawned: {spawn.npc_definition.name} "
-                    f"(Mk {spawn.mk_tier}) in room {spawn.room.name}"
+                NpcInstance.objects.create(
+                    definition=spawn.npc_definition,
+                    current_room=spawn.room,
+                    spawn_room=spawn.room,
+                    mk_tier=spawn.mk_tier,
+                    vitality_current=spawn.npc_definition.base_vitality,
+                    vitality_max=spawn.npc_definition.base_vitality,
+                    is_alive=True,
                 )
-
-    @database_sync_to_async
-    def get_active_spawns(self):
-        from apps.shyland.models import RoomSpawn
-        return list(RoomSpawn.objects.filter(is_active=True).select_related('npc_definition', 'room'))
-
-    @database_sync_to_async
-    def clear_expired_dead(self, spawn, now):
-        from apps.shyland.models import NpcInstance
-        NpcInstance.objects.filter(
-            definition=spawn.npc_definition,
-            spawn_room=spawn.room,
-            mk_tier=spawn.mk_tier,
-            is_alive=False,
-            respawn_at__lte=now,
-        ).delete()
-
-    @database_sync_to_async
-    def gate_npc_is_alive(self, spawn):
-        from apps.shyland.models import NpcInstance
-        return NpcInstance.objects.filter(
-            definition_id=spawn.requires_living_npc_id,
-            current_room=spawn.room,
-            is_alive=True,
-        ).exists()
-
-    @database_sync_to_async
-    def count_instances(self, spawn):
-        from apps.shyland.models import NpcInstance
-        qs = NpcInstance.objects.filter(
-            definition=spawn.npc_definition,
-            spawn_room=spawn.room,
-            mk_tier=spawn.mk_tier,
-        )
-        live_count = qs.filter(is_alive=True).count()
-        dead_count = qs.filter(is_alive=False).count()
-        return live_count, dead_count
-
-    @database_sync_to_async
-    def create_live_instance(self, spawn):
-        from apps.shyland.models import NpcInstance
-        NpcInstance.objects.create(
-            definition=spawn.npc_definition,
-            current_room=spawn.room,
-            spawn_room=spawn.room,
-            mk_tier=spawn.mk_tier,
-            vitality_current=spawn.npc_definition.base_vitality,
-            vitality_max=spawn.npc_definition.base_vitality,
-            is_alive=True,
-        )
+                created.append(
+                    (spawn.npc_definition.name, spawn.mk_tier, spawn.room.name))
+        return created
 
     # ------------------------------------------------------------------
     # Effects: per-tick DoT/HoT, Acuity drift, expiry

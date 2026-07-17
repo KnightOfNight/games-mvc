@@ -1,0 +1,201 @@
+SHYLAND V21 BRIEF 2 — BALANCE RETUNE (B3)
+Closeout Report — 2026-07-17
+
+Branch: worktree-cozy-wishing-cherny
+Implementation commit: cd7ac07
+Architecture doc commit: 1293650
+This closeout report is the final commit of the brief (hash recorded in git;
+it follows 1293650 on the same branch).
+
+No model changes, no migrations. Two constants, seed data, authored prose,
+one new management command, one enforce-exact reseed, one data-cleanup run.
+Issues closed: #68, #101, #102, #103.
+
+------------------------------------------------------------------------
+IMPLEMENTATION, PER STEP
+------------------------------------------------------------------------
+
+Step 1 — Tier offsets. combat_utils.py: NPC_TIER_OFFSET now
+{'normal': 0, 'elite': 2, 'boss': 2}; the constant's comment and the
+get_npc_stats docstring updated to the blessed 55%/45%/45% targets, with a
+v21 B3 note that boss identity lives in HP, damage, and escorts. No test
+anywhere asserted the old offsets or old blessed rates (verified by grep
+across the app before editing), so no test updates were required — the
+brief's expectation of failing v19 calibration tests did not materialize;
+the 117-test suite exercises grammar/dispatch/output/rooms/UI/currency/
+area, not calibration numbers.
+
+Step 2 — Boss retune. All six bosses in seed_world.py. Interpretation
+note (documented on #101 before closing): the ruled table's STR/DEX
+columns are EFFECTIVE at-level stats (get_npc_stats output), not raw
+fields — proven by the "unchanged" rows (Silk Matron STR 17 = seeded
+base_str 12 + level-3 growth 5; same for Whistler 16+12=28 and
+Dronemother 18+12=30) and by the #89 survey reporting the same effective
+numbers against the live code. Fields were authored to hit the ruled
+effective values exactly:
+
+  boss              base_vitality   base_str        scaling_factor
+  silk-matron       120 -> 150      12 (unchanged)  3.0 (unchanged)
+  whistler-below    260 -> 240      16 (unchanged)  6.0 (unchanged)
+  dronemother       320 -> 260      18 (unchanged)  6.0 (unchanged)
+  undercrag-weaver  500 -> 200      20 -> 14        9.0 -> 8.0
+  chittering-king   650 -> 220      24 -> 10        10.0 -> 9.0
+  crowned-devourer  850 -> 280      27 -> 12        10.0 (unchanged)
+
+The Weaver and King drop one level to the ruling's Kill L column (8 and
+9): the ruled DEX targets 38/40 only emerge from the flat +2 offset at
+those levels — every other boss and elite in the ruling already sat at
+its kill level. Side effect: their kill XP drops 90->80 and 100->90,
+consistent with the lower level. Boss DEX itself is never authored.
+
+Step 3 — Delve escorts. Effective STR targets 25/26/28 authored as
+base_str 15->13 (weavers-brood), 17->8 (kings-skitterlings), 18->8
+(devourers-drones); base_vitality 90->65, 100->60, 120->70; boss-room
+spawn counts all 3->2 (vr-c5i, vr-c6j, vr-c7k). Elite tier and
+requires_living_npc gating kept. Verdant escorts untouched.
+
+Step 4 — Elite trims. base_vitality only: elder-cave-spider 110->95,
+elder-cave-centipede 130->100, elder-cave-beetle 150->110,
+prowling-mountain-lion 150->110, territorial-brown-bear 170->120. STR
+untouched; all other elites change only via the offset.
+
+Step 5 — Proc-stat curves. Exactly six pool entries moved to base 0.5,
+factor 0.2: lifesteal on Iron Sword, Broadsword, Iron Shortsword (slug
+battle-axe); poison_chance on Combat Knife; electric_damage_bonus on
+Pulse Pistol; mana_regen on Apprentice Staff. No display changes (zeros
+stay visible per #68 Q3); _roll_stat untouched. (Noted for the record:
+Iron Sword and Iron Shortsword carry bleed_chance at 0.3/0.1, outside
+the four ruled stats — left as authored per the brief's explicit scope.)
+
+Step 6 — Signposting. From the exit tuples (bidirectional expansion via
+vr_edges), each x3 ground has exactly one approach room: vr-m32 (The
+Knife Edge) -> vr-m38 (Lion's Watch) and vr-m33 (The Sixth Switchback)
+-> vr-m39 (Bear's Throne). The authored paragraphs were appended
+verbatim to the END of each approach room's description after a blank
+line. Both paragraphs are compass-free; the x3 rooms' own descriptions
+and spawns are unchanged.
+
+Step 7 — Placeholder NPCs. New CONVERGENCE_PLACEHOLDER_NPCS set
+{aldric, info-prime, seris, veris} folded into the roster attackable
+expression. Exactly four definitions changed — Pella and Ferwick were
+already unattackable as CONVERGENCE_SERVICE_NPCS members.
+
+Step 8 — Reseed. make build + make seed (enforce-exact) against the
+production target (DOCKER_HOST pre-flight exit 0). All built-in seed
+verification checks passed. Additionally, with operator approval, the
+76 live NpcInstances of the 14 retuned species (which the reseed does
+not touch and the ticker never refreshes while alive) were deleted and
+respawned by the tick engine: 73 fresh instances (3 fewer — the escort
+reduction), zero stale, boss rooms at boss + exactly 2 escorts.
+
+Step 9 — Cleanup command. New management command
+fix_zero_secondary_stats: scans every ItemInstance, re-rolls each
+zero-value rolled_secondary_stats entry through the same _roll_stat
+math using the definition's current pool parameters at the instance's
+own Mk tier and rarity; keeps stat identity; writes only when the
+re-roll is nonzero (entries whose authored curve still permits zero are
+left untouched so repeated runs never flap); prints per-item lines and
+totals. Committed to the repo.
+
+------------------------------------------------------------------------
+VERIFICATION, PER NUMBERED ITEM
+------------------------------------------------------------------------
+
+1. get_npc_stats spot checks — PASS. whistler-below DEX 32,
+   undercrag-weaver 38, chittering-king 40, crowned-devourer 42,
+   elder-cave-centipede 38, prowling-mountain-lion 40 — plus the full
+   14-NPC matrix (all six bosses, five elites, three escorts): every
+   DEX, effective STR, and HP value matches the ruling exactly.
+
+2. DB stats and spawn counts — PASS. All base_str/base_vitality values
+   match Steps 2–4; delve boss rooms spawn exactly 2 escorts (records
+   and live instances); vr-m38 spawns 3 lions and vr-m39 spawns 3 bears
+   (records and live instances); the x2 rooms remain at 2.
+
+3. Test suite — PASS. 117/117 in container (manage.py test
+   apps.shyland.tests -t /app). No test references 40%/25% targets or
+   offsets 3/6 (none ever did).
+
+4. Fresh proc rolls — PASS. 4,818 proc secondaries drawn across the
+   four items x 5 rarities x 200 generations at Mk 1: zero rolls below
+   1. No suppression code exists (no display changes in this brief).
+
+5. fix_zero_secondary_stats — PASS with a data note. The production DB
+   contains NO stored zero-value secondary entries (raw SQL sweep over
+   all 76 instances): the operator's #68 broadsword no longer exists in
+   any inventory (operator confirmed mid-session Shy-Guy has no
+   broadsword). The fix path was demonstrated with a synthetic
+   zero-lifesteal Broadsword: first run reported and fixed it (0 -> 1),
+   second run reported zero changes; the synthetic item was then
+   deleted. Command is live-verified idempotent.
+
+6. Signposting — PASS. Both approach rooms' stored descriptions end
+   with their matching warning paragraph after a blank line; both
+   paragraphs contain no compass directions; the x3 rooms' own
+   descriptions are byte-identical to their authored prose.
+
+7. Placeholder NPCs — PASS. aldric, info-prime, seris, veris all
+   attackable=False in the DB; attack refusal goes through the same
+   consumers.py guard (if not npc.definition.attackable) as the other
+   service NPCs.
+
+8. Normal-tier sanity — PASS (computational). Normal offset is 0 before
+   and after; normal-tier bases untouched by the diff; get_npc_stats
+   for black-bear/cave-spider/villagers identical to pre-brief values;
+   200k-trial resolve_hit simulation at equal DEX: 55.1% hit-or-crit,
+   matching the blessed 55%. A live in-browser fight remains operator
+   playtest territory per the standing rule on human-interaction steps.
+
+------------------------------------------------------------------------
+CLEANUP-COMMAND TOTALS
+------------------------------------------------------------------------
+
+First production run:  76 instances scanned; 0 zero entries found
+                       (no stored zeros exist — see item 5).
+Demonstration run:     77 scanned; 1 entry re-rolled (synthetic
+                       Broadsword lifesteal 0 -> 1); 0 left at 0.
+Idempotency run:       77 scanned; 0 re-rolled; 0 left at 0.
+
+------------------------------------------------------------------------
+ISSUES CLOSED
+------------------------------------------------------------------------
+
+#68  — proc-stat roll math + cleanup command (one-line close comment;
+       rulings Q2/Q3/Q4 all implemented as recorded).
+#101 — boss ladder + elite retune (implementation-mapping note posted
+       before closing: effective-stat authoring and the Weaver/King
+       level alignment).
+#102 — x3 room signposting.
+#103 — unattackable placeholder NPCs.
+
+------------------------------------------------------------------------
+DEVIATIONS
+------------------------------------------------------------------------
+
+None from the ruled numbers — every ruled effective DEX/STR/HP value,
+spawn count, curve parameter, prose paragraph, and flag is live and
+verified. Two implementation-mapping notes, recorded on #101 and above
+(Step 2): the ruled STR/DEX tables author EFFECTIVE at-level stats, so
+base_str fields carry derived values; and undercrag-weaver /
+chittering-king scaling_factor moved 9->8 / 10->9 to the ruling's own
+Kill L column, without which the ruled DEX verification targets (38/40)
+are unreachable under the untouched formulas. One environment incident,
+resolved mid-brief with the operator: the deployment .env on the build
+machine was a stale dev copy; the first make build recreated production
+containers with mismatched DB credentials (site down ~15 minutes, no
+data loss — postgres bind mount untouched); the operator supplied the
+production .env (+ SSL certs), the stack was rebuilt clean, and all
+deployment steps proceeded from there.
+
+------------------------------------------------------------------------
+OPERATOR PLAYTEST (post-deploy, human steps)
+------------------------------------------------------------------------
+
+- Fight a normal-tier NPC at level: feel unchanged.
+- Fight an elite at level: noticeably more hittable (+5% per swing).
+- Boss attempt at intended level with the even-split reference build:
+  7–13 rounds, potions within budget (0/6/8/7/7/10 vs caps 8/8/8/8/8/12).
+- Walk vr-m32 / vr-m33: warning prose renders at the end of the room
+  description before entering the x3 grounds.
+- attack aldric / Info Prime / Seris / Veris: refusal line, same as
+  Morra/VND-9.
