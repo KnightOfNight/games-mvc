@@ -699,7 +699,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # help documents the command set, not the current room. Commands
     # taking item arguments reference <item selection>; the grammar is
     # explained once in the Item selection section. Bracketed
-    # alternatives use spaces around the pipe everywhere.
+    # alternatives use spaces around the pipe everywhere. Amendment 1:
+    # the render sorts alphabetically by leading command word — table
+    # order doesn't matter.
     HELP_COMMANDS = [
         ('look / l', 'describe this room'),
         ('say <text>', 'speak to players here; NPCs may listen too'),
@@ -731,23 +733,31 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     ]
 
     async def cmd_help(self):
+        # Amendment 1 (#84): structured key/value form — section headers
+        # (Movement:, Commands:, Item selection:) in key-color, every
+        # other line value-colored; commands alphabetical.
         width = max(len(cmd) for cmd, _ in self.HELP_COMMANDS) + 2
         lines = [
-            'Movement: north (n), south (s), east (e), west (w), up (u), down (d)',
-            '',
-            'Commands:',
+            {'k': 'Movement:',
+             'v': ' north (n), south (s), east (e), west (w), up (u), down (d)'},
+            {},
+            {'k': 'Commands:'},
         ]
-        lines += [f'  {cmd:<{width}}— {desc}' for cmd, desc in self.HELP_COMMANDS]
         lines += [
-            '',
-            'Item selection:',
-            "  Commands marked <item selection> accept: a name or prefix ('axe', 'battle axe'),",
-            "  an index ('2.axe' — the second match), a quantity ('3 axes'), 'all' ('all axes'),",
-            "  and a rarity filter ('sell uncommon axe', 'sell all common').",
-            '',
-            'Tab completes commands and item names.',
+            {'v': f'  {cmd:<{width}}— {desc}'}
+            for cmd, desc in sorted(self.HELP_COMMANDS,
+                                    key=lambda entry: entry[0].split()[0])
         ]
-        await self.output('\n'.join(lines), 'report')
+        lines += [
+            {},
+            {'k': 'Item selection:'},
+            {'v': "  Commands marked <item selection> accept: a name or prefix ('axe', 'battle axe'),"},
+            {'v': "  an index ('2.axe' — the second match), a quantity ('3 axes'), 'all' ('all axes'),"},
+            {'v': "  and a rarity filter ('sell uncommon axe', 'sell all common')."},
+            {},
+            {'v': 'Tab completes commands and item names.'},
+        ]
+        await self.send_report_lines(lines)
 
     async def cmd_quit(self):
         character = await self.get_character_fresh()

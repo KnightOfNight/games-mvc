@@ -126,10 +126,12 @@
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
   .msg-section strong  { color: var(--key-color); font-weight: bold; }
   /* v20 brief 5 amendment 1 (#78): zone-colored separator closing the
-     room block. Solid 5px bar, rounded ends, Zone.theme_color fill (set
-     inline from the render payload) at ~0.75 opacity; the margins bring
-     the divider's total height to at least one text line (1.55em). */
-  .room-sep { height: 5px; border-radius: 2.5px; opacity: .75; margin: 0.65em 0; }
+     room block. Solid 3px bar (v21 brief 1 amendment 1: reduced from
+     5px to read lighter than the 5px pane borders), rounded ends,
+     Zone.theme_color fill (set inline from the render payload) at
+     ~0.75 opacity; the margins bring the divider's total height to at
+     least one text line (1.55em). */
+  .room-sep { height: 3px; border-radius: 1.5px; opacity: .75; margin: 0.65em 0; }
   /* Rarity scale — flag block only (#48 composition, colorized here). */
   .flag-chrome   { color: #9C9A90; }             /* [ , ] Bound Unbound */
   .rar-common    { color: #9C9A90; }
