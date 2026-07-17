@@ -1397,6 +1397,11 @@ class Command(BaseCommand):
     # fixtures with the standard commerce wiring.
     CONVERGENCE_CART_VENDORS = {'vnd-9', 'mother-tansy'}
 
+    # v21 B3 (#103): the four placeholder roster NPCs seeded with
+    # MINIMAL_STATS (999 HP, all-1 stats) refuse attack like the other
+    # service NPCs until they get real content.
+    CONVERGENCE_PLACEHOLDER_NPCS = {'aldric', 'info-prime', 'seris', 'veris'}
+
     # v20 brief 1: standard authored cart prices in copper. Any consumable
     # not listed sells at the default, which matches the Healing Draught
     # standard set by Essa, Sona, and Ridda — so newly authored consumables
@@ -1526,6 +1531,7 @@ class Command(BaseCommand):
             is_service_npc = slug in self.CONVERGENCE_SERVICE_NPCS
             # v20 brief 1: the street carts are non-attackable fixtures.
             is_cart = slug in self.CONVERGENCE_CART_VENDORS
+            is_placeholder = slug in self.CONVERGENCE_PLACEHOLDER_NPCS
             if slug in self.CONVERGENCE_EXAMINE_HINTS:
                 description = description + ' ' + self.CONVERGENCE_EXAMINE_HINTS[slug]
             content = {
@@ -1545,7 +1551,8 @@ class Command(BaseCommand):
                 'combat_tier': 'normal',
                 'loot_table': None,
                 'is_fixture': is_obelisk or is_cart,
-                'attackable': not (is_obelisk or is_service_npc or is_cart),
+                'attackable': not (is_obelisk or is_service_npc or is_cart
+                                   or is_placeholder),
                 **MINIMAL_STATS,
                 'currency_drop_min': 0,
                 'currency_drop_max': 0,
@@ -3157,7 +3164,7 @@ class Command(BaseCommand):
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
-                    {'stat': 'lifesteal', 'base': 0.2, 'factor': 0.1},
+                    {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A reliable iron blade. Well-balanced and well-worn.',
             },
@@ -3179,7 +3186,7 @@ class Command(BaseCommand):
                     {'stat': 'str', 'base': 1.0, 'factor': 0.3},
                     {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
                     {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'poison_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'poison_chance', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'Scratched and notched but still sharp. Does the job.',
             },
@@ -3202,7 +3209,7 @@ class Command(BaseCommand):
                 ],
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'electric_damage_bonus', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'electric_damage_bonus', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'per', 'base': 1.0, 'factor': 0.4},
                 ],
                 'description': 'A compact energy sidearm. Hums faintly when charged.',
@@ -3224,7 +3231,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'wis', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'spell_damage_bonus', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'mana_regen', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'mana_regen', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'Gnarled wood wrapped in copper wire. Crackles with unfocused energy.',
             },
@@ -3267,7 +3274,7 @@ class Command(BaseCommand):
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'lifesteal', 'base': 0.2, 'factor': 0.1},
+                    {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A long, wide blade that wants both hands. Steady and unhurried.',
             },
@@ -3758,7 +3765,7 @@ class Command(BaseCommand):
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
-                    {'stat': 'lifesteal', 'base': 0.2, 'factor': 0.1},
+                    {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A plain iron blade fresh off Morra\'s rack. No engraving, no nonsense.',
             },
@@ -5462,7 +5469,14 @@ class Command(BaseCommand):
             'For a stretch the path is the top of the mountain — a knife edge with '
             'committed air on both sides and wind with opinions. Westward off the edge, a '
             'ledge track drops toward a sunning shelf the Lastlight folk speak of only to '
-            'forbid.',
+            'forbid.\n\n'
+            # v21 B3 (#102): authored approach warning for vr-m38 —
+            # direction-neutral by ruling, readable before entry.
+            'Claw-marks score the stone here at the height of a standing man, layered old '
+            'over new, too many to count. The hunters that left them do not den alone, and '
+            'they do not warn twice. Every villager who speaks of the prowling grounds says '
+            'the same thing: three sets of eyes, one grave. Those who value their skin turn '
+            'back.',
             area=ridge,
         )
         self._vr_room(
@@ -5472,7 +5486,14 @@ class Command(BaseCommand):
             'The final switchback folds beneath a wall of green-veined stone. A mountain '
             'lion — high-country big — lies across a sun-warmed rock at the bend, and lets '
             "you pass, this time, on the path's old truce. East, a track climbs toward a "
-            'throne of tumbled boulders.',
+            'throne of tumbled boulders.\n\n'
+            # v21 B3 (#102): authored approach warning for vr-m39 —
+            # direction-neutral by ruling, readable before entry.
+            'The trail ahead is churned earth and splintered deadfall, and the musk hanging '
+            'over it is thick enough to taste. Whatever holds that ground holds it in '
+            'numbers and yields it to nothing. The Ridge folk have a saying about the torn '
+            "meadows: the bears bury what the mountain doesn't. Turn back while turning "
+            'back is still a choice.',
             area=ridge,
         )
         self._vr_room(
@@ -6118,8 +6139,13 @@ class Command(BaseCommand):
              'The size of a cart. When the wings open, the sound arrives in '
              'your chest before your ears.', {}),
             # Bosses — aggressive
+            # v21 B3 (#101): boss STR is authored so *effective* at-level STR
+            # (base_str + round(2.5 * (L - 1))) hits the ruled targets —
+            # Matron 17 / Whistler 28 / Dronemother 30 / Weaver 32 / King 30 /
+            # Devourer 34. HP is authored directly (no level scaling). DEX is
+            # never authored — it follows from the curve + flat +2 tier offset.
             ('silk-matron', 'Silk Matron', 'boss', True,
-             (120, 12, 14, 11, 4, 4, 12), 3.0, 'vale-spider', 'matron-loot', (50, 150), 10,
+             (150, 12, 14, 11, 4, 4, 12), 3.0, 'vale-spider', 'matron-loot', (50, 150), 10,
              'Pale and vast in the crown of her own silk, legs spanning more '
              'shadow than your light can argue with. She holds one wrapped '
              'bundle apart from all the rest, close, the way anything holds '
@@ -6130,7 +6156,7 @@ class Command(BaseCommand):
               'her falls the bundle she guarded, splitting open on the stone '
               'in a spill of silk and stolen things.'}),
             ('whistler-below', 'Whistler Below', 'boss', True,
-             (260, 16, 15, 15, 4, 4, 12), 6.0, 'flats-centipede', 'whistler-loot', (50, 150), 10,
+             (240, 16, 15, 15, 4, 4, 12), 6.0, 'flats-centipede', 'whistler-loot', (50, 150), 10,
              'A centipede beyond sense, coiled through the fluted stone in '
              "glossy yards, antennae reading the wind's one endless note. This "
              'is its hollow. Everything in it, it kept.',
@@ -6141,7 +6167,7 @@ class Command(BaseCommand):
               'woven grass gives way, and a hide-wrapped cache drops to the '
               'floor.'}),
             ('dronemother', 'Dronemother', 'boss', True,
-             (320, 18, 12, 18, 5, 5, 11), 6.0, 'flats-beetle', 'dronemother-loot', (50, 150), 10,
+             (260, 18, 12, 18, 5, 5, 11), 6.0, 'flats-beetle', 'dronemother-loot', (50, 150), 10,
              'The hive made flesh: a beetle vast as a wagon, plated in '
              'iron-dark chitin, the hum bending deeper around her. Her wings '
              'are furled like banners before a war.',
@@ -6422,12 +6448,12 @@ class Command(BaseCommand):
              'A high-country lion, long as a bench and fluid as poured shadow. '
              'On the path, there is a truce. You are not always on the path.', {}),
             ('prowling-mountain-lion', 'prowling mountain lion', 'elite', True,
-             (150, 17, 19, 14, 3, 3, 15), 9.0, None, 'animal-drops', (0, 0), 1,
+             (110, 17, 19, 14, 3, 3, 15), 9.0, None, 'animal-drops', (0, 0), 1,
              'A lion of the forbidden places, and it is not watching you — it '
              'is already closing. The villagers told you. They always tell '
              'you.', {}),
             ('territorial-brown-bear', 'territorial brown bear', 'elite', True,
-             (170, 21, 9, 19, 3, 3, 9), 9.0, None, 'animal-drops', (0, 0), 1,
+             (120, 21, 9, 19, 3, 3, 9), 9.0, None, 'animal-drops', (0, 0), 1,
              'A bear at the scale where the word stops being descriptive. This '
              'ground is claimed, and you are the paperwork.', {}),
             # Villagers — passive
@@ -6480,20 +6506,23 @@ class Command(BaseCommand):
               'genre_tag': 'cosmic', 'indefinite_article': ''}),
             # Cave insects — aggressive
             ('elder-cave-spider', 'elder cave spider', 'elite', True,
-             (110, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
+             (95, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
              'A spider grown old in the dark under the mountain, pale as deep '
              'silk and patient as geology.', {'indefinite_article': 'an'}),
             ('elder-cave-centipede', 'elder cave centipede', 'elite', True,
-             (130, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 1,
+             (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 1,
              'Length beyond reason, armored in segments the size of shields, '
              'older than the villages above it.', {'indefinite_article': 'an'}),
             ('elder-cave-beetle', 'elder cave beetle', 'elite', True,
-             (150, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 1,
+             (110, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 1,
              'A beetle at the scale of livestock, chitin black-green, wings '
              'that open with a sound like a door to somewhere worse.', {'indefinite_article': 'an'}),
             # Bosses — aggressive
+            # v21 B3 (#101): the Weaver and King drop one level (sf 9→8,
+            # 10→9) to their ruled kill levels — the ruled DEX targets
+            # (38/40) only emerge from the +2 offset at L8/L9.
             ('undercrag-weaver', 'Undercrag Weaver', 'boss', True,
-             (500, 20, 22, 18, 5, 5, 18), 9.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
+             (200, 14, 22, 18, 5, 5, 18), 8.0, 'ridge-spider', 'weaver-loot', (150, 400), 10,
              'A spider of architectural size, pale as the generations of silk '
              'it has spun beneath the mountain. High above it, snared in a '
              'cradle of lines, hangs an iron-strapped strongbox it took whole '
@@ -6504,7 +6533,7 @@ class Command(BaseCommand):
               'web-line holding a snared strongbox parts strand by strand — '
               'then all at once, and the box crashes down and bursts open.'}),
             ('chittering-king', 'Chittering King', 'boss', True,
-             (650, 24, 20, 22, 6, 6, 16), 10.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
+             (220, 10, 20, 22, 6, 6, 16), 9.0, 'ridge-centipede', 'king-loot', (150, 400), 10,
              'A centipede of dynastic size, coiled in glossy tiers about a '
              'chest scored soft by a thousand legs across uncountable years. '
              'The deep chitters in his name.',
@@ -6514,7 +6543,7 @@ class Command(BaseCommand):
               'around the chest it has coiled about for years. The lid, '
               'scored by a thousand legs, falls open.'}),
             ('crowned-devourer', 'Crowned Devourer', 'boss', True,
-             (850, 27, 18, 27, 7, 7, 15), 10.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
+             (280, 12, 18, 27, 7, 7, 15), 10.0, 'ridge-beetle', 'devourer-loot', (400, 1000), 10,
              'Legend, standing on legend: a beetle vast as myth atop a hoard '
              'of every genre the rifts ever spilled, wings holding one '
              'enormous patient chord beneath the light of the Crown itself.',
@@ -6524,18 +6553,21 @@ class Command(BaseCommand):
               'hoard beneath it shifts — coins and treasures sliding free of '
               'the great shape that will never guard them again.'}),
             # Boss minions — aggressive, spawn-gated on their boss
+            # v21 B3 (#101): delve escorts shed STR and HP (effective STR
+            # targets 25/26/28) and drop to 2 spawns — the ladder-wide
+            # "boss + 2 adds" pattern. Elite tier and boss gating kept.
             ('weavers-brood', "Weaver's brood", 'elite', True,
-             (90, 15, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'insect-drops', (0, 0), 3,
+             (65, 13, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'insect-drops', (0, 0), 3,
              "A spider of the Weaver's brood, pale and quick, spun into the "
              'world for exactly this purpose.',
              {'plural_phrase': "one of the Weaver's brood"}),
             ('kings-skitterlings', "King's skitterlings", 'elite', True,
-             (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 3,
+             (60, 8, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 3,
              "A skitterling of the King's court, already terrible, keeping "
              'the rhythm its sovereign conducts.',
              {'plural_phrase': "one of the King's skitterlings"}),
             ('devourers-drones', "Devourer's drones", 'elite', True,
-             (120, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 3,
+             (70, 8, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 3,
              "A drone of the Devourer's chord, wings tuned to its mother's "
              "note, holding the hoard's perimeter.",
              {'plural_phrase': "one of the Devourer's drones"}),
@@ -6592,7 +6624,7 @@ class Command(BaseCommand):
             ('vr-c5h', 'elder-cave-spider', 1, None),
             ('vr-c5h', 'elder-cave-centipede', 1, None),
             ('vr-c5i', 'undercrag-weaver', 1, None),
-            ('vr-c5i', 'weavers-brood', 3, 'undercrag-weaver'),
+            ('vr-c5i', 'weavers-brood', 2, 'undercrag-weaver'),
             # Chitterdeep
             ('vr-c6a', 'elder-cave-centipede', 1, None),
             ('vr-c6b', 'elder-cave-centipede', 2, None),
@@ -6606,7 +6638,7 @@ class Command(BaseCommand):
             ('vr-c6i', 'elder-cave-centipede', 1, None),
             ('vr-c6i', 'elder-cave-beetle', 1, None),
             ('vr-c6j', 'chittering-king', 1, None),
-            ('vr-c6j', 'kings-skitterlings', 3, 'chittering-king'),
+            ('vr-c6j', 'kings-skitterlings', 2, 'chittering-king'),
             # Hollowcrown
             ('vr-c7a', 'elder-cave-beetle', 1, None),
             ('vr-c7b', 'elder-cave-beetle', 2, None),
@@ -6621,7 +6653,7 @@ class Command(BaseCommand):
             ('vr-c7i', 'elder-cave-beetle', 1, None),
             ('vr-c7j', 'elder-cave-beetle', 2, None),
             ('vr-c7k', 'crowned-devourer', 1, None),
-            ('vr-c7k', 'devourers-drones', 3, 'crowned-devourer'),
+            ('vr-c7k', 'devourers-drones', 2, 'crowned-devourer'),
         ]
         for room_key, npc_slug, count, gate_slug in spawns:
             self._reconcile(
