@@ -299,6 +299,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         self.redis = aioredis.from_url("redis://redis:6379")
         self.session_token = uuid.uuid4().hex
+        # v21.1 (#116): single-session enforcement. Any older consumer in
+        # this character's personal group sees a token mismatch, prints a
+        # farewell, and closes; this consumer ignores its own broadcast.
+        # Fired before the presence write — either interleaving with the
+        # old session's guarded presence delete is safe (see arch doc 4.3).
+        await self.channel_layer.group_send(
+            self.player_group,
+            {
+                'type': 'player_message',
+                'event': 'superseded',
+                'token': self.session_token,
+                'ts': envelope_ts(),
+            }
+        )
         self.presence_value = json.dumps({
             "name": self.character.name,
             "token": self.session_token,
@@ -1989,6 +2003,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         """Handle messages sent directly to this player (e.g. effect ticks from tick engine)."""
         event_type = event.get('event')
         ts = event.get('ts')
+        # v21.1 (#116): single-session enforcement. Not a command — no
+        # command gates apply; fires even while dying or in combat (the
+        # in-combat refusal belongs to quit only). No room broadcast.
+        if event_type == 'superseded':
+            if event.get('token') == self.session_token:
+                return
+            await self.output(
+                "The world's attention shifts — your story is being told "
+                "through another window now. This one falls quiet.",
+                'system',
+            )
+            await self.send_json({'event': 'superseded', 'ts': envelope_ts()})
+            # Normal close; the disconnect path owns the guarded presence
+            # delete, group discards, heartbeat cancellation, last_seen.
+            await self.close()
+            return
         if event_type == 'clear':
             payload = {'type': 'clear'}
             if ts is not None:
