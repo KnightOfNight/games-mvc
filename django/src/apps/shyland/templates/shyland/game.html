@@ -402,6 +402,10 @@
   const history = [];
   let histIdx = -1;
   let quitting = false;
+  // v21.1 (#116): set when a newer connection takes over this character.
+  // The close handler then suppresses the reconnect placeholder and the
+  // reconnect loop — the farewell stays visible; refresh retakes.
+  let superseded = false;
 
   // v20 brief 3 (#45): whether stamped categories show their [HH:MM:SS.ss]
   // prefix. Server-authoritative — carried by the connect-time verbs
@@ -501,7 +505,7 @@
       stopPings();
       lastRtt = null;
       missedPongs = 0;
-      if (quitting) {
+      if (quitting || superseded) {
         setConn('gray', 'Disconnected', null);
         return;
       }
@@ -524,6 +528,13 @@
       setConn('gray', 'Disconnected', null);
       // Let the farewell line render (and be announced) before navigating.
       setTimeout(() => { window.location.href = '{% url "home" %}'; }, 1000);
+      return;
+    }
+
+    if (msg.event === 'superseded') {
+      // v21.1 (#116): no navigation, no reload — the farewell already
+      // rendered through the normal output path and stays on screen.
+      superseded = true;
       return;
     }
 
