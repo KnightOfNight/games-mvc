@@ -1,6 +1,6 @@
-# Shyland Project Instructions v20
+# Shyland Project Instructions v21
 
-These instructions apply to every chat session in this project. Read them before responding to any message. The instructions document is versioned in sync with the game as of v20.
+These instructions apply to every chat session in this project. Read them before responding to any message. The instructions document is versioned in sync with the game's current major version; refreshing it (when process rules changed during the version) is part of the version closeout ritual.
 
 ---
 
@@ -37,7 +37,9 @@ All in-flight documents — briefs, amendments, closeout reports, issues reports
 - **Shyland_GDD_vN.md** — the authoritative source for game design decisions. When design questions arise, check here first.
 - **Shyland_Architecture_vN.md** — the authoritative technical reference describing what is actually built. When implementation questions arise, check here first.
 
-The two documents' version numbers are always in sync. The architecture doc's header records the git commit hash of the version's architectural changes; a design-only version increments the stamp without moving the hash.
+The two documents' version numbers are always in sync — including point-release stamps (N.M). A **point release never creates new document files**: both documents are updated **in place**, their version stamps move to N.M, and only affected sections are touched. Filenames keep the major-version `vN` name, so "use the highest N present" continues to resolve correctly in the repo and in Claude Code sessions.
+
+The architecture doc's header records the git commit hash of the version's architectural changes; a design-only version (or a doc-only point-release change) increments the stamp without moving the hash. An architectural point release moves the hash.
 
 ---
 
@@ -57,11 +59,23 @@ Claude Code sessions run separately. They are the implementation environment. Th
 ## Versions, Issues, and Cadence
 
 - **Issue-first law:** every item entering version planning has a GitHub issue number before design work begins. Rulings and briefs reference issue numbers. Design history lives in the issue tracker (rulings recorded as issue comments at the moment they're made); the GDD's changelog carries one comprehensive row per closed version.
-- **Milestones** group each version's issues; milestone names are exactly `Version N`.
-- **Version cadence:** EVEN-numbered versions are feature releases (big new things); ODD-numbered versions are bug-fix/refinement releases (fixes plus improvements to existing designs, even working-as-designed ones). The bug-vs-feature line is deliberately gray — judgment applies.
+- **Milestones** group each version's issues. Milestone names are exactly `Version N` for major versions and `Version N.M` for point releases.
+- **Version cadence:** EVEN-numbered major versions are feature releases (big new things); ODD-numbered major versions are bug-fix/refinement releases (fixes plus improvements to existing designs, even working-as-designed ones). The bug-vs-feature line is deliberately gray — judgment applies.
 - **Housekeeping immediacy:** when a design ruling changes triage or issue state, the housekeeping brief is produced immediately — GitHub follows the design chat in real time, never batched. (Findings during a playtest may be *ruled* immediately and *batched* into one consolidated amendment for a single CC round trip.)
-- **Brief cap:** maximum 5 implementation briefs per version. Amendments don't count. Research/triage/ops briefs (audits, issue updates) don't count. Consider splitting data-fix work and feature work into separate briefs, and be willing to drop scope during triage — v20 ran hot at 23 issues.
+- **Brief cap:** maximum 5 implementation briefs per major version. Amendments don't count. Research/triage/ops briefs (audits, issue updates) don't count. Consider splitting data-fix work and feature work into separate briefs, and be willing to drop scope during triage — v20 ran hot at 23 issues.
 - **"Defer" means:** not this version, plus a GitHub issue (milestoned to a future version, or unmilestoned for someday).
+
+### Point Releases (Version N.M)
+
+A point release is a surgical release outside the major-version cadence, for work that cannot wait.
+
+- **Entry bar:** whatever ships in a point release must be **urgent / critical / i-want-it-now**. Nothing else qualifies. A point release may carry a bug fix or a feature — the odd/even parity rule applies only to major versions.
+- **Numbering:** M is a **minor version number, not a decimal**. Version 21.5 is older than Version 21.15; ordering is numeric on M. Milestone names, document stamps, and any sorting follow this.
+- **Scope law:** exactly **one bucket (B1)** and **one implementation brief**, anchored to **one founding ticket**. Additional tickets are allowed only as dependencies of the founding ticket (wired with native `gh --blocked-by`), used to carefully describe the same problem — never to widen it. Scope never grows past the founding ticket: anything discovered while building files thin into the normal pipeline, no "while we're in there." A second breaking issue means a second point release, not a bigger one.
+- **Timing:** a point release may be planned and shipped while a major version is in planning or in development, and may go out ahead of it. In-flight worktrees rebase against the point release after it lands; that cost is accepted.
+- **Sessions:** each point release runs in its own design chat session, leaving major-version chats undistracted. The issue tracker is the only bridge between sessions, as always.
+- **Documents:** no new files — GDD and architecture doc updated in place per the Documents section above. The GDD gets its own changelog row for the point release.
+- **Closeout:** the lightweight variant (see Workflow step 5).
 
 ---
 
@@ -75,7 +89,9 @@ Claude Code sessions run separately. They are the implementation environment. Th
 
 **4. Operator playtest.** Between briefs, per the playtest checklists. Findings are ruled as they surface; fixes roll into consolidated amendments.
 
-**5. Version closeout ritual:** final architecture doc committed by CC → GDD vN.0 written in this chat and committed by the operator → finals mirrored to project files (upload new pair, remove old) → transient documents pruned **by the operator only** → project memory updated (standing rule since v18).
+**5. Version closeout ritual (major versions):** final architecture doc committed by CC → GDD vN.0 written in this chat and committed by the operator → finals mirrored to project files (upload new pair, remove old) → project instructions refreshed if process rules changed during the version → transient documents pruned **by the operator only** → project memory updated (standing rule since v18).
+
+**5a. Point-release closeout (lightweight variant):** verification from committed reports → GDD changelog row and stamp bump (in place) → finals re-mirrored to project files → project memory updated. Pruning covers only the point release's own transients — and the operator does it, as always.
 
 **The GDD is updated here. The architecture doc is updated by Claude Code.** These are not interchangeable.
 
@@ -91,9 +107,10 @@ Claude Code sessions run separately. They are the implementation environment. Th
 - Include a migration step explicitly whenever a model changes
 - Include a verification section with specific testable steps; when a data table and prose/code disagree, **the table is authoritative**
 - The architecture doc update goes last, gated: "This step is gated on all implementation and verification steps above being complete and passing." Specify exactly which sections change and what they should say
+- **Architecture doc file handling:** Brief 1 of a **major version** creates the new versioned file (`git rm` the old), written header-first then one section at a time; subsequent briefs update it in place with no version bump. A **point-release** brief never creates a new file — it updates the current `Shyland_Architecture_vN.md` in place and bumps the stamp to N.M (hash moves only for architectural changes)
 - **Never include removal/pruning steps for transient documents** — briefs, reports, and closeouts are committed and left in place; the operator does all pruning
 - Closeout reports request the final commit hash
-- Naming: version briefs `Shyland_V{version}_Brief_{N}_{Descriptive_Name}.md`; amendments `..._Amendment_{M}_{Name}.md`; ops/housekeeping briefs `Shyland_Brief_{Descriptive_Name}.md`. Internal cross-references must match filenames
+- Naming: major-version briefs `Shyland_V{version}_Brief_{N}_{Descriptive_Name}.md`; point-release briefs `Shyland_V{N}.{M}_Brief_1_{Descriptive_Name}.md`; amendments `..._Amendment_{M}_{Name}.md`; ops/housekeeping briefs `Shyland_Brief_{Descriptive_Name}.md`. Internal cross-references must match filenames
 - World-geometry briefs include relocating characters to their spawn point as part of the reseed (spawn = the Heart until homes ship)
 - Test briefs do not use git worktrees; no model/effort headers on ops briefs; verify DOCKER_HOST before any deployment-touching CC session
 - Skills vs agents: "how to do X" → skill; "go do X and report back" (own authority, own closeout) → agent
