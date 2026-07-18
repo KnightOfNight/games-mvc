@@ -1,0 +1,104 @@
+Shyland v21.1 Brief 1 — Session Takeover — Closeout Report
+===========================================================
+Date: 2026-07-18
+Branch: version_21_1 (pushed to origin; NOT merged — operator merges after
+review and playtest)
+Founding ticket: #116 (closed with verification summary)
+
+Final commit hash
+-----------------
+e2e8918  v21.1 #116: architecture doc — version stamp 21.1, single-session
+         enforcement subsection
+
+Commit trail on the branch:
+  214da5e  Add brief: Shyland_V21.1_Brief_1_Session_Takeover.md
+  0dd58ed  v21.1 #116: server-side single-session enforcement (supersede
+           broadcast + handler)
+  608a794  v21.1 #116: client superseded flag — suppress reconnect, stay
+           on page
+  ce2bfad  v21.1 #116: WebsocketCommunicator tests for session takeover
+  e2e8918  v21.1 #116: architecture doc update
+  (this report follows e2e8918)
+
+What shipped
+------------
+Server (django/src/apps/shyland/consumers.py):
+  - connect(): a 'superseded' broadcast to the character's personal
+    player_{pk} group, fired immediately after the session_token mint and
+    before the unconditional presence SET. Payload: type=player_message,
+    event=superseded, token=<new session_token>, ts=envelope_ts(). No
+    text/category/status fields.
+  - player_message(): a 'superseded' branch checked first, before
+    clear/text/status/fight delivery and the dying/respawn events.
+    Token match -> return (own broadcast). Mismatch -> authored farewell
+    ("The world's attention shifts — your story is being told through
+    another window now. This one falls quiet.", category system), then
+    {'event': 'superseded', 'ts': ...} (matching cmd_quit's quit-event
+    shape — the shape in code carries no 'type' field, per the brief's
+    match-the-code instruction), then a normal await self.close(). The
+    existing disconnect() path handles the guarded presence delete, group
+    discards, heartbeat cancellation, and last_seen — nothing duplicated.
+  - Not a command: passes through no command gates (fires while dying and
+    in combat). No room broadcast. No models, no migration, no tick-engine,
+    presence-Lua, or disconnect() changes.
+
+Client (django/src/apps/shyland/templates/shyland/game.html):
+  - 'superseded' flag parallel to 'quitting'; set on the superseded event.
+  - Close handler: when set, suppresses the reconnect placeholder AND the
+    auto-reconnect loop (which would otherwise retake the session), and
+    does nothing else — no navigation, no reload. Farewell stays visible;
+    refresh-to-retake works. A close without superseded/quit is unchanged.
+
+Verification results (all passing, in-container against the deployment
+target ssh://ec2-user@games.magrathea.com)
+-----------------------------------------------------------------------
+1. make build && make restart: clean. (Restart bounces all three games,
+   including live Shyland WebSocket sessions.)
+2. New test module apps/shyland/tests/test_session_takeover.py
+   (WebsocketCommunicator, in the existing tests/ package):
+   - test_second_connection_supersedes_first: PASS. Session A received, in
+     order: the farewell output (category system), the
+     event == 'superseded' message, then websocket.close. Session B
+     received neither the farewell nor a superseded event during connect
+     or a subsequent 'look' (which round-tripped a room-render), and the
+     Redis presence key shyland:online:{pk} held B's token after A's
+     disconnect settled (A's guarded delete did not clobber it).
+   - test_single_connection_ignores_own_broadcast: PASS. A single fresh
+     connection sees no farewell/superseded (token match) and plays
+     normally.
+3. Full shyland suite: 132 tests, OK
+   (manage.py test apps.shyland.tests -t /app).
+4. Code check: PASS. The only group_send added targets self.player_group;
+   grep over the added lines shows no room-group broadcast in any new
+   code path.
+
+Human playtest steps (two real browsers, iPad takeover, mid-combat
+takeover with a second account) are the operator's, after deploy — not
+simulated, not declared complete.
+
+Discovery Rule issues filed
+---------------------------
+#117 — shyland: stub tests.py shadows tests/ package — breaks whole-app
+       test discovery (manage.py test apps.shyland ImportError; suite only
+       runnable as apps.shyland.tests). Labeled bug; no milestone, no
+       bucket label; not fixed in this brief.
+
+Architecture doc confirmation
+-----------------------------
+docs/shyland/Shyland_Architecture_v21.md updated IN PLACE (no new file,
+nothing git rm'd):
+  - Header version stamp reads "Version 21.1 — Point release
+    (single-session enforcement, #116)"; the architectural-changes commit
+    hash moved to ce2bfad (the tip commit containing this brief's code
+    changes at the time of the doc update).
+  - Section 4.3: new subsection "Single-session enforcement (v21.1, #116)"
+    (broadcast placement + interleaving-safety argument, the superseded
+    branch, not-a-command rule, no-room-broadcast rule, combat carryover,
+    client behavior, tests); the player_message documented event list now
+    includes 'superseded' alongside 'dying'/'respawn'.
+  - Presence subsection: one sentence noting the v19 per-connection token
+    now also drives session takeover, with a pointer to the new subsection.
+  - Client close-handling coverage (connection indicator / auto-reconnect
+    paragraph): the superseded flag noted alongside quitting, suppress-only,
+    no navigation.
+  - No other sections touched.
