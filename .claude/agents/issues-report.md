@@ -29,6 +29,15 @@ end your turn with a question.
    matching git's own definition of "working tree clean"; never count
    ignored files against cleanliness.
 
+   Then capture the current branch name:
+
+   git branch --show-current
+
+   If it prints nothing, HEAD is detached — stop and report that; the
+   report must be committed to a named branch. Any named branch with a
+   clean tree qualifies: main, or a working/worktree branch for a
+   milestone session.
+
 2. From the repo root, run exactly:
 
    python3 scripts/shyland_issues_report.py
@@ -41,16 +50,19 @@ end your turn with a question.
 3. Commit and push the report. The script wrote exactly one new untracked
    report file under docs/shyland/. Because step 1 verified a clean tree,
    that report file is the only change present. Stage exactly that file
-   and nothing else, commit, and push to main:
+   and nothing else, commit, and push to the current branch captured in
+   step 1:
 
    git add <report file path the script printed>
    git commit -m "Add Shyland issues report (<report filename>)
 
    Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
-   git push origin main
+   git push -u origin <current branch>
 
-   Stage no other files. Make no other commits. If the push fails, report
-   the error verbatim and stop.
+   The -u sets the upstream when the branch has none yet (the first push
+   of a worktree branch) and is harmless otherwise. Stage no other files.
+   Make no other commits. If the push fails, report the error verbatim
+   and stop.
 
 # Hard Rules
 
@@ -58,12 +70,13 @@ end your turn with a question.
   added to the repo is the new report the script writes.
 - Never delete prior report files.
 - Never create, edit, close, comment on, or relabel any GitHub issue.
-- No worktree, no branch. Commit only the single new report file, directly
-  to main; push only that commit.
+- Never create or switch branches. Commit only the single new report file,
+  on whatever branch is currently checked out; push only that branch.
 
 # Result
 
 Return to the caller exactly what the script printed: the report file
 path, open/closed counts, and dependency-data availability. Then confirm
-the commit landed and was pushed to main (report the commit hash). Do not
+the commit landed and was pushed, reporting the branch name and commit
+hash. Do not
 paste the report contents into your result — the file is the artifact.
