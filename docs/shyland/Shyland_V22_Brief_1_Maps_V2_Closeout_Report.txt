@@ -1,0 +1,132 @@
+Shyland V22 Brief 1 — Maps V2 — Closeout Report
+================================================
+Date: 2026-07-18
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Issues: #82 (closed at closeout), #115 (closed at closeout); #53 previously
+closed at triage, satisfied by this brief's gate discovery-coloring.
+
+WHAT SHIPPED
+------------
+Step 0  Brief self-committed verbatim to
+        docs/shyland/Shyland_V22_Brief_1_Maps_V2.md (commit dd0a074).
+
+Step 1  Issue housekeeping: design-history comment on #82 (supersessions —
+        one octagon glyph for shard and sphere travel nodes, half-diameter
+        solid frontier dots, "UD" composite badge retired for independent
+        U/D corner badges, #53 satisfied by gate discovery-coloring — plus
+        the full Design Specification ruling table) and the margin ruling
+        on #115 (16px pinned margin, 268x268 drawable area inside the
+        unchanged 300x300 SVG; pane geometry and CSS untouched).
+
+Step 3  Server payload (commit 347f0b4): build_map_payload in
+        django/src/apps/shyland/consumers.py rewritten to the Maps V2
+        schema — discovered entries (here / travel_node / agro /
+        tri-state exits with gate-known|gate-unknown / up|down by
+        destination RoomVisit) and frontier entries masked by
+        construction to exactly {x, y, discovered: false}. Frontier =
+        unvisited fragment rooms one unflagged intra-zone cardinal step
+        from a discovered room; nothing deeper ever enters the payload;
+        gate destinations never enter the rooms array. Bounded constant
+        query count: five (current room, zone rooms, one RoomVisit union
+        query covering zone rooms + all out-of-zone destinations, aggro
+        room ids, travel-node room ids). send_map delivery events
+        unchanged (connect, move incl. aggro-ambush, flee, travel,
+        respawn; look sends no map). ts/seq envelope unchanged.
+
+Step 4  Client renderer (commit e924465): renderMap in
+        django/src/apps/shyland/templates/shyland/game.html rewritten to
+        the ruled visual language — 7x7 window (radius 3) in a pinned
+        16px margin (MAP_SIZE=300, MARGIN=16, INNER=268, CELL=268/7);
+        hollow r=10 value-stroke room circles (agro-color stroke when
+        agro); solid key-color r=6 here-dot; octagon travel-node glyph
+        (circumradius 12, 4px stroke, flat sides to the cardinals, never
+        agro); gate glyphs (8px connector from the glyph's outer stroke
+        edge per the attachment law — 11px circles, 13.09px octagons —
+        into a solid side-10 equilateral triangle, apex outward, value or
+        muted by destination visit); solid r=5 muted frontier dots with
+        muted link lines and no exits of their own (terminus rule); solid
+        half-cell stubs (value/muted) for off-window destinations; 14px
+        bold U/D corner badges at (+17,-17)/(+17,+17) independently
+        colored per destination visit. Old dashed-stub/boundary-tick
+        vocabulary and all old map CSS classes removed; --agro-color:
+        #cc4444 added; all map colors flow through the CSS variables.
+
+Step 5  Seed invariant (commit f48a37b): seed_world._verify permanently
+        checks "travel-node rooms have no aggressive spawns (octagons
+        never agro)". Read-only check against the live database: zero
+        violating RoomSpawn rows.
+
+Step 6  Tests (commit 368926b): new
+        django/src/apps/shyland/tests/test_map_payload.py — 11 unit tests
+        against a purpose-built fixture zone (boundary pair, cross-zone
+        exit, travel nodes, aggressive spawn with a dead instance,
+        passive spawn, up/down pair) plus 1 WebsocketCommunicator
+        delivery test (map with the new schema on connect and on move).
+        All nine required assertions covered, including frontier masking
+        (exact key set), depth-2 exclusion, masking-beats-specialness,
+        agro-as-configuration, gate statuses tracking destination visits
+        for both boundary-flagged and cross-zone exits, up/down
+        tri-state, here-on-current-only without a RoomVisit row,
+        assertNumQueries(5), and gate destinations never in the rooms
+        array.
+
+Step 8  Architecture doc (commit 5f5f646): Shyland_Architecture_v21.md
+        git rm'd; Shyland_Architecture_v22.md created — header written
+        first (version 22.0, stamped at commit 368926b), content copied
+        section by section (sections 2–4.11 and 4.13–8 verified
+        byte-identical to v21), Section 1 intro gains the v22 opening
+        sentence, Section 4.12 fully rewritten to this brief (vocabulary,
+        geometry, attachment law, payload schema and field semantics,
+        masking, frontier/terminus rules, query ceiling, seed invariant;
+        MapFrag definition, delivery events, and accessibility stance
+        retained).
+
+TEST RESULTS
+------------
+Suite: python manage.py test apps.shyland.tests -t /app (in-container,
+per #117 — the stub tests.py still shadows whole-app discovery; not
+fixed here, per the brief).
+Result: 144 tests, 0 failures, 0 errors (19.65s). 132 pre-existing tests
+all still pass; 12 tests are new with this brief.
+Query-ceiling guard: assertNumQueries(5) — at the brief's <= 5 target.
+
+DEVIATIONS
+----------
+None in issue handling or verification. Environment notes:
+- The fresh version_22 worktree lacked the gitignored .env and ssl/
+  certs; both copied from the main checkout (local-only files, not
+  committed).
+- make build recreated the containers on the deployment target: all
+  three games restarted, including any live Shyland WebSocket sessions.
+- The live world was NOT reseeded — this brief contains no seed-data
+  changes; the new invariant runs on the next reseed (verified
+  read-only against the live DB meanwhile).
+
+OPERATOR PLAYTEST — PENDING (Step 7, human/browser steps; not simulated)
+------------------------------------------------------------------------
+Ready for operator playtest after deploy:
+- Heart of the Convergence: octagon + here-dot; margin visible on all
+  sides against the zone border.
+- The Green Gate before and after entering the Verdant Reach: muted vs
+  value triangle.
+- A partially explored area: frontier dots at half size, solid, muted
+  lines, no exits shown from them.
+- The Sink / Drone Mouths: value D vs muted D at the 17px offset.
+- The Undercrag middle chamber: agro strokes + here-dot + both badge
+  colors composing.
+- Lion's Watch / Bear's Throne: agro-color strokes on real x3 grounds.
+
+COMMITS (in order)
+------------------
+dd0a074  Step 0: self-commit brief
+347f0b4  Step 3: payload rewrite
+e924465  Step 4: renderer rewrite
+f48a37b  Step 5: seed-verify invariant
+368926b  Step 6: map payload tests
+5f5f646  Step 8: architecture doc v22
+
+FINAL COMMIT HASH
+-----------------
+5f5f646 (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).
