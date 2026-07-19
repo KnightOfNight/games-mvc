@@ -63,7 +63,8 @@ class DispatchGuardTests(SimpleTestCase):
         self.assertEqual(len(sent), 2)
         self.assertEqual(sent[0]['category'], 'echo')
         self.assertEqual(sent[0]['text'], '> frobnicate')
-        self.assertEqual(sent[1]['category'], 'system')
+        # v22 brief 2 (DD §3): unknown command is a CLI error.
+        self.assertEqual(sent[1]['category'], 'error')
         self.assertIn('Unknown command', sent[1]['text'])
 
 

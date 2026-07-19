@@ -173,11 +173,14 @@ class AuthoritativeTableTests(GrammarFixtureMixin, SimpleTestCase):
         self.assertEqual(res.items, [self.entry_healing])
         self.assertEqual(res.quantity, 10)
 
-    def test_12_sell_5_hides_refuses_you_only_have_3(self):
+    def test_12_sell_5_hides_partial_fulfillment(self):
+        # v22 brief 2 (DD §7) supersedes the v20 all-or-nothing refusal:
+        # sell does the possible part and reports the shortfall via
+        # `requested` — the handler prints the warm line.
         res = resolve('sell', '5 hides', self.carried)
-        self.assertFalse(res.ok)
-        self.assertEqual(res.error, 'too_few')
-        self.assertEqual(res.message, 'You only have 3.')
+        self.assertTrue(res.ok)
+        self.assertEqual(set(res.items), set(self.hides))
+        self.assertEqual(res.requested, 5)
 
     def test_13_sell_all_hides(self):
         res = resolve('sell', 'all hides', self.carried)
@@ -333,11 +336,14 @@ class AddedCoverageTests(GrammarFixtureMixin, SimpleTestCase):
         self.assertTrue(res.ok)
         self.assertEqual(set(res.items), set(contents))
 
-    def test_drop_bare_all_allowed_excludes_equipped(self):
+    def test_drop_all_rejected_numeric_only(self):
+        # v22 brief 2 (DD §1 fn 11) supersedes the v20 bare-all sweep:
+        # drop takes a numeric-only quantity; 'all' is refused with
+        # teaching wording.
         res = resolve('drop', 'all', self.carried)
-        self.assertTrue(res.ok)
-        self.assertNotIn(self.mace, res.items)
-        self.assertEqual(len(res.items), len(self.carried) - 1)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.error, 'usage')
+        self.assertEqual(res.message, "Drop how many? Try 'drop <N> <item>'.")
 
     def test_pickup_bare_all_allowed(self):
         ground = [make_item(170, self.animal_hide)]
