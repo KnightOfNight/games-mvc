@@ -260,11 +260,17 @@ class Character(models.Model):
     is_dead = models.BooleanField(default=False)
     is_dying    = models.BooleanField(default=False)
     dying_since = models.DateTimeField(null=True, blank=True)
-    brief_mode = models.BooleanField(default=True)
+    # v22 brief 2 (DD §10): brief defaults off — new characters see long
+    # room descriptions until they opt in. Existing rows keep their value.
+    brief_mode = models.BooleanField(default=False)
     # v20 brief 3 (#45): whether the client shows the [HH:MM:SS.ss]
     # prefix on stamped messages. Envelope ts/seq fields are always
     # present regardless — this is display preference only.
     show_timestamps = models.BooleanField(default=True)
+    # v22 brief 2 (DD §10): pane-only preference — when off, the client
+    # suppresses the player's own command-echo line. Never affects the
+    # firehose or anything server-side beyond the flag itself.
+    echo_mode = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
