@@ -28,8 +28,8 @@ from .item_utils import (
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
-    ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomVisit,
-    TravelMessage, TravelNode, VendorEntry,
+    ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomSpawn,
+    RoomVisit, TravelMessage, TravelNode, VendorEntry,
     COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
     FLEE_COOLDOWN_TICKS,
 )
@@ -2316,12 +2316,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def build_map_payload(self):
-        """v20 brief 1 (#35): derive the character's MapFrag fresh — BFS
-        from the current room over unflagged, intra-zone cardinal exits
-        (existence only; positions come from stored coords) — and intersect
-        it with the character's RoomVisit fog-of-war, plus the current room.
-        Zones are small (≤ ~160 rooms); no caching in v1. Geometry only:
-        no room names or keys leave the server."""
+        """v22 brief 1 (#82, #115): Maps V2 payload. Derive the character's
+        MapFrag fresh — BFS from the current room over unflagged, intra-zone
+        cardinal exits (unchanged definition) — then split it into the
+        discovered set (fragment ∩ RoomVisit, plus the current room) and the
+        frontier set (unvisited fragment rooms cardinally adjacent to a
+        discovered room). Frontier entries are masked by construction: they
+        carry exactly x, y, discovered — the server never relies on the
+        client to hide anything. Gate destinations never enter the rooms
+        array; they are looked up only for their visit bit.
+
+        Query discipline (post-#107, binding): a bounded, constant number of
+        queries — current room, zone rooms, one RoomVisit query over the
+        union of zone room ids and all out-of-zone destination ids, aggro
+        room ids, travel-node room ids. Five total; no queries inside the
+        BFS loop, no per-room queries. Locked by assertNumQueries in
+        tests/test_map_payload.py."""
         current = Room.objects.select_related('zone').get(
             pk=self.character.current_room_id,
         )
@@ -2331,9 +2341,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         }
 
         def cardinal_exit(room, direction):
-            """(destination pk or None, is_boundary) for one cardinal exit.
-            Cross-zone exits are boundaries automatically; a flag on either
-            side of an intra-zone pair makes it a boundary."""
+            """(destination pk or None, is_gate) for one cardinal exit.
+            Cross-zone exits are gates automatically; a boundary flag on
+            either side of an intra-zone pair makes it a gate."""
             dst_id = getattr(room, f'exit_{direction}_id')
             if dst_id is None:
                 return None, False
@@ -2350,45 +2360,88 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         while queue:
             room = zone_rooms[queue.popleft()]
             for direction in MAP_CARDINALS:
-                dst_id, is_boundary = cardinal_exit(room, direction)
-                if dst_id is None or is_boundary or dst_id in fragment:
+                dst_id, is_gate = cardinal_exit(room, direction)
+                if dst_id is None or is_gate or dst_id in fragment:
                     continue
                 fragment.add(dst_id)
                 queue.append(dst_id)
 
+        # One visit query covers fragment membership, U/D destinations, and
+        # gate destinations alike: the union of the zone's room ids and every
+        # exit destination that lives outside the zone (cross-zone gates,
+        # cross-zone up/down).
+        outside_ids = set()
+        for room in zone_rooms.values():
+            for direction in ('north', 'south', 'east', 'west', 'up', 'down'):
+                dst_id = getattr(room, f'exit_{direction}_id')
+                if dst_id is not None and dst_id not in zone_rooms:
+                    outside_ids.add(dst_id)
         visited = set(
             RoomVisit.objects.filter(
-                character_id=self.character_pk, room_id__in=fragment,
+                character_id=self.character_pk,
+                room_id__in=zone_rooms.keys() | outside_ids,
             ).values_list('room_id', flat=True)
         )
         # The room underfoot is always known. Since #50 every arrival path
         # records its RoomVisit, so this is defense-in-depth for moves that
         # bypass the consumer (e.g. an admin editing current_room).
         visited.add(current.pk)
-        payload_ids = (fragment & visited) | {current.pk}
+        discovered = (fragment & visited) | {current.pk}
+
+        # Frontier: unvisited fragment rooms one unflagged intra-zone
+        # cardinal step from a discovered room. Nothing deeper than the
+        # frontier ever enters the payload.
+        frontier = set()
+        for pk in discovered:
+            room = zone_rooms[pk]
+            for direction in MAP_CARDINALS:
+                dst_id, is_gate = cardinal_exit(room, direction)
+                if dst_id is not None and not is_gate and dst_id not in visited:
+                    frontier.add(dst_id)
+
+        # Aggro is configuration, not instance state: a dead or unspawned
+        # instance still flags its room.
+        agro_ids = set(
+            RoomSpawn.objects.filter(
+                room__zone_id=current.zone_id,
+                npc_definition__is_aggressive=True,
+            ).values_list('room_id', flat=True)
+        )
+        travel_ids = set(
+            TravelNode.objects.filter(
+                room__zone_id=current.zone_id,
+            ).values_list('room_id', flat=True)
+        )
 
         rooms_payload = []
-        for pk in sorted(payload_ids):
+        for pk in sorted(discovered | frontier):
             room = zone_rooms[pk]
+            if pk not in discovered:
+                rooms_payload.append({
+                    'x': room.coord_x, 'y': room.coord_y, 'discovered': False,
+                })
+                continue
+            entry = {
+                'x': room.coord_x, 'y': room.coord_y, 'discovered': True,
+            }
+            if pk == current.pk:
+                entry['here'] = True
+            if pk in travel_ids:
+                entry['travel_node'] = True
+            entry['agro'] = pk in agro_ids
             exits = {}
             for direction in MAP_CARDINALS:
-                dst_id, is_boundary = cardinal_exit(room, direction)
+                dst_id, is_gate = cardinal_exit(room, direction)
                 if dst_id is None:
                     continue
-                if is_boundary:
-                    exits[direction] = 'boundary'
-                elif dst_id in visited:
-                    exits[direction] = 'open'
-                else:
-                    exits[direction] = 'unexplored'
-            rooms_payload.append({
-                'x': room.coord_x,
-                'y': room.coord_y,
-                'here': pk == current.pk,
-                'exits': exits,
-                'up': room.exit_up_id is not None,
-                'down': room.exit_down_id is not None,
-            })
+                status = 'known' if dst_id in visited else 'unknown'
+                exits[direction] = f'gate-{status}' if is_gate else status
+            entry['exits'] = exits
+            for direction in ('up', 'down'):
+                dst_id = getattr(room, f'exit_{direction}_id')
+                if dst_id is not None:
+                    entry[direction] = 'known' if dst_id in visited else 'unknown'
+            rooms_payload.append(entry)
 
         return {
             'type': 'map',
