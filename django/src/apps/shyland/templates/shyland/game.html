@@ -13,7 +13,13 @@
     --muted: #6b6b80;
     --accent: #7b68ee;
     --room: #a8d8a8;
-    --chat: #f0c060;
+    /* v22 brief 2 (DD §2): named palette completions — say-color is the
+       named form of the old --chat; warn-color is the world-declined
+       voice (three-layer doctrine, DD §3); loot-color is the named form
+       of the reward green (gains: reward, pickups, heal-to-full). */
+    --say-color: #f0c060;
+    --warn-color: #E8D44D;
+    --loot-color: #4caf7d;
     --combat: #e06060;
     --system: #8888aa;
     --error: #cc4444;
@@ -21,10 +27,11 @@
     --bar-a: #7b68ee;
     --bar-l: #e07040;
     /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
-       colon separators neutral chrome gray. Zone/area colors arrive from
-       the server per message. */
+       colon separators neutral gray. Zone/area colors arrive from the
+       server per message. (v22 brief 2 / DD §2: the old chrome gray is
+       deleted from the palette; the separators join the muted voice.) */
     --loc-room: #E8E4D8;
-    --loc-sep: #8A887F;
+    --loc-sep: var(--muted);
     /* v20 brief 4 (#2): combat-red family base values. The v20 output
        palette derives its shades from this family later. */
     --combat-bg: #3A1212;
@@ -116,18 +123,29 @@
   /* v21 brief 1 (#90/#91/#92): structured key/value report lines. */
   .msg-key   { color: var(--key-color); }
   .msg-value { color: var(--value-color); }
-  .msg-chat    { color: var(--chat); }
+  /* v22 brief 2 (DD §9): segmented report lines — the server names a
+     voice per segment; the client maps it to the palette. */
+  .seg-key   { color: var(--key-color); }
+  .seg-value { color: var(--value-color); }
+  .seg-muted { color: var(--muted); }
+  .seg-error { color: var(--error); }
+  .seg-warn  { color: var(--warn-color); }
+  .seg-say   { color: var(--say-color); }
+  .seg-reward { color: var(--loot-color); }
+  .msg-say     { color: var(--say-color); }      /* speech, player and NPC (DD §13) */
   .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
   .msg-combat-hit-out  { color: #C4453F; }       /* your hit */
   .msg-combat-crit-out { color: #E24B4A; font-weight: bold; } /* your crit */
   .msg-combat-hit-in   { color: #E0724A; }       /* it hits you */
-  .msg-combat-miss     { color: #8A887F; }       /* miss, either direction */
-  .msg-reward  { color: #D8B45A; }               /* kill / XP / level */
-  .msg-success { color: #8FCF9F; }               /* sales, repairs, pickups */
-  .msg-error   { color: #C08A3E; }               /* amber */
-  .msg-system  { color: #8A887F; }               /* system / ambient */
-  .msg-room    { color: #8A887F; }               /* ambient room events */
-  .msg-echo    { color: #8A887F; }               /* '> command' transcript (#15) */
+  .msg-combat-crit-in  { color: #F08A50; font-weight: bold; } /* its crit on you (DD §2) */
+  .msg-combat-miss     { color: var(--muted); }  /* miss, either direction */
+  .msg-reward  { color: var(--loot-color); }     /* gains: kill / XP / level / pickups / heal-to-full */
+  .msg-success { color: var(--value-color); }    /* transactional success prose (DD §6) */
+  .msg-error   { color: var(--error); }          /* CLI errors (three-layer doctrine, #121) */
+  .msg-warn    { color: var(--warn-color); }     /* the world declined (DD §3) */
+  .msg-system  { color: var(--muted); }          /* system / ambient */
+  .msg-room    { color: var(--muted); }          /* ambient room events */
+  .msg-echo    { color: var(--muted); }          /* '> command' transcript (#15) */
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
   .msg-section strong  { color: var(--key-color); font-weight: bold; }
   /* v20 brief 5 amendment 1 (#78): zone-colored separator closing the
@@ -423,6 +441,10 @@
   // prefix. Server-authoritative — carried by the connect-time verbs
   // message and every status payload.
   let showTimestamps = true;
+  // v22 brief 2 (DD §10): pane-only echo preference — when off, the
+  // player's own '> command' echo lines are not rendered. Same carriage
+  // as show_timestamps; never affects anything beyond the pane.
+  let echoMode = true;
 
   // v20 brief 3 (#19): tab completion. Verb position completes locally
   // from the server-sent verb list; argument position asks the server.
@@ -577,10 +599,12 @@
     } else if (msg.type === 'verbs') {
       if (Array.isArray(msg.verbs)) verbList = msg.verbs;
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
+      if (typeof msg.echo_mode === 'boolean') echoMode = msg.echo_mode;
     } else if (msg.type === 'complete') {
       applyCompletion(msg);
     } else if (msg.type === 'status') {
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
+      if (typeof msg.echo_mode === 'boolean') echoMode = msg.echo_mode;
       updateLocation(msg);
       // v20 brief 4 (#2): combat-membership boolean drives the stats
       // section's combat-red state.
@@ -975,10 +999,35 @@
   // value-color, concatenated in that order; an entry with neither is a
   // blank line. Value text passes through appendFlaggedText so item
   // flag blocks keep their rarity/chrome colorization (design rule 3).
+  // v22 brief 2 (DD §9): a report line may instead carry 'segs' — an
+  // array of {t, c} segments where c names a palette voice (key, value,
+  // muted, error, warn, say, reward, rar-*, flag-chrome). Used for the
+  // Kind-3 tables: muted column headers, band-colored durability, and
+  // rarity-colored words inside otherwise value-colored rows.
+  const SEG_CLASSES = new Set([
+    'key', 'value', 'muted', 'error', 'warn', 'say', 'reward',
+  ]);
   function appendReportLines(lines) {
     lines.forEach((entry) => {
       const el = document.createElement('div');
       el.className = 'msg-report';
+      if (Array.isArray(entry.segs)) {
+        entry.segs.forEach((seg) => {
+          const s = document.createElement('span');
+          const c = seg.c || 'value';
+          if (SEG_CLASSES.has(c)) {
+            s.className = 'seg-' + c;
+          } else if (/^(rar-[a-z]+|flag-chrome)$/.test(c)) {
+            s.className = c;
+          } else {
+            s.className = 'seg-value';
+          }
+          s.textContent = seg.t || '';
+          el.appendChild(s);
+        });
+        output.appendChild(el);
+        return;
+      }
       const hasK = typeof entry.k === 'string' && entry.k !== '';
       const hasV = typeof entry.v === 'string' && entry.v !== '';
       if (!hasK && !hasV) {
@@ -1003,6 +1052,9 @@
   }
 
   function append(msg) {
+    // v22 brief 2 (DD §10): echo is a pane-only preference — off means
+    // the player's own command-echo lines simply don't render.
+    if (msg.category === 'echo' && !echoMode) return;
     if (msg.category === 'report' && Array.isArray(msg.lines)) {
       appendReportLines(msg.lines);
       return;
