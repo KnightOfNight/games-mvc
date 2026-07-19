@@ -35,9 +35,13 @@ from .models import (
     FLEE_COOLDOWN_TICKS,
 )
 
+# v22 brief 2 (DD §9): the re-authored anatomical order, head to feet —
+# the Equipment paper-doll renders every slot in this order (RING twice,
+# per SLOT_CAPACITY).
 SLOT_ORDER = [
-    'HEAD', 'NECK', 'SHOULDERS', 'CHEST', 'HANDS', 'WAIST',
-    'LEGS', 'FEET', 'RING', 'MAIN_HAND', 'OFF_HAND', 'RANGED', 'BACK',
+    'HEAD', 'NECK', 'SHOULDERS', 'BACK', 'CHEST',
+    'MAIN_HAND', 'OFF_HAND', 'RANGED', 'HANDS', 'RING',
+    'WAIST', 'LEGS', 'FEET',
 ]
 SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
 
@@ -716,6 +720,73 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 self.presence_value,
             )
 
+    # ------------------------------------------------------------------
+    # v22 brief 2 (DD §9): Kind-3 table rendering — muted column headers,
+    # value-color rows, per-cell voice segments (durability bands, rarity
+    # words). Widths derive from rendered text; the font is monospace.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _table_lines(headers, rows, indent='  ', gap='   '):
+        """Seg-form report lines for a table. A cell is a plain string
+        (value voice) or a list of (text, voice) tuples."""
+        def cell_text(cell):
+            if isinstance(cell, str):
+                return cell
+            return ''.join(t for t, _ in cell)
+
+        widths = [len(h) for h in headers]
+        for row in rows:
+            for i, cell in enumerate(row):
+                widths[i] = max(widths[i], len(cell_text(cell)))
+
+        header_text = indent + gap.join(
+            h.ljust(widths[i]) for i, h in enumerate(headers)
+        ).rstrip()
+        lines = [{'segs': [{'t': header_text, 'c': 'muted'}]}]
+        for row in rows:
+            segs = [{'t': indent, 'c': 'value'}]
+            for i, cell in enumerate(row):
+                if isinstance(cell, str):
+                    segs.append({'t': cell, 'c': 'value'})
+                else:
+                    segs.extend({'t': t, 'c': c} for t, c in cell)
+                if i < len(row) - 1:
+                    pad = widths[i] - len(cell_text(cell))
+                    segs.append({'t': ' ' * pad + gap, 'c': 'value'})
+            lines.append({'segs': segs})
+        return lines
+
+    @staticmethod
+    def _details_cell(item):
+        """DD §9: Details = durability + flags, no brackets —
+        '90%, Uncommon, Bound'. The durability voice derives from the
+        mechanical durability band (never its own thresholds): no
+        penalty → value, penalty bands → say, broken → error. Rarity
+        words are always rarity-colored in information output."""
+        segs = []
+        if item.definition.takes_durability_loss:
+            if item.is_broken:
+                voice = 'error'
+            elif get_durability_penalty(item) > 0:
+                voice = 'say'
+            else:
+                voice = 'value'
+            segs.append((f'{int(round(item.durability_current))}%', voice))
+        if item.is_identified:
+            if segs:
+                segs.append((', ', 'value'))
+            segs.append((item.rarity.capitalize(), f'rar-{item.rarity}'))
+        if segs:
+            segs.append((', ', 'value'))
+        segs.append(('Bound' if item.is_soulbound else 'Unbound', 'flag-chrome'))
+        return segs
+
+    def _wallet_line(self, char):
+        """DD §9: THE wallet line — one renderer shared by `wallet` and
+        inv's Wallet section, byte-identical output."""
+        return {'k': 'Wallet:', 'v': f' {self.format_wallet(char)}'}
+
     async def cmd_inventory(self):
         items = await self.get_inventory()
         char = self.character
@@ -729,33 +800,44 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         max_carry = char.stat_str * 10 + bag_bonus
         current_carry = len(unequipped)
 
-        # v21 brief 1 (#90): structured key/value report — section
-        # headers are key-only lines, everything else value lines.
-        # v20 brief 3 (#48): every item line renders through the shared
-        # composition helper — the old leading rarity column is gone.
-        lines = []
+        # v22 brief 2 (DD §9): Equipment paper-doll — every slot always
+        # shown, anatomical order, sentence-case labels, muted '-' for
+        # empties. Header punctuation law: ellipsis = structure below.
+        lines = [{'k': 'Equipment...'}]
+        by_slot = {}
+        for item in equipped:
+            by_slot.setdefault(item.equipped_slot, []).append(item)
+        doll_rows = []
+        for slot in SLOT_ORDER:
+            occupants = by_slot.get(slot, [])
+            for i in range(SLOT_CAPACITY.get(slot, 1)):
+                label = format_slot_name(slot)
+                if i < len(occupants):
+                    item = occupants[i]
+                    doll_rows.append([
+                        label,
+                        get_display_name_with_tier(item),
+                        self._details_cell(item),
+                    ])
+                else:
+                    doll_rows.append([
+                        label, [('-', 'muted')], [('-', 'muted')],
+                    ])
+        lines += self._table_lines(['Slot', 'Name', 'Details'], doll_rows)
 
-        if equipped:
-            lines.append({'k': 'Equipment:'})
-            for item in sorted(equipped, key=lambda i: SLOT_RANK.get(i.equipped_slot, 99)):
-                lines.append({'v': f'  [{item.equipped_slot}]  {compose_item_line(item)}'})
-            lines.append({})
-
-        lines.append({'k': f'Inventory ({current_carry}/{max_carry} items):'})
-
-        unequipped_sorted = sorted(unequipped, key=lambda i: (
-            i.definition.item_type,
-            i.mk_tier,
-            RARITY_RANK.get(i.rarity, 0),
-            i.definition.name,
-        ))
-
+        # Inventory table: Quantity after Name, Slot empty unless slotted
+        # (unequipped items never are), flat alphabetical by name.
+        lines.append({})
+        lines.append({'k': f'Inventory ({current_carry}/{max_carry})...'})
+        unequipped_sorted = sorted(
+            unequipped, key=lambda i: get_display_name_with_tier(i).lower(),
+        )
+        inv_rows = []
         idx = 0
         while idx < len(unequipped_sorted):
             item = unequipped_sorted[idx]
-
+            count = 1
             if item.definition.item_type == 'consumable':
-                count = 1
                 j = idx + 1
                 while j < len(unequipped_sorted):
                     other = unequipped_sorted[j]
@@ -766,16 +848,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         j += 1
                     else:
                         break
-                lines.append({'v': f'  {compose_item_line(item, count)}'})
                 idx = j
             else:
-                lines.append({'v': f'  {compose_item_line(item)}'})
                 idx += 1
+            inv_rows.append([
+                '',
+                get_display_name_with_tier(item),
+                str(count),
+                self._details_cell(item),
+            ])
+        lines += self._table_lines(
+            ['Slot', 'Name', 'Quantity', 'Details'], inv_rows,
+        )
 
         wallet_char = await self.get_character_fresh()
         lines.append({})
-        lines.append({'k': 'Wallet:'})
-        lines.append({'v': f'  {self.format_wallet(wallet_char)}'})
+        lines.append(self._wallet_line(wallet_char))
 
         # v20 brief 2 amendment 1 (#56): state reports carry 'report'
         # (unstamped on the client) — inventory, wallet, help, who, stats,
@@ -783,12 +871,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_report_lines(lines)
 
     async def cmd_wallet(self):
-        # v21 brief 1 (#92): key/value form — 'Wallet:' in key-color,
-        # contents in value-color; content unchanged.
+        # v21 brief 1 (#92) + v22 brief 2 (DD §9): the shared wallet-line
+        # renderer — byte-identical to inv's Wallet section.
         char = await self.get_character_fresh()
-        await self.send_report_lines(
-            [{'k': 'Wallet:', 'v': f' {self.format_wallet(char)}'}],
-        )
+        await self.send_report_lines([self._wallet_line(char)])
 
     # v21 brief 1 (#84): the help text. The movement line is static —
     # help documents the command set, not the current room. Commands
@@ -1501,7 +1587,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         vendor = await self.get_vendor_in_room(room)
         if vendor is None:
-            await self.output('There is no one here to trade with.', 'error')
+            await self.output('There is no one here to trade with.', 'warn')
             return
 
         entries = await self.get_vendor_entries(vendor)
@@ -1514,13 +1600,36 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         char = await self.get_character_fresh()
-        lines = [f'{npc_display(vendor, capitalize=True)} offers:']
-        for entry in listable:
-            line = f'  {entry_display_name(entry)} — {self.format_amount(char, entry.price)}'
-            if entry.stock_limit is not None:
-                line += f' ({entry.stock_limit - entry.sold_count} left)'
-            lines.append(line)
-        await self.output('\n'.join(lines), 'report')
+
+        # v22 brief 2 (DD §9, #58): the standard table + Price — two
+        # groups, free first (Price reads muted 'free'), alphabetical
+        # within groups; vendor stock mints Common at full durability.
+        def entry_row(entry):
+            defn = entry.item_definition
+            details = []
+            if defn.takes_durability_loss:
+                details.append(('100%', 'value'))
+                details.append((', ', 'value'))
+            details.append(('Common', 'rar-common'))
+            if entry.price == 0:
+                price_cell = [('free', 'muted')]
+            else:
+                price_cell = self.format_amount(char, entry.price)
+            quantity = ('' if entry.stock_limit is None
+                        else str(entry.stock_limit - entry.sold_count))
+            return ['', entry_display_name(entry), quantity, details, price_cell]
+
+        free = sorted((e for e in listable if e.price == 0),
+                      key=lambda e: entry_display_name(e).lower())
+        priced = sorted((e for e in listable if e.price > 0),
+                        key=lambda e: entry_display_name(e).lower())
+        rows = [entry_row(e) for e in free + priced]
+
+        lines = [{'k': f'{npc_display(vendor, capitalize=True)} offers...'}]
+        lines += self._table_lines(
+            ['Slot', 'Name', 'Quantity', 'Details', 'Price'], rows,
+        )
+        await self.send_report_lines(lines)
 
     async def cmd_buy(self, args):
         room = await self.get_current_room()
@@ -1924,11 +2033,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                   f'(baseline {character.acuity_baseline:.1f})'},
             {},
             {'v': f'  XP: {character.xp} / {xp_for_next_level(character.level)} (next level)'},
+            # v22 brief 2 (DD §9): blank line before Unspent stat points.
+            {},
             {'v': f'  Unspent stat points: {character.unspent_stat_points}'},
         ]
         if character.unspent_stat_points > 0:
             lines.append(
-                {'v': "  Type 'spend <stat> <amount>' to allocate. (e.g. 'spend str 2')"},
+                {'v': "  Type 'spend [<quantity>] <stat>' to allocate. (e.g. 'spend 2 str')"},
             )
         await self.send_report_lines(lines)
 

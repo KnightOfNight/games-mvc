@@ -3,8 +3,9 @@ import random
 from .models import ItemInstance
 
 SLOT_DISPLAY_NAMES = {
-    'MAIN_HAND':  'Main Hand',
-    'OFF_HAND':   'Off Hand',
+    # v22 brief 2 (DD §9): sentence-case labels; bracket codes are dead.
+    'MAIN_HAND':  'Main hand',
+    'OFF_HAND':   'Off hand',
     'RANGED':     'Ranged',
     'HEAD':       'Head',
     'NECK':       'Neck',
