@@ -1,0 +1,52 @@
+Shyland Brief — B2 Design Rulings Housekeeping — Closeout Report
+=================================================================
+Date: 2026-07-19
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Type: ops/housekeeping. No game code changes of any kind.
+
+WHAT WAS DONE
+-------------
+Step 0  Brief self-committed verbatim to
+        docs/shyland/Shyland_Brief_B2_Design_Rulings_Housekeeping.md
+        (commit 3afd560).
+
+Step 1  Design document committed:
+        docs/shyland/Shyland_V22_B2_Command_Spec_DD.md (commit 40656a0) —
+        content mechanically extracted from the brief's DD-START/DD-END
+        markers (exclusive), byte-exact. Authoritative capture of the
+        2026-07-19 B2 design session; absorbed by the GDD at v22
+        closeout; pruned by the operator only.
+
+Step 2  Design-ruling comments posted (each prefixed with the standard
+        ruling line and DD pointer) on 18 issues:
+        #111, #29, #54, #57, #58, #59, #61, #65, #67, #75, #88, #93,
+        #96, #98, #109, #112, #113, #76.
+
+Step 3  Issues closed (gated on Step 2 — all comments landed first):
+        #76  closed as not planned (superseded by the command chart:
+             inventory takes no arguments).
+        #93  closed as completed (research answered by design;
+             implementation tracked by #111/#59).
+
+Step 4  New issues filed (milestone Version 22, assignee @me):
+        #121 "client renders error category as amber, ignoring --error"
+             (labels: bug, B2).
+        #122 "invariant: players and NPCs may never share a name"
+             (label: B2).
+
+DEVIATIONS
+----------
+None. All 18 comments, both closures, and both filings landed exactly as
+specified; the B2 label, bug label, and Version 22 milestone all existed
+already. Duplicate-check before filing found no existing issue for
+either new item.
+
+COMMITS (in order)
+------------------
+3afd560  Step 0: self-commit brief
+40656a0  Step 1: commit the V22 B2 Command Specification DD
+
+FINAL COMMIT HASH
+-----------------
+40656a0 (last content commit; this closeout report and the post-closeout
+issues report land in follow-up commits on the same branch).
