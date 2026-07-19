@@ -39,6 +39,11 @@
        and stays independently declared per #1.) */
     --key-color: #7FB3D5;
     --value-color: #E8E4D8;
+    /* v22 brief 1 (#82): agro-color strokes visited rooms with an
+       aggressive spawn configured. Same value as --error by design; the
+       two names are deliberately separable in the future — map code must
+       use --agro-color, never --error. */
+    --agro-color: #cc4444;
     /* v21 brief 1 (#85): pane borders take the current zone's theme
        color at ~0.75 alpha ('BF' appended in JS when zone_color
        arrives). Fallback matches the render payload's #CCCCCC. */
@@ -226,14 +231,21 @@
     border-top: 5px solid var(--zone-border);
   }
   #map { display: block; }
-  .map-open  { stroke: var(--room); stroke-width: 2; }
-  .map-stub  { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 3 3; }
-  .map-tick  { stroke: var(--muted); stroke-width: 2; }
-  .map-room  { fill: var(--surface); stroke: var(--room); stroke-width: 1.5; }
-  .map-room.here { fill: var(--room); }
-  .map-here-ring { fill: none; stroke: var(--accent); stroke-width: 2; }
-  .map-badge { fill: var(--muted); font-size: 8px; font-family: 'Courier New', Courier, monospace; }
-  .map-badge.here { fill: var(--bg); font-weight: bold; }
+  /* v22 brief 1 (#82): Maps V2 vocabulary. Stroke color carries room state
+     (value / agro); solid fills mean points (here-dot, frontier dot);
+     value-vs-muted carries known-vs-unknown everywhere. */
+  .map-edge-known    { stroke: var(--value-color); stroke-width: 2; }
+  .map-edge-unknown  { stroke: var(--muted); stroke-width: 2; }
+  .map-gate-known    { stroke: var(--value-color); stroke-width: 2; fill: var(--value-color); }
+  .map-gate-unknown  { stroke: var(--muted); stroke-width: 2; fill: var(--muted); }
+  .map-room          { fill: var(--surface); stroke: var(--value-color); stroke-width: 2; }
+  .map-room.agro     { stroke: var(--agro-color); }
+  .map-node          { fill: var(--surface); stroke: var(--value-color); stroke-width: 4; }
+  .map-frontier      { fill: var(--muted); }
+  .map-here          { fill: var(--key-color); }
+  .map-updown        { font: bold 14px 'Courier New', Courier, monospace; }
+  .map-updown.known  { fill: var(--value-color); }
+  .map-updown.unknown { fill: var(--muted); }
 
   /* Command bar (v20 brief 4): send button lives inside it; the
      connection indicator (#31) sits at its right end, before the button. */
@@ -681,11 +693,20 @@
     });
   }
 
-  // v20 brief 1 (#36): map renderer. North is up; fixed 9×9 cell window
-  // (radius 4) centered on the current room, no zoom; rooms outside the
-  // window are not drawn. Every map message discards and fully re-renders.
-  const MAP_SIZE = 300, MAP_RADIUS = 4, CELL = MAP_SIZE / 9;
+  // v22 brief 1 (#82, #115): Maps V2 renderer. North is up; fixed 7×7 cell
+  // window (radius 3) centered on the current room, drawn inside a pinned
+  // 16px margin (268×268 drawable area centered in the unchanged 300×300
+  // SVG — #115). Rooms outside the window are not drawn. Every map message
+  // discards and fully re-renders.
+  const MAP_SIZE = 300, MARGIN = 16, INNER = MAP_SIZE - 2 * MARGIN;
+  const MAP_RADIUS = 3, CELL = INNER / 7;
   const MAP_DELTA = { north: [0, 1], south: [0, -1], east: [1, 0], west: [-1, 0] };
+  // Attachment law: anything attaching to a glyph starts at the outer edge
+  // of its stroke, never the geometric radius — circle 10 + 1 = 11; octagon
+  // apothem 12·cos 22.5° ≈ 11.09 + 2 = 13.09.
+  const ROOM_R = 10, ROOM_EDGE = ROOM_R + 1;
+  const OCT_R = 12, OCT_EDGE = OCT_R * Math.cos(Math.PI / 8) + 2;
+  const GATE_LINE = 8, GATE_SIDE = 10;
 
   function renderMap(msg) {
     while (mapSvg.firstChild) mapSvg.removeChild(mapSvg.firstChild);
@@ -697,58 +718,105 @@
       for (const k in attrs) e.setAttribute(k, attrs[k]);
       return e;
     };
-    const px = (x) => MAP_SIZE / 2 + (x - cx0) * CELL;
-    const py = (y) => MAP_SIZE / 2 - (y - cy0) * CELL;   // north is up
+    const px = (x) => MARGIN + INNER / 2 + (x - cx0) * CELL;
+    const py = (y) => MARGIN + INNER / 2 - (y - cy0) * CELL;   // north is up
     const inWindow = (r) => Math.abs(r.x - cx0) <= MAP_RADIUS && Math.abs(r.y - cy0) <= MAP_RADIUS;
     const byCell = new Map();
     msg.rooms.forEach((r) => byCell.set(r.x + ',' + r.y, r));
     const drawn = msg.rooms.filter(inWindow);
+    const isGate = (status) => status === 'gate-known' || status === 'gate-unknown';
 
-    // Edges first so rooms draw over them.
+    // Edges first so glyphs draw over them. Frontier rooms draw no exits
+    // of their own — only lines from discovered rooms reach them.
     drawn.forEach((r) => {
+      if (!r.discovered) return;
       const x = px(r.x), y = py(r.y);
-      for (const dir in r.exits) {
+      for (const dir in (r.exits || {})) {
         const d = MAP_DELTA[dir];
         if (!d) continue;
         const status = r.exits[dir];
+        if (isGate(status)) continue;   // gates render as glyph attachments
+        const cls = status === 'known' ? 'map-edge-known' : 'map-edge-unknown';
         const nb = byCell.get((r.x + d[0]) + ',' + (r.y + d[1]));
-        const ex = x + d[0] * CELL / 2, ey = y - d[1] * CELL / 2;
-        if (status === 'open' && nb && inWindow(nb)) {
+        if (nb && inWindow(nb)) {
           mapSvg.appendChild(el('line', {
-            x1: x, y1: y, x2: px(nb.x), y2: py(nb.y), class: 'map-open',
+            x1: x, y1: y, x2: px(nb.x), y2: py(nb.y), class: cls,
           }));
-        } else if (status === 'open') {
-          // Open exit whose destination is outside the window: solid stub.
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-open' }));
-        } else if (status === 'unexplored') {
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
-        } else if (status === 'boundary') {
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
-          const t = CELL * 0.18;  // perpendicular tick at the stub's end
+        } else {
+          // Destination outside the window: solid half-cell stub.
           mapSvg.appendChild(el('line', {
-            x1: ex - d[1] * t, y1: ey - d[0] * t,
-            x2: ex + d[1] * t, y2: ey + d[0] * t, class: 'map-tick',
+            x1: x, y1: y,
+            x2: x + d[0] * CELL / 2, y2: y - d[1] * CELL / 2, class: cls,
           }));
         }
       }
     });
 
+    // Glyphs: gate attachments, then the room shape.
     drawn.forEach((r) => {
       const x = px(r.x), y = py(r.y);
+      if (!r.discovered) {
+        // Frontier room: solid muted dot at half diameter, no stroke.
+        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 5, class: 'map-frontier' }));
+        return;
+      }
+      const isNode = !!r.travel_node;
+      const edge = isNode ? OCT_EDGE : ROOM_EDGE;
+      for (const dir in (r.exits || {})) {
+        const status = r.exits[dir];
+        if (!isGate(status)) continue;
+        const d = MAP_DELTA[dir];
+        if (!d) continue;
+        const cls = status === 'gate-known' ? 'map-gate-known' : 'map-gate-unknown';
+        const ux = d[0], uy = -d[1];   // outward unit vector, screen space
+        const sx = x + ux * edge, sy = y + uy * edge;
+        const bx = sx + ux * GATE_LINE, by = sy + uy * GATE_LINE;
+        mapSvg.appendChild(el('line', { x1: sx, y1: sy, x2: bx, y2: by, class: cls }));
+        // Solid equilateral triangle: base midpoint at the line end, apex
+        // a further side·√3/2 out.
+        const ax = bx + ux * GATE_SIDE * Math.sqrt(3) / 2;
+        const ay = by + uy * GATE_SIDE * Math.sqrt(3) / 2;
+        const hx = -uy * GATE_SIDE / 2, hy = ux * GATE_SIDE / 2;
+        mapSvg.appendChild(el('polygon', {
+          points: (bx + hx) + ',' + (by + hy) + ' ' + (bx - hx) + ',' + (by - hy)
+                  + ' ' + ax + ',' + ay,
+          class: cls,
+        }));
+      }
+      if (isNode) {
+        // Travel node: octagon, flat sides facing the cardinals. Never agro.
+        const pts = [];
+        for (let k = 0; k < 8; k++) {
+          const a = Math.PI / 8 + k * Math.PI / 4;   // 22.5° + 45k°
+          pts.push((x + OCT_R * Math.cos(a)) + ',' + (y + OCT_R * Math.sin(a)));
+        }
+        mapSvg.appendChild(el('polygon', { points: pts.join(' '), class: 'map-node' }));
+      } else {
+        mapSvg.appendChild(el('circle', {
+          cx: x, cy: y, r: ROOM_R,
+          class: 'map-room' + (r.agro ? ' agro' : ''),
+        }));
+      }
+    });
+
+    // Here-dot and badges last.
+    drawn.forEach((r) => {
+      if (!r.discovered) return;
+      const x = px(r.x), y = py(r.y);
       if (r.here) {
-        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 12, class: 'map-here-ring' }));
+        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 6, class: 'map-here' }));
       }
-      mapSvg.appendChild(el('circle', {
-        cx: x, cy: y, r: 8, class: 'map-room' + (r.here ? ' here' : ''),
-      }));
-      if (r.up || r.down) {
+      [['up', 'U', -17], ['down', 'D', 17]].forEach(([dir, label, dy]) => {
+        const status = r[dir];
+        if (!status) return;
         const badge = el('text', {
-          x: x, y: y + 3, 'text-anchor': 'middle',
-          class: 'map-badge' + (r.here ? ' here' : ''),
+          x: x + 17, y: y + dy, 'text-anchor': 'middle',
+          'dominant-baseline': 'central',
+          class: 'map-updown ' + (status === 'known' ? 'known' : 'unknown'),
         });
-        badge.textContent = (r.up && r.down) ? 'UD' : (r.up ? 'U' : 'D');
+        badge.textContent = label;
         mapSvg.appendChild(badge);
-      }
+      });
     });
   }
 
