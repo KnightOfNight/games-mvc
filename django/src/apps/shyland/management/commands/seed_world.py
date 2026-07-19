@@ -2453,6 +2453,17 @@ class Command(BaseCommand):
         ).exists()
         self._check("Common NPCs default to 'a' (black bear pin)", commons_a)
 
+        # v22 brief 1 (#82): law — an octagon is a special room that will
+        # never have agro. Configuration-level: any RoomSpawn on a
+        # travel-node room referencing an aggressive definition fails.
+        self._check(
+            'travel-node rooms have no aggressive spawns (octagons never agro)',
+            not RoomSpawn.objects.filter(
+                room__travel_node__isnull=False,
+                npc_definition__is_aggressive=True,
+            ).exists(),
+        )
+
         self._verify_verdant()
         self._verify_map_geometry()
 
