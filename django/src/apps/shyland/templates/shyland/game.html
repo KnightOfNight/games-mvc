@@ -707,6 +707,14 @@
   const ROOM_R = 10, ROOM_EDGE = ROOM_R + 1;
   const OCT_R = 12, OCT_EDGE = OCT_R * Math.cos(Math.PI / 8) + 2;
   const GATE_LINE = 8, GATE_SIDE = 10;
+  // Badge tuck (v22 brief 1 amendment 1): each U/D badge sits as close to
+  // its glyph as possible without touching — the letter's ink clears the
+  // glyph's outer stroke edge by ~0.5px on the 45° diagonal (the attachment
+  // law's spirit applied to text). Offsets are derived from the measured
+  // rendered ink of 14px bold Courier New (U/D ink ≈6.8px wide, spanning
+  // −4.2..+5.0px vertically around the placement point); if the rendering
+  // font's metrics ever change, re-derive under closest-without-touching.
+  const BADGE_OFF_ROOM = 12.25, BADGE_OFF_NODE = 13.75;
 
   function renderMap(msg) {
     while (mapSvg.firstChild) mapSvg.removeChild(mapSvg.firstChild);
@@ -806,12 +814,12 @@
       if (r.here) {
         mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 6, class: 'map-here' }));
       }
-      [['up', 'U', -17], ['down', 'D', 17]].forEach(([dir, label, dy]) => {
+      const off = r.travel_node ? BADGE_OFF_NODE : BADGE_OFF_ROOM;
+      [['up', 'U', -1], ['down', 'D', 1]].forEach(([dir, label, sign]) => {
         const status = r[dir];
         if (!status) return;
         const badge = el('text', {
-          x: x + 17, y: y + dy, 'text-anchor': 'middle',
-          'dominant-baseline': 'central',
+          x: x + off, y: y + sign * off + 5, 'text-anchor': 'middle',
           class: 'map-updown ' + (status === 'known' ? 'known' : 'unknown'),
         });
         badge.textContent = label;
