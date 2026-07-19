@@ -1,0 +1,71 @@
+Shyland V22 Brief 1 — Amendment 1 (Badge Tuck) — Closeout Report
+=================================================================
+Date: 2026-07-19
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Amends: V22 Brief 1 (Maps V2), Steps 2 and 4. Issue: #82 (no new issues).
+
+WHAT CHANGED
+------------
+Step 0  Amendment self-committed verbatim to
+        docs/shyland/Shyland_V22_Brief_1_Amendment_1_Badge_Tuck.md
+        (commit 6020cc7).
+
+Step 2  Renderer (commit 7da9ebf): in renderMap
+        (django/src/apps/shyland/templates/shyland/game.html) the uniform
+        17px U/D badge offset is replaced by per-glyph tuck constants —
+        BADGE_OFF_ROOM = 12.25 (circle, outer edge 11px) and
+        BADGE_OFF_NODE = 13.75 (octagon, diagonal flat-face outer edge
+        ~13.09px), selected by travel_node. Badges render as <text>
+        text-anchor="middle" at (x + OFF, y +/- OFF + 5) per the ruled
+        baseline formula (the base implementation's dominant-baseline
+        centering was replaced by the +5 baseline adjustment the measured
+        constants assume). The derivation rule — closest-without-touching,
+        ink clearing the outer stroke edge by ~0.5px, constants from the
+        measured ink of 14px bold Courier New — is recorded in the code
+        comment for future re-derivation if font metrics change. No
+        payload changes, no server changes, no CSS changes.
+
+Step 3  #82 comment posted: the badge-tuck ruling (2026-07-19),
+        superseding constants, and the withdrawn adjacency constraint.
+
+Step 5  Architecture doc (commit 259f946):
+        Shyland_Architecture_v22.md updated IN PLACE (no version bump) —
+        4.12's badge specification now states the tuck rule, the 12.25 /
+        13.75 per-glyph constants with the derived-from-measured-ink
+        note, and the withdrawn-constraint consequence; header hash moved
+        to 7da9ebf (the amendment's implementation commit).
+
+TEST RESULTS
+------------
+Suite: python manage.py test apps.shyland.tests -t /app (in-container,
+after make build). Result: 144 tests, 0 failures, 0 errors (21.25s) — no
+regressions from the constant change.
+
+DEPLOYMENT NOTE
+---------------
+make build recreated the containers on the deployment target: all three
+games restarted, including any live Shyland WebSocket sessions. The
+tucked-badge client is live.
+
+OPERATOR PLAYTEST — PENDING
+---------------------------
+The badge geometry is client-side and not unit-testable. In addition to
+the base brief's Step 7 checklist, verify after deploy:
+- The Sink/Drone Mouths: D badges visibly nestled into their rooms'
+  lower-right niches, clearly attached to their rooms.
+- The Undercrag middle chamber: U badges tucked, composing with agro
+  strokes and the here-dot.
+- Any vertically adjacent opposing U/D pair encountered: two distinct
+  letters with visible dark separation between them.
+
+COMMITS (in order)
+------------------
+6020cc7  Step 0: self-commit amendment
+7da9ebf  Step 2: badge tuck implementation
+259f946  Step 5: architecture doc 4.12 + header hash
+
+FINAL COMMIT HASH
+-----------------
+259f946 (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).
