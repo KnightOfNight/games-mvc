@@ -1,7 +1,7 @@
 from better_profanity import profanity
 from django import forms
 
-from .models import Archetype, Character, Origin
+from .models import Archetype, Character, NpcDefinition, Origin
 
 
 class CharacterCreationForm(forms.Form):
@@ -26,6 +26,13 @@ class CharacterCreationForm(forms.Form):
 
         if Character.objects.filter(name__iexact=name).exists():
             raise forms.ValidationError('That name is already taken.')
+
+        # v22 brief 2 (#122, DD §8): a player and an NPC may never share
+        # a name — cross-segment ambiguity dies by fiat. Case-insensitive,
+        # alongside the uniqueness and profanity checks; the other
+        # enforcement edge lives in seed_world._verify.
+        if NpcDefinition.objects.filter(name__iexact=name).exists():
+            raise forms.ValidationError('That name belongs to the world already.')
 
         if name != self.vetted_name and profanity.contains_profanity(name):
             raise forms.ValidationError('That name is not allowed.')

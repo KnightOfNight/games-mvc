@@ -2464,6 +2464,23 @@ class Command(BaseCommand):
             ).exists(),
         )
 
+        # v22 brief 2 (#122, DD §8): a player and an NPC may never share a
+        # name. Creation enforces the player edge; this enforces the
+        # authoring edge on every reseed. Case-insensitive.
+        from apps.shyland.models import Character as _Character
+        npc_names = {
+            n.lower() for n in NpcDefinition.objects.values_list('name', flat=True)
+        }
+        char_names = {
+            n.lower() for n in _Character.objects.values_list('name', flat=True)
+        }
+        colliding = sorted(npc_names & char_names)
+        self._check(
+            'no NPC definition name collides with any existing character name'
+            + (f' (collisions: {", ".join(colliding)})' if colliding else ''),
+            not colliding,
+        )
+
         self._verify_verdant()
         self._verify_map_geometry()
 
