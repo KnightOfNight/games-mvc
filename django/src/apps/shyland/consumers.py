@@ -876,67 +876,88 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = await self.get_character_fresh()
         await self.send_report_lines([self._wallet_line(char)])
 
-    # v21 brief 1 (#84): the help text. The movement line is static —
-    # help documents the command set, not the current room. Commands
-    # taking item arguments reference <item selection>; the grammar is
-    # explained once in the Item selection section. Bracketed
-    # alternatives use spaces around the pipe everywhere. Amendment 1:
-    # the render sorts alphabetically by leading command word — table
-    # order doesn't matter.
-    HELP_COMMANDS = [
-        ('look / l', 'describe this room'),
-        ('say <text>', 'speak to players here; NPCs may listen too'),
-        ('who', 'list players online'),
-        ('inventory / inv', 'show carried items and equipment'),
-        ('wallet', 'show your copper'),
-        ('pickup (p) <item selection>', 'pick up an item from the room'),
-        ('drop <item selection>', 'drop a carried item (unbound items only)'),
-        ('equip (eq) <item selection>', 'equip a carried item'),
-        ('unequip (uneq) <item selection>', 'unequip an equipped item'),
-        ('use <item selection>', 'use a consumable'),
-        ('examine (ex) <item selection>', 'inspect an item, NPC, or corpse in detail'),
-        ('loot [corpse] [<item selection> | all]',
-         "loot a corpse; bare 'loot' or 'loot all' takes everything from your most recent kill"),
-        ('travel [destination]', 'fast-travel via the Obelisk Network (from an obelisk)'),
-        ('list', 'see what a vendor here has for sale'),
-        ('buy <item selection>', 'buy an item from a vendor here'),
-        ('sell <item selection>', 'sell an unequipped item to a vendor here'),
-        ('repair [<item selection> | all]', 'pay a mender here to repair damaged gear'),
-        ('kill / attack (k) [npc]',
-         'attack an NPC; bare attack strikes back at whatever hit you first'),
-        ('flee', 'attempt to escape from combat'),
-        ('stats', 'show your character stats and XP'),
-        ('spend <stat> <amount>', 'spend stat points (e.g. spend dex 2)'),
-        ('brief on | off', 'short room descriptions for rooms you have seen'),
-        ('timestamps on | off', 'show or hide message timestamps'),
-        ('quit', 'leave the game and return to the games lobby'),
-        ('help / ?', 'show this list'),
+    # v22 brief 2 (DD §11): help derives from the command chart — four
+    # type sections, Kind-3 tables (Command / Usage / Description), usage
+    # strings compiled from the chart cells in BASH notation (<> required,
+    # [] optional, | alternatives), authored example-free descriptions.
+    # B3 commands (home/cancel/last/sudo) arrive with B3, gated; echo
+    # ships here.
+    HELP_SECTIONS = [
+        ('Action commands', [
+            ('attack (kill, k)', 'attack <NPC> | <player>', 'Engage a target in combat.'),
+            ('buy', 'buy [<quantity>] <item>', 'Buy from a vendor in the room.'),
+            ('drop', 'drop [<quantity>] <item>', 'Drop an item on the ground.'),
+            ('equip (eq)', 'equip <item>', 'Equip an item from your inventory.'),
+            ('examine (ex)', 'examine <item> | <NPC> | <player>', 'Take a close look at something.'),
+            ('flee', 'flee', 'Escape from combat.'),
+            ('loot', 'loot all | <NPC>', 'Loot a corpse, or every corpse here.'),
+            ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
+            ('quit', 'quit', 'Leave the game.'),
+            ('repair', 'repair all | <item>', 'Have a repairer fix your gear.'),
+            ('say', 'say <text>', 'Speak to everyone in the room.'),
+            ('sell', 'sell [<quantity>] <item>', 'Sell to a vendor in the room.'),
+            ('spend', 'spend [<quantity>] <stat>', 'Spend unspent stat points.'),
+            ('travel', 'travel [<destination>]', 'Travel the obelisk network.'),
+            ('unequip (uneq)', 'unequip <item>', 'Unequip an item you are wearing.'),
+            ('use', 'use [<quantity>] <item>', 'Use a consumable item.'),
+        ]),
+        ('Information commands', [
+            ('help (?)', 'help', 'Show this help.'),
+            ('inventory (inv)', 'inventory', 'Show your equipment, inventory, and wallet.'),
+            ('list', 'list', 'List what a vendor here has for sale.'),
+            ('look (l)', 'look', 'Look at the room again.'),
+            ('stats', 'stats', 'Show your character sheet.'),
+            ('wallet', 'wallet', 'Show your money.'),
+            ('who', 'who', 'Show who is online.'),
+        ]),
+        ('Movement commands', [
+            ('north (n)', 'north', 'Walk that direction.'),
+            ('south (s)', 'south', 'Walk that direction.'),
+            ('east (e)', 'east', 'Walk that direction.'),
+            ('west (w)', 'west', 'Walk that direction.'),
+            ('up (u)', 'up', 'Climb or ascend.'),
+            ('down (d)', 'down', 'Descend.'),
+        ]),
+        ('Settings commands', [
+            ('brief', 'brief [on|off]', 'Short room descriptions. Default: off.'),
+            ('echo', 'echo [on|off]', 'Show your own commands in the output. Default: on.'),
+            ('timestamps', 'timestamps [on|off]', 'Show timestamps on events. Default: on.'),
+        ]),
     ]
 
     async def cmd_help(self):
-        # Amendment 1 (#84): structured key/value form — section headers
-        # (Movement:, Commands:, Item selection:) in key-color, every
-        # other line value-colored; commands alphabetical.
-        width = max(len(cmd) for cmd, _ in self.HELP_COMMANDS) + 2
-        lines = [
-            {'k': 'Movement:',
-             'v': ' north (n), south (s), east (e), west (w), up (u), down (d)'},
-            {},
-            {'k': 'Commands:'},
-        ]
-        lines += [
-            {'v': f'  {cmd:<{width}}— {desc}'}
-            for cmd, desc in sorted(self.HELP_COMMANDS,
-                                    key=lambda entry: entry[0].split()[0])
-        ]
+        lines = []
+        for title, rows in self.HELP_SECTIONS:
+            if lines:
+                lines.append({})
+            lines.append({'k': f'{title}...'})
+            lines += self._table_lines(
+                ['Command', 'Usage', 'Description'],
+                [[cmd, usage, desc] for cmd, usage, desc in rows],
+            )
         lines += [
             {},
-            {'k': 'Item selection:'},
-            {'v': "  Commands marked <item selection> accept: a name or prefix ('axe', 'battle axe'),"},
-            {'v': "  an index ('2.axe' — the second match), a quantity ('3 axes'), 'all' ('all axes'),"},
-            {'v': "  and a rarity filter ('sell uncommon axe', 'sell all common')."},
+            {'k': 'Arguments...'},
+            {'v': '  <item>         an item name, with or without rarity words'},
+            {'v': '  <NPC>          an NPC name'},
+            {'v': '  <player>       a player name'},
+            {'v': "  <quantity>     a number, or 'all' where the command allows it"},
+            {'v': '  <destination>  a travel destination name'},
+            {'v': '  <stat>         one of: str dex end int wis per'},
+            {'v': '  <text>         anything you like'},
+            {'v': "  N.noun         picks the Nth match ('attack 2.lion')"},
             {},
-            {'v': 'Tab completes commands and item names.'},
+            {'k': 'Quantities...'},
+            {'v': "  A numeric quantity needs a target ('sell 3 hides'); 'all' may stand"},
+            {'v': '  alone where the command allows it. buy, drop, and use take numbers only.'},
+            {},
+            {'k': 'Settings...'},
+            {'v': '  Settings accept: on, off, yes, no, true, false (any case).'},
+            {'v': '  Bare invocation shows the current setting; each lists its default.'},
+            {},
+            {'k': 'Tab completion...'},
+            {'v': '  Tab completes commands, and each argument from exactly what the'},
+            {'v': "  command can act on — names, 'all', settings words, and stats."},
         ]
         await self.send_report_lines(lines)
 
