@@ -452,19 +452,25 @@ class Command(BaseCommand):
                         npc.vitality_current = max(0, npc.vitality_current - damage_int)
                         npc.save(update_fields=['vitality_current'])
 
+                        # v22 brief 2 (DD §13, #54): color carries the
+                        # category, words carry the fiction — the
+                        # '[Critical]' bracket is dead; on the authored
+                        # unarmed path the word moves into the damage
+                        # clause. The weapon path's prose already conforms.
                         if weapon_item:
                             if hit_result == 'critical':
                                 flavor = f"You land a critical hit on {display}"
                             else:
                                 flavor = f"You hit {display}"
+                            msg = f"{flavor} for {damage_int} damage."
                         else:
                             pool = character.archetype.unarmed_message_pool if character.archetype_id else None
                             raw = get_unarmed_message(pool, display)
                             flavor = raw.rstrip('.')
                             if hit_result == 'critical':
-                                flavor = f"[Critical] {flavor}"
-
-                        msg = f"{flavor} for {damage_int} damage."
+                                msg = f"{flavor} for a critical {damage_int} damage!"
+                            else:
+                                msg = f"{flavor} for {damage_int} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" {display[0].upper()}{display[1:]} {health_desc}."
                         out_category = ('combat-crit-out' if hit_result == 'critical'
@@ -487,8 +493,10 @@ class Command(BaseCommand):
                             # v21 brief 3 (#64): ordinal-aware while
                             # same-name duplicates remain in the encounter.
                             room_messages.append((session.room_id, f"{character.name} has slain {npc_display_name(npc, live_npcs)}!", 'combat', character.pk))
+                            # v22 brief 2 (DD §2): death_message broadcasts
+                            # are gains-voiced — loot-color (reward).
                             if npc_def.death_message:
-                                room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
+                                room_messages.append((session.room_id, npc_def.death_message, 'reward', None))
 
                             while character.xp >= xp_for_next_level(character.level):
                                 character.level += 1
@@ -594,8 +602,11 @@ class Command(BaseCommand):
                                 fallback_slug='npc-default',
                             )
                             flavor = raw.rstrip('.')
+                            # v22 brief 2 (DD §13, #54): no bracket — the
+                            # word lives in the damage clause; NPC crits
+                            # carry their own category (combat-crit-in).
                             if hit_result == 'critical':
-                                msg = f"[Critical] {flavor} for {damage_int} damage!"
+                                msg = f"{flavor} for a critical {damage_int} damage!"
                             else:
                                 msg = f"{flavor} for {damage_int} damage."
 
@@ -605,7 +616,9 @@ class Command(BaseCommand):
 
                             # v20 brief 5 (#13): incoming hits are their own
                             # category — attack direction readable at a glance.
-                            messages.append((character.pk, msg, 'combat-hit-in', None))
+                            in_category = ('combat-crit-in' if hit_result == 'critical'
+                                           else 'combat-hit-in')
+                            messages.append((character.pk, msg, in_category, None))
 
                         statuses.append((character.pk, self._build_status(character)))
 
@@ -1310,7 +1323,9 @@ class Command(BaseCommand):
             if connective:
                 await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
 
-        await self.broadcast_to_room(row.room_id, f'[say] {npc_name}: {response_text}', category='chat')
+        # v22 brief 2 (DD §13): NPC speech matches player speech — bare
+        # 'Name: message' in say-color, no '[say] ' prefix.
+        await self.broadcast_to_room(row.room_id, f'{npc_name}: {response_text}', category='say')
 
         if row.is_final:
             asker_room_id = await self.get_character_current_room_id(row.character_id)

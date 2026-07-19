@@ -23,8 +23,9 @@ from .currency import display_for_zone
 from .item_utils import (
     compose_item_line, format_slot_name, generate_item_instance,
     get_display_name, get_display_name_with_tier, get_display_description,
-    get_item_value, get_repair_cost, get_repair_success_chance,
-    get_sale_price, parse_corpse_noun, STAT_LABELS,
+    get_durability_penalty, get_item_flags, get_item_suffix, get_item_value,
+    get_repair_cost, get_repair_success_chance, get_sale_price, item_ref,
+    parse_corpse_noun, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
@@ -204,11 +205,65 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'flee': ('cmd_flee', False),
         'travel': ('cmd_travel', True),
         'brief': ('cmd_brief', True),
+        'echo': ('cmd_echo', True),
         'timestamps': ('cmd_timestamps', True),
         'spend': ('cmd_spend', True),
         'stats': ('cmd_stats', False),
         'quit': ('cmd_quit', False),
         'help': ('cmd_help', False), '?': ('cmd_help', False),
+    }
+
+    # ------------------------------------------------------------------
+    # v22 brief 2 (DD §5): the state-gating matrix, applied centrally in
+    # the dispatch path. Refusals are warn-color (world declined).
+    # ------------------------------------------------------------------
+
+    # In combat: commerce, inventory manipulation, gear, travel, and
+    # movement refuse; everything else (attack/flee/use/spend/examine/
+    # say/quit, all information, all settings) proceeds. Movement verbs
+    # gate through DIRECTIONS in _dispatch.
+    COMBAT_BLOCKED = {
+        'travel': "You can't just walk away from a fight — flee!",
+        'buy': "There's no trading in the middle of a fight!",
+        'sell': "There's no trading in the middle of a fight!",
+        'repair': "There's no mending anything in the middle of a fight!",
+        'drop': "Your hands are too busy with the fight!",
+        'pickup': "Your hands are too busy with the fight!",
+        'p': "Your hands are too busy with the fight!",
+        'loot': "Your hands are too busy with the fight!",
+        'equip': "There's no time to fiddle with your gear mid-fight!",
+        'eq': "There's no time to fiddle with your gear mid-fight!",
+        'unequip': "There's no time to fiddle with your gear mid-fight!",
+        'uneq': "There's no time to fiddle with your gear mid-fight!",
+    }
+    COMBAT_MOVE_REFUSAL = "You can't just walk away from a fight — flee!"
+
+    # While dying: use (self-rescue), say, quit, all information, and all
+    # settings proceed; everything else refuses (warn).
+    DYING_ALLOWED = {
+        'use', 'say', 'quit',
+        'help', '?', 'inventory', 'inv', 'list', 'look', 'l',
+        'stats', 'wallet', 'who',
+        'brief', 'echo', 'timestamps',
+    }
+
+    # v22 brief 2 (DD §1 fn 10): verbs with a required target and their
+    # canonical prompt verb — bare invocation gets the standard prompt
+    # "What do you want to <verb>?" (CLI error).
+    PROMPT_VERBS = {
+        'attack': 'attack', 'kill': 'attack', 'k': 'attack',
+        'buy': 'buy',
+        'drop': 'drop',
+        'equip': 'equip', 'eq': 'equip',
+        'examine': 'examine', 'ex': 'examine',
+        'loot': 'loot',
+        'pickup': 'pickup', 'p': 'pickup',
+        'repair': 'repair',
+        'say': 'say',
+        'sell': 'sell',
+        'spend': 'spend',
+        'unequip': 'unequip', 'uneq': 'unequip',
+        'use': 'use',
     }
 
     # v20 brief 3 (#19/#22): alias → canonical grammar verb, for the
@@ -333,6 +388,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'type': 'verbs',
             'verbs': sorted(set(DIRECTIONS) | set(self.COMMAND_TABLE)),
             'show_timestamps': self.character.show_timestamps,
+            'echo_mode': self.character.echo_mode,
             'ts': envelope_ts(),
         })
 
@@ -393,10 +449,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         verb = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ''
 
-        if self._character_is_dying and verb not in ('use',):
+        # v22 brief 2 (DD §5): the dying gate — use (self-rescue), say,
+        # quit, information, and settings proceed; everything else is a
+        # state-gate refusal (warn).
+        if self._character_is_dying and verb not in self.DYING_ALLOWED:
             await self.send_output(
                 "You are dying! Use a revival item or wait for another player to revive you.",
-                'error',
+                'warn',
             )
             return
 
@@ -410,12 +469,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_output('Something went wrong with that command.', 'error')
 
     async def _dispatch(self, verb, args):
+        # v22 brief 2 (DD §5): the combat gate, applied centrally — one
+        # lookup, one query, warn-color refusals in voice.
+        if verb in DIRECTIONS or verb in self.COMBAT_BLOCKED:
+            session = await self.get_active_combat_session(self.character)
+            if session:
+                refusal = (self.COMBAT_MOVE_REFUSAL if verb in DIRECTIONS
+                           else self.COMBAT_BLOCKED[verb])
+                await self.send_output(refusal, 'warn')
+                return
         if verb in DIRECTIONS:
             await self.cmd_move(verb)
             return
         entry = self.COMMAND_TABLE.get(verb)
         if entry is None:
-            await self.output("Unknown command. Type 'help' for a list of commands.", 'system')
+            await self.output("Unknown command. Type 'help' for a list of commands.", 'error')
+            return
+        # v22 brief 2 (DD §1 fn 10): the standard bare-invocation prompt
+        # for every command with a required target (CLI error).
+        if verb in self.PROMPT_VERBS and entry[1] and not args.strip():
+            await self.send_output(
+                f'What do you want to {self.PROMPT_VERBS[verb]}?', 'error',
+            )
             return
         handler = getattr(self, entry[0])
         if entry[1]:
@@ -432,14 +507,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_room_description(room, entering=True, force_long=True)
 
     async def cmd_move(self, direction):
-        # v20 brief 3 (#23): active combat blocks directional movement.
-        session = await self.get_active_combat_session(self.character)
-        if session:
-            await self.send_output(
-                "You can't just walk away from a fight — flee!", 'error',
-            )
-            return
-
+        # v20 brief 3 (#23): active combat blocks directional movement —
+        # since v22 brief 2 the refusal fires centrally in _dispatch.
         exit_field = DIRECTIONS[direction]
         room = await self.get_current_room()
         destination = getattr(room, exit_field)
@@ -449,9 +518,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             canonical = DIRECTION_CANONICAL[direction]
             custom_msg = getattr(room, f'no_exit_{canonical}_msg', '')
             msg = custom_msg if custom_msg else _NO_EXIT_DEFAULTS[canonical]
+            # v22 brief 2 (DD §3): the world declined — warn, not error.
             await self.send_json({
                 'type': 'output',
-                'category': 'error',
+                'category': 'warn',
                 'text': msg,
                 'hint_exits': ', '.join(exits.keys()) if exits else 'none',
                 'ts': envelope_ts(),
@@ -510,28 +580,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_map()
 
     async def cmd_travel(self, args):
-        # v20 brief 3 (#23): travel is movement too — same combat block,
-        # same message style.
-        session = await self.get_active_combat_session(self.character)
-        if session:
-            await self.send_output(
-                "You can't just walk away from a fight — flee!", 'error',
-            )
-            return
-
+        # v20 brief 3 (#23): travel is movement too — the combat block
+        # fires centrally in _dispatch since v22 brief 2.
         room = await self.get_current_room()
         node = await self.get_travel_node(room)
 
         if node is None:
             await self.output(
                 'There is no obelisk here. Travel is a gift of the obelisks — '
-                'you must stand before one.', 'error',
+                'you must stand before one.', 'warn',
             )
             return
         if node.node_type != 'obelisk':
             await self.output(
                 'The obelisks project their protection here, but only an obelisk '
-                'itself can send you onward.', 'error',
+                'itself can send you onward.', 'warn',
             )
             return
 
@@ -544,10 +607,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     'the network reveals itself only to those who walk it.', 'report',
                 )
                 return
+            # v22 brief 2 (Step 11, DD ruling): destinations sort
+            # ascending by straight-line map-space distance from the
+            # player (same-zone; other-zone entries follow, by name), and
+            # every entry is labeled shard (checkpoint) or sphere
+            # (obelisk).
+            def _distance_key(dest):
+                dest_room = dest.room
+                if dest_room.zone_id != room.zone_id:
+                    return (1, 0.0, dest.travel_name.lower())
+                dist = ((dest_room.coord_x - room.coord_x) ** 2
+                        + (dest_room.coord_y - room.coord_y) ** 2
+                        + (dest_room.coord_z - room.coord_z) ** 2) ** 0.5
+                return (0, dist, dest.travel_name.lower())
+
             lines = ['The Obelisk offers passage to:']
-            for dest in destinations:
-                suffix = ' (obelisk)' if dest.node_type == 'obelisk' else ''
-                lines.append(f'  {dest.travel_name}{suffix}')
+            for dest in sorted(destinations, key=_distance_key):
+                label = 'sphere' if dest.node_type == 'obelisk' else 'shard'
+                lines.append(f'  {dest.travel_name} ({label})')
             await self.output('\n'.join(lines), 'report')
             return
 
@@ -557,14 +634,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if not matches:
             await self.output(
                 'The Obelisk knows no such place — or you have not yet stood there. '
-                'Type "travel" to see where it can send you.', 'error',
+                'Type "travel" to see where it can send you.', 'warn',
             )
             return
         if len(matches) > 1:
             names = ', '.join(d.travel_name for d in matches)
             await self.output(
                 f'The Obelisk offers more than one such passage: {names}. '
-                'Be more specific.', 'system',
+                'Be more specific.', 'warn',
             )
             return
 
@@ -605,27 +682,29 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return name.startswith('the ') and name[4:].startswith(query)
 
     async def cmd_say(self, text):
-        if not text:
-            await self.output('Say what?', 'system')
-            return
+        # v22 brief 2 (DD §13): the '[say] ' prefix is dead — speech is
+        # 'Name: message' in say-color, players and NPCs alike. The
+        # speaker keeps receiving their own broadcast (double vision is
+        # intentional; echo-off is the remedy). Bare say prompts via the
+        # central fn-10 gate in _dispatch.
         await self.channel_layer.group_send(self.room_group, {
             'type': 'room_message',
-            'text': f'[say] {self.character.name}: {text}',
-            'category': 'chat',
+            'text': f'{self.character.name}: {text}',
+            'category': 'say',
             'ts': envelope_ts(),
         })
         await self.schedule_npc_dialogue_responses(text)
 
     async def cmd_who(self):
+        # v22 brief 2 (DD §9, #98): one line — key-color label with the
+        # embedded count, value-color names.
         keys = await self.redis.keys("shyland:online:*")
-        if not keys:
-            await self.output("No players are currently online.", "report")
-            return
-        names = await self.redis.mget(*keys)
+        names = await self.redis.mget(*keys) if keys else []
         online = sorted(parse_presence_name(n) for n in names if n)
         count = len(online)
-        lines = [f"Players online ({count}):"] + [f"  {name}" for name in online]
-        await self.output("\n".join(lines), "report")
+        await self.send_report_lines([
+            {'k': f'Players online ({count}):', 'v': f' {", ".join(online)}'},
+        ])
 
     async def presence_heartbeat(self):
         while True:
@@ -776,15 +855,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_report_lines(lines)
 
     async def cmd_quit(self):
-        character = await self.get_character_fresh()
-        session = await self.get_active_combat_session(character)
-        if session:
-            await self.send_output(
-                "You cannot leave in the middle of a fight! Break away first — try 'flee'.",
-                'error',
-            )
-            return
-
+        # v22 brief 2 (DD §5): quit is allowed in combat and while dying —
+        # combat continues after quit (CombatSession is DB state; the
+        # player can die logged out). Tab-closing and quitting are
+        # identical in cost.
         await self.output('The world folds itself away behind you. Come back soon.', 'system')
         await self.send_json({'event': 'quit', 'ts': envelope_ts()})
         # Normal close; the disconnect path owns presence delete, group
@@ -792,35 +866,41 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.close()
 
     async def cmd_pickup(self, args):
-        if not args:
-            await self.output("Pick up what? (look to see what's here)", 'system')
-            return
-
         char = self.character
         room = await self.get_current_room()
         room_items = await self.get_room_items(room)
 
         res = resolve('pickup', args, room_items)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
-        items_to_pick_up = res.items
+        # v22 brief 2 (DD §7): any pickup at capacity fails outright.
         current_count, max_capacity = await self.get_carry_capacity(char)
+        if current_count >= max_capacity:
+            await self.output(
+                f"You can't carry any more. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+            return
 
-        for item in items_to_pick_up:
+        taken = 0
+        for item in res.items:
             if current_count >= max_capacity:
+                # Partial sweep: oldest-first has been taken; report warmly.
                 await self.output(
-                    f"You can't carry any more. ({current_count}/{max_capacity} items)",
-                    'system',
+                    f"You can't carry the rest. ({current_count}/{max_capacity} items)",
+                    'warn',
                 )
                 break
 
             display_name = get_display_name(item)
             await self.transfer_to_character(item, char)
             current_count += 1
+            taken += 1
 
-            await self.output(f"You pick up {display_name}.", 'success')
+            # DD §6: pickup lines are gains — loot-color (reward).
+            await self.output(f'You pick up {item_ref(item)}.', 'reward')
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} picks up {display_name}.',
@@ -828,35 +908,38 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'exclude': self.channel_name,
                 'ts': envelope_ts(),
             })
+        if res.requested and taken == len(res.items):
+            await self.output(f'There were only {taken} here.', 'system')
 
     async def cmd_drop(self, args):
-        if not args:
-            await self.output("Drop what?", 'system')
-            return
-
         char = self.character
         room = await self.get_current_room()
         carried_items = await self.get_carried_items(char)
+        # v22 brief 2 (DD §8 fn 16): bound items are excluded from drop's
+        # candidate pool entirely.
+        unbound = [i for i in carried_items if not i.is_soulbound]
 
-        res = resolve('drop', args, carried_items)
+        res = resolve('drop', args, unbound)
         if not res.ok:
-            await self.output(res.message, 'system')
+            if res.error == 'not_found':
+                # A match that exists only among bound items is a
+                # mechanical refusal, not a resolution miss (DD §3).
+                bound_res = resolve('drop', args, carried_items)
+                if bound_res.ok:
+                    await self.output(
+                        f'Your {get_display_name(bound_res.items[0])} is bound '
+                        'to you and cannot be dropped.', 'warn',
+                    )
+                    return
+            await self.output(res.message, self._refusal_category(res))
             return
 
-        # Equipped items never resolve for drop; soulbound refusal stays
-        # per-item so an 'all' sweep reports each bound keep-back.
+        # Equipped items never resolve for drop (policy).
         for item in res.items:
             display_name = get_display_name(item)
-            if item.is_soulbound:
-                await self.output(
-                    f"Your {display_name} is bound to you and cannot be dropped.",
-                    'system',
-                )
-                continue
-
             await self.transfer_to_room(item, room)
 
-            await self.output(f"You drop {display_name}.", 'system')
+            await self.output(f'You drop {item_ref(item)}.', 'success')
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} drops {display_name}.',
@@ -864,12 +947,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'exclude': self.channel_name,
                 'ts': envelope_ts(),
             })
+        if res.requested:
+            await self.output(f'You only had {len(res.items)}.', 'system')
 
     async def cmd_equip(self, args):
-        if not args:
-            await self.output("Equip what?", 'system')
-            return
-
         char = self.character
         unequipped_items = await self.get_carried_unequipped_items(char)
         # Candidate scope (#22): carried equippables only.
@@ -877,7 +958,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         res = resolve('equip', args, equippables)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
         item = res.items[0]
@@ -919,10 +1000,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if free is not None:
             target_slot = free[0]
             await self.equip_item(item, target_slot, char)
-            await self.output(
-                f"You equip {get_display_name(item)} in your {format_slot_name(target_slot)}.",
-                'system',
-            )
+            # v22 brief 2 (DD §6): the transactional sentence — no slot
+            # mention; the paper-doll carries slot placement now.
+            await self.output(f'You equip {item_ref(item)}.', 'success')
             return
 
         min_size = min(len(d) for _, d in candidates)
@@ -932,7 +1012,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             _, displaced = minimal[0]
             await self.output(
                 f"You'd have to unequip {_join_owned_names(displaced, 'and')} first.",
-                'system',
+                'warn',
             )
             return
 
@@ -952,7 +1032,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 )
             else:
                 msg = f"You'd have to unequip {_join_owned_names(distinct, 'or')} first."
-            await self.output(msg, 'system')
+            await self.output(msg, 'warn')
             return
 
         # Unambiguous one-for-one exchange: auto-swap, if the displaced item
@@ -965,46 +1045,38 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             unequipped_count = await self.count_unequipped_items(char)
         blocked = self._unequip_blocked_reason(displaced_item, equipped_items, unequipped_count)
         if blocked:
-            await self.output(blocked, 'system')
+            await self.output(blocked, 'warn')
             return
 
         await self.unequip_item(displaced_item)
         await self.equip_item(item, target_slot, char)
+        # v22 brief 2 (DD §6): the swap-aware sentence.
         await self.output(
-            f"You unequip your {get_display_name(displaced_item)} and equip your "
-            f"{get_display_name(item)} in your {format_slot_name(target_slot)}.",
-            'system',
+            f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
+            'success',
         )
 
     async def cmd_unequip(self, args):
-        if not args:
-            await self.output("Unequip what?", 'system')
-            return
-
         char = self.character
         equipped_items = await self.get_equipped_items(char)
 
         res = resolve('unequip', args, equipped_items)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
         item = res.items[0]
-        display_name = get_display_name(item)
 
         unequipped_count = 0
         if item.definition.item_type == 'bag':
             unequipped_count = await self.count_unequipped_items(char)
         blocked = self._unequip_blocked_reason(item, equipped_items, unequipped_count)
         if blocked:
-            await self.output(blocked, 'system')
+            await self.output(blocked, 'warn')
             return
 
         await self.unequip_item(item)
-        await self.output(
-            f"You unequip your {display_name} and stow it in your inventory.",
-            'system',
-        )
+        await self.output(f'You unequip {item_ref(item)}.', 'success')
 
     def _unequip_blocked_reason(self, item, equipped_items, unequipped_count):
         """Return the refusal message if the item cannot legally be unequipped, else None."""
@@ -1021,50 +1093,74 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return None
 
     async def cmd_use(self, args):
-        if not args:
-            await self.output("Use what?", 'system')
-            return
-
+        # v22 brief 2 (DD §1 fn 11, #65): 'use [<quantity>] <item>' with a
+        # numeric-only quantity — sequences apply one item at a time and
+        # stop when purpose is fulfilled (DD §7, #61 generalized).
         char = self.character
         was_dying = self._character_is_dying
         consumables = await self.get_carried_consumables(char)
 
         res = resolve('use', args, consumables)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
-        item = res.items[0]
-        effect_def = item.definition.effect
+        used = 0
+        stopped_at_full = False
+        for item in res.items:
+            effect_def = item.definition.effect
 
-        if effect_def is None:
-            await self.output("Nothing happens.", 'system')
-            return
+            if effect_def is None:
+                await self.output('Nothing happens.', 'system')
+                break
 
-        mk_tier = item.mk_tier
-        msgs = await self.do_apply_effect(effect_def, char, mk_tier)
+            is_heal = await self.effect_restores_vitality(effect_def)
+            if is_heal and not was_dying:
+                gate_char = await self.get_character_fresh()
+                if gate_char.vitality_current >= gate_char.vitality_max:
+                    # DD §7 / #61: any heal attempted at full fails; a
+                    # sequence that just reached full already said so.
+                    if used == 0:
+                        await self.output('You are already at full health.', 'warn')
+                    stopped_at_full = True
+                    break
 
-        await self.consume_item(item)
+            msgs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            await self.consume_item(item)
+            used += 1
 
-        for msg in msgs:
-            await self.output(msg, 'system')
+            # DD §6: the transactional sentence, then the effect line.
+            await self.output(f'You use {item_ref(item, indefinite=True)}.', 'success')
+            for msg in msgs:
+                await self.output(msg, 'system')
 
-        room = await self.get_current_room()
-        char_fresh = await self.get_character_fresh()
+            room = await self.get_current_room()
+            char_fresh = await self.get_character_fresh()
 
-        if was_dying and char_fresh.vitality_current > 0:
-            await self.revive_character(char_fresh)
-            self._character_is_dying = False
-            await self.output(
-                "Breath floods back into your lungs. You are alive — barely.", 'system',
-            )
-            await self.send_room_description(room, entering=False)
-            await self.broadcast_to_room_exclude(
-                f"{char_fresh.name} staggers back to their feet!", 'combat',
-            )
-            return
+            if was_dying and char_fresh.vitality_current > 0:
+                await self.revive_character(char_fresh)
+                self._character_is_dying = False
+                await self.output(
+                    "Breath floods back into your lungs. You are alive — barely.", 'system',
+                )
+                await self.send_room_description(room, entering=False)
+                await self.broadcast_to_room_exclude(
+                    f"{char_fresh.name} staggers back to their feet!", 'combat',
+                )
+                return
 
-        await self.send_json(await self._status_payload(char_fresh, room))
+            if is_heal and char_fresh.vitality_current >= char_fresh.vitality_max:
+                # DD §7: purpose fulfilled — the loot-color line, stop.
+                await self.output('You have been restored to full health.', 'reward')
+                stopped_at_full = True
+                break
+
+        if used:
+            if res.requested and not stopped_at_full and used == len(res.items):
+                await self.output(f'You only had {used}.', 'system')
+            room = await self.get_current_room()
+            char_fresh = await self.get_character_fresh()
+            await self.send_json(await self._status_payload(char_fresh, room))
 
     def _format_identified_item_lines(self, item):
         defn = item.definition
@@ -1121,10 +1217,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return lines
 
     async def cmd_examine(self, args):
-        if not args:
-            await self.output("Examine what?", 'system')
-            return
-
+        # v22 brief 2 (DD §8, #96): examine's pool is the union —
+        # inventory + equipped + room floor + NPCs + corpses + players +
+        # vendor stock — resolved nearest-first (self before room before
+        # vendor) where segments overlap.
         char = self.character
         room = await self.get_current_room()
         carried_items = await self.get_carried_items(char)
@@ -1134,7 +1230,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         res = resolve('examine', args, combined)
 
         if not res.ok and res.error not in ('not_found',):
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
         if res.ok:
@@ -1171,7 +1267,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         code, corpse = parse_corpse_noun(args, corpses)
 
         if code == 'bad_index':
-            await self.output("There aren't that many of those.", 'system')
+            await self.output("There aren't that many of those.", 'warn')
             return
 
         if code == 'single':
@@ -1202,46 +1298,70 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output('\n'.join(lines), 'report')
             return
 
-        await self.output("You don't see that here.", 'system')
+        # Search players here (DD §8: players are in examine's union).
+        players = await self.get_characters_in_room(room)
+        player_match = next(
+            (p for p in players if p.name.lower().startswith(noun_lower)), None,
+        )
+        if player_match is not None:
+            await self.output(
+                f'{player_match.name} - Level {player_match.level} '
+                f'{player_match.origin.name} {player_match.archetype.name}',
+                'report',
+            )
+            return
+
+        # Search vendor stock last (self before room before vendor).
+        vendor = await self.get_vendor_in_room(room)
+        if vendor is not None:
+            entries = await self.get_vendor_entries(vendor)
+            stock = [e for e in entries if not self._entry_exhausted(e)]
+            # VendorEntry candidates resolve through the entry-kind ('buy')
+            # policy; only the match is used here.
+            entry_res = resolve('buy', args, stock)
+            if entry_res.ok:
+                entry = entry_res.items[0]
+                defn = entry.item_definition
+                await self.output('\n'.join([
+                    entry_display_name(entry),
+                    '',
+                    f'  {defn.description}',
+                    '',
+                    f'  Type:       {defn.item_type.title()}',
+                    f'  Genre:      {defn.genre_tag.title()}',
+                ]), 'report')
+                return
+
+        await self.output("You don't see that here.", 'warn')
 
     async def cmd_loot(self, args):
+        # v22 brief 2 (DD §1): 'loot all | <NPC>' — a room sweep, or one
+        # corpse named by its NPC. The v20 item-noun forms are retired
+        # with the chart; bare loot prompts via the central fn-10 gate.
         room = await self.get_current_room()
         character = await self.get_character(self.scope['user'])
         corpses = await self.get_corpses_in_room(room)
 
         if not corpses:
-            await self.output("There is nothing to loot here.", "system")
+            await self.output("There is nothing to loot here.", "warn")
             return
 
-        arg_parts = args.split(None, 1) if args else []
-
-        if not arg_parts:
-            # Bare loot: the single/first corpse, unchanged.
-            await self._loot_single_corpse(character, room, corpses[0], None)
+        if args.strip().lower() == 'all':
+            lootable = [c for c in corpses if c.killed_by_id == character.pk]
+            if not lootable:
+                await self.output("That is not your kill; you may not loot it.", "warn")
+                return
+            await self._loot_sweep(character, room, lootable)
             return
 
-        first = arg_parts[0]
-        rest = arg_parts[1] if len(arg_parts) > 1 else None
-        code, matched = parse_corpse_noun(first, corpses)
+        code, matched = parse_corpse_noun(args.strip(), corpses)
         if code == 'single':
-            await self._loot_single_corpse(character, room, matched, rest)
+            await self._loot_single_corpse(character, room, matched, None)
             return
         if code == 'bad_index':
-            await self.output("There aren't that many corpses here.", "error")
+            await self.output("There aren't that many corpses here.", "warn")
             return
-
-        # v20 brief 3 amendment 1 (#62): no corpse named — item forms
-        # operate room-wide, over the character's own kills only. The
-        # sweep is a convenience over corpse-by-corpse looting, never a
-        # way to take loot that is not the player's.
-        lootable = [c for c in corpses if c.killed_by_id == character.pk]
-        if not lootable:
-            await self.output("That is not your kill; you may not loot it.", "error")
-            return
-        if args.strip().lower() == 'all':
-            await self._loot_sweep(character, room, lootable)
-        else:
-            await self._loot_from_union(character, room, lootable, args.strip())
+        await self.output("You don't see that corpse here.", "warn")
 
     async def _loot_corpse_copper(self, character, room, corpse):
         """Loot a corpse's coin drop, emitting the coin line if any.
@@ -1275,11 +1395,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'ts': envelope_ts(),
             })
 
-    async def _loot_single_corpse(self, character, room, target_corpse, item_noun):
-        """Loot one targeted corpse — bare 'loot' and 'loot <corpse> …',
-        exactly as before the #62 sweep."""
+    async def _loot_single_corpse(self, character, room, target_corpse, item_noun=None):
+        """Loot one targeted corpse in full — 'loot <NPC>' (v22 brief 2:
+        the chart's corpse-by-name form; item nouns are retired)."""
         if target_corpse.killed_by_id != character.pk:
-            await self.output("That is not your kill; you may not loot it.", "error")
+            await self.output("That is not your kill; you may not loot it.", "warn")
             return
 
         copper_taken = await self._loot_corpse_copper(character, room, target_corpse)
@@ -1313,22 +1433,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self._maybe_dispose_corpse(target_corpse)
             return
 
-        if item_noun:
-            res = resolve('loot', item_noun, contents)
-            if not res.ok:
-                await self.output(res.message, "error")
-                return
-            items_to_loot = res.items
-        else:
-            items_to_loot = contents
-
         current_count, max_carry = await self.get_carry_counts(character)
 
-        for item in items_to_loot:
+        for item in contents:
             if current_count >= max_carry:
                 await self.output(
                     f"You can't carry any more. ({current_count}/{max_carry} items)",
-                    "error"
+                    "warn"
                 )
                 break
             line = compose_item_line(item)
@@ -1359,7 +1470,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 if current_count >= max_carry:
                     await self.output(
                         f"You can't carry any more. ({current_count}/{max_carry} items)",
-                        "error"
+                        "warn"
                     )
                     capacity_hit = True
                     break
@@ -1377,46 +1488,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         else:
             summary += '.'
         await self.output(summary, 'system')
-
-    async def _loot_from_union(self, character, room, lootable, item_noun):
-        """v20 brief 3 amendment 1 (#62): item references without a named
-        corpse ('loot all hides', 'loot 2 hides', 'loot hide') resolve
-        over the union of every lootable corpse's contents in the room;
-        quantifiers mean items, all-or-nothing for N as everywhere. Coin
-        drops come along from each corpse an item is taken from."""
-        by_id = {c.pk: c for c in lootable}
-        pool = []
-        for corpse in lootable:
-            pool.extend(await self.get_corpse_contents(corpse))
-
-        res = resolve('loot', item_noun, pool)
-        if not res.ok:
-            await self.output(res.message, "error")
-            return
-
-        current_count, max_carry = await self.get_carry_counts(character)
-        coppered = set()
-        touched = {}
-
-        for item in res.items:
-            if current_count >= max_carry:
-                await self.output(
-                    f"You can't carry any more. ({current_count}/{max_carry} items)",
-                    "error"
-                )
-                break
-            corpse = by_id[item.corpse_id]
-            if corpse.pk not in coppered:
-                coppered.add(corpse.pk)
-                await self._loot_corpse_copper(character, room, corpse)
-            touched[corpse.pk] = corpse
-            line = compose_item_line(item)
-            await self.do_loot_item(item, character)
-            await self.output(f"You loot {line}.", "success")
-            current_count += 1
-
-        for corpse in touched.values():
-            await self._maybe_dispose_corpse(corpse)
 
     # ------------------------------------------------------------------
     # Commerce commands
@@ -1455,38 +1526,37 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         vendor = await self.get_vendor_in_room(room)
         if vendor is None:
-            await self.output('There is no one here to trade with.', 'error')
-            return
-
-        if not args:
-            await self.output('Buy what?', 'system')
+            await self.output('There is no one here to trade with.', 'warn')
             return
 
         entries = await self.get_vendor_entries(vendor)
         res = resolve('buy', args, entries)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
         entry = res.items[0]
         qty = res.quantity
+        requested = 0
         if self._entry_exhausted(entry):
-            await self.output('Sold out.', 'system')
+            await self.output('Sold out.', 'warn')
             return
         if entry.stock_limit is not None:
             left = entry.stock_limit - entry.sold_count
             if left < qty:
-                await self.output(f'They only have {left} left.', 'system')
-                return
+                # v22 brief 2 (DD §7, by analogy): do the possible part —
+                # buy what's there and report warmly.
+                requested = qty
+                qty = left
 
         # v20 brief 3 (#22): funds and carry capacity checked up front for
-        # the whole quantity — the purchase is all-or-nothing.
+        # the whole quantity — the purchase itself stays all-or-nothing.
         char = await self.get_character_fresh()
         total = entry.price * qty
         if total > char.copper:
             await self.output(
                 f"You can't afford that — it costs {self.format_amount(char, total)}.",
-                'system',
+                'warn',
             )
             return
 
@@ -1496,53 +1566,51 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 msg = f"You can't carry any more. ({current_count}/{max_capacity} items)"
             else:
                 msg = f"You can't carry {qty} more. ({current_count}/{max_capacity} items)"
-            await self.output(msg, 'system')
+            await self.output(msg, 'warn')
             return
 
         result = await self.do_buy(entry, char, qty)
         if result == 'poor':
             await self.output(
                 f"You can't afford that — it costs {self.format_amount(char, total)}.",
-                'system',
+                'warn',
             )
             return
         if result == 'sold_out':
-            await self.output('Sold out.', 'system')
+            await self.output('Sold out.', 'warn')
             return
-        name = get_display_name_with_tier(result[0])
-        if qty == 1:
-            line = f'You buy {name} for {self.format_amount(char, total)}.'
-        else:
-            line = f'You buy {qty}x {name} for {self.format_amount(char, total)}.'
-        await self.output(line, 'success')
+        # v22 brief 2 (DD §6): one line per item as it lands.
+        for instance in result:
+            await self.output(
+                f'You buy {item_ref(instance)} for '
+                f'{self.format_amount(char, entry.price)}.', 'success',
+            )
+        if requested:
+            await self.output(f'They only had {qty}.', 'system')
         await self.maybe_kibitz(room, vendor)
 
     async def cmd_sell(self, args):
         room = await self.get_current_room()
         vendor = await self.get_vendor_in_room(room)
         if vendor is None:
-            await self.output('There is no one here to trade with.', 'error')
-            return
-
-        if not args:
-            await self.output('Sell what?', 'system')
+            await self.output('There is no one here to trade with.', 'warn')
             return
 
         char = self.character
         carried = await self.get_carried_items(char)
         res = resolve('sell', args, carried)
         if not res.ok:
-            await self.output(res.message, 'system')
+            await self.output(res.message, self._refusal_category(res))
             return
 
         if res.mode in ('single', 'index'):
             item = res.items[0]
             if get_item_value(item) == 0:
-                await self.output("That's not worth anything to me.", 'error')
+                await self.output("That's not worth anything to me.", 'warn')
                 return
-            name = get_display_name_with_tier(item)
+            display = item_ref(item)
             price = await self.do_sell(item, char)
-            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'success')
+            await self.output(f'You sell {display} for {self.format_amount(char, price)}.', 'success')
             await self.maybe_kibitz(room, vendor)
             return
 
@@ -1559,12 +1627,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if get_item_value(item) == 0:
                 skipped += 1
                 continue
-            name = get_display_name_with_tier(item)
+            display = item_ref(item)
             price = await self.do_sell(item, char)
             sold += 1
             total += price
-            await self.output(f'You sell {name} for {self.format_amount(char, price)}.', 'success')
+            await self.output(f'You sell {display} for {self.format_amount(char, price)}.', 'success')
         if sold:
+            # v22 brief 2 (DD §6/§7): the shortfall report, verbatim.
+            if res.requested:
+                await self.output(
+                    f'You only had {sold} — the vendor was happy to take them.',
+                    'success',
+                )
             await self.output(
                 f'Sold {sold} item{"s" if sold != 1 else ""} '
                 f'for {self.format_amount(char, total)}.', 'success',
@@ -1578,7 +1652,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         else:
             await self.output(
                 f'Nothing sold — {skipped} worthless item'
-                f'{"s" if skipped != 1 else ""} skipped.', 'system',
+                f'{"s" if skipped != 1 else ""} skipped.', 'warn',
             )
 
     async def cmd_repair(self, args):
@@ -1586,7 +1660,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         repairer = await self.get_repairer_in_room(room)
         if repairer is None:
-            await self.output('There is no one here who can repair.', 'error')
+            await self.output('There is no one here who can repair.', 'warn')
             return
 
         arg = args.strip().lower() if args else ''
@@ -1594,40 +1668,52 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if arg == 'all':
             if not damaged:
-                await self.output('You have nothing to repair.', 'system')
+                await self.output('You have nothing to repair.', 'warn')
                 return
             # v20 brief 4 amendment 1 (#74): the #63 bulk-operation rule —
             # each repair attempt is its own message through the choke
             # point (own ts/seq), and the summary is its own message.
+            # v22 brief 2 (DD §7, #75): bounded retries — the sweep loops
+            # over what's still damaged until everything is repaired,
+            # funds run out, or 5 passes; each mend line prints as it
+            # lands.
             repaired = failed = spent = 0
-            for item in damaged:
-                name = get_display_name_with_tier(item)
-                outcome, cost = await self.do_repair_attempt(item, char)
-                if outcome == 'poor':
-                    await self.output(
-                        f"You can't afford to repair {name} "
-                        f"({self.format_amount(char, cost)}) — you stop there.",
-                        'system',
-                    )
+            out_of_funds = False
+            for _ in range(5):
+                if not damaged or out_of_funds:
                     break
-                spent += cost
-                if outcome == 'success':
-                    repaired += 1
-                    if get_item_value(item) == 0:
-                        await self.output(_pity_repair_line(repairer), 'success')
-                    else:
+                still_damaged = []
+                for item in damaged:
+                    name = get_display_name_with_tier(item)
+                    outcome, cost = await self.do_repair_attempt(item, char)
+                    if outcome == 'poor':
                         await self.output(
-                            f'{name} is restored to full condition. '
-                            f'({self.format_amount(char, cost)})',
-                            'success',
+                            f"You can't afford to repair {name} "
+                            f"({self.format_amount(char, cost)}) — you stop there.",
+                            'warn',
                         )
-                else:
-                    failed += 1
-                    await self.output(
-                        f"The mending on {name} didn't take. "
-                        f"({self.format_amount(char, cost)})",
-                        'system',
-                    )
+                        out_of_funds = True
+                        break
+                    spent += cost
+                    if outcome == 'success':
+                        repaired += 1
+                        if get_item_value(item) == 0:
+                            await self.output(_pity_repair_line(repairer), 'success')
+                        else:
+                            await self.output(
+                                f'{name} is restored to full condition. '
+                                f'({self.format_amount(char, cost)})',
+                                'success',
+                            )
+                    else:
+                        failed += 1
+                        still_damaged.append(item)
+                        await self.output(
+                            f"The mending on {name} didn't take. "
+                            f"({self.format_amount(char, cost)})",
+                            'warn',
+                        )
+                damaged = still_damaged
             await self.output(
                 f'Repaired {repaired} item{"s" if repaired != 1 else ""}, '
                 f'{failed} attempt{"s" if failed != 1 else ""} failed, '
@@ -1636,23 +1722,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        if arg:
-            # Repair scope (#22): carried + equipped — everything owned.
-            items = await self.get_carried_items(char)
-            res = resolve('repair', args, items)
-            if not res.ok:
-                await self.output(res.message, 'system')
-                return
-            item = res.items[0]
-            if (not item.definition.takes_durability_loss
-                    or item.durability_current >= 100.0):
-                await self.output("That doesn't need repair.", 'system')
-                return
-        else:
-            if not damaged:
-                await self.output('You have nothing to repair.', 'system')
-                return
-            item = damaged[0]
+        # v22 brief 2 (DD §1): 'repair all | <item>' — a target is required;
+        # bare repair prompts via the central fn-10 gate.
+        # Repair scope (#22): carried + equipped — everything owned.
+        items = await self.get_carried_items(char)
+        res = resolve('repair', args, items)
+        if not res.ok:
+            await self.output(res.message, self._refusal_category(res))
+            return
+        item = res.items[0]
+        if (not item.definition.takes_durability_loss
+                or item.durability_current >= 100.0):
+            await self.output("That doesn't need repair.", 'warn')
+            return
 
         name = get_display_name_with_tier(item)
         outcome, cost = await self.do_repair_attempt(item, char)
@@ -1660,7 +1742,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(
                 f"Repairing your {name} costs {self.format_amount(char, cost)} — "
                 "you can't afford it.",
-                'system',
+                'warn',
             )
         elif outcome == 'success':
             if get_item_value(item) == 0:
@@ -1674,7 +1756,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(
                 f"{npc_display(repairer, capitalize=True)} works on your {name}, "
                 f"but the mending didn't take. ({self.format_amount(char, cost)})",
-                'system',
+                'warn',
             )
 
     # ------------------------------------------------------------------
@@ -1686,22 +1768,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         npcs_in_room = await self.get_live_npcs_in_room(room)
 
-        if not args:
-            # Targetless attack only auto-targets under aggro: the
-            # earliest-engaged living NPC in the active combat session.
-            npc = await self.get_first_attacker_npc(character)
-            if npc is None:
-                await self.send_output("Attack what?", 'error')
-                return
-        else:
-            res = resolve('attack', args, npcs_in_room)
-            if not res.ok:
-                await self.send_output(res.message, 'error')
-                return
-            npc = res.items[0]
+        # v22 brief 2 (DD §1): a target is required — the targetless
+        # auto-attack fossil is removed (aggro NPCs self-engage since
+        # v21 #17); bare attack prompts via the central fn-10 gate.
+        res = resolve('attack', args, npcs_in_room)
+        if not res.ok:
+            await self.send_output(res.message, self._refusal_category(res))
+            return
+        npc = res.items[0]
 
         if not npc.definition.attackable:
-            await self.send_output(f"{npc_display(npc, capitalize=True)} cannot be attacked.", 'error')
+            await self.send_output(f"{npc_display(npc, capitalize=True)} cannot be attacked.", 'warn')
             return
 
         display = npc_display_name(npc, npcs_in_room)
@@ -1734,16 +1811,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         session = await self.get_active_combat_session(character)
         if not session:
-            await self.send_output("You are not in combat.", 'error')
+            await self.send_output("You are not in combat.", 'warn')
             return
 
         if character.is_dying:
-            await self.send_output("You are too close to death to flee!", 'error')
+            await self.send_output("You are too close to death to flee!", 'warn')
             return
 
         on_cooldown = await self.check_flee_cooldown(character, session)
         if on_cooldown:
-            await self.send_output("You are still recovering from your last flee attempt.", 'error')
+            await self.send_output("You are still recovering from your last flee attempt.", 'warn')
             return
 
         npcs = await self.get_session_npcs(session)
@@ -1765,7 +1842,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if success:
             result = await self.get_flee_destination(character)
             if result is None:
-                await self.send_output("There is nowhere to run!", 'error')
+                await self.send_output("There is nowhere to run!", 'warn')
                 await self.record_flee_attempt(character, session)
                 return
 
@@ -1808,7 +1885,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_status_refresh()
             await self.send_map()
         else:
-            await self.send_output("You tried to flee but your enemies are too strong.", 'combat')
+            # v22 brief 2 (DD §3): a failed flee is the world declining.
+            await self.send_output("You tried to flee but your enemies are too strong.", 'warn')
             await self.broadcast_to_room_exclude(
                 f"{character.name} tried to flee combat but could not slip away.", 'combat'
             )
@@ -1854,6 +1932,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
         await self.send_report_lines(lines)
 
+    # v22 brief 2 (DD §1): 'spend [<quantity>] <stat>' — the argument
+    # order flips (footnotes 7 14); 'all' = every unspent point; a bare
+    # numeric prompts per footnote 15; the old '<stat> <amount>' order
+    # dies. Bare spend prompts via the central fn-10 gate.
+    SPEND_USAGE = ('Usage: spend [<quantity> | all] <stat>  '
+                   '(stats: str dex end int wis per)')
+
     async def cmd_spend(self, args):
         VALID_STATS = {
             'str': 'Strength',
@@ -1866,44 +1951,46 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         character = await self.get_character_fresh()
 
-        if not args:
-            await self._send_stats(character)
-            return
-
         parts = args.lower().split()
-        if len(parts) != 2:
-            await self.send_output(
-                "Usage: spend <stat> <amount>  (e.g. 'spend dex 2')  |  "
-                "Valid stats: str dex end int wis per", 'error'
-            )
+
+        # Optional leading quantity: a number or 'all'.
+        quantity = 1
+        spend_all = False
+        if parts and (parts[0] == 'all' or parts[0].isdigit()):
+            if parts[0] == 'all':
+                spend_all = True
+            else:
+                quantity = int(parts[0])
+            parts = parts[1:]
+
+        if not parts:
+            # Footnote 15: a bare numeric names its missing target.
+            if not spend_all and quantity != 1:
+                await self.send_output(
+                    f'spend {quantity} points on which stat?', 'error',
+                )
+            else:
+                await self.send_output(self.SPEND_USAGE, 'error')
             return
 
-        stat_name, amount_str = parts
-
-        if stat_name not in VALID_STATS:
-            await self.send_output(
-                f"Unknown stat '{stat_name}'. Valid stats: {', '.join(VALID_STATS.keys())}", 'error'
-            )
+        if len(parts) != 1 or parts[0] not in VALID_STATS:
+            await self.send_output(self.SPEND_USAGE, 'error')
             return
+        stat_name = parts[0]
 
-        try:
-            amount = int(amount_str)
-        except ValueError:
-            await self.send_output(f"'{amount_str}' is not a valid number.", 'error')
-            return
-
-        if amount <= 0:
-            await self.send_output("Amount must be greater than zero.", 'error')
+        if not spend_all and quantity <= 0:
+            await self.send_output(self.SPEND_USAGE, 'error')
             return
 
         if character.unspent_stat_points <= 0:
-            await self.send_output("You have no unspent stat points.", 'error')
+            await self.send_output("You have no unspent stat points.", 'warn')
             return
 
+        amount = character.unspent_stat_points if spend_all else quantity
         if amount > character.unspent_stat_points:
             pts = character.unspent_stat_points
             await self.send_output(
-                f"You only have {pts} unspent stat point{'s' if pts != 1 else ''}.", 'error'
+                f"You only have {pts} unspent stat point{'s' if pts != 1 else ''}.", 'warn'
             )
             return
 
@@ -1928,49 +2015,87 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         new_value = await apply_spend(character, stat_name, amount)
         remaining = character.unspent_stat_points
 
+        # v22 brief 2 (DD §6): the transactional sentence + the new value.
         await self.send_output(
-            f"{VALID_STATS[stat_name]} increased to {new_value}. "
+            f'You spend {amount} point{"s" if amount != 1 else ""} '
+            f'on {VALID_STATS[stat_name]}.', 'success',
+        )
+        await self.send_output(
+            f"{VALID_STATS[stat_name]} is now {new_value}. "
             f"{'No' if remaining == 0 else remaining} stat point{'s' if remaining != 1 else ''} remaining.",
-            'system'
+            'success'
         )
 
         room = character.current_room
         await self.send_json(await self._status_payload(character, room))
 
-    async def cmd_brief(self, args):
+    # v22 brief 2 (DD §10): the settings standard. Six accepted words,
+    # case-insensitive; bare = the current-setting sentence (the set
+    # message minus 'now'); set = the 'now' sentence — stateless,
+    # idempotent, plain prose. Invalid input is a CLI error showing the
+    # canonical pair (synonyms silently accepted). Fully firehosed:
+    # stamped like every other event.
+    SETTING_WORDS = {
+        'on': True, 'yes': True, 'true': True,
+        'off': False, 'no': False, 'false': False,
+    }
+
+    async def _cmd_setting(self, args, cmd_name, subject, verb_is, getter, setter):
         arg = args.strip().lower() if args else ''
         if not arg:
             character = await self.get_character_fresh()
-            state = 'on' if character.brief_mode else 'off'
-            await self.send_output(
-                f'Brief mode is {state}. Usage: brief on | brief off', category='report'
-            )
-            return
-        if arg not in ('on', 'off'):
-            await self.send_output('Usage: brief on | brief off', category='error')
-            return
-        value = (arg == 'on')
-        await self._set_brief_mode(value)
-        self.character.brief_mode = value
+            state = 'on' if getter(character) else 'off'
+            await self.send_output(f'{subject} {verb_is} {state}.', category='system')
+            return None
+        if arg not in self.SETTING_WORDS:
+            await self.send_output(f'Usage: {cmd_name} [on|off]', category='error')
+            return None
+        value = self.SETTING_WORDS[arg]
+        await setter(value)
         state = 'on' if value else 'off'
-        await self.send_output(f'Brief mode is now {state}.', category='system')
+        await self.send_output(f'{subject} {verb_is} now {state}.', category='system')
+        return value
+
+    async def cmd_brief(self, args):
+        value = await self._cmd_setting(
+            args, 'brief', 'brief room display', 'is',
+            lambda c: c.brief_mode, self._set_brief_mode,
+        )
+        if value is not None:
+            self.character.brief_mode = value
+
+    async def cmd_echo(self, args):
+        # The client applies the change from the status payload; the
+        # preference is pane-only and never touches the firehose.
+        value = await self._cmd_setting(
+            args, 'echo', 'command echo', 'is',
+            lambda c: c.echo_mode, self._set_echo_mode,
+        )
+        if value is not None:
+            self.character.echo_mode = value
+            char = await self.get_character_fresh()
+            await self.send_json(await self._status_payload(char, char.current_room))
 
     async def cmd_timestamps(self, args):
-        """v20 brief 3 (#45): explicit value required — bare 'timestamps'
-        shows usage. The preference persists on the Character and reaches
-        the client through the state-sync payload; envelope ts/seq fields
-        are always present regardless."""
+        """v20 brief 3 (#45): the preference persists on the Character and
+        reaches the client through the state-sync payload; envelope ts/seq
+        fields are always present regardless. v22 brief 2 (DD §10): bare
+        reports the current setting; six boolean words accepted."""
         arg = args.strip().lower() if args else ''
-        if arg not in ('on', 'off'):
-            await self.send_output('Usage: timestamps on|off', category='error')
+        if arg and arg in self.SETTING_WORDS:
+            # Status first so the confirmation line already renders under
+            # the new preference.
+            value = self.SETTING_WORDS[arg]
+            await self._set_show_timestamps(value)
+            char = await self.get_character_fresh()
+            await self.send_json(await self._status_payload(char, char.current_room))
+            state = 'on' if value else 'off'
+            await self.send_output(f'output timestamps are now {state}.', category='system')
             return
-        value = (arg == 'on')
-        await self._set_show_timestamps(value)
-        char = await self.get_character_fresh()
-        # Status first so the confirmation line already renders under the
-        # new preference.
-        await self.send_json(await self._status_payload(char, char.current_room))
-        await self.send_output(f'Timestamps are now {arg}.', category='system')
+        await self._cmd_setting(
+            args, 'timestamps', 'output timestamps', 'are',
+            lambda c: c.show_timestamps, self._set_show_timestamps,
+        )
 
     # ------------------------------------------------------------------
     # Channel layer event handlers
@@ -2090,6 +2215,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 is_active=True, characters=char,
             ).exists(),
             'show_timestamps': char.show_timestamps,
+            'echo_mode': char.echo_mode,
             'ts': envelope_ts(),
         }
 
@@ -2131,6 +2257,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category,
                               'ts': envelope_ts()})
+
+    @staticmethod
+    def _refusal_category(res):
+        """v22 brief 2 (DD §3): map a resolver refusal to its response
+        layer. Shapes the grammar itself refused (bad syntax, quantifier
+        misuse, missing-target numerics) are CLI errors; everything else
+        — pool misses, bad indexes, ambiguity, the sell-all block — is
+        the world declining (warn)."""
+        if res.error in ('usage', 'no_multi', 'bare_numeric'):
+            return 'error'
+        return 'warn'
+
+    @database_sync_to_async
+    def effect_restores_vitality(self, effect_def):
+        """v22 brief 2 (DD §7): heal detection for the stop-at-full rule —
+        derived from the effect's own components, never a separate flag."""
+        return effect_def.components.filter(
+            component_type__in=('restore_vitality', 'hot_vitality'),
+        ).exists()
 
     async def send_report_lines(self, lines):
         """v21 brief 1 (#90/#91/#92): the structured key/value report
@@ -2245,25 +2390,102 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         same per-verb providers the resolver uses — one source of truth;
         nothing from the client is trusted beyond the text to complete.
         Verbs without noun arguments (and the verb position itself, which
-        the client completes locally) get an empty option list."""
+        the client completes locally) get an empty option list.
+
+        v22 brief 2 (DD §8, #67/#96): completion covers exactly each
+        command's pool, per position, literals included — the six boolean
+        words for settings, stat names and 'all' for spend, destination
+        names for travel, corpse NPC names and 'all' for loot."""
         options = []
         try:
             text = line or ''
             parts = text.split(None, 1)
             at_argument = bool(parts) and (len(parts) > 1 or text != text.rstrip())
             if at_argument:
-                verb = self.GRAMMAR_VERBS.get(parts[0].lower())
-                if verb is not None:
+                head = parts[0].lower()
+                arg_text = parts[1] if len(parts) > 1 else ''
+                if arg_text and text.endswith(' ') and not arg_text.endswith(' '):
+                    arg_text += ' '
+                verb = self.GRAMMAR_VERBS.get(head)
+                if head in ('brief', 'echo', 'timestamps'):
+                    options = self._complete_words(
+                        arg_text, sorted(self.SETTING_WORDS), first_only=True)
+                elif head == 'spend':
+                    options = self._complete_spend(arg_text)
+                elif head == 'travel':
+                    options = await self._complete_travel(arg_text)
+                elif head == 'loot':
+                    options = await self._complete_loot(arg_text)
+                elif verb is not None:
                     candidates = await self._completion_candidates(verb)
-                    arg_text = parts[1] if len(parts) > 1 else ''
-                    if arg_text and text.endswith(' ') and not arg_text.endswith(' '):
-                        arg_text += ' '
                     options = grammar_complete(verb, arg_text, candidates)
+                    if verb == 'examine':
+                        # Players are in examine's union too (DD §8).
+                        room = await self.get_current_room()
+                        players = await self.get_characters_in_room(room)
+                        partial = ('' if arg_text.endswith(' ') or not arg_text
+                                   else arg_text.lower().split()[-1])
+                        extra = {
+                            t for p in players for t in p.name.lower().split()
+                            if t.startswith(partial)
+                        }
+                        options = sorted(set(options) | extra)[:50]
         except Exception:
             cmd_logger.exception('shyland completion failed: %r', line)
             options = []
         await self.send_json({'type': 'complete', 'text': line,
                               'options': options, 'ts': envelope_ts()})
+
+    @staticmethod
+    def _complete_words(arg_text, words, first_only=False):
+        """Prefix-complete the trailing token against a literal word list."""
+        if arg_text.endswith(' ') or not arg_text:
+            prev, partial = arg_text.lower().split(), ''
+        else:
+            tokens = arg_text.lower().split()
+            prev, partial = tokens[:-1], tokens[-1]
+        if first_only and prev:
+            return []
+        return sorted(w for w in words if w.startswith(partial))
+
+    def _complete_spend(self, arg_text):
+        """spend [<quantity>|all] <stat> — position one offers 'all' and
+        the stats; after a quantity, the stats."""
+        stats = ['str', 'dex', 'end', 'int', 'wis', 'per']
+        if arg_text.endswith(' ') or not arg_text:
+            prev, partial = arg_text.lower().split(), ''
+        else:
+            tokens = arg_text.lower().split()
+            prev, partial = tokens[:-1], tokens[-1]
+        if not prev:
+            words = stats + ['all']
+        elif len(prev) == 1 and (prev[0] == 'all' or prev[0].isdigit()):
+            words = stats
+        else:
+            return []
+        return sorted(w for w in words if w.startswith(partial))
+
+    async def _complete_travel(self, arg_text):
+        room = await self.get_current_room()
+        node = await self.get_travel_node(room)
+        if node is None or node.node_type != 'obelisk':
+            return []
+        destinations = await self.get_revealed_destinations(node)
+        names = [d.travel_name.lower() for d in destinations]
+        partial = arg_text.lower().lstrip()
+        return sorted({n for n in names if n.startswith(partial)})[:50]
+
+    async def _complete_loot(self, arg_text):
+        room = await self.get_current_room()
+        corpses = await self.get_corpses_in_room(room)
+        words = {'all'}
+        for corpse in corpses:
+            words.update(corpse.display_name.lower().split())
+        if arg_text.endswith(' ') or not arg_text:
+            partial = ''
+        else:
+            partial = arg_text.lower().split()[-1]
+        return sorted(w for w in words if w.startswith(partial))[:50]
 
     async def _completion_candidates(self, verb):
         """Part A4 candidate scoping, verb by verb — shared between the
@@ -2271,8 +2493,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = self.character
         if verb == 'use':
             return await self.get_carried_consumables(char)
-        if verb in ('sell', 'drop', 'repair'):
+        if verb in ('sell', 'repair'):
             return await self.get_carried_items(char)
+        if verb == 'drop':
+            # v22 brief 2 (DD §8 fn 16): drop's pool excludes bound items.
+            items = await self.get_carried_items(char)
+            return [i for i in items if not i.is_soulbound]
         if verb == 'equip':
             items = await self.get_carried_unequipped_items(char)
             return [i for i in items if i.definition.valid_slots]
@@ -2282,9 +2508,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             room = await self.get_current_room()
             return await self.get_room_items(room)
         if verb == 'examine':
+            # v22 brief 2 (DD §8, #96): the union — inventory + equipped +
+            # floor + NPCs here + vendor stock (players merge in the
+            # caller; corpses complete through their NPC names via the
+            # NPC segment).
             room = await self.get_current_room()
             carried = await self.get_carried_items(char)
-            return carried + await self.get_room_items(room)
+            pool = carried + await self.get_room_items(room)
+            pool += await self.get_npcs_in_room(room)
+            vendor = await self.get_vendor_in_room(room)
+            if vendor is not None:
+                entries = await self.get_vendor_entries(vendor)
+                pool += [e for e in entries if not self._entry_exhausted(e)]
+            return pool
         if verb == 'buy':
             room = await self.get_current_room()
             vendor = await self.get_vendor_in_room(room)
@@ -2292,13 +2528,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 return []
             entries = await self.get_vendor_entries(vendor)
             return [e for e in entries if not self._entry_exhausted(e)]
-        if verb == 'loot':
-            room = await self.get_current_room()
-            corpses = await self.get_corpses_in_room(room)
-            mine = [c for c in corpses if c.killed_by_id == self.character_pk]
-            if not mine:
-                return []
-            return await self.get_corpse_contents(mine[0])
         if verb == 'attack':
             room = await self.get_current_room()
             return await self.get_live_npcs_in_room(room)
@@ -2508,6 +2737,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _set_show_timestamps(self, value):
         Character.objects.filter(pk=self.character_pk).update(show_timestamps=value)
+
+    @database_sync_to_async
+    def _set_echo_mode(self, value):
+        Character.objects.filter(pk=self.character_pk).update(echo_mode=value)
         self.character.show_timestamps = value
 
     @database_sync_to_async
@@ -2564,6 +2797,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             .exclude(pk=self.character.pk)
         )
         return [c.name for c in chars]
+
+    @database_sync_to_async
+    def get_characters_in_room(self, room):
+        """v22 brief 2 (DD §8): player rows for examine's union pool."""
+        return list(
+            Character.objects
+            .filter(current_room=room)
+            .exclude(pk=self.character.pk)
+            .select_related('origin', 'archetype')
+        )
 
     @database_sync_to_async
     def get_room_items(self, room):
@@ -3077,24 +3320,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def npc_in_session(self, session, npc):
         return session.npcs.filter(pk=npc.pk).exists()
-
-    @database_sync_to_async
-    def get_first_attacker_npc(self, character):
-        """Earliest-engaged living NPC in the character's active combat
-        session (through-row order = join order), or None without aggro."""
-        session = CombatSession.objects.filter(
-            is_active=True, characters=character,
-        ).first()
-        if session is None:
-            return None
-        link = (
-            CombatSession.npcs.through.objects
-            .filter(combatsession=session, npcinstance__is_alive=True)
-            .select_related('npcinstance__definition')
-            .order_by('pk')
-            .first()
-        )
-        return link.npcinstance if link else None
 
     @database_sync_to_async
     def get_session_npcs(self, session):
