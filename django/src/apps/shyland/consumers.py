@@ -119,6 +119,13 @@ REVERSE_DIRECTIONS = {
 # exits always break fragments; non-cardinal movement never joins them.
 MAP_CARDINALS = ('north', 'south', 'east', 'west')
 
+# v22 brief 2 amendment 3: the travel listing's zone hardness order — the
+# GDD zone table's danger ladder (The Convergence is the Sanctuary, The
+# Verdant Reach the Beginner zone; future zones slot in by danger tier).
+# A danger_rank model field is explicitly out of scope; this list is the
+# single interim authority. Unknown zones sort after, by slug.
+TRAVEL_ZONE_ORDER = ['the-convergence', 'the-verdant-reach']
+
 _NO_EXIT_DEFAULTS = {
     'north': "There is no exit in that direction.",
     'south': "There is no exit in that direction.",
@@ -612,11 +619,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     'the network reveals itself only to those who walk it.', 'report',
                 )
                 return
-            # v22 brief 2 (Step 11, DD ruling): destinations sort
-            # ascending by straight-line map-space distance from the
-            # player (same-zone; other-zone entries follow, by name), and
-            # every entry is labeled shard (checkpoint) or sphere
-            # (obelisk).
+            # v22 brief 2 (Step 11) + amendment 3: per-zone display
+            # blocks in hardness order (TRAVEL_ZONE_ORDER); within each
+            # zone the ruled interim sort holds — ascending map-space
+            # distance from the player (the alphabetical cross-zone
+            # fallback survives inside the key and is now invisible
+            # inside per-zone blocks). Display only: pools, resolution,
+            # and the travel path itself are untouched.
             def _distance_key(dest):
                 dest_room = dest.room
                 if dest_room.zone_id != room.zone_id:
@@ -626,11 +635,49 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         + (dest_room.coord_z - room.coord_z) ** 2) ** 0.5
                 return (0, dist, dest.travel_name.lower())
 
-            lines = ['The Obelisk offers passage to:']
+            by_zone = {}
+            zones = {}
             for dest in sorted(destinations, key=_distance_key):
-                label = 'sphere' if dest.node_type == 'obelisk' else 'shard'
-                lines.append(f'  {dest.travel_name} ({label})')
-            await self.output('\n'.join(lines), 'report')
+                zone = dest.room.zone
+                by_zone.setdefault(zone.slug, []).append(dest)
+                zones[zone.slug] = zone
+
+            def zone_rank(slug):
+                try:
+                    return (0, TRAVEL_ZONE_ORDER.index(slug))
+                except ValueError:
+                    return (1, slug)
+
+            headers = ['Type', 'Destination', 'Description']
+
+            def node_row(dest):
+                node_label = 'Sphere' if dest.node_type == 'obelisk' else 'Shard'
+                return [node_label, dest.travel_name, dest.listing_description]
+
+            # Identical column x-geometry across every zone table: size
+            # to the widest content across the whole listing.
+            all_rows = [node_row(d) for dests in by_zone.values()
+                        for d in dests]
+            widths = [len(h) for h in headers]
+            for row in all_rows:
+                for i, cell in enumerate(row):
+                    widths[i] = max(widths[i], len(cell))
+
+            lines = [{'k': 'The Obelisk offers passage to...'}]
+            for slug in sorted(by_zone, key=zone_rank):
+                zone = zones[slug]
+                lines.append({})
+                # Kind 1 heading; the zone name renders in the zone's
+                # theme color — the licensed exception to value-color.
+                lines.append({'segs': [
+                    {'t': 'Zone: ', 'c': 'key'},
+                    {'t': zone.name, 'x': zone.theme_color},
+                ]})
+                lines += self._table_lines(
+                    headers, [node_row(d) for d in by_zone[slug]],
+                    min_widths=widths,
+                )
+            await self.send_report_lines(lines)
             return
 
         query = args.strip().lower()
@@ -728,15 +775,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _table_lines(headers, rows, indent='  ', gap='   '):
+    def _table_lines(headers, rows, indent='  ', gap='   ', min_widths=None):
         """Seg-form report lines for a table. A cell is a plain string
-        (value voice) or a list of (text, voice) tuples."""
+        (value voice) or a list of (text, voice) tuples. `min_widths`
+        (v22 B2 amendment 3) seeds the column widths so several tables
+        can share identical column x-geometry."""
         def cell_text(cell):
             if isinstance(cell, str):
                 return cell
             return ''.join(t for t, _ in cell)
 
         widths = [len(h) for h in headers]
+        if min_widths is not None:
+            widths = [max(w, m) for w, m in zip(widths, min_widths)]
         for row in rows:
             for i, cell in enumerate(row):
                 widths[i] = max(widths[i], len(cell_text(cell)))
@@ -2901,7 +2952,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             TravelNode.objects
             .filter(room__visits__character_id=self.character_pk)
             .exclude(pk=current_node.pk)
-            .select_related('room')
+            # room__zone: the listing groups by zone and colors the
+            # heading with the zone's theme (v22 B2 amendment 3).
+            .select_related('room__zone')
             .order_by('travel_name')
         )
 

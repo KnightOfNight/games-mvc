@@ -1031,13 +1031,21 @@
       if (Array.isArray(entry.segs)) {
         entry.segs.forEach((seg) => {
           const s = document.createElement('span');
-          const c = seg.c || 'value';
-          if (SEG_CLASSES.has(c)) {
-            s.className = 'seg-' + c;
-          } else if (/^(rar-[a-z]+|flag-chrome)$/.test(c)) {
-            s.className = c;
+          // v22 B2 amendment 3: a seg may instead carry 'x' — a raw
+          // theme-color hex. This is the same licensed exception as the
+          // zone/area theme colors on location updates and room renders;
+          // anything else stays palette-named.
+          if (typeof seg.x === 'string' && /^#[0-9A-Fa-f]{6,8}$/.test(seg.x)) {
+            s.style.color = seg.x;
           } else {
-            s.className = 'seg-value';
+            const c = seg.c || 'value';
+            if (SEG_CLASSES.has(c)) {
+              s.className = 'seg-' + c;
+            } else if (/^(rar-[a-z]+|flag-chrome)$/.test(c)) {
+              s.className = c;
+            } else {
+              s.className = 'seg-value';
+            }
           }
           s.textContent = seg.t || '';
           el.appendChild(s);

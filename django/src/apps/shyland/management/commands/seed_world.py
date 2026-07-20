@@ -2108,17 +2108,28 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _seed_travel_nodes(self):
+        # v22 brief 2 amendment 3: listing_description is the stone's
+        # one-line sentence, harvested verbatim from each room's own
+        # authored prose (the Heart's long-prose opening line; the
+        # checkpoints' and the Crown's brief one-liners). Enforce-exact;
+        # every future node gets its one-liner at authoring time.
         nodes = [
-            ('heart', 'The Convergence', 'obelisk'),
-            ('vr-v07', 'Fordwatch', 'checkpoint'),
-            ('vr-f01', 'Stairhead', 'checkpoint'),
-            ('vr-c01', 'Cragfoot', 'checkpoint'),
-            ('vr-vc1', 'The Verdant Crown', 'obelisk'),
+            ('heart', 'The Convergence', 'obelisk',
+             'At the center of everything stands the Obelisk.'),
+            ('vr-v07', 'Fordwatch', 'checkpoint',
+             'A green shard drifts above the crossing where the fog gives way.'),
+            ('vr-f01', 'Stairhead', 'checkpoint',
+             'A green shard rides the wind above a trodden waystation.'),
+            ('vr-c01', 'Cragfoot', 'checkpoint',
+             "A green shard warms itself by a fire at the mountains' feet."),
+            ('vr-vc1', 'The Verdant Crown', 'obelisk',
+             'Eden on the roof of the world, and a green sphere in an obelisk.'),
         ]
-        for room_key, travel_name, node_type in nodes:
+        for room_key, travel_name, node_type, listing in nodes:
             node = self._reconcile(
                 TravelNode, {'room': self.rooms[room_key]},
-                {'travel_name': travel_name, 'node_type': node_type},
+                {'travel_name': travel_name, 'node_type': node_type,
+                 'listing_description': listing},
             )
             self.stdout.write(f'  TravelNode "{node.travel_name}" ({node.node_type}) seeded.')
 
@@ -2309,6 +2320,26 @@ class Command(BaseCommand):
             f'checkpoints (found {node_count})',
             node_count == 5 and heart_node and crown_node
             and checkpoint_nodes == 3,
+        )
+
+        # v22 brief 2 amendment 3: the harvested stone sentences are
+        # enforce-exact — the listing_description of every node matches
+        # its room's own authored prose verbatim.
+        expected_listings = {
+            'The Convergence': 'At the center of everything stands the Obelisk.',
+            'Fordwatch': 'A green shard drifts above the crossing where the fog gives way.',
+            'Stairhead': 'A green shard rides the wind above a trodden waystation.',
+            'Cragfoot': "A green shard warms itself by a fire at the mountains' feet.",
+            'The Verdant Crown': 'Eden on the roof of the world, and a green sphere in an obelisk.',
+        }
+        self._check(
+            'TravelNode listing_descriptions match the harvested stone sentences',
+            all(
+                TravelNode.objects.filter(
+                    travel_name=name, listing_description=desc,
+                ).exists()
+                for name, desc in expected_listings.items()
+            ),
         )
 
         msg_counts = {

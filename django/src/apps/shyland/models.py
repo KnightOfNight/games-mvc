@@ -953,6 +953,11 @@ class TravelNode(models.Model):
         help_text='Obelisks are travel sources and destinations. '
                   'Checkpoints are destinations only.',
     )
+    # v22 brief 2 amendment 3: the stone's one-line sentence shown in the
+    # travel listing's Description column. Harvested from the world's own
+    # prose at authoring time (seed-owned, enforce-exact); every new node
+    # gets its one-liner when it is authored.
+    listing_description = models.TextField(blank=True, default='')
 
     def __str__(self):
         return f'{self.travel_name} ({self.node_type})'
