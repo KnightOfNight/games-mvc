@@ -219,8 +219,9 @@ class VocabularyTests(SimpleTestCase):
         self.assertNotIn('Undroppable', html)
 
     def test_help_sections_carry_no_dead_vocabulary(self):
+        # Rows may carry a fourth admin-flag element since v22 brief 3.
         for _, rows in SkylandConsumer.HELP_SECTIONS:
-            for cmd, usage, desc in rows:
-                for text in (cmd, usage, desc):
+            for row in rows:
+                for text in row[:3]:
                     self.assertNotIn('Droppable', text)
                     self.assertNotIn('Undroppable', text)
