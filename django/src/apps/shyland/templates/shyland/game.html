@@ -30,8 +30,8 @@
     --crit-in-color: #F08A50;
     --system: #8888aa;
     /* v22 B2 amendment 1 (#124): error-color is the crit-out/Artifact
-       red — deliberate reuse; agro-color keeps #cc4444 (the error/agro
-       dual-naming was designed for exactly this divergence). */
+       red — deliberate reuse. Amendment 2 re-unified agro-color with it;
+       the dual naming survives for future divergence. */
     --error: #E24B4A;
     /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
        colon separators neutral gray. Zone/area colors arrive from the
@@ -54,10 +54,10 @@
     --key-color: #7FB3D5;
     --value-color: #E8E4D8;
     /* v22 brief 1 (#82): agro-color strokes visited rooms with an
-       aggressive spawn configured. Same value as --error by design; the
-       two names are deliberately separable in the future — map code must
-       use --agro-color, never --error. */
-    --agro-color: #cc4444;
+       aggressive spawn configured. v22 B2 amendment 2: unified back to
+       error-color's red — the two names stay deliberately separable in
+       the future; map code must use --agro-color, never --error. */
+    --agro-color: #E24B4A;
     /* v21 brief 1 (#85): pane borders take the current zone's theme
        color at ~0.75 alpha ('BF' appended in JS when zone_color
        arrives). Fallback matches the render payload's #CCCCCC. */
@@ -220,13 +220,17 @@
     position: relative;
   }
   .statbar-track { overflow: hidden; }
+  /* v22 B2 amendment 2: the bar green is the loot-message green,
+     verbatim — success-color, full strength. */
   .statbar-fill { height: 100%; width: 0; }
-  .statbar-fill.v { background: #8FCF9F; }
-  .statbar-fill.l { background: #D8B45A; }
+  .statbar-fill.v { background: var(--success-color); }
+  .statbar-fill.l { background: var(--success-color); }
   /* Acuity band gauge: fixed 0.0–2.0 track, shaded Origin band,
      position tick clamped to the track. */
-  .gauge-band { position: absolute; top: 0; bottom: 0; background: rgba(64, 181, 140, .3); }
-  .gauge-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #40B58C; }
+  /* v22 B2 amendment 2: the band's translucency era ends — a solid
+     success-color block; the tick is the say-color gold. */
+  .gauge-band { position: absolute; top: 0; bottom: 0; background: var(--success-color); }
+  .gauge-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--say-color); }
   .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--muted); }
 
   /* Fight info (#2): one row per enemy; scrolls on overflow; completely
