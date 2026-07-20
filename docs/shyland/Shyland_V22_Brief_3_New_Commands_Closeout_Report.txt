@@ -1,0 +1,135 @@
+Shyland V22 Brief 3 — New Commands (B3): home, cancel, last, sudo —
+Closeout Report
+====================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's
+action)
+Issues closed at this closeout: #57 (home), #113 (cancel), #88 (last),
+#112 (sudo).
+Out of scope, untouched: firehose (#33/#37 — sudo builds no pipe),
+attunement (#38), macros/aliases (#125), the parked display items.
+
+PER-STEP RESULTS
+----------------
+Step 0  Brief self-committed verbatim (commit 78692ee).
+
+Step 2  Migrations (commit 2029979): 0033 — Character.
+        home_cooldown_seconds (default 900, per-player admin override),
+        home_last_completed (completion-only), last_connect (every
+        accept); 0034 — the auth Group admins.shyland created
+        idempotently (get_or_create, no members seeded). Both applied to
+        the live DB.
+
+Step 3  Admin stealth gating (commit 910b34f): ADMIN_VERBS = {sudo,
+        last}; membership in admins.shyland checked live on every
+        attempt (one query, no caching — revocation instant);
+        non-members receive the unknown-command line byte-identically
+        via the shared send_unknown_command; help renders admin rows
+        per-player (fourth-element flag on HELP_SECTIONS rows); the
+        connect-time verbs list (the client's command-name completion
+        pool) omits admin verbs for non-members.
+
+Step 4  sudo (commit 910b34f): echoes like any command; the game never
+        responds — cmd_sudo is deliberately empty. No pipe built.
+
+Step 5  cancel + the delayed-action registry (commit 910b34f):
+        consumer.delayed_actions (name -> connection-bound asyncio
+        task) — registration by the starter, deregistration in the
+        task's finally; the standing template for all future delayed
+        actions, cancel's candidate pool, and its completion pool. Bare
+        cancel with nothing running answers the ruled verbatim warn
+        line; bare with one running cancels it; named arguments
+        prefix-match; canceling home prints the DD §6 'You stop heading
+        home.' (value-color). Allowed in all states.
+
+Step 6  home (commit 910b34f): 15s countdown at HOME_CADENCE (7/5/3)
+        with the authored start/mid/late pools verbatim; gate order
+        combat (central COMBAT_BLOCKED entry, in-voice) -> dying
+        (central) -> already-home -> already-counting -> cooldown (wry
+        pool line + exact parenthetical, ceiling minutes >=1m else
+        ceiling seconds). Interruptions: movement/travel auto-cancel in
+        _dispatch (line first, move proceeds); the player's own attack
+        cancels in cmd_attack with the violent line; engine-side combat
+        entry (respawn aggro, incoming attacks) is caught at each beat's
+        combat checkpoint inside the task (violent line, no relocation);
+        disconnect cancels every registry task silently. Completion:
+        departure witness -> relocation to the Heart (resolved via the
+        Convergence obelisk node) with RoomVisit/render/map -> traveler
+        arrival line -> arrival witness -> home_last_completed set
+        (completion-only consumption).
+
+Step 7  last (commit 910b34f): last_connect written at every websocket
+        accept; Kind-3 'Last seen...' table (Character / Status / Last
+        seen), composite character line, Online/Offline from the Redis
+        presence keys, the three ruled time forms (never / since
+        <ISO-8601 UTC> / bare stamp), ordering online-by-recency then
+        offline-by-recency then never. All characters listed.
+
+Step 8  Help/completion (commit 910b34f): the four chart rows live with
+        the verbatim descriptions; home/cancel visible to all;
+        sudo/last member-only; cancel's argument completion = the
+        running-action names; the Version line remains last.
+
+Step 9  Tests (commit a70a837): tests/test_new_commands.py — 12 tests
+        (stealth byte-identity incl. dispatch-path comparison with
+        gibberish; member pass + live revocation; per-member help rows;
+        bare-cancel verbatim; cancel-in-combat via receive_json; home
+        refusals incl. both cooldown parenthetical forms and the
+        0-override; completion relocation with RoomVisit + witnesses +
+        cooldown set; movement auto-cancel with the move proceeding and
+        no cooldown; engine-side combat interruption with no relocation;
+        silent disconnect; last's forms/ordering/composite). One
+        existing test updated: amendment 1's help-vocabulary scan now
+        tolerates the 4-tuple admin rows. Container suite: 228 tests, 0
+        failures (was 216 — 12 new). Local scratch-venv: 222/228 (the
+        known 6 Redis-dependent container-only tests).
+
+Step 11 Architecture doc (commit 329568c): the B3 section added to
+        §4.14 (registry template, home's full design, stealth gating,
+        last's data flow, sudo's silence); header hash -> a70a837.
+
+DEVIATIONS
+----------
+None. Judgment calls recorded: (1) travel joins the directions in
+home's movement auto-cancel — the ruling reads "the player's own
+movement" and obelisk travel is that; flag if the design chat prefers
+countdown-survives-travel; (2) engine-side combat entry is detected at
+the next countdown beat (≤7s granularity) rather than instantaneously —
+the consumer holds no engine hook; consumer-side entries cancel
+immediately; (3) bare `cancel` with MORE than one running action asks
+`Cancel which? (...)` — unreachable today with one possible resident,
+authored for the registry's future.
+
+DEPLOYMENT NOTES
+----------------
+- One make build container recreation (all three games restarted).
+- Migrations 0033 + 0034 applied to the live DB; the admins.shyland
+  Group now exists with no members — grants are the operator's, via
+  Django admin. No reseed (no seed-data changes).
+
+OPERATOR PLAYTEST — PENDING (Step 10; ready after deploy — deployed)
+--------------------------------------------------------------------
+- Grant Shy-Guy admins.shyland via Django admin.
+- home from deep in the Reach and stand still — the fog lines, the
+  vanish, the Heart; watch the witness lines from Sharon-Love's
+  incognito window.
+- Walk during a countdown; get jumped during a countdown in an aggro
+  room; cancel one voluntarily.
+- Hit the cooldown and read the wry refusal; set your override to 0 and
+  hearth freely.
+- last as admin (and confirm it's gibberish to Sharon-Love).
+- sudo hello there — and enjoy the silence.
+
+COMMITS (in order)
+------------------
+78692ee  Step 0: self-commit brief
+2029979  Step 2: migrations 0033 + 0034
+910b34f  Steps 3-8: implementation
+a70a837  Step 9: tests
+329568c  Step 11: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+329568c (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).
