@@ -5,7 +5,7 @@ import random
 import re
 import uuid
 from collections import deque
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
@@ -223,7 +223,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'stats': ('cmd_stats', False),
         'quit': ('cmd_quit', False),
         'help': ('cmd_help', False), '?': ('cmd_help', False),
+        # v22 brief 3 (B3): the four new chart rows.
+        'home': ('cmd_home', False),
+        'cancel': ('cmd_cancel', True),
+        'last': ('cmd_last', False),
+        'sudo': ('cmd_sudo', True),
     }
+
+    # v22 brief 3 (DD §12, fn 18): admin commands. Membership in the
+    # admins.shyland Group is checked live on every attempt — no session
+    # caching, revocation is instant. For non-members these commands do
+    # not exist: absent from help and completion, and attempts answer the
+    # standard unknown-command line byte-identically.
+    ADMIN_VERBS = {'sudo', 'last'}
 
     # ------------------------------------------------------------------
     # v22 brief 2 (DD §5): the state-gating matrix, applied centrally in
@@ -247,14 +259,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'eq': "There's no time to fiddle with your gear mid-fight!",
         'unequip': "There's no time to fiddle with your gear mid-fight!",
         'uneq': "There's no time to fiddle with your gear mid-fight!",
+        # v22 brief 3: home is refused in combat (DD §5).
+        'home': "You can't reach for home in the middle of a fight!",
     }
     COMBAT_MOVE_REFUSAL = "You can't just walk away from a fight — flee!"
 
-    # While dying: use (self-rescue), say, quit, all information, and all
-    # settings proceed; everything else refuses (warn).
+    # While dying: use (self-rescue), say, cancel, sudo, quit, all
+    # information, and all settings proceed; everything else refuses
+    # (warn). Admin verbs pass the gate so the stealth response stays
+    # byte-identical for non-members.
     DYING_ALLOWED = {
-        'use', 'say', 'quit',
-        'help', '?', 'inventory', 'inv', 'list', 'look', 'l',
+        'use', 'say', 'quit', 'cancel', 'sudo',
+        'help', '?', 'inventory', 'inv', 'last', 'list', 'look', 'l',
         'stats', 'wallet', 'who',
         'brief', 'echo', 'timestamps',
     }
@@ -298,6 +314,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # instance per connection, so this resets to 0 on every reconnect
         # and the first message of a connection carries seq 1.
         self._seq = 0
+        # v22 brief 3 (#113/#57): the delayed-action registry — name →
+        # asyncio task, connection-bound. This is cancel's candidate pool
+        # and the standing template for all future delayed actions: a
+        # delayed action registers here when it starts and deregisters in
+        # its task's finally. Home is the first resident.
+        self.delayed_actions = {}
 
     # ------------------------------------------------------------------
     # Delivery choke point (v20 brief 2, #32)
@@ -391,14 +413,23 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
         self.heartbeat_task = asyncio.ensure_future(self.presence_heartbeat())
 
+        # v22 brief 3 (#88): last-connect accrues for every player at
+        # accept, regardless of who can read `last`.
+        await self.touch_last_connect()
+
         # v20 brief 3 (#19): the verb+alias list from the dispatch table,
         # for client-side verb-position tab completion. Carries the
         # show_timestamps preference (#45) too, so the very first stamped
         # lines already honor it — the status payload keeps it in sync
-        # from then on.
+        # from then on. v22 brief 3 (fn 18): admin verbs are absent from
+        # the list for non-members (a connect-time snapshot; execution is
+        # gated live in _dispatch regardless).
+        verbs = set(DIRECTIONS) | set(self.COMMAND_TABLE)
+        if not await self.check_shyland_admin():
+            verbs -= self.ADMIN_VERBS
         await self.send_json({
             'type': 'verbs',
-            'verbs': sorted(set(DIRECTIONS) | set(self.COMMAND_TABLE)),
+            'verbs': sorted(verbs),
             'show_timestamps': self.character.show_timestamps,
             'echo_mode': self.character.echo_mode,
             'ts': envelope_ts(),
@@ -410,6 +441,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.send_map()
 
     async def disconnect(self, code):
+        # v22 brief 3 (#57): intent state dies with the intender — every
+        # delayed-action task is cancelled silently; no line, no state.
+        for task in list(self.delayed_actions.values()):
+            task.cancel()
+        self.delayed_actions.clear()
         if hasattr(self, 'heartbeat_task'):
             self.heartbeat_task.cancel()
         if hasattr(self, 'character_pk') and hasattr(self, 'redis'):
@@ -481,6 +517,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_output('Something went wrong with that command.', 'error')
 
     async def _dispatch(self, verb, args):
+        # v22 brief 3 (#57): a movement command auto-cancels a running
+        # home countdown — the line prints, then the movement proceeds
+        # normally (through its own gates).
+        if 'home' in self.delayed_actions and (
+                verb in DIRECTIONS or verb == 'travel'):
+            await self.interrupt_home(
+                'You let the fog fall away and turn back to the world.', 'warn')
         # v22 brief 2 (DD §5): the combat gate, applied centrally — one
         # lookup, one query, warn-color refusals in voice.
         if verb in DIRECTIONS or verb in self.COMBAT_BLOCKED:
@@ -495,7 +538,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
         entry = self.COMMAND_TABLE.get(verb)
         if entry is None:
-            await self.output("Unknown command. Type 'help' for a list of commands.", 'error')
+            await self.send_unknown_command()
+            return
+        # v22 brief 3 (DD §12, fn 18): admin stealth — checked live per
+        # attempt; non-members get the unknown-command line verbatim.
+        if verb in self.ADMIN_VERBS and not await self.check_shyland_admin():
+            await self.send_unknown_command()
             return
         # v22 brief 2 (DD §1 fn 10): the standard bare-invocation prompt
         # for every command with a required target (CLI error).
@@ -943,16 +991,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # type sections, Kind-3 tables (Command / Usage / Description), usage
     # strings compiled from the chart cells in BASH notation (<> required,
     # [] optional, | alternatives), authored example-free descriptions.
-    # B3 commands (home/cancel/last/sudo) arrive with B3, gated; echo
-    # ships here.
+    # v22 brief 3: the four B3 rows are live; a fourth tuple element True
+    # marks an admin row, rendered only for admins.shyland members.
     HELP_SECTIONS = [
         ('Action commands', [
             ('attack (kill, k)', 'attack <NPC> | <player>', 'Engage a target in combat.'),
             ('buy', 'buy [<quantity>] <item>', 'Buy from a vendor in the room.'),
+            ('cancel', 'cancel [<command>]', 'Stop an in-progress command.'),
             ('drop', 'drop [<quantity>] <item>', 'Drop an item on the ground.'),
             ('equip (eq)', 'equip <item>', 'Equip an item from your inventory.'),
             ('examine (ex)', 'examine <item> | <NPC> | <player>', 'Take a close look at something.'),
             ('flee', 'flee', 'Escape from combat.'),
+            ('home', 'home', 'Return home after a short delay.'),
             ('loot', 'loot all | <NPC>', 'Loot a corpse, or every corpse here.'),
             ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
             ('quit', 'quit', 'Leave the game.'),
@@ -960,6 +1010,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('say', 'say <text>', 'Speak to everyone in the room.'),
             ('sell', 'sell [<quantity>] <item>', 'Sell to a vendor in the room.'),
             ('spend', 'spend [<quantity>] <stat>', 'Spend unspent stat points.'),
+            ('sudo', 'sudo <anything>', 'Speak to the watcher.', True),
             ('travel', 'travel [<destination>]', 'Travel the obelisk network.'),
             ('unequip (uneq)', 'unequip <item>', 'Unequip an item you are wearing.'),
             ('use', 'use [<quantity>] <item>', 'Use a consumable item.'),
@@ -967,6 +1018,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         ('Information commands', [
             ('help (?)', 'help', 'Show this help.'),
             ('inventory (inv)', 'inventory', 'Show your equipment, inventory, and wallet.'),
+            ('last', 'last', 'Show characters and when they were last seen.', True),
             ('list', 'list', 'List what a vendor here has for sale.'),
             ('look (l)', 'look', 'Look at the room again.'),
             ('stats', 'stats', 'Show your character sheet.'),
@@ -989,14 +1041,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     ]
 
     async def cmd_help(self):
+        # v22 brief 3 (fn 18): help renders per player — admin rows only
+        # for admins.shyland members (checked live).
+        is_admin = await self.check_shyland_admin()
         lines = []
         for title, rows in self.HELP_SECTIONS:
+            visible = [row for row in rows
+                       if len(row) < 4 or not row[3] or is_admin]
             if lines:
                 lines.append({})
             lines.append({'k': f'{title}...'})
             lines += self._table_lines(
                 ['Command', 'Usage', 'Description'],
-                [[cmd, usage, desc] for cmd, usage, desc in rows],
+                [[row[0], row[1], row[2]] for row in visible],
             )
         lines += [
             {},
@@ -2032,6 +2089,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_fight(session)
             return
 
+        # v22 brief 3 (#57): the player's own attack is combat entry —
+        # a running home countdown breaks with the violent voice.
+        await self.interrupt_home(self.HOME_VIOLENT_LINE, 'warn')
+
         await self.send_output(f"You move to attack {display}!", 'combat')
         await self.broadcast_to_room_exclude(
             f"{character.name} moves to attack {npc_display(npc)}!", 'combat'
@@ -2332,6 +2393,248 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self._cmd_setting(
             args, 'timestamps', 'output timestamps', 'are',
             lambda c: c.show_timestamps, self._set_show_timestamps,
+        )
+
+    # ------------------------------------------------------------------
+    # v22 brief 3 (B3): home, cancel, last, sudo
+    # ------------------------------------------------------------------
+
+    # Home's authored content (verbatim from the brief; the pools are
+    # complete as written). Never a timer UI, never meta-instructions —
+    # the wait warns implicitly, in fiction.
+    HOME_START_LINE = ('You close your eyes and reach for home. '
+                       'The edges of the world begin to soften.')
+    HOME_MID_POOL = [
+        "You feel the world start to dissolve around you, and you know "
+        "you'll soon be home.",
+        'The fog rises to your knees. Somewhere beyond it, the Heart is '
+        'waiting.',
+    ]
+    HOME_LATE_POOL = [
+        'You can see home through the fog. Only a few moments now.',
+        'The world is thin as paper here. Home bleeds through it, warm '
+        'and bright.',
+    ]
+    HOME_ARRIVAL_LINE = 'The fog parts, and the Heart takes you in. You are home.'
+    HOME_DEPART_WITNESS = '{name} fades into a fog only they can see, and is gone.'
+    HOME_ARRIVE_WITNESS = 'A fog gathers from nowhere, and {name} steps out of it.'
+    HOME_VIOLENT_LINE = ('The fog is ripped away. The world comes back hard — '
+                         'you are not going anywhere.')
+    HOME_MOVE_CANCEL_LINE = 'You let the fog fall away and turn back to the world.'
+    HOME_COOLDOWN_POOL = [
+        "You can't go home yet, you were just there. Give it a few minutes.",
+        "The fog won't gather again so soon. Even homesickness has rules.",
+    ]
+    # Cadence to the three authored beats, then completion at t=15.
+    HOME_CADENCE = (7.0, 5.0, 3.0)
+
+    async def send_unknown_command(self):
+        """The one unknown-command response — also the admin stealth
+        response, byte-identical by construction (fn 18)."""
+        await self.output("Unknown command. Type 'help' for a list of commands.", 'error')
+
+    @database_sync_to_async
+    def check_shyland_admin(self):
+        """v22 brief 3 (DD §12): live membership check, every attempt —
+        no session caching, revocation is instant."""
+        user = self.scope['user']
+        return user.groups.filter(name='admins.shyland').exists()
+
+    async def interrupt_home(self, line, category='warn'):
+        """Cancel a running home countdown, printing the given voice.
+        Returns True if a countdown was interrupted."""
+        task = self.delayed_actions.pop('home', None)
+        if task is None:
+            return False
+        task.cancel()
+        if line:
+            await self.send_output(line, category)
+        return True
+
+    async def cmd_sudo(self, args):
+        # DD §12: the game never responds — no output, no acknowledgment,
+        # by design. The command echo already fired in receive_json; the
+        # arguments' journey to a listener is #33/#37's future.
+        return
+
+    async def cmd_cancel(self, args):
+        # Chart fn 12: optional argument matching a running delayed
+        # action's name. Allowed in ALL states — the escape hatch is
+        # never locked.
+        running = list(self.delayed_actions)
+        query = args.strip().lower()
+        if not running:
+            await self.send_output("You don't have anything to cancel.", 'warn')
+            return
+        if not query:
+            name = running[0] if len(running) == 1 else None
+            if name is None:
+                await self.send_output(
+                    f'Cancel which? ({", ".join(sorted(running))})', 'warn')
+                return
+        else:
+            name = next((n for n in sorted(running)
+                         if n.startswith(query)), None)
+            if name is None:
+                await self.send_output(
+                    "You don't have anything like that to cancel.", 'warn')
+                return
+        if name == 'home':
+            await self.interrupt_home('You stop heading home.', 'success')
+
+    @database_sync_to_async
+    def get_heart_room(self):
+        """The Heart of the Convergence — home's sole destination (#38
+        attunement is a future version). Resolved via the network's
+        founding obelisk node, which seed-verify pins."""
+        node = (
+            TravelNode.objects
+            .filter(travel_name='The Convergence', node_type='obelisk')
+            .select_related('room__zone')
+            .first()
+        )
+        return node.room if node else None
+
+    @database_sync_to_async
+    def touch_last_connect(self):
+        Character.objects.filter(pk=self.character_pk).update(
+            last_connect=timezone.now())
+
+    @database_sync_to_async
+    def set_home_completed(self):
+        Character.objects.filter(pk=self.character_pk).update(
+            home_last_completed=timezone.now())
+
+    async def cmd_home(self):
+        # Chart fn 2 (arguments ignored); combat and dying refusals fire
+        # in the central gates. Gate order per the brief.
+        char = await self.get_character_fresh()
+        heart = await self.get_heart_room()
+        if heart is None:
+            await self.send_output('Home is nowhere to be found. Contact an admin.', 'error')
+            return
+        if char.current_room_id == heart.pk:
+            # Judgment call recorded in the brief: homing from home would
+            # burn the cooldown for nothing; the refusal is kindness.
+            await self.send_output('You are already home.', 'warn')
+            return
+        if 'home' in self.delayed_actions:
+            await self.send_output('You are already heading home.', 'warn')
+            return
+        if char.home_last_completed is not None:
+            import math
+            ready_at = char.home_last_completed + timedelta(
+                seconds=char.home_cooldown_seconds)
+            remaining = (ready_at - timezone.now()).total_seconds()
+            if remaining > 0:
+                secs = math.ceil(remaining)
+                if secs >= 60:
+                    stamp = f'{math.ceil(secs / 60)}m'
+                else:
+                    stamp = f'{secs}s'
+                line = random.choice(self.HOME_COOLDOWN_POOL)
+                await self.send_output(
+                    f'{line} ({stamp} cooldown rem.)', 'warn')
+                return
+
+        task = asyncio.ensure_future(self._home_countdown(heart))
+        self.delayed_actions['home'] = task
+
+    async def _home_countdown(self, heart):
+        """The 15-second connection-bound countdown (Step 1.7's template:
+        registered in delayed_actions by the starter, deregistered here).
+        Combat entry of any kind interrupts with the violent voice — the
+        consumer-side entries cancel the task directly; engine-side
+        entries (respawn aggro, incoming attacks) are caught at each
+        beat's checkpoint. Disconnect cancels silently."""
+        async def broken_by_violence():
+            if await self.get_active_combat_session(self.character):
+                await self.send_output(self.HOME_VIOLENT_LINE, 'warn')
+                return True
+            return False
+
+        try:
+            await self.send_output(self.HOME_START_LINE, 'success')
+            await asyncio.sleep(self.HOME_CADENCE[0])
+            if await broken_by_violence():
+                return
+            await self.send_output(random.choice(self.HOME_MID_POOL), 'success')
+            await asyncio.sleep(self.HOME_CADENCE[1])
+            if await broken_by_violence():
+                return
+            await self.send_output(random.choice(self.HOME_LATE_POOL), 'success')
+            await asyncio.sleep(self.HOME_CADENCE[2])
+            if await broken_by_violence():
+                return
+
+            # Completion — travel's machinery pattern, home's own voice.
+            char = await self.get_character_fresh()
+            await self.broadcast_to_room_exclude(
+                self.HOME_DEPART_WITNESS.format(name=char.name), 'room')
+            await self.channel_layer.group_discard(self.room_group, self.channel_name)
+            await self.move_character(heart)
+            first_visit = await self.record_room_visit(self.character, heart)
+            self.last_direction = None
+            self.room_group = f'room_{heart.id}'
+            await self.channel_layer.group_add(self.room_group, self.channel_name)
+
+            await self.send_output(self.HOME_ARRIVAL_LINE, 'success')
+            destination = await self.get_current_room()
+            await self.send_room_description(destination, entering=True,
+                                             first_visit=first_visit)
+            await self.send_map()
+            await self.broadcast_to_room_exclude(
+                self.HOME_ARRIVE_WITNESS.format(name=char.name), 'room')
+            # Completion-only consumption: the clock starts on landing.
+            await self.set_home_completed()
+        finally:
+            self.delayed_actions.pop('home', None)
+
+    async def cmd_last(self):
+        # DD §9 Kind 3 + the Step-1.9 ruling. Liveness from the who
+        # machinery (Redis presence keys); times ISO-8601 UTC.
+        keys = await self.redis.keys('shyland:online:*')
+        online_pks = set()
+        for key in keys:
+            text = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+            suffix = text.rsplit(':', 1)[-1]
+            if suffix.isdigit():
+                online_pks.add(int(suffix))
+
+        characters = await self.get_all_characters_for_last()
+
+        def iso(dt):
+            return dt.astimezone(dt_timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        online_rows, offline_rows, never_rows = [], [], []
+        for char in characters:
+            composite = (f'{char.name} - Level {char.level} '
+                         f'{char.origin.name} {char.archetype.name}')
+            if char.pk in online_pks:
+                seen = ('never' if char.last_connect is None
+                        else f'since {iso(char.last_connect)}')
+                online_rows.append((char.last_connect, [composite, 'Online', seen]))
+            elif char.last_connect is None:
+                never_rows.append([composite, 'Offline', 'never'])
+            else:
+                offline_rows.append((char.last_connect,
+                                     [composite, 'Offline', iso(char.last_connect)]))
+
+        online_rows.sort(key=lambda pair: pair[0] or timezone.now(), reverse=True)
+        offline_rows.sort(key=lambda pair: pair[0], reverse=True)
+        rows = ([row for _, row in online_rows]
+                + [row for _, row in offline_rows]
+                + never_rows)
+
+        lines = [{'k': 'Last seen...'}]
+        lines += self._table_lines(['Character', 'Status', 'Last seen'], rows)
+        await self.send_report_lines(lines)
+
+    @database_sync_to_async
+    def get_all_characters_for_last(self):
+        return list(
+            Character.objects.select_related('origin', 'archetype')
+            .order_by('name')
         )
 
     # ------------------------------------------------------------------
@@ -2663,6 +2966,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 if head in ('brief', 'echo', 'timestamps'):
                     options = self._complete_words(
                         arg_text, sorted(self.SETTING_WORDS), first_only=True)
+                elif head == 'cancel':
+                    # v22 brief 3 (#113): the running-action names.
+                    options = self._complete_words(
+                        arg_text, sorted(self.delayed_actions), first_only=True)
                 elif head == 'spend':
                     options = self._complete_spend(arg_text)
                 elif head == 'travel':
