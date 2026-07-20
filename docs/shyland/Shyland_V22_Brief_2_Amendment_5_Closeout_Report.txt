@@ -1,0 +1,94 @@
+Shyland V22 Brief 2 — Amendment 5 (Transactional Aggregation ×N) —
+Closeout Report
+====================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's
+action)
+Issues: none closed. NEW ISSUE FILED (Step 5): #126 — "pluralization
+subsystem — natural-English plurals for aggregate output" (no milestone,
+no labels, per the amendment; assigned per the standing rule).
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit db80a46).
+
+Step 2  Aggregate success sentences (commit df8f90d):
+        - buy: N=1 singular unchanged; N>1 one count-form line with the
+          total through the tier formatter ('You buy Healing Draught
+          Mk 1 ×3 for 2 silvers, 7 coppers.'); the 'They only had N.'
+          shortfall note precedes it.
+        - sell: bulk sales aggregate one count-form line per definition
+          with per-group totals; the verbatim warm shortfall line
+          precedes; the worthless-skip note and kibitz survive; the old
+          'Sold N items for total.' summary is retired (the aggregate IS
+          the transaction line — the #63 per-item stream is superseded
+          for the four transactional verbs by this ruling; use/repair/
+          loot remain under the stream rule).
+        - drop: aggregates per definition; the lines are composed BEFORE
+          the transfers because dropping re-veils identification (#80) —
+          a post-transfer read would name the mystery form. Found during
+          this amendment's own test pass and handled; noted for the
+          design record.
+        - pickup: aggregates per definition in floor (oldest-first)
+          order, loot-color (reward); capacity/shortfall notes precede;
+          singles among mixed sweeps stay singular.
+        - use, repair, loot: untouched, byte-identical per-line output
+          (re-asserted by existing tests: the use sequence emits one
+          line per swallow; repair-all one line per mend).
+        - Room broadcasts (the "<name> drops/picks up X." lines other
+          players see) remain per-item — the ruling scopes the player's
+          own success output; flagged for the design chat if broadcast
+          aggregation is wanted too.
+
+Step 3  Tests (commit df8f90d): tests/test_b2_amendment5.py — 6 tests
+        (buy aggregate w/ total + no article, buy single unchanged,
+        sell aggregate, drop aggregate w/ pre-reveil naming, mixed
+        pickup-all per-definition floor order + reward category +
+        singular single, pickup single unchanged); the revamp suite's
+        sell-shortfall test updated to the aggregate form (warm line
+        then ×3). use/repair per-line coverage stands in the existing
+        suites. Container: 216 tests, 0 failures (was 210 — 6 new).
+        Local scratch-venv: 210/216 (the known 6 Redis-dependent
+        container-only tests).
+
+Step 5  Issue filed: #126 (number captured at runtime), body verbatim
+        from the amendment.
+
+Step 6  Architecture doc (commit 892c034): the DD §6 paragraph now
+        carries the aggregate/per-line split, the count form, the
+        pre-reveil naming note, the #63 supersession scope, and the
+        #126 reference; header hash -> df8f90d.
+
+DEVIATIONS
+----------
+None. Notes: (1) the retired bulk-sell summary and the #63 supersession
+scope are called out above; (2) per-item room broadcasts retained,
+flagged as a design question; (3) #126 was filed with --assignee @me
+per the repo's standing assignment rule (the amendment specified no
+milestone and no labels — both honored).
+
+DEPLOYMENT NOTE
+---------------
+One make build container recreation (all three games restarted); the
+aggregation is live. No migrations, no reseed.
+
+OPERATOR PLAYTEST — PENDING (Step 4; ready after deploy — deployed)
+-------------------------------------------------------------------
+- buy 100 of a cheap vendor item — one line, total price.
+- sell 100 back — one line (plus warmth if short).
+- pickup all over mixed dropped litter — a handful of per-definition
+  lines, greens green.
+- use 5 draughts while hurt — per-swallow lines ending in the
+  stop-at-full line.
+
+COMMITS (in order)
+------------------
+db80a46  Step 0: self-commit amendment
+df8f90d  Steps 2-3: aggregation + tests
+892c034  Step 6: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+892c034 (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).
