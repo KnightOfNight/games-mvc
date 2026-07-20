@@ -525,7 +525,9 @@ class Command(BaseCommand):
                                 session.is_active = False
                                 session.focus_npc = None
                                 session.save(update_fields=['is_active', 'focus_npc'])
-                                messages.append((character.pk, "Combat has ended.", 'system', None))
+                                # v22 B2 amendment 1 (#124): a good outcome
+                                # — success-color (the reward class).
+                                messages.append((character.pk, "Combat has ended.", 'reward', None))
                                 break
 
                             if npc.pk == focus_npc_pk:

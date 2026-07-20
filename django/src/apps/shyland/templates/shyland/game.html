@@ -20,12 +20,19 @@
     --say-color: #f0c060;
     --warn-color: #E8D44D;
     --loot-color: #4caf7d;
-    --combat: #e06060;
+    /* v22 B2 amendment 1 (#124): success-color is loot-color's general
+       name for good-outcome lines; both names are valid. The combat
+       family colors get names of their own. */
+    --success-color: #4caf7d;
+    --hit-out-color: #C4453F;
+    --crit-out-color: #E24B4A;
+    --hit-in-color: #E0724A;
+    --crit-in-color: #F08A50;
     --system: #8888aa;
-    --error: #cc4444;
-    --bar-v: #4caf7d;
-    --bar-a: #7b68ee;
-    --bar-l: #e07040;
+    /* v22 B2 amendment 1 (#124): error-color is the crit-out/Artifact
+       red — deliberate reuse; agro-color keeps #cc4444 (the error/agro
+       dual-naming was designed for exactly this divergence). */
+    --error: #E24B4A;
     /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
        colon separators neutral gray. Zone/area colors arrive from the
        server per message. (v22 brief 2 / DD §2: the old chrome gray is
@@ -133,11 +140,11 @@
   .seg-say   { color: var(--say-color); }
   .seg-reward { color: var(--loot-color); }
   .msg-say     { color: var(--say-color); }      /* speech, player and NPC (DD §13) */
-  .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
-  .msg-combat-hit-out  { color: #C4453F; }       /* your hit */
-  .msg-combat-crit-out { color: #E24B4A; font-weight: bold; } /* your crit */
-  .msg-combat-hit-in   { color: #E0724A; }       /* it hits you */
-  .msg-combat-crit-in  { color: #F08A50; font-weight: bold; } /* its crit on you (DD §2) */
+  .msg-combat  { color: var(--hit-out-color); }  /* engagement / generic combat */
+  .msg-combat-hit-out  { color: var(--hit-out-color); }  /* your hit */
+  .msg-combat-crit-out { color: var(--crit-out-color); font-weight: bold; } /* your crit */
+  .msg-combat-hit-in   { color: var(--hit-in-color); }   /* it hits you */
+  .msg-combat-crit-in  { color: var(--crit-in-color); font-weight: bold; } /* its crit on you (DD §2) */
   .msg-combat-miss     { color: var(--muted); }  /* miss, either direction */
   .msg-reward  { color: var(--loot-color); }     /* gains: kill / XP / level / pickups / heal-to-full */
   .msg-success { color: var(--value-color); }    /* transactional success prose (DD §6) */
@@ -160,7 +167,7 @@
   .rar-common    { color: #9C9A90; }
   .rar-uncommon  { color: #5FA8D3; }
   .rar-rare      { color: #B387E8; }
-  .rar-epic      { color: #D8B45A; }
+  .rar-epic      { color: #f0c060; }  /* the say-color gold — deliberate reuse (#124) */
   .rar-legendary { color: #E0724A; }
   .rar-artifact  { color: #E24B4A; }
   /* v20 brief 2 (#32): dim local-time prefix on output lines — the

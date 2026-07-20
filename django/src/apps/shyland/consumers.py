@@ -20,6 +20,7 @@ from .command_grammar import (
 )
 from .envelope import envelope_ts
 from .currency import display_for_zone
+from .version import SHYLAND_VERSION
 from .item_utils import (
     compose_item_line, format_slot_name, generate_item_instance,
     get_display_name, get_display_name_with_tier, get_display_description,
@@ -787,6 +788,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         inv's Wallet section, byte-identical output."""
         return {'k': 'Wallet:', 'v': f' {self.format_wallet(char)}'}
 
+    @staticmethod
+    def _slot_cell(defn):
+        """v22 brief 2 amendment 1 (#123): the Slot cell for listing
+        tables — the sentence-case label of the item's equip slot when
+        slotted, muted '-' when slotless."""
+        if defn.valid_slots:
+            return format_slot_name(defn.valid_slots[0])
+        return [('-', 'muted')]
+
     async def cmd_inventory(self):
         items = await self.get_inventory()
         char = self.character
@@ -851,8 +861,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 idx = j
             else:
                 idx += 1
+            # Amendment 1 (#123): the Slot cell names the item's equip
+            # slot (slotless items show the muted '-').
             inv_rows.append([
-                '',
+                self._slot_cell(item.definition),
                 get_display_name_with_tier(item),
                 str(count),
                 self._details_cell(item),
@@ -958,6 +970,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             {'k': 'Tab completion...'},
             {'v': '  Tab completes commands, and each argument from exactly what the'},
             {'v': "  command can act on — names, 'all', settings words, and stats."},
+            # v22 B2 amendment 1 (#120): the version line is always the
+            # last thing in help, blank-line separated, whatever grows
+            # above it.
+            {},
+            {'k': 'Version:', 'v': f' {SHYLAND_VERSION}'},
         ]
         await self.send_report_lines(lines)
 
@@ -1551,7 +1568,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 break
             line = compose_item_line(item)
             await self.do_loot_item(item, character)
-            await self.output(f"You loot {line}.", "success")
+            # v22 B2 amendment 1 (#124): loot-color per DD §6.
+            await self.output(f"You loot {line}.", "reward")
             current_count += 1
 
         await self._maybe_dispose_corpse(target_corpse)
@@ -1583,7 +1601,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     break
                 line = compose_item_line(item)
                 await self.do_loot_item(item, character)
-                await self.output(f"You loot {line}.", "success")
+                # v22 B2 amendment 1 (#124): loot-color per DD §6.
+                await self.output(f"You loot {line}.", "reward")
                 current_count += 1
             await self._maybe_dispose_corpse(corpse)
             if capacity_hit:
@@ -1622,23 +1641,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         char = await self.get_character_fresh()
 
-        # v22 brief 2 (DD §9, #58): the standard table + Price — two
-        # groups, free first (Price reads muted 'free'), alphabetical
-        # within groups; vendor stock mints Common at full durability.
+        # v22 brief 2 (DD §9, #58) + amendment 1 (#123): the vendor table
+        # is Slot / Name / Details / Price — no Quantity column; Details
+        # is rarity only (vendor stock mints Common); the Slot cell names
+        # the equip slot. Two groups, free first (Price reads muted
+        # 'free'), alphabetical within groups.
         def entry_row(entry):
             defn = entry.item_definition
-            details = []
-            if defn.takes_durability_loss:
-                details.append(('100%', 'value'))
-                details.append((', ', 'value'))
-            details.append(('Common', 'rar-common'))
+            details = [('Common', 'rar-common')]
             if entry.price == 0:
                 price_cell = [('free', 'muted')]
             else:
                 price_cell = self.format_amount(char, entry.price)
-            quantity = ('' if entry.stock_limit is None
-                        else str(entry.stock_limit - entry.sold_count))
-            return ['', entry_display_name(entry), quantity, details, price_cell]
+            return [self._slot_cell(defn), entry_display_name(entry),
+                    details, price_cell]
 
         free = sorted((e for e in listable if e.price == 0),
                       key=lambda e: entry_display_name(e).lower())
@@ -1648,7 +1664,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         lines = [{'k': f'{npc_display(vendor, capitalize=True)} offers...'}]
         lines += self._table_lines(
-            ['Slot', 'Name', 'Quantity', 'Details', 'Price'], rows,
+            ['Slot', 'Name', 'Details', 'Price'], rows,
         )
         await self.send_report_lines(lines)
 
