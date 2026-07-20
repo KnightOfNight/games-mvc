@@ -124,9 +124,12 @@
      combat reds are one family with the stats panel's combat state
      (#E24B4A / #3A1212) — never introduce a second red.
      ================================================================ */
-  .msg-room-render { color: #B8B4A6; }           /* room-render block container */
+  /* v22 B2 amendment 4: the dimmer parchment dies — one content voice.
+     (The container fallback joins value-color with the report text;
+     the prose blocks inside carry their own ruled colors.) */
+  .msg-room-render { color: var(--value-color); } /* room-render block container */
   .room-content    { color: var(--value-color); } /* names, occupants, items */
-  .msg-report  { color: #B8B4A6; }
+  .msg-report  { color: var(--value-color); }    /* one content voice (amendment 4) */
   /* v21 brief 1 (#90/#91/#92): structured key/value report lines. */
   .msg-key   { color: var(--key-color); }
   .msg-value { color: var(--value-color); }
