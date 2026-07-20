@@ -193,7 +193,9 @@
   }
   /* v20 brief 4 amendment 1 (#71): the header is the character's name,
      verbatim — no text-transform or case styling of any kind. */
-  #stats-name { font-size: 12px; font-weight: bold; color: var(--text); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* v22 B2 amendment 3: the name is value-colored at rest; the combat
+     red re-points to var(--error) for naming hygiene (same pixels). */
+  #stats-name { font-size: 12px; font-weight: bold; color: var(--value-color); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #side-stats {
     flex: none;
     padding: 10px;
@@ -203,14 +205,14 @@
   /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
      Stat text colors unchanged. */
   #side-stats.in-combat { background: var(--combat-bg); border-bottom-color: var(--combat-accent); }
-  #side-stats.in-combat #stats-name { color: var(--combat-accent); }
+  #side-stats.in-combat #stats-name { color: var(--error); }
 
   /* v20 brief 4 amendment 1 (#72): V/L ratio bars + the Acuity band
      gauge. Numerals stay real text (the accessible values); tracks are
      decorative (aria-hidden). Bar height matches the fight panel's. */
   #bars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-top: 8px; }
   .statbar { display: flex; align-items: center; gap: 6px; }
-  .bar-label { flex: none; width: 10px; color: var(--muted); }
+  .bar-label { flex: none; width: 10px; color: var(--value-color); }
   .statbar-track, .gauge-track {
     flex: 1 1 auto;
     min-width: 0;
@@ -230,8 +232,10 @@
   /* v22 B2 amendment 2: the band's translucency era ends — a solid
      success-color block; the tick is the say-color gold. */
   .gauge-band { position: absolute; top: 0; bottom: 0; background: var(--success-color); }
-  .gauge-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--say-color); }
-  .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--muted); }
+  /* Amendment 3: the tick fattens to 16×4 (4px above and below the
+     8px track). */
+  .gauge-tick { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: var(--say-color); }
+  .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--value-color); }
 
   /* Fight info (#2): one row per enemy; scrolls on overflow; completely
      empty outside combat. */
@@ -243,11 +247,13 @@
     background: var(--surface);
   }
   .fight-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-  .fight-focus { flex: none; width: 10px; color: var(--combat-accent); font-weight: bold; }
-  .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--combat-accent); }
-  .fight-fill { height: 100%; background: var(--combat-accent); }
-  .fight-nums { flex: none; color: var(--muted); font-size: 11px; }
+  /* v22 B2 amendment 3: fight panel — error-color arrow/bars,
+     value-color names and counts. */
+  .fight-focus { flex: none; width: 10px; color: var(--error); font-weight: bold; }
+  .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--value-color); }
+  .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--error); }
+  .fight-fill { height: 100%; background: var(--error); }
+  .fight-nums { flex: none; color: var(--value-color); font-size: 11px; }
 
   /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom.
      v21 brief 1 (#85): +5px zone-colored border-top; height grows to
