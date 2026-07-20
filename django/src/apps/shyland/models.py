@@ -271,6 +271,18 @@ class Character(models.Model):
     # suppresses the player's own command-echo line. Never affects the
     # firehose or anything server-side beyond the flag itself.
     echo_mode = models.BooleanField(default=True)
+    # v22 brief 3 (#57): home's cooldown. Completion-only consumption —
+    # home_last_completed is set only when the traveler actually lands
+    # at the Heart; interrupted countdowns never start the clock.
+    home_cooldown_seconds = models.PositiveIntegerField(
+        default=900,
+        help_text='Per-player home cooldown override (seconds); edit here '
+                  'in the admin to change one character.',
+    )
+    home_last_completed = models.DateTimeField(null=True, blank=True)
+    # v22 brief 3 (#88): written at every websocket accept — the data
+    # accrues for all players regardless of who can read `last`.
+    last_connect = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
