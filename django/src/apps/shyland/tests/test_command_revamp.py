@@ -429,9 +429,11 @@ class SellDropPickupTests(TransactionTestCase):
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_sell('5 hide')
         texts = [m['text'] for m in outputs(sent)]
-        self.assertEqual(
-            sum(1 for t in texts if t.startswith('You sell the Animal Hide')), 3)
+        # v22 B2 amendment 5: the sale aggregates to one count-form line
+        # with the actual count, after the warm shortfall line.
         self.assertIn('You only had 3 — the vendor was happy to take them.', texts)
+        aggregate = [t for t in texts if t.startswith('You sell Animal Hide Mk 1 ×3')]
+        self.assertEqual(len(aggregate), 1)
 
     async def test_drop_bound_refused_warn_and_excluded_from_pool(self):
         zone, room = await sync_to_async(make_world)('db')

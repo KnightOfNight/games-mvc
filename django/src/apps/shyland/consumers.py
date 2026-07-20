@@ -1059,23 +1059,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        taken = 0
+        taken = []
+        capacity_hit = False
         for item in res.items:
             if current_count >= max_capacity:
-                # Partial sweep: oldest-first has been taken; report warmly.
-                await self.output(
-                    f"You can't carry the rest. ({current_count}/{max_capacity} items)",
-                    'warn',
-                )
+                capacity_hit = True
                 break
 
             display_name = get_display_name(item)
             await self.transfer_to_character(item, char)
             current_count += 1
-            taken += 1
+            taken.append(item)
 
-            # DD §6: pickup lines are gains — loot-color (reward).
-            await self.output(f'You pick up {item_ref(item)}.', 'reward')
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} picks up {display_name}.',
@@ -1083,8 +1078,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'exclude': self.channel_name,
                 'ts': envelope_ts(),
             })
-        if res.requested and taken == len(res.items):
-            await self.output(f'There were only {taken} here.', 'system')
+        # v22 B2 amendment 5: shortfall/capacity notes precede the
+        # aggregates; one count-form line per definition, in floor
+        # (oldest-first) order; singles singular. Pickup lines are gains
+        # — loot-color (reward), per DD §6.
+        if capacity_hit:
+            await self.output(
+                f"You can't carry the rest. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+        if res.requested and not capacity_hit and taken:
+            await self.output(f'There were only {len(taken)} here.', 'system')
+        for name, group in self._aggregate_by_name(taken):
+            if len(group) == 1:
+                await self.output(f'You pick up {item_ref(group[0])}.', 'reward')
+            else:
+                await self.output(f'You pick up {name} ×{len(group)}.', 'reward')
 
     async def cmd_drop(self, args):
         char = self.character
@@ -1109,12 +1118,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(res.message, self._refusal_category(res))
             return
 
+        # v22 B2 amendment 5: aggregate — one count-form line per
+        # definition, singles singular. The lines are composed BEFORE the
+        # transfers: dropping re-veils identification (#80), so a
+        # post-transfer read would name the mystery form.
+        agg_lines = []
+        for name, group in self._aggregate_by_name(res.items):
+            if len(group) == 1:
+                agg_lines.append(f'You drop {item_ref(group[0])}.')
+            else:
+                agg_lines.append(f'You drop {name} ×{len(group)}.')
+
         # Equipped items never resolve for drop (policy).
         for item in res.items:
             display_name = get_display_name(item)
             await self.transfer_to_room(item, room)
-
-            await self.output(f'You drop {item_ref(item)}.', 'success')
             await self.channel_layer.group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} drops {display_name}.',
@@ -1122,8 +1140,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'exclude': self.channel_name,
                 'ts': envelope_ts(),
             })
+        # The warm shortfall note precedes the aggregates.
         if res.requested:
             await self.output(f'You only had {len(res.items)}.', 'system')
+        for line in agg_lines:
+            await self.output(line, 'success')
 
     async def cmd_equip(self, args):
         char = self.character
@@ -1776,14 +1797,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if result == 'sold_out':
             await self.output('Sold out.', 'warn')
             return
-        # v22 brief 2 (DD §6): one line per item as it lands.
-        for instance in result:
-            await self.output(
-                f'You buy {item_ref(instance)} for '
-                f'{self.format_amount(char, entry.price)}.', 'success',
-            )
+        # v22 B2 amendment 5: a transaction is one act — N>1 aggregates
+        # to the count form with the total price; the warm shortfall note
+        # precedes it; N=1 keeps the shipped singular sentence.
         if requested:
             await self.output(f'They only had {qty}.', 'system')
+        if qty == 1:
+            await self.output(
+                f'You buy {item_ref(result[0])} for '
+                f'{self.format_amount(char, total)}.', 'success',
+            )
+        else:
+            name = get_display_name_with_tier(result[0])
+            await self.output(
+                f'You buy {name} ×{qty} for '
+                f'{self.format_amount(char, total)}.', 'success',
+            )
         await self.maybe_kibitz(room, vendor)
 
     async def cmd_sell(self, args):
@@ -1811,24 +1840,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.maybe_kibitz(room, vendor)
             return
 
-        # v20 brief 3 (#21) + amendment 1 (#63): 'sell all <noun>' /
-        # 'sell N <noun>' / 'sell all <rarity>'. Bulk operations narrate
-        # as streams of events: each sale is its own message (own ts/seq
-        # through the choke point), the total is its own message, and the
-        # zero-value skip summary is its own message — never one joined
-        # batch under a single stamp.
-        sold = 0
-        total = 0
+        # v20 brief 3 (#21) 'sell all <noun>' / 'sell N <noun>' /
+        # 'sell all <rarity>'. v22 B2 amendment 5: a transaction is one
+        # act — the sale aggregates to one count-form line per item
+        # definition (total price), superseding the #63 per-item stream
+        # for the four transactional verbs; the warm shortfall line
+        # precedes the aggregates; singles keep the singular sentence.
+        sold_items = []
+        prices = {}
         skipped = 0
+        total = 0
         for item in res.items:
             if get_item_value(item) == 0:
                 skipped += 1
                 continue
-            display = item_ref(item)
             price = await self.do_sell(item, char)
-            sold += 1
+            sold_items.append(item)
+            prices[item.pk] = price
             total += price
-            await self.output(f'You sell {display} for {self.format_amount(char, price)}.', 'success')
+        sold = len(sold_items)
         if sold:
             # v22 brief 2 (DD §6/§7): the shortfall report, verbatim.
             if res.requested:
@@ -1836,10 +1866,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     f'You only had {sold} — the vendor was happy to take them.',
                     'success',
                 )
-            await self.output(
-                f'Sold {sold} item{"s" if sold != 1 else ""} '
-                f'for {self.format_amount(char, total)}.', 'success',
-            )
+            for name, group in self._aggregate_by_name(sold_items):
+                group_total = sum(prices[i.pk] for i in group)
+                if len(group) == 1:
+                    await self.output(
+                        f'You sell {item_ref(group[0])} for '
+                        f'{self.format_amount(char, group_total)}.', 'success',
+                    )
+                else:
+                    await self.output(
+                        f'You sell {name} ×{len(group)} for '
+                        f'{self.format_amount(char, group_total)}.', 'success',
+                    )
             if skipped:
                 await self.output(
                     f'({skipped} worthless item'
@@ -2456,6 +2494,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def output(self, text, category='system'):
         await self.send_json({'type': 'output', 'text': text, 'category': category,
                               'ts': envelope_ts()})
+
+    @staticmethod
+    def _aggregate_by_name(items):
+        """v22 B2 amendment 5: group a multi-item transaction by display
+        name (definition + tier), in the order the executor first reached
+        each definition. Returns [(name, [items])]."""
+        groups = []
+        index = {}
+        for item in items:
+            name = get_display_name_with_tier(item)
+            if name in index:
+                index[name].append(item)
+            else:
+                index[name] = [item]
+                groups.append((name, index[name]))
+        return groups
 
     @staticmethod
     def _refusal_category(res):
