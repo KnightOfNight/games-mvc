@@ -2341,7 +2341,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     gear_end=gear['end'], gear_str=gear['str'],
                     gear_wis=gear['wis'], **{f'{stat}_delta': pts}))
             Character.objects.filter(pk=char.pk).update(**updates)
-            char.refresh_from_db()
+            # Field-limited refresh: a bare refresh_from_db would clear the
+            # FK caches the async caller still reads (current_room).
+            char.refresh_from_db(fields=[
+                attr, 'unspent_stat_points',
+                'vitality_current', 'vitality_max',
+                'longevity_current', 'longevity_max',
+            ])
             return getattr(char, attr)
 
         new_value = await apply_spend(character, stat_name, amount)
