@@ -268,30 +268,16 @@ class BarLawTests(TransactionTestCase):
                     c.longevity_current, c.longevity_max)
         self.assertEqual(await sync_to_async(state)(), (135, 135, 135, 135))
 
-    async def test_spend_end_mid_combat_no_refill(self):
+    async def test_spend_end_no_refill(self):
+        # Amendment 2 (#131) blocked in-combat spend, so the bar-law
+        # spend case runs out of combat: bigger bar, same fraction,
+        # no refill.
         char = await sync_to_async(self._char)('blC', vit=(67, 135), lon=(67, 135))
 
         def arm(char):
             Character.objects.filter(pk=char.pk).update(unspent_stat_points=1)
-            definition = NpcDefinition.objects.create(
-                name='blC beetle', slug='blc-beetle', description='x',
-                genre_tag='fantasy', base_vitality=50, base_str=1,
-                base_dex=1, base_end=1, base_int=1, base_wis=1, base_per=1,
-            )
-            npc = NpcInstance.objects.create(
-                definition=definition, current_room=char.current_room,
-                spawn_room=char.current_room,
-                vitality_current=50, vitality_max=50,
-            )
-            session = CombatSession.objects.create(
-                room=char.current_room, last_tick_at=timezone.now())
-            session.characters.add(char)
-            session.npcs.add(npc)
             return Character.objects.select_related('user').get(pk=char.pk)
         char = await sync_to_async(arm)(char)
-
-        # spend is not combat-gated — the matrix leaves it dispatchable.
-        self.assertNotIn('spend', SkylandConsumer.COMBAT_BLOCKED)
 
         consumer = make_stub_consumer(char, [])
         await consumer.cmd_spend('1 end')

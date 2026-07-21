@@ -2275,6 +2275,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             stat_line('Intelligence (INT)', 'int'),
             stat_line('Wisdom       (WIS)', 'wis'),
             stat_line('Perception   (PER)', 'per'),
+            # v22 B5 amendment 2: the Armor row is its own group.
+            {},
             {'v': f'  Armor: {tav}' + (
                 f' (blocks {round(100 * tav / (tav + ARMOR_MITIGATION_K))}%)'
                 if tav > 0 else '')},
@@ -2303,6 +2305,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                    '(stats: str dex end int wis per)')
 
     async def cmd_spend(self, args):
+        # v22 B5 amendment 2 (#131): spend is blocked in combat — checked
+        # before any validation output or mutation. The line is the first
+        # generic in-combat refusal (COMBAT_BLOCKED's are per-command
+        # authored); the dying gate stays central in _dispatch and fires
+        # before this handler is ever reached.
+        character = await self.get_character_fresh()
+        if await self.get_active_combat_session(character):
+            await self.send_output("You can't do that while in combat.", 'warn')
+            return
+
         VALID_STATS = {
             'str': 'Strength',
             'dex': 'Dexterity',
@@ -2311,8 +2323,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'wis': 'Wisdom',
             'per': 'Perception',
         }
-
-        character = await self.get_character_fresh()
 
         parts = args.lower().split()
 

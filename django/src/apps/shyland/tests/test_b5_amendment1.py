@@ -143,7 +143,12 @@ class ExamineArmorLineTests(TransactionTestCase):
         self.assertIn('  Armor:      2 per Mk (worn: 4)', lines)
 
 
-class IncomingParentheticalTests(TransactionTestCase):
+class IncomingLineTests(TransactionTestCase):
+    """Amendment 2 rewrote these: the (-N) parenthetical is gone (it was
+    Amendment 1 scaffolding). Incoming lines carry only the
+    post-mitigation number (the bar delta) — armored and unarmored share
+    the same form, the quiet-line law unconditional. Mitigation math is
+    unchanged and still asserted through the bar delta."""
 
     def _in_lines(self, player_msgs, category='combat-hit-in'):
         return [t for _, t, c in player_msgs if c == category]
@@ -159,7 +164,7 @@ class IncomingParentheticalTests(TransactionTestCase):
         self.assertRegex(in_hits[0], r'for \d+ damage\.')
         self.assertNotIn('(-', in_hits[0])
 
-    async def test_armored_leading_number_is_the_bar_delta(self):
+    async def test_armored_leading_number_is_the_bar_delta_no_parenthetical(self):
         def setup():
             char, npc = make_combat_world('ipB', npc_str=20)
             full_common_mk1_set('ipB', char)
@@ -173,17 +178,19 @@ class IncomingParentheticalTests(TransactionTestCase):
 
         in_hits = self._in_lines(player_msgs)
         self.assertTrue(in_hits)
-        # raw 20, TAV 13: reduction round(20 x 13/61) = 4 -> landed 16.
-        m = re.search(r'for (\d+) \(-(\d+)\) damage\.', in_hits[0])
+        self.assertNotIn('(-', in_hits[0])
+        # raw 20, TAV 13: reduction round(20 x 13/61) = 4 -> landed 16 —
+        # mitigation still applied, only silently.
+        m = re.search(r'for (\d+) damage\.', in_hits[0])
         self.assertIsNotNone(m, in_hits[0])
-        landed, blocked = int(m.group(1)), int(m.group(2))
-        self.assertEqual((landed, blocked), (16, 4))
+        landed = int(m.group(1))
+        self.assertEqual(landed, 16)
 
         def vit():
             return Character.objects.get(pk=char.pk).vitality_current
         self.assertEqual(await sync_to_async(vit)(), 100 - landed)
 
-    async def test_crit_composes(self):
+    async def test_armored_crit_plain_form(self):
         def setup():
             char, npc = make_combat_world('ipC', npc_str=20)
             full_common_mk1_set('ipC', char)
@@ -197,9 +204,10 @@ class IncomingParentheticalTests(TransactionTestCase):
         in_crits = self._in_lines(player_msgs, 'combat-crit-in')
         self.assertTrue(in_crits)
         # raw 30 (crit x1.5): reduction round(30 x 13/61) = 6 -> 24.
-        self.assertRegex(in_crits[0], r'for a critical 24 \(-6\) damage!')
+        self.assertRegex(in_crits[0], r'for a critical 24 damage!')
+        self.assertNotIn('(-', in_crits[0])
 
-    async def test_graze_composes(self):
+    async def test_armored_graze_plain_form(self):
         def setup():
             char, npc = make_combat_world('ipD', npc_str=20)
             full_common_mk1_set('ipD', char)
@@ -213,9 +221,10 @@ class IncomingParentheticalTests(TransactionTestCase):
         in_hits = self._in_lines(player_msgs)
         self.assertTrue(in_hits)
         # raw 10 (graze x0.5): reduction round(10 x 13/61) = 2 -> 8.
-        self.assertRegex(in_hits[0], r'for 8 \(-2\) damage\.')
+        self.assertRegex(in_hits[0], r'for 8 damage\.')
+        self.assertNotIn('(-', in_hits[0])
 
-    async def test_floor_case_tav_1_shows_minus_1(self):
+    async def test_floor_case_tav_1_plain_form(self):
         def setup():
             char, npc = make_combat_world('ipE', npc_str=2)
             defn = make_gear_def('ipE', 'Thin Charm')
@@ -231,4 +240,5 @@ class IncomingParentheticalTests(TransactionTestCase):
         in_hits = self._in_lines(player_msgs)
         self.assertTrue(in_hits)
         # raw 2, TAV 1: reduction max(1, round(2/49)) = 1 -> landed 1.
-        self.assertRegex(in_hits[0], r'for 1 \(-1\) damage\.')
+        self.assertRegex(in_hits[0], r'for 1 damage\.')
+        self.assertNotIn('(-', in_hits[0])
