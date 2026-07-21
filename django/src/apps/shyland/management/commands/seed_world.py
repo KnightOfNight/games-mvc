@@ -3222,7 +3222,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'bleed_factor', 'base': 0.3, 'factor': 0.1},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A reliable iron blade. Well-balanced and well-worn.',
@@ -3244,8 +3244,8 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'str', 'base': 1.0, 'factor': 0.3},
                     {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'poison_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'poison_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'Scratched and notched but still sharp. Does the job.',
             },
@@ -3310,7 +3310,7 @@ class Command(BaseCommand):
                 'primary_stats': [{'stat': 'str', 'base': 3.0, 'factor': 1.0}],
                 'secondary_stat_pool': [
                     {'stat': 'end', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'stun_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'stun_factor', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'physical_resist', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A heavy iron head on a short haft. Argument-ending.',
@@ -3332,7 +3332,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A long, wide blade that wants both hands. Steady and unhurried.',
@@ -3353,7 +3353,7 @@ class Command(BaseCommand):
                 'primary_stats': [{'stat': 'str', 'base': 4.0, 'factor': 1.2}],
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
-                    {'stat': 'bleed_chance', 'base': 0.8, 'factor': 0.3},
+                    {'stat': 'bleed_factor', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'end', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A broad crescent blade on a long haft. Either it lands or it does not.',
@@ -3378,7 +3378,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'per', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A shortbow of laminated yew. Quiet, patient, accurate.',
             },
@@ -3823,7 +3823,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'bleed_factor', 'base': 0.3, 'factor': 0.1},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A plain iron blade fresh off Morra\'s rack. No engraving, no nonsense.',
@@ -3866,7 +3866,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'per', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A simple leather sling, well-balanced. Morra swears by the pouch stitching.',
             },

@@ -378,16 +378,19 @@ class Command(BaseCommand):
             def execute_actions(session, ordered_actions, character, npcs):
                 import random as _random
                 from datetime import timedelta as _td
+                from django.db.models import F as _F
+                from django.db.models.functions import Least as _Least
                 from django.utils import timezone as _tz
                 from apps.shyland.models import (
-                    CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
+                    Character, CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
                 )
                 from apps.shyland.combat_utils import (
                     apply_armor_mitigation, effective_stats, get_npc_stats,
                     resolve_hit, calculate_damage, acuity_damage_modifier,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
-                    npc_display, npc_display_name, total_armor_value,
+                    npc_display, npc_display_name, roll_gear_bonus_damage,
+                    summed_gear_stat, total_armor_value,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -404,6 +407,10 @@ class Command(BaseCommand):
                 ).select_related('definition'))
                 eff = effective_stats(character, equipped_all)
                 char_tav = total_armor_value(character, equipped_all)
+                # v22 B5 (#68/#100): gear crit joins the capped crit
+                # computation; lifesteal heals flat on landed hits.
+                gear_crit_bonus = summed_gear_stat(equipped_all, 'crit_chance') * 0.01
+                gear_lifesteal = int(round(summed_gear_stat(equipped_all, 'lifesteal')))
 
                 live_npcs = list(npcs)
                 focus_npc = resolve_focus_npc(session, live_npcs)
@@ -433,8 +440,10 @@ class Command(BaseCommand):
                         weapon_item = equipped_weapons[0] if equipped_weapons else None
 
                         npc_stats = get_npc_stats(npc)
-                        # v22 B5 (#100): effective DEX to hit.
-                        hit_result = resolve_hit(eff['dex'], npc_stats['dex'])
+                        # v22 B5 (#100): effective DEX to hit; gear
+                        # crit_chance rides the same capped computation.
+                        hit_result = resolve_hit(eff['dex'], npc_stats['dex'],
+                                                 crit_bonus=gear_crit_bonus)
 
                         # v20 brief 5 (#13): semantic combat categories —
                         # the client palette colors these; the server never
@@ -462,28 +471,51 @@ class Command(BaseCommand):
                         damage = calculate_damage(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
                         damage_int = max(1, int(damage))
 
-                        npc.vitality_current = max(0, npc.vitality_current - damage_int)
+                        # v22 B5 (#68/#100): landed hits (hit/critical —
+                        # never graze) roll the gear-bonus pool. Total
+                        # dealt = base + bonus; the parenthetical below is
+                        # gear's part; zero pool leaves the line
+                        # byte-identical to today.
+                        landed = hit_result in ('hit', 'critical')
+                        gear_bonus = roll_gear_bonus_damage(equipped_all) if landed else 0
+
+                        npc.vitality_current = max(0, npc.vitality_current - (damage_int + gear_bonus))
                         npc.save(update_fields=['vitality_current'])
+
+                        if landed and gear_lifesteal > 0:
+                            # Atomic F()-heal clamped to vitality_max; no
+                            # output line — the bar moving is the message.
+                            Character.objects.filter(pk=character.pk).update(
+                                vitality_current=_Least(
+                                    _F('vitality_current') + gear_lifesteal,
+                                    _F('vitality_max')))
+                            character.refresh_from_db(fields=['vitality_current'])
+                            statuses.append((character.pk, self._build_status(character)))
 
                         # v22 brief 2 (DD §13, #54): color carries the
                         # category, words carry the fiction — the
                         # '[Critical]' bracket is dead; on the authored
                         # unarmed path the word moves into the damage
                         # clause. The weapon path's prose already conforms.
+                        # v22 B5 (#68/#100): a nonzero gear pool renders as
+                        # the parenthetical — base first, gear's part in
+                        # parens, total dealt = base + bonus.
+                        dmg_txt = (f"{damage_int} (+{gear_bonus})"
+                                   if gear_bonus > 0 else f"{damage_int}")
                         if weapon_item:
                             if hit_result == 'critical':
                                 flavor = f"You land a critical hit on {display}"
                             else:
                                 flavor = f"You hit {display}"
-                            msg = f"{flavor} for {damage_int} damage."
+                            msg = f"{flavor} for {dmg_txt} damage."
                         else:
                             pool = character.archetype.unarmed_message_pool if character.archetype_id else None
                             raw = get_unarmed_message(pool, display)
                             flavor = raw.rstrip('.')
                             if hit_result == 'critical':
-                                msg = f"{flavor} for a critical {damage_int} damage!"
+                                msg = f"{flavor} for a critical {dmg_txt} damage!"
                             else:
-                                msg = f"{flavor} for {damage_int} damage."
+                                msg = f"{flavor} for {dmg_txt} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" {display[0].upper()}{display[1:]} {health_desc}."
                         out_category = ('combat-crit-out' if hit_result == 'critical'
