@@ -2213,23 +2213,36 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         character = await self.get_character_fresh()
         await self._send_stats(character)
 
+    @database_sync_to_async
+    def get_gear_stat_bonus(self, character):
+        return gear_stat_bonus(character)
+
     async def _send_stats(self, character):
         # v21 brief 1 (#91): key/value form — 'Character Stats:' header
         # in key-color, everything under it in value-color (stat labels
         # included; a subkey-color was explicitly deferred). The Player
         # line is Origin + Archetype, e.g. 'Level 10 Feral Blade'.
+        # v22 B5 (#100): base with the gear parenthetical — 'STR: 25 (+3)',
+        # parenthetical only when the gear sum is nonzero.
         from .combat_utils import xp_for_next_level
+        gear = await self.get_gear_stat_bonus(character)
+
+        def stat_line(label, key):
+            bonus = gear[key]
+            suffix = f' ({bonus:+d})' if bonus else ''
+            return {'v': f'  {label}: {getattr(character, f"stat_{key}")}{suffix}'}
+
         lines = [
             {'k': 'Character Stats:'},
             {'v': f'  Player: {character.name} - Level {character.level} '
                   f'{character.origin.name} {character.archetype.name}'},
             {},
-            {'v': f'  Strength     (STR): {character.stat_str}'},
-            {'v': f'  Dexterity    (DEX): {character.stat_dex}'},
-            {'v': f'  Endurance    (END): {character.stat_end}'},
-            {'v': f'  Intelligence (INT): {character.stat_int}'},
-            {'v': f'  Wisdom       (WIS): {character.stat_wis}'},
-            {'v': f'  Perception   (PER): {character.stat_per}'},
+            stat_line('Strength     (STR)', 'str'),
+            stat_line('Dexterity    (DEX)', 'dex'),
+            stat_line('Endurance    (END)', 'end'),
+            stat_line('Intelligence (INT)', 'int'),
+            stat_line('Wisdom       (WIS)', 'wis'),
+            stat_line('Perception   (PER)', 'per'),
             {},
             {'v': f'  Vitality:   {character.vitality_current} / {character.vitality_max}'},
             {'v': f'  Longevity:  {character.longevity_current} / {character.longevity_max}'},
