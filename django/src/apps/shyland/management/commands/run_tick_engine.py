@@ -73,8 +73,8 @@ class Command(BaseCommand):
             COMBAT_ROUND_TICKS, DYING_DURATION_SECS, STALE_SESSION_SECS,
         )
         from apps.shyland.combat_utils import (
-            get_npc_stats, roll_initiative, resolve_hit, calculate_damage,
-            get_npc_health_description, apply_death_penalties,
+            effective_stats, get_npc_stats, roll_initiative, resolve_hit,
+            calculate_damage, get_npc_health_description, apply_death_penalties,
             apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
@@ -357,7 +357,12 @@ class Command(BaseCommand):
                 else:
                     ordered_actions = npc_actions + player_actions
             else:
-                char_init = roll_initiative(character.stat_dex, character.stat_per)
+                # v22 B5 (#100): initiative reads effective DEX/PER.
+                @_dsa
+                def char_initiative(character):
+                    eff = effective_stats(character)
+                    return roll_initiative(eff['dex'], eff['per'])
+                char_init = await char_initiative(character)
                 avg_npc_init = (
                     sum(
                         roll_initiative(get_npc_stats(n)['dex'], get_npc_stats(n)['per'])
@@ -378,11 +383,11 @@ class Command(BaseCommand):
                     CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
                 )
                 from apps.shyland.combat_utils import (
-                    get_npc_stats, resolve_hit, calculate_damage,
-                    acuity_damage_modifier,
+                    apply_armor_mitigation, effective_stats, get_npc_stats,
+                    resolve_hit, calculate_damage, acuity_damage_modifier,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
-                    npc_display, npc_display_name,
+                    npc_display, npc_display_name, total_armor_value,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -390,6 +395,15 @@ class Command(BaseCommand):
                 messages = []
                 statuses = []
                 room_messages = []
+
+                # v22 B5 (#100): one equipped-set load per round feeds
+                # effective stats, TAV, and the gear wiring — armor and
+                # gear cannot change mid-round.
+                equipped_all = list(ItemInstance.objects.filter(
+                    owner=character, is_equipped=True,
+                ).select_related('definition'))
+                eff = effective_stats(character, equipped_all)
+                char_tav = total_armor_value(character, equipped_all)
 
                 live_npcs = list(npcs)
                 focus_npc = resolve_focus_npc(session, live_npcs)
@@ -412,16 +426,15 @@ class Command(BaseCommand):
 
                         display = npc_display_name(npc, live_npcs)
 
-                        equipped_weapons = list(ItemInstance.objects.filter(
-                            owner=character,
-                            is_equipped=True,
-                            definition__item_type='weapon',
-                            is_broken=False,
-                        ).select_related('definition'))
+                        equipped_weapons = [
+                            i for i in equipped_all
+                            if i.definition.item_type == 'weapon' and not i.is_broken
+                        ]
                         weapon_item = equipped_weapons[0] if equipped_weapons else None
 
                         npc_stats = get_npc_stats(npc)
-                        hit_result = resolve_hit(character.stat_dex, npc_stats['dex'])
+                        # v22 B5 (#100): effective DEX to hit.
+                        hit_result = resolve_hit(eff['dex'], npc_stats['dex'])
 
                         # v20 brief 5 (#13): semantic combat categories —
                         # the client palette colors these; the server never
@@ -437,11 +450,11 @@ class Command(BaseCommand):
                                 weapon_item.damage_midpoint - spread,
                                 weapon_item.damage_midpoint + spread,
                             )
-                            stat_bonus = character.stat_str if not defn.is_ranged else character.stat_dex
+                            stat_bonus = eff['str'] if not defn.is_ranged else eff['dex']
                             dur_mod = 1.0 - get_durability_penalty(weapon_item)
                         else:
                             base_damage = _random.uniform(1, 3)
-                            stat_bonus = character.stat_str
+                            stat_bonus = eff['str']
                             dur_mod = 1.0
 
                         is_focus = (npc.pk == focus_npc_pk)
@@ -547,7 +560,8 @@ class Command(BaseCommand):
                             continue
 
                         npc_stats = get_npc_stats(npc)
-                        hit_result = resolve_hit(npc_stats['dex'], character.stat_dex)
+                        # v22 B5 (#100): effective DEX to dodge.
+                        hit_result = resolve_hit(npc_stats['dex'], eff['dex'])
 
                         # v20 brief 5 (#24): attacker references compose
                         # through the display helper — ordinal-aware,
@@ -564,6 +578,10 @@ class Command(BaseCommand):
                         )
                         damage = calculate_damage(base_damage, 0, 1.0, 1.0, hit_result, is_focus_target=True)
                         damage_int = max(1, int(damage))
+                        # v22 B5 (#100): armor mitigates NPC→player damage
+                        # only, after calculate_damage's final value —
+                        # deterministic, floored, at least 1 still lands.
+                        damage_int = apply_armor_mitigation(damage_int, char_tav)
 
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 

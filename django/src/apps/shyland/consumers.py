@@ -14,7 +14,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import currency
-from .combat_utils import npc_display, npc_display_name
+from .combat_utils import (
+    bar_rescale_updates, effective_stats, gear_stat_bonus,
+    npc_display, npc_display_name,
+)
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
 )
@@ -906,7 +909,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         bag_bonus = sum(
             i.definition.carry_bonus for i in equipped if i.definition.item_type == 'bag'
         )
-        max_carry = char.stat_str * 10 + bag_bonus
+        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
+        max_carry = effective_stats(char, equipped)['str'] * 10 + bag_bonus
         current_carry = len(unequipped)
 
         # v22 brief 2 (DD §9): Equipment paper-doll — every slot always
@@ -1256,6 +1260,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v22 brief 2 (DD §6): the transactional sentence — no slot
             # mention; the paper-doll carries slot placement now.
             await self.output(f'You equip {item_ref(item)}.', 'success')
+            # v22 B5 (#110): gear can move the bar maxima — sync the pane.
+            await self.send_status_refresh()
             return
 
         min_size = min(len(d) for _, d in candidates)
@@ -1308,6 +1314,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
             'success',
         )
+        # v22 B5 (#110): gear can move the bar maxima — sync the pane.
+        await self.send_status_refresh()
 
     async def cmd_unequip(self, args):
         char = self.character
@@ -1330,6 +1338,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.unequip_item(item)
         await self.output(f'You unequip {item_ref(item)}.', 'success')
+        # v22 B5 (#110): gear can move the bar maxima — sync the pane.
+        await self.send_status_refresh()
 
     def _unequip_blocked_reason(self, item, equipped_items, unequipped_count):
         """Return the refusal message if the item cannot legally be unequipped, else None."""
@@ -1340,7 +1350,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 i.definition.carry_bonus for i in equipped_items
                 if i.definition.item_type == 'bag' and i.pk != item.pk
             )
-            new_limit = self.character.stat_str * 10 + other_bag_bonus
+            # v22 B5 (#100): the limit after removal — effective STR over
+            # the equipped set minus the bag coming off (no query; the
+            # caller's equipped_items list is the source).
+            remaining = [i for i in equipped_items if i.pk != item.pk]
+            new_limit = (effective_stats(self.character, remaining)['str'] * 10
+                         + other_bag_bonus)
             if (unequipped_count + 1) > new_limit:
                 return f"You're carrying too many items to remove your {get_display_name(item)}."
         return None
@@ -2133,7 +2148,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             for npc in npcs
         ) / len(npcs)
 
-        success = (character.stat_dex + random.randint(1, 20)) > avg_per
+        # v22 B5 (#100): the flee contest reads effective DEX (base + gear).
+        eff = await self.get_effective_stats(character)
+        success = (eff['dex'] + random.randint(1, 20)) > avg_per
 
         if success:
             result = await self.get_flee_destination(character)
@@ -2294,20 +2311,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         @database_sync_to_async
         def apply_spend(char, stat, pts):
-            from .combat_utils import recalculate_bars
+            # v22 B5 (#109/#110): one atomic .update() — the stat bump, the
+            # point debit, and the bar-law rescale land together as F()
+            # expressions; the bars keep their fill fraction (the bankable
+            # refill is dead) and no stale-object write can lose a
+            # concurrent update.
+            from django.db.models import F
             attr = f'stat_{stat}'
-            current = getattr(char, attr)
-            setattr(char, attr, current + pts)
-            char.unspent_stat_points -= pts
+            updates = {
+                attr: F(attr) + pts,
+                'unspent_stat_points': F('unspent_stat_points') - pts,
+            }
             if stat in ('end', 'str', 'wis'):
-                recalculate_bars(char)
-                char.save(update_fields=[
-                    attr, 'unspent_stat_points',
-                    'vitality_max', 'vitality_current',
-                    'longevity_max', 'longevity_current',
-                ])
-            else:
-                char.save(update_fields=[attr, 'unspent_stat_points'])
+                gear = gear_stat_bonus(char)
+                updates.update(bar_rescale_updates(
+                    gear_end=gear['end'], gear_str=gear['str'],
+                    gear_wis=gear['wis'], **{f'{stat}_delta': pts}))
+            Character.objects.filter(pk=char.pk).update(**updates)
+            char.refresh_from_db()
             return getattr(char, attr)
 
         new_value = await apply_spend(character, stat_name, amount)
@@ -3411,14 +3432,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def get_carry_capacity(self, character):
-        from django.db.models import Sum
         items = ItemInstance.objects.filter(owner=character)
         current_count = items.count()
-        bag_bonus = items.filter(
-            is_equipped=True,
-            definition__item_type='bag',
-        ).aggregate(total=Sum('definition__carry_bonus'))['total'] or 0
-        max_capacity = character.stat_str * 10 + bag_bonus
+        equipped = list(items.filter(is_equipped=True).select_related('definition'))
+        bag_bonus = sum(
+            i.definition.carry_bonus for i in equipped
+            if i.definition.item_type == 'bag'
+        )
+        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
+        max_capacity = effective_stats(character, equipped)['str'] * 10 + bag_bonus
         return (current_count, max_capacity)
 
     @database_sync_to_async
@@ -3440,18 +3462,35 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         item.save()
 
     @database_sync_to_async
+    def get_effective_stats(self, character):
+        return effective_stats(character)
+
+    def _rescale_bars_for_gear(self, character):
+        """v22 B5 (#110): the bar law at gear mutations. One atomic
+        .update() recomputes both maxima from effective stats (gear sums
+        from the post-mutation equipped set, stat fields as F() DB truth)
+        and rescales both currents to preserve fill fraction. Sync — call
+        from within @database_sync_to_async, after the item write."""
+        gear = gear_stat_bonus(character)
+        Character.objects.filter(pk=character.pk).update(
+            **bar_rescale_updates(
+                gear_end=gear['end'], gear_str=gear['str'], gear_wis=gear['wis']))
+
+    @database_sync_to_async
     def equip_item(self, item, slot, character):
         item.is_equipped = True
         item.equipped_slot = slot
         item.is_soulbound = True
         item.soulbound_to = character
         item.save()
+        self._rescale_bars_for_gear(character)
 
     @database_sync_to_async
     def unequip_item(self, item):
         item.is_equipped = False
         item.equipped_slot = ''
         item.save()
+        self._rescale_bars_for_gear(item.owner)
 
     @database_sync_to_async
     def apply_character_stat_change(self, character):
@@ -3520,13 +3559,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_carry_counts(self, character):
         current = ItemInstance.objects.filter(owner=character, is_equipped=False).count()
-        equipped_bags = list(
-            ItemInstance.objects.filter(
-                owner=character, is_equipped=True, definition__item_type='bag'
-            ).select_related('definition')
+        equipped = list(
+            ItemInstance.objects.filter(owner=character, is_equipped=True)
+            .select_related('definition')
         )
-        bag_bonus = sum(b.definition.carry_bonus for b in equipped_bags)
-        max_carry = character.stat_str * 10 + bag_bonus
+        bag_bonus = sum(
+            b.definition.carry_bonus for b in equipped
+            if b.definition.item_type == 'bag'
+        )
+        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
+        max_carry = effective_stats(character, equipped)['str'] * 10 + bag_bonus
         return current, max_carry
 
     # ------------------------------------------------------------------
