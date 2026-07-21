@@ -1,0 +1,2652 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-07-21T18:33:08Z",
+    "branch": "version_22",
+    "head_commit": "0f595c1271da2d345b3f0f134aff0189987a10ef",
+    "code_note": "Code facts read from the running production django image, built from commit a70a837; commits between a70a837 and HEAD are documentation-only, so the code is identical to HEAD.",
+    "data_note": "All database figures are read-only queries against the production Postgres (game-mvc-postgres) via the production django container over DOCKER_HOST.",
+    "brief": "docs/shyland/Shyland_Brief_B5_Housekeeping_And_Knob_Survey.md",
+    "founding_issue": 128
+  },
+  "equip_slots": {
+    "source": {
+      "slots": "django/src/apps/shyland/consumers.py: SLOT_ORDER / SLOT_CAPACITY",
+      "occupancy": "ItemDefinition.objects.all() -> union of valid_slots by item_type"
+    },
+    "slot_order": [
+      "HEAD",
+      "NECK",
+      "SHOULDERS",
+      "BACK",
+      "CHEST",
+      "MAIN_HAND",
+      "OFF_HAND",
+      "RANGED",
+      "HANDS",
+      "RING",
+      "WAIST",
+      "LEGS",
+      "FEET"
+    ],
+    "capacities": {
+      "HEAD": 1,
+      "NECK": 1,
+      "SHOULDERS": 1,
+      "BACK": 1,
+      "CHEST": 1,
+      "MAIN_HAND": 1,
+      "OFF_HAND": 1,
+      "RANGED": 1,
+      "HANDS": 1,
+      "RING": 2,
+      "WAIST": 1,
+      "LEGS": 1,
+      "FEET": 1
+    },
+    "total_slots": 14,
+    "occupying_item_types": {
+      "HEAD": [
+        "armor"
+      ],
+      "NECK": [
+        "accessory"
+      ],
+      "SHOULDERS": [
+        "armor"
+      ],
+      "BACK": [
+        "bag"
+      ],
+      "CHEST": [
+        "armor"
+      ],
+      "MAIN_HAND": [
+        "weapon"
+      ],
+      "OFF_HAND": [
+        "armor",
+        "weapon"
+      ],
+      "RANGED": [
+        "weapon"
+      ],
+      "HANDS": [
+        "armor"
+      ],
+      "RING": [
+        "accessory"
+      ],
+      "WAIST": [
+        "armor"
+      ],
+      "LEGS": [
+        "armor"
+      ],
+      "FEET": [
+        "armor"
+      ]
+    },
+    "slots_that_carry_armor": [
+      "CHEST",
+      "FEET",
+      "HANDS",
+      "HEAD",
+      "LEGS",
+      "OFF_HAND",
+      "SHOULDERS",
+      "WAIST"
+    ]
+  },
+  "armor_definitions": {
+    "source": "ItemDefinition.objects.filter(item_type='armor')",
+    "count": 18,
+    "definitions": [
+      {
+        "slug": "ballistic-jacket",
+        "name": "Ballistic Jacket",
+        "valid_slots": [
+          "CHEST"
+        ],
+        "scaling_base": 6.0,
+        "scaling_factor": 2.2,
+        "secondary_stat_pool": [
+          {
+            "base": 0.8,
+            "stat": "physical_resist",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "radiation_resist",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "dex",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.8,
+            "factor": 0.3
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "frayed-gloves",
+        "name": "Frayed Gloves",
+        "valid_slots": [
+          "HANDS"
+        ],
+        "scaling_base": 2.4,
+        "scaling_factor": 0.9,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-belt",
+        "name": "Leather Belt",
+        "valid_slots": [
+          "WAIST"
+        ],
+        "scaling_base": 4.0,
+        "scaling_factor": 1.6,
+        "secondary_stat_pool": [
+          {
+            "base": 0.5,
+            "stat": "str",
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "stat": "end",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-boots",
+        "name": "Leather Boots",
+        "valid_slots": [
+          "FEET"
+        ],
+        "scaling_base": 4.5,
+        "scaling_factor": 1.8,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "dex",
+            "factor": 0.4
+          },
+          {
+            "base": 0.5,
+            "stat": "end",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-cap",
+        "name": "Leather Cap",
+        "valid_slots": [
+          "HEAD"
+        ],
+        "scaling_base": 4.0,
+        "scaling_factor": 1.6,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "per",
+            "factor": 0.4
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "int",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-gloves",
+        "name": "Leather Gloves",
+        "valid_slots": [
+          "HANDS"
+        ],
+        "scaling_base": 4.0,
+        "scaling_factor": 1.6,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "dex",
+            "factor": 0.4
+          },
+          {
+            "base": 0.5,
+            "stat": "crit_chance",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "str",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-leggings",
+        "name": "Leather Leggings",
+        "valid_slots": [
+          "LEGS"
+        ],
+        "scaling_base": 5.0,
+        "scaling_factor": 2.0,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "end",
+            "factor": 0.4
+          },
+          {
+            "base": 0.8,
+            "stat": "physical_resist",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "str",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.8,
+            "factor": 0.3
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-shoulders",
+        "name": "Leather Shoulders",
+        "valid_slots": [
+          "SHOULDERS"
+        ],
+        "scaling_base": 4.5,
+        "scaling_factor": 1.8,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "str",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "end",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "leather-vest",
+        "name": "Leather Vest",
+        "valid_slots": [
+          "CHEST"
+        ],
+        "scaling_base": 5.0,
+        "scaling_factor": 2.0,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "str",
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "stat": "dex",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "mended-leggings",
+        "name": "Mended Leggings",
+        "valid_slots": [
+          "LEGS"
+        ],
+        "scaling_base": 3.0,
+        "scaling_factor": 1.2,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "moth-eaten-shoulder-wrap",
+        "name": "Moth-eaten Shoulder Wrap",
+        "valid_slots": [
+          "SHOULDERS"
+        ],
+        "scaling_base": 2.7,
+        "scaling_factor": 1.0,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "oak-round-shield",
+        "name": "Oak Round Shield",
+        "valid_slots": [
+          "OFF_HAND"
+        ],
+        "scaling_base": 4.5,
+        "scaling_factor": 1.8,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "physical_resist",
+            "factor": 0.4
+          },
+          {
+            "base": 0.5,
+            "stat": "str",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "magic_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 1.0,
+            "factor": 0.4
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "patched-cap",
+        "name": "Patched Cap",
+        "valid_slots": [
+          "HEAD"
+        ],
+        "scaling_base": 2.4,
+        "scaling_factor": 0.9,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "quilted-jerkin",
+        "name": "Quilted Jerkin",
+        "valid_slots": [
+          "CHEST"
+        ],
+        "scaling_base": 4.5,
+        "scaling_factor": 1.8,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "str",
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "stat": "dex",
+            "factor": 0.3
+          },
+          {
+            "base": 0.5,
+            "stat": "physical_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "rope-belt",
+        "name": "Rope Belt",
+        "valid_slots": [
+          "WAIST"
+        ],
+        "scaling_base": 2.4,
+        "scaling_factor": 0.9,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "scuffed-boots",
+        "name": "Scuffed Boots",
+        "valid_slots": [
+          "FEET"
+        ],
+        "scaling_base": 2.7,
+        "scaling_factor": 1.0,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "threadbare-vest",
+        "name": "Threadbare Vest",
+        "valid_slots": [
+          "CHEST"
+        ],
+        "scaling_base": 3.0,
+        "scaling_factor": 1.2,
+        "secondary_stat_pool": [],
+        "has_physical_resist": false,
+        "physical_resist_curves": [],
+        "suppress_mk_suffix": false
+      },
+      {
+        "slug": "wooden-shield",
+        "name": "Wooden Shield",
+        "valid_slots": [
+          "OFF_HAND"
+        ],
+        "scaling_base": 5.0,
+        "scaling_factor": 2.0,
+        "secondary_stat_pool": [
+          {
+            "base": 1.0,
+            "stat": "physical_resist",
+            "factor": 0.4
+          },
+          {
+            "base": 0.5,
+            "stat": "str",
+            "factor": 0.2
+          },
+          {
+            "base": 0.5,
+            "stat": "magic_resist",
+            "factor": 0.2
+          }
+        ],
+        "has_physical_resist": true,
+        "physical_resist_curves": [
+          {
+            "base": 1.0,
+            "factor": 0.4
+          }
+        ],
+        "suppress_mk_suffix": false
+      }
+    ]
+  },
+  "secondary_stat_census": {
+    "source": "ItemDefinition.objects.all() -> secondary_stat_pool entries",
+    "vocabulary": [
+      "bleed_chance",
+      "crit_chance",
+      "dex",
+      "electric_damage_bonus",
+      "end",
+      "int",
+      "lifesteal",
+      "magic_resist",
+      "mana_regen",
+      "per",
+      "physical_resist",
+      "poison_chance",
+      "radiation_resist",
+      "spell_damage_bonus",
+      "str",
+      "stun_chance",
+      "wis"
+    ],
+    "stats": {
+      "bleed_chance": {
+        "count_by_item_type": {
+          "weapon": 7
+        },
+        "distinct_curves": [
+          {
+            "base": 0.3,
+            "factor": 0.1
+          },
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 0.8,
+            "factor": 0.3
+          }
+        ]
+      },
+      "crit_chance": {
+        "count_by_item_type": {
+          "weapon": 8,
+          "armor": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 0.8,
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "factor": 0.3
+          }
+        ]
+      },
+      "dex": {
+        "count_by_item_type": {
+          "weapon": 3,
+          "armor": 5,
+          "accessory": 6
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "factor": 0.4
+          },
+          {
+            "base": 1.0,
+            "factor": 0.5
+          }
+        ]
+      },
+      "electric_damage_bonus": {
+        "count_by_item_type": {
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "end": {
+        "count_by_item_type": {
+          "weapon": 2,
+          "armor": 4,
+          "accessory": 4
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "factor": 0.4
+          }
+        ]
+      },
+      "int": {
+        "count_by_item_type": {
+          "armor": 1,
+          "accessory": 4
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "lifesteal": {
+        "count_by_item_type": {
+          "weapon": 3
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "magic_resist": {
+        "count_by_item_type": {
+          "armor": 2
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "mana_regen": {
+        "count_by_item_type": {
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "per": {
+        "count_by_item_type": {
+          "weapon": 3,
+          "armor": 1,
+          "accessory": 2
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "factor": 0.4
+          }
+        ]
+      },
+      "physical_resist": {
+        "count_by_item_type": {
+          "weapon": 1,
+          "armor": 10
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 0.8,
+            "factor": 0.3
+          },
+          {
+            "base": 1.0,
+            "factor": 0.4
+          }
+        ]
+      },
+      "poison_chance": {
+        "count_by_item_type": {
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "radiation_resist": {
+        "count_by_item_type": {
+          "armor": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "spell_damage_bonus": {
+        "count_by_item_type": {
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "str": {
+        "count_by_item_type": {
+          "armor": 8,
+          "accessory": 4,
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "factor": 0.3
+          }
+        ]
+      },
+      "stun_chance": {
+        "count_by_item_type": {
+          "weapon": 1
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          }
+        ]
+      },
+      "wis": {
+        "count_by_item_type": {
+          "weapon": 1,
+          "accessory": 4
+        },
+        "distinct_curves": [
+          {
+            "base": 0.5,
+            "factor": 0.2
+          },
+          {
+            "base": 1.0,
+            "factor": 0.5
+          }
+        ]
+      }
+    }
+  },
+  "rolled_distributions": {
+    "source": {
+      "all": "ItemInstance.objects.all() (rolled_primary_stats + rolled_secondary_stats)",
+      "equipped": "ItemInstance.objects.filter(is_equipped=True)"
+    },
+    "all_instances_by_rarity_and_type": {
+      "common/armor": {
+        "instances": 4,
+        "stats": {
+          "end": {
+            "n": 4,
+            "min": 2,
+            "mean": 2.5,
+            "max": 3
+          }
+        }
+      },
+      "common/consumable": {
+        "instances": 85,
+        "stats": {}
+      },
+      "common/material": {
+        "instances": 86,
+        "stats": {}
+      },
+      "uncommon/accessory": {
+        "instances": 1,
+        "stats": {
+          "end": {
+            "n": 1,
+            "min": 3,
+            "mean": 3,
+            "max": 3
+          },
+          "str": {
+            "n": 1,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          }
+        }
+      },
+      "uncommon/armor": {
+        "instances": 3,
+        "stats": {
+          "end": {
+            "n": 3,
+            "min": 3,
+            "mean": 3.667,
+            "max": 4
+          },
+          "str": {
+            "n": 3,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          }
+        }
+      },
+      "uncommon/weapon": {
+        "instances": 2,
+        "stats": {
+          "crit_chance": {
+            "n": 2,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          },
+          "str": {
+            "n": 2,
+            "min": 5,
+            "mean": 5,
+            "max": 5
+          }
+        }
+      }
+    },
+    "equipped_instances_by_rarity_and_type": {
+      "common/armor": {
+        "instances": 4,
+        "stats": {
+          "end": {
+            "n": 4,
+            "min": 2,
+            "mean": 2.5,
+            "max": 3
+          }
+        }
+      },
+      "uncommon/accessory": {
+        "instances": 1,
+        "stats": {
+          "end": {
+            "n": 1,
+            "min": 3,
+            "mean": 3,
+            "max": 3
+          },
+          "str": {
+            "n": 1,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          }
+        }
+      },
+      "uncommon/armor": {
+        "instances": 3,
+        "stats": {
+          "end": {
+            "n": 3,
+            "min": 3,
+            "mean": 3.667,
+            "max": 4
+          },
+          "str": {
+            "n": 3,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          }
+        }
+      },
+      "uncommon/weapon": {
+        "instances": 1,
+        "stats": {
+          "crit_chance": {
+            "n": 1,
+            "min": 1,
+            "mean": 1,
+            "max": 1
+          },
+          "str": {
+            "n": 1,
+            "min": 5,
+            "mean": 5,
+            "max": 5
+          }
+        }
+      }
+    }
+  },
+  "combat_npcs": {
+    "source": {
+      "definitions": "NpcDefinition.objects.filter(attackable=True)",
+      "live_tiers": "NpcInstance.objects.filter(definition=..., is_alive=True)",
+      "effective_math": "django/src/apps/shyland/combat_utils.py: npc_level / get_npc_stats",
+      "damage_path": "django/src/apps/shyland/management/commands/run_tick_engine.py: NPC-attacks-character branch — base_damage = uniform(str*0.8, str*1.2); calculate_damage(base, 0, 1.0, 1.0, hit_result, is_focus_target=True); apply_npc_effects runs after damage (captured as on_hit_effects)",
+      "blessed_hit_rates": "v21 #101 ruling: 55%/45%/45% by tier (per the brief)"
+    },
+    "npcs": [
+      {
+        "slug": "black-bear",
+        "name": "black bear",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 35,
+        "base_stats": {
+          "str": 10,
+          "dex": 6,
+          "end": 9,
+          "int": 3,
+          "wis": 3,
+          "per": 6
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 12,
+              "per": 8,
+              "int": 5,
+              "vitality": 35
+            },
+            "vitality_max_values": [
+              35
+            ],
+            "live_instance_count": 5,
+            "expected_damage_per_landed_hit": 12.0,
+            "expected_damage_per_landed_crit": 18.0,
+            "expected_damage_per_round": 6.6,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=12.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "brown-bear",
+        "name": "brown bear",
+        "combat_tier": "elite",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 130,
+        "base_stats": {
+          "str": 18,
+          "dex": 8,
+          "end": 17,
+          "int": 3,
+          "wis": 3,
+          "per": 8
+        },
+        "scaling_factor": 7.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 7.0,
+            "effective_stats": {
+              "dex": 35,
+              "str": 33,
+              "per": 23,
+              "int": 18,
+              "vitality": 130
+            },
+            "vitality_max_values": [
+              130
+            ],
+            "live_instance_count": 3,
+            "expected_damage_per_landed_hit": 33.0,
+            "expected_damage_per_landed_crit": 49.5,
+            "expected_damage_per_round": 14.85,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=33.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "buffalo",
+        "name": "buffalo",
+        "combat_tier": "elite",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 90,
+        "base_stats": {
+          "str": 16,
+          "dex": 6,
+          "end": 16,
+          "int": 2,
+          "wis": 2,
+          "per": 8
+        },
+        "scaling_factor": 5.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 5.0,
+            "effective_stats": {
+              "dex": 30,
+              "str": 26,
+              "per": 18,
+              "int": 12,
+              "vitality": 90
+            },
+            "vitality_max_values": [
+              90
+            ],
+            "live_instance_count": 7,
+            "expected_damage_per_landed_hit": 26.0,
+            "expected_damage_per_landed_crit": 39.0,
+            "expected_damage_per_round": 11.7,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=26.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "cave-beetle",
+        "name": "cave beetle",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 40,
+        "base_stats": {
+          "str": 10,
+          "dex": 8,
+          "end": 11,
+          "int": 2,
+          "wis": 2,
+          "per": 7
+        },
+        "scaling_factor": 3.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 3.0,
+            "effective_stats": {
+              "dex": 23,
+              "str": 15,
+              "per": 12,
+              "int": 7,
+              "vitality": 40
+            },
+            "vitality_max_values": [
+              40
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 15.0,
+            "expected_damage_per_landed_crit": 22.5,
+            "expected_damage_per_round": 8.25,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=15.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "cave-centipede",
+        "name": "cave centipede",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 32,
+        "base_stats": {
+          "str": 9,
+          "dex": 10,
+          "end": 8,
+          "int": 2,
+          "wis": 2,
+          "per": 8
+        },
+        "scaling_factor": 3.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 3.0,
+            "effective_stats": {
+              "dex": 23,
+              "str": 14,
+              "per": 13,
+              "int": 7,
+              "vitality": 32
+            },
+            "vitality_max_values": [
+              32
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 14.0,
+            "expected_damage_per_landed_crit": 21.0,
+            "expected_damage_per_round": 7.7,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=14.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "cave-spider",
+        "name": "cave spider",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 25,
+        "base_stats": {
+          "str": 7,
+          "dex": 11,
+          "end": 6,
+          "int": 2,
+          "wis": 2,
+          "per": 9
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 9,
+              "per": 11,
+              "int": 4,
+              "vitality": 25
+            },
+            "vitality_max_values": [
+              25
+            ],
+            "live_instance_count": 4,
+            "expected_damage_per_landed_hit": 9.0,
+            "expected_damage_per_landed_crit": 13.5,
+            "expected_damage_per_round": 4.95,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=9.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "chittering-king",
+        "name": "Chittering King",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 220,
+        "base_stats": {
+          "str": 10,
+          "dex": 20,
+          "end": 22,
+          "int": 6,
+          "wis": 6,
+          "per": 16
+        },
+        "scaling_factor": 9.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 9.0,
+            "effective_stats": {
+              "dex": 40,
+              "str": 30,
+              "per": 36,
+              "int": 26,
+              "vitality": 220
+            },
+            "vitality_max_values": [
+              220
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 30.0,
+            "expected_damage_per_landed_crit": 45.0,
+            "expected_damage_per_round": 13.5,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=30.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "crowned-devourer",
+        "name": "Crowned Devourer",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 280,
+        "base_stats": {
+          "str": 12,
+          "dex": 18,
+          "end": 27,
+          "int": 7,
+          "wis": 7,
+          "per": 15
+        },
+        "scaling_factor": 10.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 10.0,
+            "effective_stats": {
+              "dex": 42,
+              "str": 34,
+              "per": 37,
+              "int": 29,
+              "vitality": 280
+            },
+            "vitality_max_values": [
+              280
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 34.0,
+            "expected_damage_per_landed_crit": 51.0,
+            "expected_damage_per_round": 15.3,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=34.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "devourers-drones",
+        "name": "Devourer's drones",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 70,
+        "base_stats": {
+          "str": 8,
+          "dex": 13,
+          "end": 18,
+          "int": 3,
+          "wis": 3,
+          "per": 11
+        },
+        "scaling_factor": 9.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 9.0,
+            "effective_stats": {
+              "dex": 40,
+              "str": 28,
+              "per": 31,
+              "int": 23,
+              "vitality": 70
+            },
+            "vitality_max_values": [
+              70
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 28.0,
+            "expected_damage_per_landed_crit": 42.0,
+            "expected_damage_per_round": 12.6,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=28.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "dronemother",
+        "name": "Dronemother",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 260,
+        "base_stats": {
+          "str": 18,
+          "dex": 12,
+          "end": 18,
+          "int": 5,
+          "wis": 5,
+          "per": 11
+        },
+        "scaling_factor": 6.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 6.0,
+            "effective_stats": {
+              "dex": 32,
+              "str": 30,
+              "per": 23,
+              "int": 17,
+              "vitality": 260
+            },
+            "vitality_max_values": [
+              260
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 30.0,
+            "expected_damage_per_landed_crit": 45.0,
+            "expected_damage_per_round": 13.5,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=30.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "dronemothers-swarm",
+        "name": "Dronemother's swarm",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 60,
+        "base_stats": {
+          "str": 14,
+          "dex": 10,
+          "end": 14,
+          "int": 2,
+          "wis": 2,
+          "per": 9
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 22,
+              "per": 17,
+              "int": 10,
+              "vitality": 60
+            },
+            "vitality_max_values": [
+              60
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 22.0,
+            "expected_damage_per_landed_crit": 33.0,
+            "expected_damage_per_round": 12.1,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=22.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "elder-cave-beetle",
+        "name": "elder cave beetle",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 110,
+        "base_stats": {
+          "str": 18,
+          "dex": 13,
+          "end": 18,
+          "int": 3,
+          "wis": 3,
+          "per": 11
+        },
+        "scaling_factor": 9.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 9.0,
+            "effective_stats": {
+              "dex": 40,
+              "str": 38,
+              "per": 31,
+              "int": 23,
+              "vitality": 110
+            },
+            "vitality_max_values": [
+              110
+            ],
+            "live_instance_count": 19,
+            "expected_damage_per_landed_hit": 38.0,
+            "expected_damage_per_landed_crit": 57.0,
+            "expected_damage_per_round": 17.1,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=38.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "elder-cave-centipede",
+        "name": "elder cave centipede",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 100,
+        "base_stats": {
+          "str": 17,
+          "dex": 16,
+          "end": 14,
+          "int": 3,
+          "wis": 3,
+          "per": 12
+        },
+        "scaling_factor": 8.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 8.0,
+            "effective_stats": {
+              "dex": 38,
+              "str": 35,
+              "per": 30,
+              "int": 21,
+              "vitality": 100
+            },
+            "vitality_max_values": [
+              100
+            ],
+            "live_instance_count": 18,
+            "expected_damage_per_landed_hit": 35.0,
+            "expected_damage_per_landed_crit": 52.5,
+            "expected_damage_per_round": 15.75,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=35.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "elder-cave-spider",
+        "name": "elder cave spider",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 95,
+        "base_stats": {
+          "str": 15,
+          "dex": 18,
+          "end": 12,
+          "int": 3,
+          "wis": 3,
+          "per": 14
+        },
+        "scaling_factor": 7.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 7.0,
+            "effective_stats": {
+              "dex": 35,
+              "str": 30,
+              "per": 29,
+              "int": 18,
+              "vitality": 95
+            },
+            "vitality_max_values": [
+              95
+            ],
+            "live_instance_count": 14,
+            "expected_damage_per_landed_hit": 30.0,
+            "expected_damage_per_landed_crit": 45.0,
+            "expected_damage_per_round": 13.5,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=30.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "giant-cave-beetle",
+        "name": "giant cave beetle",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 75,
+        "base_stats": {
+          "str": 14,
+          "dex": 10,
+          "end": 14,
+          "int": 2,
+          "wis": 2,
+          "per": 9
+        },
+        "scaling_factor": 5.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 5.0,
+            "effective_stats": {
+              "dex": 28,
+              "str": 24,
+              "per": 19,
+              "int": 12,
+              "vitality": 75
+            },
+            "vitality_max_values": [
+              75
+            ],
+            "live_instance_count": 10,
+            "expected_damage_per_landed_hit": 24.0,
+            "expected_damage_per_landed_crit": 36.0,
+            "expected_damage_per_round": 13.2,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=24.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "giant-cave-centipede",
+        "name": "giant cave centipede",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 65,
+        "base_stats": {
+          "str": 13,
+          "dex": 12,
+          "end": 11,
+          "int": 2,
+          "wis": 2,
+          "per": 10
+        },
+        "scaling_factor": 5.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 5.0,
+            "effective_stats": {
+              "dex": 28,
+              "str": 23,
+              "per": 20,
+              "int": 12,
+              "vitality": 65
+            },
+            "vitality_max_values": [
+              65
+            ],
+            "live_instance_count": 6,
+            "expected_damage_per_landed_hit": 23.0,
+            "expected_damage_per_landed_crit": 34.5,
+            "expected_damage_per_round": 12.65,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=23.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "giant-cave-spider",
+        "name": "giant cave spider",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 55,
+        "base_stats": {
+          "str": 11,
+          "dex": 14,
+          "end": 9,
+          "int": 2,
+          "wis": 2,
+          "per": 11
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 19,
+              "per": 19,
+              "int": 10,
+              "vitality": 55
+            },
+            "vitality_max_values": [
+              55
+            ],
+            "live_instance_count": 6,
+            "expected_damage_per_landed_hit": 19.0,
+            "expected_damage_per_landed_crit": 28.5,
+            "expected_damage_per_round": 10.45,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=19.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "kings-skitterlings",
+        "name": "King's skitterlings",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 60,
+        "base_stats": {
+          "str": 8,
+          "dex": 16,
+          "end": 14,
+          "int": 3,
+          "wis": 3,
+          "per": 12
+        },
+        "scaling_factor": 8.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 8.0,
+            "effective_stats": {
+              "dex": 38,
+              "str": 26,
+              "per": 30,
+              "int": 21,
+              "vitality": 60
+            },
+            "vitality_max_values": [
+              60
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 26.0,
+            "expected_damage_per_landed_crit": 39.0,
+            "expected_damage_per_round": 11.7,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=26.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "matrons-brood",
+        "name": "Matron's brood",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 25,
+        "base_stats": {
+          "str": 7,
+          "dex": 11,
+          "end": 6,
+          "int": 2,
+          "wis": 2,
+          "per": 9
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 9,
+              "per": 11,
+              "int": 4,
+              "vitality": 25
+            },
+            "vitality_max_values": [
+              25
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 9.0,
+            "expected_damage_per_landed_crit": 13.5,
+            "expected_damage_per_round": 4.95,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=9.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "mountain-goat",
+        "name": "mountain goat",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 70,
+        "base_stats": {
+          "str": 13,
+          "dex": 12,
+          "end": 14,
+          "int": 2,
+          "wis": 2,
+          "per": 10
+        },
+        "scaling_factor": 6.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 6.0,
+            "effective_stats": {
+              "dex": 30,
+              "str": 25,
+              "per": 22,
+              "int": 14,
+              "vitality": 70
+            },
+            "vitality_max_values": [
+              70
+            ],
+            "live_instance_count": 16,
+            "expected_damage_per_landed_hit": 25.0,
+            "expected_damage_per_landed_crit": 37.5,
+            "expected_damage_per_round": 13.75,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=25.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "mountain-hunter",
+        "name": "mountain hunter",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 110,
+        "base_stats": {
+          "str": 13,
+          "dex": 14,
+          "end": 13,
+          "int": 8,
+          "wis": 9,
+          "per": 14
+        },
+        "scaling_factor": 8.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 8.0,
+            "effective_stats": {
+              "dex": 36,
+              "str": 31,
+              "per": 32,
+              "int": 26,
+              "vitality": 110
+            },
+            "vitality_max_values": [
+              110
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 31.0,
+            "expected_damage_per_landed_crit": 46.5,
+            "expected_damage_per_round": 17.05,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=31.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "mountain-lion",
+        "name": "mountain lion",
+        "combat_tier": "elite",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 120,
+        "base_stats": {
+          "str": 15,
+          "dex": 17,
+          "end": 13,
+          "int": 3,
+          "wis": 3,
+          "per": 14
+        },
+        "scaling_factor": 8.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 8.0,
+            "effective_stats": {
+              "dex": 38,
+              "str": 33,
+              "per": 32,
+              "int": 21,
+              "vitality": 120
+            },
+            "vitality_max_values": [
+              120
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 33.0,
+            "expected_damage_per_landed_crit": 49.5,
+            "expected_damage_per_round": 14.85,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=33.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "mountain-squirrel",
+        "name": "mountain squirrel",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 20,
+        "base_stats": {
+          "str": 5,
+          "dex": 17,
+          "end": 6,
+          "int": 3,
+          "wis": 3,
+          "per": 14
+        },
+        "scaling_factor": 6.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 6.0,
+            "effective_stats": {
+              "dex": 30,
+              "str": 17,
+              "per": 26,
+              "int": 15,
+              "vitality": 20
+            },
+            "vitality_max_values": [
+              20
+            ],
+            "live_instance_count": 15,
+            "expected_damage_per_landed_hit": 17.0,
+            "expected_damage_per_landed_crit": 25.5,
+            "expected_damage_per_round": 9.35,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=17.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "mountain-villager",
+        "name": "mountain villager",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 95,
+        "base_stats": {
+          "str": 12,
+          "dex": 10,
+          "end": 13,
+          "int": 8,
+          "wis": 9,
+          "per": 9
+        },
+        "scaling_factor": 7.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 7.0,
+            "effective_stats": {
+              "dex": 33,
+              "str": 27,
+              "per": 24,
+              "int": 23,
+              "vitality": 95
+            },
+            "vitality_max_values": [
+              95
+            ],
+            "live_instance_count": 11,
+            "expected_damage_per_landed_hit": 27.0,
+            "expected_damage_per_landed_crit": 40.5,
+            "expected_damage_per_round": 14.85,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=27.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "plains-deer",
+        "name": "plains deer",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 45,
+        "base_stats": {
+          "str": 8,
+          "dex": 13,
+          "end": 10,
+          "int": 3,
+          "wis": 3,
+          "per": 11
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 16,
+              "per": 19,
+              "int": 11,
+              "vitality": 45
+            },
+            "vitality_max_values": [
+              45
+            ],
+            "live_instance_count": 8,
+            "expected_damage_per_landed_hit": 16.0,
+            "expected_damage_per_landed_crit": 24.0,
+            "expected_damage_per_round": 8.8,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=16.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "plains-rabbit",
+        "name": "plains rabbit",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 18,
+        "base_stats": {
+          "str": 4,
+          "dex": 15,
+          "end": 6,
+          "int": 2,
+          "wis": 2,
+          "per": 12
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 12,
+              "per": 20,
+              "int": 10,
+              "vitality": 18
+            },
+            "vitality_max_values": [
+              18
+            ],
+            "live_instance_count": 5,
+            "expected_damage_per_landed_hit": 12.0,
+            "expected_damage_per_landed_crit": 18.0,
+            "expected_damage_per_round": 6.6,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=12.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "prairie-dog",
+        "name": "prairie dog",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 16,
+        "base_stats": {
+          "str": 4,
+          "dex": 14,
+          "end": 6,
+          "int": 3,
+          "wis": 3,
+          "per": 13
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 12,
+              "per": 21,
+              "int": 11,
+              "vitality": 16
+            },
+            "vitality_max_values": [
+              16
+            ],
+            "live_instance_count": 4,
+            "expected_damage_per_landed_hit": 12.0,
+            "expected_damage_per_landed_crit": 18.0,
+            "expected_damage_per_round": 6.6,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=12.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "prowling-mountain-lion",
+        "name": "prowling mountain lion",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 110,
+        "base_stats": {
+          "str": 17,
+          "dex": 19,
+          "end": 14,
+          "int": 3,
+          "wis": 3,
+          "per": 15
+        },
+        "scaling_factor": 9.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 9.0,
+            "effective_stats": {
+              "dex": 40,
+              "str": 37,
+              "per": 35,
+              "int": 23,
+              "vitality": 110
+            },
+            "vitality_max_values": [
+              110
+            ],
+            "live_instance_count": 5,
+            "expected_damage_per_landed_hit": 37.0,
+            "expected_damage_per_landed_crit": 55.5,
+            "expected_damage_per_round": 16.65,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=37.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "reedmere-fisher",
+        "name": "Reedmere fisher",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 30,
+        "base_stats": {
+          "str": 8,
+          "dex": 8,
+          "end": 7,
+          "int": 5,
+          "wis": 6,
+          "per": 8
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 10,
+              "per": 10,
+              "int": 7,
+              "vitality": 30
+            },
+            "vitality_max_values": [
+              30
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 10.0,
+            "expected_damage_per_landed_crit": 15.0,
+            "expected_damage_per_round": 5.5,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=10.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "reedmere-villager",
+        "name": "Reedmere villager",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 30,
+        "base_stats": {
+          "str": 7,
+          "dex": 7,
+          "end": 7,
+          "int": 6,
+          "wis": 6,
+          "per": 6
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 9,
+              "per": 8,
+              "int": 8,
+              "vitality": 30
+            },
+            "vitality_max_values": [
+              30
+            ],
+            "live_instance_count": 4,
+            "expected_damage_per_landed_hit": 9.0,
+            "expected_damage_per_landed_crit": 13.5,
+            "expected_damage_per_round": 4.95,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=9.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "river-otter",
+        "name": "river otter",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 15,
+        "base_stats": {
+          "str": 4,
+          "dex": 10,
+          "end": 5,
+          "int": 3,
+          "wis": 3,
+          "per": 8
+        },
+        "scaling_factor": 1.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 1.0,
+            "effective_stats": {
+              "dex": 18,
+              "str": 4,
+              "per": 8,
+              "int": 3,
+              "vitality": 15
+            },
+            "vitality_max_values": [
+              15
+            ],
+            "live_instance_count": 6,
+            "expected_damage_per_landed_hit": 4.0,
+            "expected_damage_per_landed_crit": 6.0,
+            "expected_damage_per_round": 2.2,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=4.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "silk-matron",
+        "name": "Silk Matron",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 150,
+        "base_stats": {
+          "str": 12,
+          "dex": 14,
+          "end": 11,
+          "int": 4,
+          "wis": 4,
+          "per": 12
+        },
+        "scaling_factor": 3.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 3.0,
+            "effective_stats": {
+              "dex": 25,
+              "str": 17,
+              "per": 17,
+              "int": 9,
+              "vitality": 150
+            },
+            "vitality_max_values": [
+              150
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 17.0,
+            "expected_damage_per_landed_crit": 25.5,
+            "expected_damage_per_round": 7.65,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=17.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "territorial-brown-bear",
+        "name": "territorial brown bear",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 120,
+        "base_stats": {
+          "str": 21,
+          "dex": 9,
+          "end": 19,
+          "int": 3,
+          "wis": 3,
+          "per": 9
+        },
+        "scaling_factor": 9.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 9.0,
+            "effective_stats": {
+              "dex": 40,
+              "str": 41,
+              "per": 29,
+              "int": 23,
+              "vitality": 81
+            },
+            "vitality_max_values": [
+              120
+            ],
+            "live_instance_count": 5,
+            "expected_damage_per_landed_hit": 41.0,
+            "expected_damage_per_landed_crit": 61.5,
+            "expected_damage_per_round": 18.45,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=41.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "undercrag-weaver",
+        "name": "Undercrag Weaver",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 200,
+        "base_stats": {
+          "str": 14,
+          "dex": 22,
+          "end": 18,
+          "int": 5,
+          "wis": 5,
+          "per": 18
+        },
+        "scaling_factor": 8.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 8.0,
+            "effective_stats": {
+              "dex": 38,
+              "str": 32,
+              "per": 36,
+              "int": 23,
+              "vitality": 200
+            },
+            "vitality_max_values": [
+              200
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 32.0,
+            "expected_damage_per_landed_crit": 48.0,
+            "expected_damage_per_round": 14.4,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=32.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "weavers-brood",
+        "name": "Weaver's brood",
+        "combat_tier": "elite",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 65,
+        "base_stats": {
+          "str": 13,
+          "dex": 18,
+          "end": 12,
+          "int": 3,
+          "wis": 3,
+          "per": 14
+        },
+        "scaling_factor": 6.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 6.0,
+            "effective_stats": {
+              "dex": 32,
+              "str": 25,
+              "per": 26,
+              "int": 15,
+              "vitality": 65
+            },
+            "vitality_max_values": [
+              65
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 25.0,
+            "expected_damage_per_landed_crit": 37.5,
+            "expected_damage_per_round": 11.25,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=25.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "whistler-below",
+        "name": "Whistler Below",
+        "combat_tier": "boss",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 240,
+        "base_stats": {
+          "str": 16,
+          "dex": 15,
+          "end": 15,
+          "int": 4,
+          "wis": 4,
+          "per": 12
+        },
+        "scaling_factor": 6.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 6.0,
+            "effective_stats": {
+              "dex": 32,
+              "str": 28,
+              "per": 24,
+              "int": 16,
+              "vitality": 240
+            },
+            "vitality_max_values": [
+              240
+            ],
+            "live_instance_count": 1,
+            "expected_damage_per_landed_hit": 28.0,
+            "expected_damage_per_landed_crit": 42.0,
+            "expected_damage_per_round": 12.6,
+            "per_round_formula": "blessed_at_level_hit_rate[boss]=0.45 x mean_plain_hit=28.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "whistlers-young",
+        "name": "Whistler's young",
+        "combat_tier": "normal",
+        "is_aggressive": true,
+        "is_unique": false,
+        "base_vitality": 50,
+        "base_stats": {
+          "str": 13,
+          "dex": 12,
+          "end": 11,
+          "int": 2,
+          "wis": 2,
+          "per": 10
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 21,
+              "per": 18,
+              "int": 10,
+              "vitality": 50
+            },
+            "vitality_max_values": [
+              50
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 21.0,
+            "expected_damage_per_landed_crit": 31.5,
+            "expected_damage_per_round": 11.55,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=21.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "wild-boar",
+        "name": "wild boar",
+        "combat_tier": "elite",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 55,
+        "base_stats": {
+          "str": 12,
+          "dex": 7,
+          "end": 12,
+          "int": 2,
+          "wis": 2,
+          "per": 6
+        },
+        "scaling_factor": 3.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 3.0,
+            "effective_stats": {
+              "dex": 25,
+              "str": 17,
+              "per": 11,
+              "int": 7,
+              "vitality": 55
+            },
+            "vitality_max_values": [
+              55
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 17.0,
+            "expected_damage_per_landed_crit": 25.5,
+            "expected_damage_per_round": 7.65,
+            "per_round_formula": "blessed_at_level_hit_rate[elite]=0.45 x mean_plain_hit=17.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "windhome-hunter",
+        "name": "Windhome hunter",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 65,
+        "base_stats": {
+          "str": 10,
+          "dex": 13,
+          "end": 10,
+          "int": 7,
+          "wis": 8,
+          "per": 13
+        },
+        "scaling_factor": 5.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 5.0,
+            "effective_stats": {
+              "dex": 28,
+              "str": 20,
+              "per": 23,
+              "int": 17,
+              "vitality": 65
+            },
+            "vitality_max_values": [
+              65
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 20.0,
+            "expected_damage_per_landed_crit": 30.0,
+            "expected_damage_per_round": 11.0,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=20.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "windhome-villager",
+        "name": "Windhome villager",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 50,
+        "base_stats": {
+          "str": 9,
+          "dex": 9,
+          "end": 9,
+          "int": 7,
+          "wis": 8,
+          "per": 8
+        },
+        "scaling_factor": 4.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 4.0,
+            "effective_stats": {
+              "dex": 26,
+              "str": 17,
+              "per": 16,
+              "int": 15,
+              "vitality": 50
+            },
+            "vitality_max_values": [
+              50
+            ],
+            "live_instance_count": 3,
+            "expected_damage_per_landed_hit": 17.0,
+            "expected_damage_per_landed_crit": 25.5,
+            "expected_damage_per_round": 9.35,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=17.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      },
+      {
+        "slug": "young-mountain-lion",
+        "name": "young mountain lion",
+        "combat_tier": "normal",
+        "is_aggressive": false,
+        "is_unique": false,
+        "base_vitality": 28,
+        "base_stats": {
+          "str": 8,
+          "dex": 11,
+          "end": 7,
+          "int": 3,
+          "wis": 3,
+          "per": 9
+        },
+        "scaling_factor": 2.0,
+        "on_hit_effects": [],
+        "live_tiers": [
+          {
+            "mk_tier": 1,
+            "effective_level": 2.0,
+            "effective_stats": {
+              "dex": 20,
+              "str": 10,
+              "per": 11,
+              "int": 5,
+              "vitality": 28
+            },
+            "vitality_max_values": [
+              28
+            ],
+            "live_instance_count": 2,
+            "expected_damage_per_landed_hit": 10.0,
+            "expected_damage_per_landed_crit": 15.0,
+            "expected_damage_per_round": 5.5,
+            "per_round_formula": "blessed_at_level_hit_rate[normal]=0.55 x mean_plain_hit=10.0 (crits/grazes excluded; #89-survey style per the brief)"
+          }
+        ]
+      }
+    ]
+  },
+  "player_constants": {
+    "source": {
+      "combat": "django/src/apps/shyland/combat_utils.py (module constants and functions)",
+      "healing_items": "ItemDefinition.objects.filter(item_type='consumable', effect__isnull=False) -> effect.components restore_vitality/hot_vitality"
+    },
+    "TO_HIT_DEFENSE_BASE": 10,
+    "GRAZE_WINDOW": 3,
+    "CRIT_BASE": 0.05,
+    "CRIT_PER_DEX_ADVANTAGE": 0.01,
+    "CRIT_CAP": 0.25,
+    "hit_multipliers": {
+      "graze": 0.5,
+      "hit": 1.0,
+      "critical": 1.5,
+      "minimum_damage": 1.0,
+      "source": "django/src/apps/shyland/combat_utils.py: calculate_damage"
+    },
+    "NPC_CONTEST_BASE": 18,
+    "NPC_CONTEST_STEP": 2.5,
+    "NPC_TIER_OFFSET": {
+      "normal": 0,
+      "elite": 2,
+      "boss": 2
+    },
+    "MK_LEVEL_SPAN": 10,
+    "vitality_max_formula": {
+      "formula": "stat_end * 10 + stat_str * 3 + level * 5",
+      "source": "django/src/apps/shyland/combat_utils.py: recalculate_bars"
+    },
+    "longevity_max_formula": {
+      "formula": "stat_end * 8 + stat_wis * 5 + level * 5",
+      "source": "django/src/apps/shyland/combat_utils.py: recalculate_bars"
+    },
+    "acuity_damage_modifier": {
+      "rule": "clamped to [0.1, 1.9]; neutral inside the Origin band; above band_high: 1.0 + (a - band_high), focus target only; below band_low: 1.0 - (band_low - a), always applies",
+      "bounds_note": "modifier range is [1.0 - (band_low - 0.1), 1.0 + (1.9 - band_high)] per character band",
+      "source": "django/src/apps/shyland/combat_utils.py: acuity_damage_modifier + calculate_damage"
+    },
+    "healing_consumables": [
+      {
+        "slug": "healing-draught",
+        "name": "Healing Draught",
+        "base_value": 12,
+        "effect_slug": "healing-draught",
+        "heal_components": [
+          {
+            "component_type": "restore_vitality",
+            "magnitude_base": 20.0,
+            "magnitude_scaling": 5.0,
+            "duration_base": 0.0
+          }
+        ]
+      }
+    ]
+  }
+}
