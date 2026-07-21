@@ -1,0 +1,271 @@
+Shyland V22 Brief 5 — Gear Combat Wiring — Closeout Report
+============================================================
+Date: 2026-07-21
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). The fourth implementation brief of v22.
+Issues closed at this closeout: #100 (primary), #109 (reversal
+implemented), #110 (race fixed). #68's B5 ruling half implemented
+without reopening #68. Zero migrations, zero schema changes — the
+Step 5a rename touched JSON contents and seed data only, as specified.
+
+PRE-FLIGHT
+----------
+Worktree clean and synced; DOCKER_HOST -> production
+(games.magrathea.com), pre-flight exit 0; gh authenticated. The brief
+was audited against the standing pattern before execution (branch-only /
+never-merge stated verbatim; no pruning; #117 suite workaround;
+stop-and-record) — it conformed.
+
+PER-STEP RESULTS
+----------------
+Step 0   Brief self-committed verbatim (commit b138e20).
+
+Step 1   HARD GATE PASSED. The B5 knob-and-wiring ruling comment posted
+         on #100 verbatim (mechanically extracted from the committed
+         brief's fenced block; content-identical on gh issue view —
+         GitHub's trailing-blank-line strip recorded as whitespace
+         normalization only). Issues filed and gate-verified exact
+         (titles, bodies, no milestones, no labels):
+         - #129  Authored per-item armor base — guaranteed minimum
+                 coverage under rolled resist
+         - #130  Secondary-stat curves vs Mk band growth — audit before
+                 Mk 2 content
+         Both filed with --assignee @me per the repo's standing
+         assignment rule (the brief was silent on assignee — the same
+         recorded deviation-from-literal as prior briefs).
+
+Step 2   Effective stats (commit 3a3226f). combat_utils gains
+         gear_stat_bonus / effective_stats (computed per use; optional
+         equipped_items list for preloaded contexts; unsaved characters
+         read gearless) and summed_gear_stat.
+
+         READ-SITE CLASSIFICATION SWEEP (exhaustive grep of
+         stat_str|stat_dex|stat_end|stat_int|stat_wis|stat_per across
+         apps/shyland/, tests and migrations excluded):
+
+         GAMEPLAY — switched to effective_stats:
+         - consumers.cmd_inventory carry line (~909): eff STR × 10
+         - consumers._unequip_blocked_reason (~1343): bag-removal limit
+           reads eff STR over the equipped set MINUS the bag coming off
+           (no query — computed from the caller's list)
+         - consumers.cmd_flee contest (~2136): eff DEX (new
+           get_effective_stats DB helper)
+         - consumers.get_carry_capacity (~3421) and get_carry_counts
+           (~3529): eff STR × 10
+         - combat_utils.recalculate_bars (286-287): formula inputs are
+           effective END/STR/WIS (level-up and creation callers keep
+           their object-mutation semantics; creation has no gear)
+         - run_tick_engine round-order initiative (~360): eff DEX/PER
+           via an @_dsa helper
+         - run_tick_engine execute_actions (~424/440/444/550): player
+           to-hit DEX, damage stat bonus (STR / ranged DEX), dodge DEX
+           — all from one per-round equipped-set load
+
+         NON-GAMEPLAY — keep base, by design:
+         - consumers._send_stats (~2210-2215): the base figure of the
+           base-vs-bonus display itself (gear renders as parenthetical)
+         - consumers.cmd_spend / apply_spend: mutation of the base field
+         - views.py character creation (~86-93): authors base fields;
+           recalculate_bars on the unsaved character is gearless by
+           construction
+         - admin.py fieldsets (124), models.py field definitions:
+           identity, not reads
+         - combat_utils.roll_initiative(stat_dex, stat_per): takes
+           values as arguments; classification lives at its call sites
+
+         Broken items still contribute stats (the brief's effective-stat
+         spec filters is_equipped only; the ruled non-functional band
+         applies to TAV alone) — literal-spec adherence, recorded.
+
+Step 3   Armor mitigation (commit 3a3226f). ARMOR_SLOT_WEIGHTS (Option C
+         comment in place), ARMOR_MITIGATION_K = 48, total_armor_value
+         (slot weight × mk_tier over worn armor + rolled physical_resist
+         over ALL equipped items; is_broken or durability_current == 0
+         contributes nothing), apply_armor_mitigation (reduction =
+         max(1, round(d × tav/(tav+48))), result clamped >= 1).
+
+         MITIGATION INSERTION SITE: run_tick_engine.py, execute_actions,
+         the "NPC attacks character" branch — immediately after
+         calculate_damage/damage_int and before the
+         character.vitality_current subtraction. This is the only
+         mitigation site; players mitigate, NPCs never do.
+
+Step 4   The bar law (commit 3a3226f). bar_rescale_updates builds the
+         field->expression dict for ONE atomic .update(): both maxima
+         recomputed from effective stats and both currents rescaled
+         current × new_max ÷ old_max (Case/Greatest/Round-over-Cast),
+         rounded to nearest, floored at 1 while alive, a dying 0 staying
+         0, full bars staying exactly full. All stat-field references
+         are F() (DB truth at update time); only the gear sums and
+         spend's delta arrive as Python constants — they ARE the
+         mutation. Adopters: equip_item / unequip_item (rescale inside
+         their @database_sync_to_async bodies after the item write, with
+         a status refresh pushed so the pane tracks the new maxima) and
+         cmd_spend.apply_spend (stat bump + point debit + rescale in one
+         .update(); field-limited refresh afterwards — a bare
+         refresh_from_db cleared the current_room FK cache the async
+         caller still reads, caught by the new tests). Level-up
+         untouched per the brief (full-refill recalculate_bars path,
+         now fed effective inputs).
+
+Step 5a  The rename (commit 790259b). seed_world.py: 9 secondary-pool
+         entries renamed (bleed_chance ×7, stun_chance ×1,
+         poison_chance ×1 -> *_factor); no curve values changed;
+         crit_chance and lifesteal untouched. rename_proc_stats
+         management command written in the fix_zero_secondary_stats
+         mold — idempotent, value-preserving, walks both rolled-stat
+         fields, reports counts. Tested against a local database via
+         the suite (value-preserving + idempotent test).
+         *** rename_proc_stats was NOT run against production. ***
+         Running it (and the reseed that renames the definition pools)
+         is a deploy-time, operator-directed action; until both run,
+         old-named rolled entries on live instances are display-only
+         and fire no procs. Noted in the arch doc's §4.6 deploy note.
+
+Step 5b  The wiring (commit 790259b). PROC_CHANCE_PER_POINT 0.05 /
+         PROC_CHANCE_CAP 0.50 / PROC_FACTOR_STATS constants;
+         roll_gear_bonus_damage rolls per equipped item per proc-factor
+         entry on landed hits only (hit/critical — a graze rolls
+         nothing), success adds randint(1, ceil(V)); flat
+         electric_damage_bonus joins every landed hit; lifesteal heals
+         the summed rolled values via an atomic Least(F+heal, F(max))
+         update, then refreshes the in-memory character and pushes a
+         status — no output line; the four inert stats
+         (spell_damage_bonus, mana_regen, magic_resist,
+         radiation_resist) have no consumers and do not join TAV.
+         NPC->player damage never gains procs.
+
+         CRIT-BONUS APPROACH: resolve_hit gained an optional
+         crit_bonus=0.0 keyword parameter added inside the existing
+         capped computation (min(CRIT_CAP, max(CRIT_BASE, base + dex
+         advantage + crit_bonus))). The player-attack site passes
+         summed gear crit_chance × 0.01; the NPC-attack site passes
+         nothing — signature stays workable for every existing caller
+         and the cap provably holds (tested with an absurd bonus).
+
+         DISPLAY: the gear pool renders as one parenthetical on the hit
+         line — "You hit X for 14 (+7) damage." / "for a critical 14
+         (+7) damage!" — base first, total dealt = base + bonus, zero
+         pool byte-identical to pre-B5 (verified by test). The
+         parenthetical inherits the hit line's category color; no new
+         palette entries.
+
+Step 6   Stats display (commit b532452). The six stat rows show base
+         with the signed gear parenthetical from gear_stat_bonus —
+         "Strength     (STR): 25 (+3)" — only when the gear sum is
+         nonzero; Kind 1 value-color rows unchanged. The stats pane
+         (side chrome) renders bars only, no six-stat surface — the
+         report rows are the only rendering site.
+
+Step 7   #109-LINE FINDING (commit b532452): no refill-moment display
+         line exists in cmd_spend — the v22 B2 output was already
+         exactly the two DD §6 sentences (transactional sentence + new
+         value). The bankable refill was silent bar state
+         (recalculate_bars snapping currents to max), and it died with
+         Step 4's atomic rewrite. Nothing further changed, per the
+         brief's directive for this case.
+
+Step 8   VERIFICATION. Local scratch venv: 259/265 (the known 6
+         Redis-dependent tests are container-only, #117 workaround
+         applies). Production container after the operator-authorized
+         make build: *** 265/265 green *** as apps.shyland.tests -t
+         /app (was 228 — 37 new in tests/test_gear_combat.py).
+
+         BUDGET GUARD — SURVEY-LITE RE-BLESS (PASSED). Model: blessed
+         at-level hit rates 55/45/45 (v21 #101), NOT the DEX contest
+         (the brief's "at the blessed hit rates" — a DEX-contest model
+         degenerates for the 25/25 build exactly as the v21 survey
+         documented); 25/25 reference build (STR 25, END/WIS/INT/PER 8)
+         at each boss's intended kill level, HP = 155 + 5L
+         (recalculate_bars formula); Uncommon broadsword mid 16.09
+         (v21 survey constant); player damage/round = rate × (16.09 +
+         25), crits/grazes excluded (#89-survey style); incoming
+         damage/round per member from the production-verified knob
+         survey JSON's expected_damage_per_round; encounter = boss + 2
+         escorts, all attacking from round 1, escorts killed
+         ascending-HP first; potions = ceil(max(0, taken − 0.75×HP)/25);
+         armor scales each incoming hit by 48/61 (TAV 13 -> 21.3%;
+         per-hit floors don't bind at these hit sizes). Player damage
+         untouched -> expected rounds unchanged by construction.
+
+         Boss               L  HP_p  rounds  naked dmg/pot  armored dmg/pot
+         Silk Matron        3   170   10.3      95 /  0        75 /  0
+         Whistler Below     6   185   17.4     296 /  7       233 /  4
+         Dronemother        6   185   19.4     358 /  9       282 /  6
+         Undercrag Weaver   8   195   17.8     376 / 10       296 /  6
+         Chittering King    9   200   18.4     362 /  9       285 /  6
+         Crowned Devourer  10   205   22.7     491 / 14       386 / 10
+
+         No boss DROPS to a zero-potion fight (the Matron was already
+         zero-potion in the v21 bless — naked and armored agree); the
+         final boss still demands 10 potions. The naked column
+         reproduces the v21 blessed shape (0/6/8/7/7/10 vs caps
+         8/8/8/8/8/12) within survey-lite convention differences.
+         K = 48 stands; no operator ruling needed.
+
+Step 9   Architecture doc updated in place (commit 65a3c95): header
+         hash -> 1ee870e with the B5 summary; §4.3/4.4 bar-invariant
+         extension; §4.5 effective stats / mitigation + re-bless / bar
+         law / proc wiring; §4.6 rename + deploy note; §4.9 round
+         wiring + parenthetical; §4.14 the #109 reversal at spend and
+         the stats-row parenthetical.
+
+Step 10  This report. #100, #109, #110 closed with close comments
+         (gate: Step 8 passed). Nothing removed or pruned.
+
+DISCREPANCIES / CONTRADICTIONS
+------------------------------
+None against repo facts. Judgment calls recorded: (1) broken items
+contribute effective stats and proc rolls (only TAV excludes them) —
+the brief scopes the non-functional band to TAV alone; flag if the
+design chat wants the band widened; (2) equip/unequip now push a status
+refresh so the client bars track max changes — the brief's bar law
+implies visible truth, and spend already pushed one; (3) the budget
+guard's model is rate-based per the brief's "at the blessed hit rates"
+wording — recorded above with the full model; (4) the #100 close
+comment, the two 1b issue bodies, and assignee handling are as gated in
+Step 1. One process event: the first make build attempt was blocked by
+the permission layer pending explicit operator authorization for the
+production deploy; the operator authorized ("run make build against
+production") and the build + container suite proceeded — one container
+recreation, all three games restarted.
+
+DEPLOYMENT NOTES
+----------------
+- One make build (operator-authorized) — all three games bounced.
+- No migrations. No reseed run. rename_proc_stats NOT run against
+  production. Operator deploy-time actions for full B5 effect on live
+  data: run seed_world (renames definition pools) and rename_proc_stats
+  (renames rolled instances). Until then live procs from old-named
+  entries do not fire; everything else (effective stats, armor, bar
+  law, crit/lifesteal/electric under new-named rolls) is live for
+  newly-rolled items and gear stats generally.
+
+OPERATOR PLAYTEST — PENDING (ready after the deploy-time data actions)
+----------------------------------------------------------------------
+- Equip the leather set and watch a cave fight: incoming hits visibly
+  smaller; naked comparison optional.
+- Equip END gear mid-damage: bar grows, fill fraction holds; unequip at
+  full: still full.
+- spend end mid-combat: bigger bar, same fraction, NO refill.
+- stats with stat gear on: the (+N) parentheticals; unequip and watch
+  them vanish.
+- Fight with a proc weapon (post-rename): the (+N) parenthetical on hit
+  lines; lifesteal bar drift on a leech weapon.
+- Run rename_proc_stats (after reseed) and examine an old proc weapon:
+  same values, Factor names.
+
+COMMITS (in order)
+------------------
+b138e20  Step 0: self-commit brief
+3a3226f  Steps 2-4: effective stats, armor mitigation, the bar law
+790259b  Step 5: proc rename + gear wiring
+b532452  Steps 6-7: stats display parenthetical; #109 finding
+1ee870e  Step 8: tests (37) + apply_spend FK-cache fix
+65a3c95  Step 9: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+65a3c95 (last implementation/documentation commit; this closeout and
+the post-closeout issues report land in follow-up commits on the same
+branch).
