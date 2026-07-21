@@ -609,11 +609,14 @@ class Command(BaseCommand):
                             npc_stats['str'] * 1.2,
                         )
                         damage = calculate_damage(base_damage, 0, 1.0, 1.0, hit_result, is_focus_target=True)
-                        damage_int = max(1, int(damage))
+                        raw_damage = max(1, int(damage))
                         # v22 B5 (#100): armor mitigates NPC→player damage
                         # only, after calculate_damage's final value —
                         # deterministic, floored, at least 1 still lands.
-                        damage_int = apply_armor_mitigation(damage_int, char_tav)
+                        # Amendment 1: the blocked share renders as the
+                        # incoming line's (-N) parenthetical below.
+                        damage_int = apply_armor_mitigation(raw_damage, char_tav)
+                        blocked = raw_damage - damage_int
 
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 
@@ -657,10 +660,16 @@ class Command(BaseCommand):
                             # v22 brief 2 (DD §13, #54): no bracket — the
                             # word lives in the damage clause; NPC crits
                             # carry their own category (combat-crit-in).
+                            # v22 B5 amendment 1: one vocabulary — the
+                            # leading number moved the bar, the
+                            # parenthetical is gear's share; armor's is
+                            # (-N). TAV 0 leaves the line byte-identical.
+                            in_dmg_txt = (f"{damage_int} (-{blocked})"
+                                          if blocked > 0 else f"{damage_int}")
                             if hit_result == 'critical':
-                                msg = f"{flavor} for a critical {damage_int} damage!"
+                                msg = f"{flavor} for a critical {in_dmg_txt} damage!"
                             else:
-                                msg = f"{flavor} for {damage_int} damage."
+                                msg = f"{flavor} for {in_dmg_txt} damage."
 
                             effect_msgs = apply_npc_effects(npc, character)
                             if effect_msgs:

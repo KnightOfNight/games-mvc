@@ -15,8 +15,8 @@ from django.utils import timezone
 
 from . import currency
 from .combat_utils import (
-    bar_rescale_updates, effective_stats, gear_stat_bonus,
-    npc_display, npc_display_name,
+    ARMOR_SLOT_WEIGHTS, bar_rescale_updates, effective_stats,
+    gear_stat_bonus, npc_display, npc_display_name,
 )
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
@@ -1448,6 +1448,29 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             dmg_hi = int(item.damage_midpoint + item.damage_spread)
             lines.append(f'  Damage:     {dmg_lo} – {dmg_hi}')
 
+        # v22 B5 amendment 1: armor confesses its contribution — the slot
+        # weight per Mk, plus the worn piece's actual slot-weight-side TAV
+        # share (0 — broken in the non-functional band). physical_resist
+        # stays on its own stat lines; it is not folded in here.
+        armor_slots = [s for s in (defn.valid_slots or [])
+                       if s in ARMOR_SLOT_WEIGHTS] if defn.item_type == 'armor' else []
+        if armor_slots:
+            weights = [ARMOR_SLOT_WEIGHTS[s] for s in armor_slots]
+            if len(set(weights)) == 1:
+                weight_str = f'{weights[0]} per Mk'
+            else:
+                weight_str = ' / '.join(
+                    f'{ARMOR_SLOT_WEIGHTS[s]} ({format_slot_name(s)})'
+                    for s in armor_slots) + ' per Mk'
+            armor_str = f'  Armor:      {weight_str}'
+            if item.is_equipped:
+                if item.is_broken or item.durability_current == 0:
+                    armor_str += ' (worn: 0 — broken)'
+                else:
+                    worn = ARMOR_SLOT_WEIGHTS.get(item.equipped_slot, 0) * item.mk_tier
+                    armor_str += f' (worn: {worn})'
+            lines.append(armor_str)
+
         if defn.takes_durability_loss:
             dur_str = f'  Durability: {int(item.durability_current)}%'
             if item.is_broken:
@@ -2214,8 +2237,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self._send_stats(character)
 
     @database_sync_to_async
-    def get_gear_stat_bonus(self, character):
-        return gear_stat_bonus(character)
+    def get_stats_gear_context(self, character):
+        """One equipped-set query feeding both the stat parentheticals and
+        the Armor row (v22 B5 amendment 1)."""
+        from .combat_utils import total_armor_value
+        equipped = list(
+            character.inventory.filter(is_equipped=True)
+            .select_related('definition'))
+        return (gear_stat_bonus(character, equipped),
+                total_armor_value(character, equipped))
 
     async def _send_stats(self, character):
         # v21 brief 1 (#91): key/value form — 'Character Stats:' header
@@ -2224,8 +2254,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # line is Origin + Archetype, e.g. 'Level 10 Feral Blade'.
         # v22 B5 (#100): base with the gear parenthetical — 'STR: 25 (+3)',
         # parenthetical only when the gear sum is nonzero.
-        from .combat_utils import xp_for_next_level
-        gear = await self.get_gear_stat_bonus(character)
+        # v22 B5 amendment 1: the Armor row — TAV with its live mitigation
+        # percentage; naked shows 'Armor: 0' with no parenthetical.
+        from .combat_utils import ARMOR_MITIGATION_K, xp_for_next_level
+        gear, tav = await self.get_stats_gear_context(character)
 
         def stat_line(label, key):
             bonus = gear[key]
@@ -2243,6 +2275,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             stat_line('Intelligence (INT)', 'int'),
             stat_line('Wisdom       (WIS)', 'wis'),
             stat_line('Perception   (PER)', 'per'),
+            {'v': f'  Armor: {tav}' + (
+                f' (blocks {round(100 * tav / (tav + ARMOR_MITIGATION_K))}%)'
+                if tav > 0 else '')},
             {},
             {'v': f'  Vitality:   {character.vitality_current} / {character.vitality_max}'},
             {'v': f'  Longevity:  {character.longevity_current} / {character.longevity_max}'},
