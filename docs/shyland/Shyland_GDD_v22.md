@@ -1,3 +1,7 @@
+<!-- GENERATED FILE - DO NOT EDIT.
+     Built by `make gdd` from the section files in docs/shyland/gdd/.
+     Edit the section files; the sections are authoritative if this file ever disagrees. -->
+
 # Shyland — Game Design Document
 
 **Version 22.0 — Closed**
