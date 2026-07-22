@@ -1,0 +1,136 @@
+Shyland V22 Brief 6 — Tick Expiry Crash Fix — Closeout Report
+==============================================================
+Date: 2026-07-22
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). The fifth and final implementation brief of the v22 cap.
+Issue closed at this closeout: #135 (pulled into Version 22 by operator
+ruling; the V23 milestone assignment superseded). Zero migrations; no
+deploy-time data actions.
+
+PRE-FLIGHT
+----------
+Tree clean and synced at fa34af1; no outstanding deploy-time actions
+(the B5 pair ran 2026-07-21, verified); DOCKER_HOST -> production,
+reachable; gh authenticated. Pattern audit passed.
+
+PER-STEP RESULTS
+----------------
+Step 0  Brief self-committed verbatim (commit b3eba0b).
+
+Step 1  GATE PASSED. #135 moved to milestone Version 22; the operator
+        ruling comment posted verbatim (mechanically extracted from the
+        committed brief's fenced block; content-identical on gh issue
+        view).
+
+Step 2  THE FIX (commit 4cfb8dc) — SHAPE (a), wrap at the call site:
+        the full-expiry branch of process_effects now reads
+        `msg = await database_sync_to_async(_expiry_message_for_effect)(parent)`.
+        Why (a): the helper's `.order_by('order').first()` defeats
+        prefetch as written, so shape (b) would have required rewriting
+        the helper to consume the prefetched cache — more than the
+        trivial change the brief allows for (b), and the brief's own
+        default is (a). The helper stays documented-sync; wording,
+        categories, and all effect logic untouched (scope lock held).
+
+        SIBLING SWEEP (bounded to run_tick_engine.py async paths):
+        ZERO identical instances found — every other documented-sync
+        helper call sits inside a @database_sync_to_async wrapper:
+        apply_death_penalties (execute_death), create_corpse /
+        get_unarmed_message / apply_npc_effects / recalculate_bars /
+        get_durability_penalty (execute_actions), apply_stat_effect
+        (reverse_stat_ci). LOOSER-THAN-IDENTICAL, reported untouched:
+        (1) _expiry_message_for_component at ~1225 runs bare in the
+        async loop but executes no query — it reads only attributes
+        loaded by get_expiring_component_instances' select_related
+        ('component', 'effect_instance__target',
+        'effect_instance__definition'); safe today, fragile by
+        coincidence (flagged in the arch doc's new async-safety rule);
+        (2) the parent FK reads in the same loop (parent.definition,
+        parent.target) are safe under the same select_related.
+
+Step 3  TESTS (commit 4cfb8dc): tests/test_tick_expiry.py — 3 tests.
+        APPROACH: drive process_effects directly in async context with
+        stubbed send_to_player/broadcast_to_room — the established
+        engine-harness style (CritProseTests / the B5 gear engine
+        tests); no WebsocketCommunicator needed since the engine is a
+        management command, not a consumer. Fixtures build a real
+        EffectInstance with stat_bonus components (no per-tick action)
+        and expires_at in the past. Coverage: full natural expiry
+        completes the tick without exception, delivers 'The X fades.
+        Your body returns to normal.', closes the parent
+        (removed_by='timeout'), reverses the stat, and a second sweep
+        finds nothing (no partial state); multi-component simultaneous
+        expiry emits exactly ONE whole-effect message and no
+        per-component lines; the per-component sibling path unchanged
+        (one component expires, its line delivered, parent and live
+        component survive). NEGATIVE CONTROL: with the wrap temporarily
+        reverted, the full-expiry test dies with the exact
+        SynchronousOnlyOperation from #135's traceback — the tests
+        provably catch the defect.
+
+Step 4  VERIFICATION. Local scratch venv: 285/291 (the known 6
+        Redis-dependent container-only tests, #117 workaround).
+        Production container after make build (session-wide operator
+        authorization): *** 291/291 green *** as apps.shyland.tests.
+
+Step 5  PRODUCTION REPRODUCTION (the field proof) — PASSED.
+        BEFORE: 2026-07-22T14:15:55Z, the Focus Tonic playtest's effect
+        expiry killed the engine (SynchronousOnlyOperation traceback in
+        docker logs; container auto-restarted, RestartCount 1).
+        AFTER (post-deploy, this brief's build at 15:22:42Z): the
+        focus-tonic effect applied to Shy-Guy via apply_effect_definition
+        (Mk 1, ~35s — normal gameplay effect; acuity drifts back per the
+        v19 drift), ran its full course, expired naturally
+        (is_active=False, removed_by='timeout'), the engine logged
+        'EffectInstance closed: focus-tonic on Shy-Guy', and the ticker's
+        RestartCount remained 0 with StartedAt unchanged — no death, no
+        traceback. The exact event class that crashed the engine now
+        completes. (The expiry message was emitted on the engine's
+        send path; with the player offline it goes to an empty channel
+        group — the code path is the proof, exercised end-to-end.)
+
+Step 6  #135 closed with the fix-shape and field-proof comment (gated
+        on Steps 4-5).
+
+Step 7  Architecture doc updated in place (commit 3f46065): header hash
+        -> 4cfb8dc; §4.9 gains the tick-loop async-safety rule
+        (sync helpers cross only via database_sync_to_async or
+        verifiably prefetched data) with #135 as the founding case and
+        the sibling path's prefetch dependency flagged.
+
+Step 8  This report. Nothing removed or pruned.
+
+DISCREPANCIES / CONTRADICTIONS
+------------------------------
+None. One adjacent observation for the operator (not acted on — outside
+this brief's scope): the Version 23 milestone description still carries
+the '#135 — tick engine crashes...' line added 2026-07-22 before the
+pull-forward ruling; with #135 now in Version 22 and closed, that line
+is stale. Removing or rewording it is the operator's call.
+
+DEPLOYMENT NOTES
+----------------
+- One make build (session-wide operator authorization) — all three
+  games bounced. This build ran with a cold BuildKit cache (the disk
+  cleanup earlier today) and took longer than usual; subsequent builds
+  are back to normal.
+- No migrations, no reseed, no data commands. The Step 5 field test
+  left only normal gameplay state (a consumed focus-tonic effect on
+  Shy-Guy, acuity drifting home).
+
+OPERATOR PLAYTEST — PENDING
+---------------------------
+- Drink a Focus Tonic, wait out the ~35s, and watch it wear off with
+  the fade line — engine alive, no skipped beat. (#133's band/clamp
+  questions remain open and untriaged, unchanged by this brief.)
+
+COMMITS (in order)
+------------------
+b3eba0b  Step 0: self-commit brief
+4cfb8dc  Steps 2-3: the fix + regression tests
+3f46065  Step 7: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+3f46065 (this closeout and the post-closeout issues report land in
+follow-up commits on the same branch).
