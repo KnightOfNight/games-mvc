@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 21.1 — Closed**
+**Version 22.0 — Closed**
 
 -----
 
@@ -66,6 +66,7 @@
 | **v20.0** | **v20 (commit af95203) — uploaded, Closed** | **RELEASE. The Map version — Shyland draws itself.** Five implementation briefs plus five consolidated/combined amendments; design history for this version lives in the GitHub issue tracker per the v20 issue-first law (every ruling recorded as issue comments at the moment it was made) rather than in RC rows — 30+ issues opened and closed under the Version 20 milestone. **The map system:** Room coordinates re-ruled as pure per-zone map-space (z is not elevation); the core geometry invariant (unflagged cardinal exits land grid-adjacent, same z) enforced by seed verification on every reseed; per-exit boundary flags (cardinals only); MapFrags — derived, never stored, connected components over unflagged intra-zone cardinal exits; fog-of-war from RoomVisit (now recorded at arrival in every path — the aggro-entry gap fixed); a server-computed map payload on connect and every room change; and the client map — a fixed 300×300 node-and-line rendering, north-up, 9×9 window, current-room highlight, unexplored stubs, boundary ticks, U/D badges, aria-hidden. **World geometry re-authored to make it true:** the Convergence ring re-laid as the 40-room closed chamfered square it always described (six new corner rooms, three exit relabels, spoke re-lay, zero existing rooms moved) with two new ring street-cart vendors (VND-9, Mother Tansy); Z01's Stonestep flipped west and Bear's Hollow re-hung north, the surface flattened to z=0, five cave mouths boundary-flagged; checkpoint sphere→shard wording corrected everywhere (the Primordial and Verdant Spheres alone remain spheres). **The output envelope:** every WebSocket message carries `ts` (epoch ms, stamped at creation) and `seq` (per-connection monotonic, stamped at a single audited delivery choke point — the future firehose tap); seq order is authoritative for rendering; display rule *timestamps mark events, not renderings* (room renders and state reports unstamped; combat, chat, presence, commerce, errors, echoes stamped); `[HH:MM:SS.ss]` dim local-time prefix, aria-hidden. **The command grammar:** one resolver replacing three matchers — `<verb> [all|N] [rarity] [noun]` with ordered token-prefix matching on player-visible name+tier tokens, plural fallbacks (es/s, ves→fe, ies→y), `N.noun` retained, cross-definition ambiguity refuse-lists, rarity-aware same-definition selection (sell lowest-first, equip highest-first), equipped items excluded from sell/drop, noun-optional rarity flush (`sell all common`), a 30-case authoritative unit table; `loot all` sweeps every corpse in the room; bulk operations narrate as per-event message streams with summary lines (sell, repair, loot audited across all vintages; buy N exempt as one atomic transaction); server-authoritative tab completion; the dispatch guard (no input can drop a connection); movement blocked in combat (flee is the exit); `timestamps on|off` as a stored preference. **Rarity moved out of item names into the status flag block** — `Iron Mace Mk 1 — 100% durability [Uncommon, Droppable]` — atomically with the parser, colorized on the Common→Artifact scale. **The client layout:** location bar / unified output pane / command bar (send inside, ping-pong connection indicator with latency) on the flexing left; fixed 300px right pane — stats (verbatim-cased character-name header, V/L ratio bars, the Acuity band gauge that finally teaches the band mechanic) turning combat-red as a section, the scrolling fight panel (per-enemy hp bars and the focus marker), the map at bottom; the app fits the viewport exactly (the page never scrolls); phone stacking ruled. **Output & messaging:** the full semantic-category palette (structural headers one chrome blue everywhere — the general rule; outgoing/incoming/crit/miss combat family unified with the stats-panel red; XP gold; rarity scale); look sections (Exits / Who's here? / What's here?, empty sections omitted, the interim On-the-ground section absorbed); command echo as a timestamped transcript; NPC article grammar — article-free names with authored definite AND indefinite articles plus plural phrases, one display helper composing every reference, introduction contexts ("A black bear is here.", capitalized) vs. definite mid-fight, the 40+-name data pass; corpse decay suppressed for in-combat viewers; "carried nothing worth taking"; the bracketed room header removed (the location bar owns place identity; the output pane clears per room by ruling) and a zone-colored separator bar framing each room render. **Directional combat arrows: designed, reviewed, ABANDONED** — not deferred. **Filed forward, deliberately:** identification visibility redesign (knowledge by holding, #80); Longevity's first drain (#70); Version 21 opens with the vitality lost-update race (#52), NPC ordering unification (#64), `use N` (#65), and the Whistler retune (#66). **Process shipped alongside:** the issue-first law with GitHub milestones; housekeeping immediacy; combined file-and-fix briefs with runtime issue-number capture behind hard gates; the hardened issues-report agent as the single verification channel; closeout reports committed as repo documents; commit-hash-addressed verification; the 5-brief version cap with amendments exempt; the even-features/odd-fixes version cadence; visual MapFrag diagrams required for all map design; finals-only project-file mirroring. The architecture doc (`Shyland_Architecture_v20.md`, hash af95203) is uploaded in lockstep; v19 documents removed. |
 | **v21.0** | **v21 — uploaded, Closed** | **RELEASE. The fix version that made the game beatable — and proved it in the field.** Three implementation briefs (one per bucket, B1/B2/B3 labels mapping issues to briefs — a v21 process innovation), one amendment, one research brief, one emergency fix, and a stream of housekeeping briefs; seventeen planned issues closed plus two field additions (#97, #107); design history in the issue tracker per the issue-first law. **The kill-feasibility survey (#89)** — expected-value audit of all 41 seeded combat NPCs against attainable player builds, formulas cited to code: found three INFEASIBLE delve bosses (30/80/122 potions), the build knife-edge (the d20 bridges 20 DEX, so blessed targets were real only for max-DEX builds — an even-split 25/25 character had a 0% hit chance against the Whistler), armor/item stats entirely combat-inert (#100, filed to v22), a latent Mk-2 HP trap (#104), and escort compounding. **The balance retune (#101, B3)** — tier dodge offsets flattened 0/+3/+6 → **0/+2/+2** (re-blessed at-level hit targets 55%/45%/45%); boss difficulty relocated into HP, damage, and escorts; all six Z01 bosses retuned per the authoritative tables (§5.9) with delve escorts reduced to the ladder-wide boss+2 pattern; five heavy elites HP-trimmed; every boss encounter now runs 8.7–13 rounds at 0/6/8/7/7/10 potions vs budgets ≤8 (final ≤12) for the even-split reference build, derived and verified in `Shyland_V21_B3_Retune_Proposal.md`; the accepted consequence — the delve trio remains reference-build content until #100 ships gear — recorded deliberately. Proc-stat curves unified at 0.5/0.2 (#68: lifesteal/poison/electric/mana_regen rolled 0 at Mk 1 forever); zero-value stats stay visible by ruling (bug sirens stay audible); stored zeros re-rolled by the idempotent `fix_zero_secondary_stats` command. The ×3 aggro rooms ruled **deadly-by-design** with authored direction-neutral approach warnings (#102); the four placeholder roster NPCs made unattackable (#103). Field-proof: the operator's 25/25 build killed the Whistler Below at L8 — 0%→20% hit, unwinnable→~26 potions — in a 100-second fight. **The emergency (#107)** — first post-retune playtest found combat rounds at ~15.5s vs 3s design: the tick engine spent ~4.2s/tick on ~750–800 per-row DB calls, dominated by the respawn sweep re-querying all spawn records every second (pre-existing since v20). Operator-declared emergency mitigation with procedure override on record: the sweep batched to per-zone queries, behavior contract unchanged; rounds verified at 3.8s in live combat; further batching candidates listed on #107 for a future brief. **Combat state fixes (B2)** — the heal lost-update race (#52) fixed by ruled **Option A: atomic bar mutations** (F() + Least clamp, refresh-before-display; row-locking rejected as tick-engine contention), with the mandated audit sweep documenting all six bar-write call sites and escalating two findings to issues (#109 bankable mid-combat spend refill, v22 ruling; #110 apply_stat_effect stat-field race, unmilestoned); the consumer-never-RMWs-bars invariant recorded. NPC ordering unified (#64): `(spawned_at, pk)` is the single canonical order for listings, resolver picks, N.noun, and message ordinals — ordinals render only among same-name duplicates in an encounter. Respawned aggressive NPCs engage present players on the spawn tick (#17 — the check simply never existed), inside the respawn path with zero new per-tick queries. **Output & display (B1)** — palette vocabulary named: **key-color** `#7FB3D5` / **value-color** `#E8E4D8` as CSS variables (subcategories deferred); the structured key/value report form (server-tagged lines, client-styled) adopted by `inv`, `stats`, `wallet`, and `help`; `stats` gains the Player line (`Player: <name> - Level <N> <Origin> <Archetype>`) and drops its bracketed header; area prose renders in the Area's theme color and room prose in value-color (superseding #1's D1 near-white narrowing — the two levels finally distinguishable); Who's/What's-here lines are bare noun phrases (no "is here"/"lies here"); the binding flag renamed **Droppable → Unbound**; aggro-room entry renders the full room first, then definite-article engagement, then combat state — in both movement and flee paths (#81); help rewritten (static six-direction movement line, one-line say, `brief` documented, the `<item selection>` convention with one grammar section, uniform `[x | y]` spacing, alphabetized commands); all five pane borders 5px zone-theme-colored at ~0.75 alpha (combat-red keeps precedence on the stats border), the room separator slimmed to 3px (#97); player-help fixes (#84). **Filed forward:** #100 gear wiring and #109 to v22 alongside #65 and the map payload redesign (#82, absorbing #53); #104, #105, #110 unmilestoned. **Process shipped alongside:** bucket labels (B1–B5, version-agnostic, milestone disambiguates); the housekeeping-brief cadence with rulings recorded at the moment made; CC remote-control operation (the entire design→brief→implement→verify loop run from a browser); worktree-per-implementation-brief practice; the author column added to the issues report; the emergency-mitigation lane exercised with issue-first held under override; per-tick query discipline (#107) applied as a brief requirement. Document housekeeping at closeout: the footer version stamp corrected (it had read 18.0 since v18) and three long-standing duplicate section numbers resolved — Convergence Services 6.13→6.14, NPC Dialogue 7.5→7.6, Standing Engineering Tenets 10.8→10.10 — with live cross-references updated (historical changelog rows keep their original numbering as records of when the sections were added). The architecture doc (`Shyland_Architecture_v21.md`) is uploaded in lockstep; v20 documents removed. |
 | **v21.1** | **Point release — uploaded, Closed** | **RELEASE — the first point release, and the proof of the point-release machinery.** One founding ticket (#116), one bucket (B1), one implementation brief, shipped outside the major cadence while v22 planning continued undisturbed in a parallel chat. **Single-session enforcement:** nothing prevented two WebSocket connections for one character — per-connection room-group state desynced (the second session rendered a ghost room after the other moved, the same failure class as the v19 respawn desync but with no cross-notify event), per-connection flags drifted, and interleaved commands could race wallet, equip-slot, and combat-action paths; only the presence layer was concurrent-safe (the v19 per-connection token). Ruled **newest-wins takeover** — the classic MUD "reconnect seizes your link": on connect, immediately after the token mint and before the presence write, the new session broadcasts a token-carrying `superseded` event on the personal `player_{pk}` group; a consumer whose token doesn't match prints an authored farewell (category system) and closes through the normal disconnect path (guarded presence delete no-ops or is harmlessly superseded in either interleaving — the safety argument is recorded on #116 and in the architecture doc). **Not a command:** fires through the dying gate and the in-combat quit refusal; **no room broadcast** — witnesses see nothing, the character never left, only the link moved. **Combat carries over with zero handover logic** — CombatSession is DB state and combat output follows the personal group; a mid-fight takeover lands the next round on the new screen. Client: a `superseded` flag suppresses the reconnect placeholder **and the auto-reconnect loop** (ratified into the ruling post-implementation — without it the old tab would steal the session straight back), no navigation, farewell stays visible, refresh-to-retake remains legitimate. Verified by new WebsocketCommunicator tests (takeover ordering, second-session isolation, presence-key ownership after the dust settles) plus the full suite (132 OK); field-proven by the iPad login that surfaced the issue in the first place. **Discovery Rule** exercised as ruled: #117 filed fat at the moment of discovery (stub `tests.py` shadows the `tests/` package, breaking whole-app test discovery), labeled, unmilestoned, untouched. **Process shipped alongside:** the point-release system itself — urgency entry bar, either parity, minor-version numbering (21.5 < 21.15), the one-bucket/one-brief/one-founding-ticket scope law with `--blocked-by` dependencies, in-place document stamps, and this lightweight closeout — codified in `Shyland_Project_Instructions_v21.md`; the Step 0 brief self-commit rule (the committed brief is exactly what executed, by construction); and the push-cadence rule (immediate Step 0 push as the work-has-started signal, commit-and-push at every step boundary, branch only — the operator merges, here operator-directed through CC under a scoped `gh pr merge` allowance). Architecture doc stamped 21.1 in place, hash moved to the code tip. |
+| **v22.0** | **v22 (merge 6fcb67b) — uploaded, Closed** | **RELEASE. The version gear got real and the game learned to speak in one voice.** Five implementation briefs (B1/B2/B3/B5/B6) plus nine amendments, two combined file-and-fix amendments, a spec DD, a knob-survey research brief, and the standing housekeeping stream; ~40 issues closed under the Version 22 milestone; design history in the issue tracker and the committed B2 DD per the issue-first law. **Maps V2 (B1 — #82, #115; #53 absorbed):** the map's visual language redesigned onto the named four-color vocabulary — key-color here-dot, value-color known, muted-color unknown, agro-color hostile strokes; a 7×7 window inside a pinned 16px margin; hollow r=10 room circles with a solid r=6 here-dot; **octagon glyphs for travel nodes** (one glyph for shard and sphere rooms — the distinction lives in the travel listing; octagons never agro, seed-enforced); gate triangles colored by destination discovery; **frontier rooms as solid half-diameter muted dots that draw no exits of their own** (the terminus rule); solid half-cell stubs for known paths continuing off-screen (the dashed-stub/boundary-tick vocabulary retired entirely); independent U/D corner badges tucked to per-glyph constants (12.25/13.75) derived from measured ink; `agro` as *configuration, not instance state* — a dead aggressive spawn still marks its room. The payload rewritten to a discovered/frontier schema with **masking by construction** — a frontier entry carries exactly `{x, y, discovered: false}` and nothing else, ever — built in a bounded five-query constant guarded by `assertNumQueries`. **The command revamp (B2 — #111 and twelve more; normative spec `Shyland_V22_B2_Command_Spec_DD.md`, absorbed into §9):** the complete command chart with stable-numbered footnotes — every command's arguments law; central standard prompts (`What do you want to <verb>?`); the **three-layer response doctrine** (CLI error red / world-declined warn yellow / world-answered normal voices — the hard-coded amber died, 49 warn-layer and 10 error-layer call sites re-tagged); the **state-gating matrix** applied centrally (commerce/inventory/gear/travel/movement refused in combat; quit allowed and combat continues after quit — the player can die logged out, proven by test); **resolution pools per command** with examine's union finally covering vendor stock, NPCs, and players; the **player/NPC name invariant** enforced at both edges; **partial fulfillment doctrine** (do the possible part, report warmly; heal sequences stop at full with the green line; `repair all` loops to 5 passes); the **ten transactional success sentences**; `spend` flipped to `spend <quantity|all> <stat>`; `use N` (#65); say's `[say]` prefix dead — speech is `Name: message` in say-color for players and NPCs alike; `[Critical]` brackets dead, the word moved into the prose (`for a critical 28 damage!`) with the dormant crit-in class wired; **information Kinds 1/2/3** with the header punctuation law, the **Equipment paper-doll** (all 14 anatomical slot rows always, muted empties), the Inventory and vendor tables, the shared wallet renderer, who's one-liner; chart-derived help ending in the `Version:` line (`SHYLAND_VERSION`, bumped to the release stamp at every closeout); the settings standard (`brief` default flipped off, **`echo`** new default on, six boolean words, exact sentences); server-authoritative completion of exactly each pool. Amendments: listing columns and the color re-tags (error-color to the crit-out red `#E24B4A`, Epic to the say-gold — deliberate reuses); agro re-unified with error and the **stats pane repainted** (success-color V/L fills and solid acuity band, say-color 16×4 tick); fight/stats pane recolors onto chart names and the **per-zone travel listing** — zones in hardness order, Kind-3 `Type/Destination/Description` tables, each stone's one-liner harvested verbatim from its own room prose into `TravelNode.listing_description`; the report parchment killed and the **chart-as-license law** with its set-equality palette conformance test; **transactional aggregation** — buy/sell/drop/pickup aggregate N>1 into `×N` count-form lines per definition while use/repair/loot stay per-line (#126 files the pluralization subsystem). **New commands (B3 — #57, #113, #88, #112):** **`home`** — a 15-second hearth to the Heart narrated as fog-motif atmosphere (never a timer UI); anything breaks it (movement auto-cancels and the move proceeds; combat entry interrupts in the violent voice; disconnect kills it silently); **completion-only 15-minute cooldown** (per-player admin override) with the wry refusal ending in the exact parenthetical; departure and arrival witnessed in home's own voice. **`cancel`** and the **delayed-action registry** — the standing template for all future delayed actions, allowed in every state (the escape hatch is never locked). **`sudo`** — echoes and the game never responds, by design (the watcher arrives with the firehose). **`last`** — the admin roster with the three ruled time forms. Both admin commands **stealth-gated on the `admins.shyland` Group**, membership checked live per attempt; for non-members the commands do not exist. **Gear combat wiring (B5 — #100, #109, #110; #68's deferred half):** the version's namesake — **+N means +N**: one effective-stat function (base + equipped gear) read at every gameplay site (to-hit, damage, dodge, initiative, carry, bar maxima); **Option C armor** — TAV = slot weight × Mk over worn armor (CHEST 3 / HEAD 2 / LEGS 2 / OFF_HAND 2 / SHOULDERS·HANDS·WAIST·FEET 1) + rolled physical_resist over all equipped items, mitigating NPC→player damage by TAV/(TAV+48) with floors both directions (armor never does nothing; no hit reduced below 1); broken pieces contribute zero TAV; **the bar law** — fill fraction invariant under every max-changing mutation (equip, unequip, spend) via one atomic F()-rescale, killing both #110's stat-field race and #109's bankable free heal (spend later blocked in combat outright, #131 — the first generic in-combat refusal); **the proc rename** (`bleed/stun/poison_chance` → `*_factor` — the value drives frequency AND size; names are flavor, no status effects, damage types unmodeled) and **the proc wiring** — per-item independent rolls at V×0.05 capped 50%, success adds 1..⌈V⌉; flat electric on every landed hit; gear crit_chance inside the capped crit computation; always-on lifesteal via the atomic clamp; four stats deliberately inert by scope law (spells/mana don't exist — wire nothing, land no mines); the gear pool rendering as **one parenthetical** — `You hit the giant cave spider for 14 (+7) damage.`, zero pool byte-identical (the quiet-line law); stats showing base with the gear parenthetical `STR: 25 (+3)` plus the **Armor row** `Armor: 13 (blocks 21%)` and the examine contribution line `Armor: 3 per Mk (worn: 3)` — the incoming `(-N)` receipt shipped, read ambiguously in play, and was removed as scaffolding (the permanent surfaces carry visibility); the Z01 boss budgets **re-blessed for the armored reference build** (no boss dropped to zero potions; the Devourer still demands 10; K=48 stands); shortfall reports and `Nothing happens.` moved to the warn voice (#132 — consequence must be seen). **The tick expiry crash fix (B6 — #135, pulled in by operator ruling):** the full-expiry branch called a sync ORM helper bare in the async loop, killing the engine on every full timed-effect expiry; wrapped via `database_sync_to_async`, siblings swept, field-proven against production — establishing the **tick-loop async-safety rule**. **B4 (travel/attunement) dropped from the version by ruling** — deferred whole to a future zones-and-travel version (#30, #38, alongside #41/#95); v22 kept only the destination-listing order. **Filed forward:** #126 pluralization, #127 ranged procs, #129 authored armor bases, #130 secondary-curve audit before Mk 2, #125 macros, #134 repair kit, #133 the Focus Tonic band-overshoot bug (Version 23 with #18, #40, #117, #119). **Process shipped alongside:** the brief self-commit rule and push cadence proven across every brief; the deploy-time data-action rule (born when B5's seed rerun and `rename_proc_stats` sat unexecuted across builds — pending actions now travel in closeout blocks and pre-flight checks until confirmed done); the version constant in help with its closeout bump; combined file-and-fix amendments behind hard gates as routine; real human players onboarded mid-version. The architecture doc (`Shyland_Architecture_v22.md`, stamped 22.0) is uploaded in lockstep; v21 documents removed. |
 
 -----
 
@@ -261,9 +262,23 @@ Each room is the atomic unit of the world. Rooms contain:
 
 **Fog of war:** per-character and permanent, via `RoomVisit` — recorded **at arrival** in every path (move, travel, flee, respawn, connect), independent of description rendering. Unvisited rooms are never drawn.
 
-**The payload:** server-computed on connect and on every room change — the current room plus the visited members of its MapFrag, each with per-zone coordinates, per-direction exit status (`open` to a drawn room, `unexplored` stub, `boundary` tick), and up/down presence. The client is dumb: it renders exactly what it is sent.
+**The payload (v22 — Maps V2, #82):** server-computed on connect and on every room change. Two kinds of entry, and nothing else:
 
-**The client map:** a fixed **300×300px square at the bottom of the right pane** — rooms as circles, exits as lines, **north up**, a 9×9-cell window centered on the current room (no zoom), the current room highlighted, unexplored exits as short dashed stubs, boundaries as dashed stubs with a terminal tick, U/D letter badges on rooms with vertical exits. `aria-hidden` — the map adds no information not already present in text, and the text remains the accessible source of truth.
+- **Discovered rooms** — the visited members of the current MapFrag (the current room always included) — carry coordinates, `here` on the current room only, `travel_node` (a `TravelNode` exists for the room), `agro` (**configuration, not instance state**: true iff any `RoomSpawn` in the room references an aggressive definition — a dead or unspawned instance still flags), per-cardinal exit status (`known`/`unknown` by destination `RoomVisit`; `gate-known`/`gate-unknown` for boundary-flagged or cross-zone exits), and `up`/`down` tri-state by destination visit.
+- **Frontier rooms** — unvisited fragment rooms one unflagged intra-zone cardinal step from a discovered room — carry **exactly `{x, y, discovered: false}` and nothing else, ever**. This is **masking by construction**: an undiscovered room discloses existence only, enforced in the wire format — the server never relies on the client to hide anything. Nothing deeper than the frontier enters the payload; gate destinations never enter the room set at all (they are looked up only for their visit bit).
+
+The build is a **bounded, constant number of queries** (five; guarded by an `assertNumQueries` regression test) — the standing #107 per-tick/per-operation query discipline applied to the map. The client is dumb: it renders exactly what it is sent.
+
+**The client map (v22 — Maps V2):** a fixed **300×300px square at the bottom of the right pane**, north up, a **7×7-cell window** centered on the current room, drawn inside a **pinned 16px margin** (268×268 drawable area — #115's breathing room, solved inside the renderer, not the pane CSS). The visual language runs on the named four-color vocabulary, with one rule of grammar — **stroke color carries room state; solid fills mean points; value-vs-muted carries known-vs-unknown everywhere**:
+
+- **Rooms** — hollow circles (r=10, 2px stroke) in value-color; **agro-color stroke** when the room has aggressive spawns configured. The **here-dot** is a solid key-color dot (r=6) atop the current room's glyph — the map's one key fact.
+- **Travel nodes** — the **octagon** (circumradius 12, 4px stroke, flat sides to the cardinals): one glyph for shard and sphere rooms alike — the distinction lives in the travel listing. **Octagons never agro**: no travel-node room may carry an aggressive spawn, a permanent seed-verify invariant.
+- **Gates** — an 8px connector from the glyph's outer stroke edge into a solid outward-pointing triangle; value-color if the destination has been visited, muted if not (#53's defect, closed by design — a passed gate is no longer gray).
+- **Frontier rooms** — **solid muted dots at half diameter (r=5)** with muted link lines, and **no exits of their own** (the terminus rule): the map admits they exist and says nothing more.
+- **Stubs** — solid half-cell lines for exits whose destination lies outside the window: value for a known path continuing off-screen, muted for an unknown one. The old dashed-stub and boundary-tick vocabulary is retired entirely.
+- **U/D badges** — independent 14px bold letter badges at the upper-right (U) and lower-right (D) corners, each colored by its own destination's visit state, **tucked** as close to the glyph as possible without touching (per-glyph offsets 12.25 circle / 13.75 octagon, derived from the measured ink of the badge font — the derivation rule lives in the code for future re-derivation).
+
+The attachment law (anything attaching to a glyph attaches at the outer edge of its stroke, never the geometric radius) prevents cross-color overlap. `aria-hidden` — the map adds no information not already present in text, and the text remains the accessible source of truth.
 
 **Design-tool rule:** visual MapFrag diagrams (the same node-and-line rendering) are **required** for all world-layout design work — the map the game draws is the map the designers draw first.
 ### 2.6 Travel & Navigation
@@ -274,6 +289,7 @@ Players move using directional commands: `north`, `south`, `east`, `west`, `up`,
 
 Special travel options:
 
+- **`home` (v22)** — the hearth command: a 15-second delayed return to the Heart of the Convergence, from anywhere, narrated as fog-motif atmosphere; broken by movement, combat, or `cancel`; 15-minute completion-only cooldown. The Heart is the only destination until attunement (#38) ships. Full design in Section 2.11.
 - **Recall scroll** — teleports player to their bound recall point (default: The Convergence)
 - **The Obelisk Network** — the game's fast-travel system: obelisk rooms are travel sources; checkpoints and obelisks are destinations, revealed per-character by visiting them. Free, global, and command-driven (`travel`). Full design in Section 2.11.
 - **Zone gates** — the sealed genre-zone gates on the Convergence ring are authored prose (opened per zone as its content ships — the Verdant gate opened in v18). The `ZoneGate` model was superseded and deleted in v18 (Brief 2, migration 0019); the Obelisk Network above is the game's fast-travel system.
@@ -556,6 +572,8 @@ Travel is a simple command — no dialogue system required:
 - `travel` — lists the player's revealed destinations. Only meaningful in an obelisk room; elsewhere it explains that travel requires an obelisk.
 - `travel <destination>` — travels there, if the destination is revealed and the player stands at an obelisk.
 
+**The listing (v22):** the bare `travel` listing renders as **per-zone display blocks** — the key-color opener `The Obelisk offers passage to...`, then per zone a `Zone: <name>` heading (the zone name in the zone's own theme color — the licensed exception to value-color) over a `Type / Destination / Description` table with identical column geometry across every block. Zones sort by **hardness to the player** (the danger ladder from the zone table: Sanctuary before Beginner before Intermediate, and so on); within a zone, destinations sort ascending by straight-line map-space distance from the player (the interim sort — the real travel redesign belongs to a future zones-and-travel version). Type reads `Sphere` (obelisk) or `Shard` (checkpoint). **The Description is the stone's own sentence:** each node carries a one-line `listing_description` harvested verbatim from its room's authored prose (never authored fresh for the listing) — the standing convention is that every new node gets its one-liner at authoring time, seed-owned and enforce-exact.
+
 Destination names are unique across the entire network and typeable (Fordwatch, Stairhead, Cragfoot — every future zone's node names must keep that promise). Multi-word destinations accept case-insensitive prefix matching, consistent with MUD command feel.
 
 **Travel is free, forever. It is a gift from the obelisks, but it has to be earned through revelation.** The cost is not copper — it is the journey the player already made. Discovery is the price. No fee, no resource cost, no cooldown.
@@ -600,6 +618,18 @@ The game already has message-pool machinery of this shape (`UnarmedMessagePool`)
 - **Travel messages get a dedicated `TravelMessage` model** (traveler / departure-witness / arrival-witness categories, random selection per event, global pools for now).
 - **Shards are NPC definitions** — non-aggressive, no loot, examine-only; safe rooms make them unkillable in practice. Verdant Shard content ships with the zone's world seed, not the network brief.
 - **The Heart of the Convergence gains a Sphere NPC — the Primordial Sphere** — for examine parity with every zone-end sphere to come. The Convergence sphere doesn't predate the pattern — **it started it**, and its name says so. Each zone-end sphere is named for its zone (the Verdant Reach's is the Verdant Sphere). The Obelisk itself remains room prose; the network registers the Heart as its first node (travel name: "The Convergence").
+
+#### Home — the Hearth Command (v22)
+
+`home` is the way back when there is no obelisk near: a **15-second delayed return to the Heart of the Convergence**, usable anywhere, in home's own fog-motif voice — a cousin of obelisk travel's machinery pattern, never its words.
+
+- **The countdown is atmosphere, never a UI.** Authored prose lines at the start, middle, and late beats of the wait (`You close your eyes and reach for home. The edges of the world begin to soften.` → drawn from mid and late pools → `The fog parts, and the Heart takes you in. You are home.`). No timer display, no meta-instructions about canceling — the wait warns implicitly, in fiction.
+- **Anything breaks it.** The player's own movement or travel auto-cancels the countdown (its line prints, then the move proceeds normally); combat entry of any kind — the player's own attack, aggro engagement, any incoming attack — interrupts it in a distinct violent voice (`The fog is ripped away. The world comes back hard — you are not going anywhere.`); `cancel` stops it voluntarily (`You stop heading home.`). Disconnect mid-countdown kills it silently — intent state dies with the intender.
+- **Cooldown: 15 minutes, completion-only.** Interrupted or canceled countdowns never start the clock; it starts when the traveler lands at the Heart. Per-player overridable via admin. The refusal is wry in-fiction prose ending in a terse machine-honest parenthetical with the remaining time: `You can't go home yet, you were just there. Give it a few minutes. (10m cooldown rem.)` — funny in the prose, exact in the parens.
+- **Ceremony like travel:** departure is witnessed by the origin room at the vanish (`{name} fades into a fog only they can see, and is gone.`), arrival is witnessed at the Heart (`A fog gathers from nowhere, and {name} steps out of it.`).
+- **The Heart is the only destination** until obelisk attunement (#38) ships — home ships pointing at its default and gains player-set destinations with that future zones-and-travel version. Refused in combat and while dying; refused (kindly) when already at the Heart — homing from home would burn the cooldown for nothing.
+
+Under the hood, home is the first resident of the **delayed-action registry** — a connection-bound task pattern that is the standing template for all future delayed actions and `cancel`'s candidate pool (Section 9.1).
 
 -----
 
@@ -764,6 +794,10 @@ Example: a **Bulwark** (primary stats STR, END) starts at STR 18, END 18, DEX 8,
 
 This is a deliberate design choice, not just a simplification — starting every character with two stats far above the rest reinforces what their Archetype is *for* from the first moment of play, before any stat points have been spent.
 
+#### Effective Stats — +N Means +N (v22)
+
+A stat bonus on any equipped item adds **flatly** to the stat, via one effective-stat function (**base + gear**), read **everywhere the stat is read for gameplay** — hit contests, damage bonuses, dodge, initiative, carry capacity, and the bar-maximum formulas. There is one function, computed per use, no caching. Non-gameplay reads keep the base by design: character creation, the spend mutation, and the base figure of the stats display itself. The `stats` sheet shows the paid-for base with gear's contribution in parentheses — `STR: 25 (+3)` — parenthetical present only when the gear sum is nonzero. Scope law governs the whole design: wire only what combat already reads; systems that don't exist yet (spells, mana) get nothing built for them and nothing broken under them — their stat bonuses simply raise the stat like any other, and future consumers read the boosted value for free.
+
 #### Derived Stats
 
 |Derived Stat    |Formula                                                    |
@@ -794,13 +828,13 @@ This is a deliberate design choice, not just a simplification — starting every
 **On Level Up:**
 
 - **+5 unspent stat points** (`STAT_POINTS_PER_LEVEL = 5`), accumulated on `Character.unspent_stat_points`. Never expire.
-- Vitality and Longevity maximums recalculate and current values are set to the new maximums (level-up fully restores both bars):
+- Vitality and Longevity maximums recalculate and current values are set to the new maximums (level-up fully restores both bars; the maxima formulas read **effective** stats — Section 3.4):
   - `vitality_max = (END × 10) + (STR × 3) + (level × 5)`
   - `longevity_max = (END × 8) + (WIS × 5) + (level × 5)`
 - +1 skill point (deferred — skill tree not yet implemented)
 - New abilities may unlock at certain level thresholds (deferred)
 
-**Spending stat points:** `spend <stat> <amount>` allocates unspent points. Valid stats: `str`, `dex`, `end`, `int`, `wis`, `per`. Spending `end`, `str`, or `wis` immediately triggers bar recalculation. `stats` shows the full stat block with current XP, XP to next level, and unspent points.
+**Spending stat points (v22):** `spend <quantity|all> <stat>` allocates unspent points — quantity first (`spend 3 dex`; `all` spends every unspent point). Valid stats: `str`, `dex`, `end`, `int`, `wis`, `per`. Spending into a bar-feeding stat obeys **the bar law** (Section 4.4): the bar grows, the fill fraction holds — spend never refills anything (#109's bankable free heal is dead), and the mutation is one atomic database update. **Spend is blocked during combat** (#131 — the first generic in-combat refusal: `You can't do that while in combat.`). `stats` shows the full stat block with current XP, XP to next level, and unspent points.
 
 **At the content frontier (no higher zone yet published):** XP trickles in from any content. The Wastelands provides the best return. A secondary **Mastery track** activates past the frontier — Mastery points incrementally improve existing skills rather than unlocking new ones. This is progression without power creep.
 
@@ -831,6 +865,19 @@ Equipment has:
 
 Genre mixing in equipment is explicitly supported. A character can carry a plasma rifle in one hand and an enchanted dagger in the other.
 
+**Gear is combat-live (v22, #100).** Equipped item stats apply to combat and every other gameplay read via the effective-stat function (Section 3.4); armor mitigates incoming damage (below); proc-family secondaries fire on landed hits (Section 6.4). The guiding scope law: fix what exists so it works the way a reasonable player assumes it does; build nothing for absent future systems; leave no landmines for them either.
+
+**Armor — Option C (v22).** No schema change: armor's base protection is **derived** from slot and Mk tier, with rolled `physical_resist` as bonus on top.
+
+- **Total Armor Value (TAV)** = Σ(slot weight × Mk tier over worn armor pieces) + Σ(rolled `physical_resist` over ALL equipped items, any type).
+- **Slot weights** (the authored table; only these eight slots carry armor): CHEST 3, HEAD 2, LEGS 2, OFF_HAND 2 (shields), SHOULDERS 1, HANDS 1, WAIST 1, FEET 1. A full set = 13 per Mk tier.
+- **Mitigation** applies to NPC→player damage only (players mitigate; NPCs never do): each incoming hit is reduced by the fraction `TAV / (TAV + K)`, K = 48 — a full Common Mk 1 set blocks ~21%. Deterministic per hit; no roll.
+- **Floors in both directions:** when TAV > 0, the reduction is at least 1 (armor never does nothing), and no hit is ever reduced below 1 damage (the existing minimum-damage clamp survives beneath it).
+- **Even Common armor works** — rarity means "better at armoring," never "allowed to armor."
+- A **broken** piece (0% durability) contributes nothing to TAV — the non-functional band with teeth.
+- **Visibility:** the `stats` sheet carries the Armor row (`Armor: 13 (blocks 21%)`, percentage derived live from the curve; naked reads `Armor: 0`, nothing hidden), and an armor item's `examine` confesses its contribution (`Armor: 3 per Mk`, appending `(worn: 3)` when equipped and `(worn: 0 — broken)` when broken). Per-hit damage receipts were tried and removed — the permanent surfaces carry the visibility; incoming hit lines state only the number that moved the bar.
+- The derived table retires gracefully if authored per-item armor bases ever ship (#129).
+
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
 **Equip exchange rule (general, all slots).** When equipping an item, count the currently equipped items that must come off to make room:
@@ -852,13 +899,13 @@ Death in Shyland is meaningful but not brutal. The full dying-and-death sequence
 
 - Player reaches 0 Vitality → **Dying** state (30-second window). The fatal blow ends combat in both directions for the fallen: their queued and same-round attacks are **discarded** (no posthumous death blows), incoming hits stop mattering and stop printing, and every active effect on them is cancelled (`removed_by='dying'`) — the character's own DoTs already burning on NPCs keep running.
 - **Presentation:** the fallen player's output pane clears; a red fatal-blow line opens the sequence ("You have been dealt a fatal blow…"); a lore ladder escalates through the window (a line every ~5 seconds, then every second at the end) — all lore, never mechanical time units. No combat output of any kind reaches the dying player. The room sees the third-person fall announcement (excluding the fallen).
-- All commands except `use` are blocked while Dying — including `quit`; there is no exit but the outcome.
+- While Dying, only self-preservation and speech remain (v22 matrix): `use` (self-rescue), `cancel`, `say`, `quit`, information, and settings — everything else is refused. Quitting doesn't save you: the dying clock runs on the server, and an unattended death runs the full sequence.
 - **Revival:** any vitality restoration above zero while Dying clears the state — the character rises with **exactly the healed amount** (a strong enough potion may legitimately restore full; a weak one stands you up at a sliver into whatever is still swinging). Combat resumes naturally: the character was never removed from the session. Any other player in the room can also revive them with an item or ability once such tools exist — no group membership required.
 - If not revived within 30 seconds → **Dead**. A death declaration ("The darkness takes you."), then the player respawns at their bound recall point (default: The Convergence) with full bars, the client fully re-synced (fresh room output, channel-group swap).
 - On death: all remaining `EffectInstance` rows cleared; pending combat actions cleared; the `CombatSession` ends; Acuity resets (death resets it; level-ups do not).
 - **XP loss:** 10% of current XP (cannot lose a level); applies at level 10+ only.
 - **Durability loss:** all equipped items with `takes_durability_loss=True` lose 10% per death; after 10 unrepaired deaths an item breaks. The flag is the only gate. (v19 convention: `takes_durability_loss=False` is reserved for genuinely rare items and Artifacts — ordinary gear wears, including the free starter kit; the durability loop is part of onboarding.)
-- **Link-dead policy (ruled, deliberate):** closing the browser mid-combat abandons the character to the fight — the world keeps happening to link-dead characters, and dying offline runs the full sequence to an unattended death. This is what makes the `quit` combat-block meaningful rather than theater.
+- **Link-dead policy (ruled, deliberate):** closing the browser mid-combat abandons the character to the fight — the world keeps happening to link-dead characters, and dying offline runs the full sequence to an unattended death. Quitting is the same bargain made politely (v22): `quit` is allowed in combat, combat continues after it, and the player can die logged out — tab-closing and quitting are identical in cost, which is what keeps the design honest rather than theater.
 - In PvP zones only: chance to drop one non-equipped carried item
 - A **Death Shard** item is left at the death location; player can retrieve it within 30 minutes to recover any dropped item
 
@@ -955,6 +1002,8 @@ The bars are not isolated:
 - Certain eldritch effects damage all three bars simultaneously
 - A skilled Warden manages all three for the party — not just the green bar
 
+**The bar law (v22, #100/#109/#110 — standing invariant).** Fill fraction is invariant under **every** max-changing mutation — equip, unequip, and stat spend alike. When a bar's maximum changes, the current value rescales proportionally (`current × new_max ÷ old_max`, rounded to nearest, floored at 1 while alive; a dying 0 stays 0; full bars stay exactly full — no drift). The bar grows or shrinks; the percentage holds; **nothing refills**. One law, no special cases, exploit-proof by construction: equipping END gear at 40% leaves you at 40% of the larger bar, and the once-bankable mid-combat spend heal cannot exist. The rescale is one atomic database update in the #52 style — the consumer never reads-modifies-writes bar or stat fields on a cached object — which is also where #110's stat-field race died. Level-up keeps its own behavior (full refill on both bars) — leveling is an earned moment, not a mutation.
+
 -----
 
 ## 5. Combat System
@@ -985,25 +1034,28 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 
 **Two-path command handling:** Non-combat commands (`look`, `say`, movement, inventory, etc.) execute immediately and synchronously when typed. Combat commands typed during an active fight are written to a DB queue (`CombatAction`); the tick engine processes all queued actions at each round boundary. This keeps non-combat interactions instant while ensuring combat resolution is synchronized and auditable. The consumer checks whether the character is in an active `CombatSession` and routes accordingly.
 
-**Auto-attack and attack focus (v19):** If no player action is queued when a round fires, the tick engine creates an auto-attack targeting the session's **focus NPC** (`CombatSession.focus_npc`; falls back to the first live NPC if unset). Players are never idle. Focus is player-controlled: engaging a target — starting combat or adding a new NPC mid-fight — sets focus to it; `kill <target>` against an in-session, non-focused target **refocuses** ("You change your attacks to focus on…"); the same command against the current focus reports "You're already fighting…". When the focused NPC dies with others still live, focus auto-shifts to the next live NPC with an announcement — focus changes are never silent. The Acuity single-target bonus rides the same field: player-controlled focus and the Acuity focus target are one concept. Multi-target damage (cleave/AoE) remains deliberately unbuilt. Where multiple same-name NPCs share a room, engagement, hit, kill, wound-state, and focus messages carry **positional ordinals** ("the second black bear") — positional in room parse order, so ordinals reflow as NPCs die; dot-notation (`kill 2.bear`) selects among same-name targets.
+**Auto-attack and attack focus (v19):** If no player action is queued when a round fires, the tick engine creates an auto-attack targeting the session's **focus NPC** (`CombatSession.focus_npc`; falls back to the first live NPC if unset). Players are never idle. Focus is player-controlled: engaging a target — starting combat or adding a new NPC mid-fight — sets focus to it; `kill <target>` against an in-session, non-focused target **refocuses** ("You change your attacks to focus on…"); the same command against the current focus reports "You're already fighting…". When the focused NPC dies with others still live, focus auto-shifts to the next live NPC with an announcement — focus changes are never silent. The Acuity single-target bonus rides the same field: player-controlled focus and the Acuity focus target are one concept. Multi-target damage (cleave/AoE) remains deliberately unbuilt. Where multiple same-name NPCs share an encounter, engagement, hit, kill, wound-state, and focus messages carry **ordinals** ("the second black bear") per the canonical `(spawned_at, pk)` order of §5.9 — rendered only while duplicates are present; dot-notation (`kill 2.bear`) selects among same-name targets.
 
 **Initiative (rounds 2+):** Each round after the first, initiative is rolled for all participants: `d10 + DEX + PER`. Highest total acts first; ties go to the player. In round 1, whoever initiated combat acts first (player if they used `kill`/`attack`; NPC if they aggro'd on room entry).
 
 ### 5.4 Attack Resolution
 
 ```
-1. Hit check (v19 — contested d20 with independent critical):
+1. Hit check (v19 — contested d20 with independent critical; v22 — stats are EFFECTIVE
+   stats, base + equipped gear, throughout):
    total   = d20 + attacker DEX
    defense = TO_HIT_DEFENSE_BASE (10) + defender DEX
    → total ≥ defense                      : success — roll the independent critical check
    → short by 1..GRAZE_WINDOW (3)         : Graze (50% damage)
    → short by more                        : Miss
-   Critical (on any success): chance = CRIT_BASE (5%) + 1%/point of DEX advantage,
-   floored at 5%, capped at CRIT_CAP (25%). Criticals are an independent roll on
-   successful hits — never a band of the to-hit roll. All five constants are named,
-   tunable module-level values. Design intent: at large stat advantage always-hitting
-   is deliberate (outleveled content is trivially hittable); the crit cap bounds the
-   multiplier at any stat spread.
+   Critical (on any success): chance = CRIT_BASE (5%) + 1%/point of DEX advantage
+   + gear crit_chance (summed rolled values × 0.01, v22),
+   floored at 5%, capped at CRIT_CAP (25%) — the cap holds over gear too. Criticals
+   are an independent roll on successful hits — never a band of the to-hit roll. All
+   five constants are named, tunable module-level values. Design intent: at large stat
+   advantage always-hitting is deliberate (outleveled content is trivially hittable);
+   the crit cap bounds the multiplier at any stat spread. Gear is the designed bridge
+   across the d20 contest window — the #89 knife-edge's answer.
 
    NPC contest stats (v19 — "contests add, quantities multiply"): the stats NPCs bring
    to opposed rolls grow ADDITIVELY on the player curve. npc_level = scaling_factor +
@@ -1019,7 +1071,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 2. Damage calculation:
    base_damage    = weapon damage roll (random within midpoint ± spread)
                     If no weapon is equipped, base_damage = 0 (only stat_bonus applies)
-   stat_bonus     = relevant stat value (STR melee / DEX ranged / INT spells)
+   stat_bonus     = relevant EFFECTIVE stat value (STR melee / DEX ranged / INT spells)
    acuity_mod     = band-relative deviation modifier (Section 4.2): 1.0 inside the
                     Origin band; 1.0 + distance above band_high (focus target only);
                     1.0 − distance below band_low (all targets).
@@ -1030,10 +1082,22 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 3. Hit multiplier applied:
    final_damage = raw_damage × hit_multiplier (0.5 graze / 1.0 hit / 1.5 critical), minimum 1
 
-4. Mitigation (future):
-   final_damage = final_damage - target defense value (minimum 1)
+4. Gear bonus pool (v22 — player attacks, landed hits only, never grazes):
+   Each equipped item rolls each of its proc-factor stats independently (Section 6.4);
+   flat electric_damage_bonus joins every landed hit. The pool renders as ONE
+   parenthetical on the hit line — "You hit the giant cave spider for 14 (+7) damage."
+   — base first, total dealt = base + bonus. Zero pool → no parenthetical, the line
+   byte-identical (the quiet-line law). Crits compose: "for a critical 14 (+7) damage!"
+   Lifesteal (always-on, no roll) heals the attacker by the summed rolled values after
+   the hit lands, clamped to vitality_max via the atomic bar update — no output line.
 
-5. Elemental/type resistances apply as percentage reduction after armor (future)
+5. Armor mitigation (v22 — NPC→player damage only; Section 3.6):
+   reduction = max(1, round(damage × TAV / (TAV + 48)))  when TAV > 0
+   landed    = max(1, damage − reduction)
+   Deterministic per hit. The incoming line's number is the damage that moved the bar.
+
+6. Elemental/type resistances as percentage reduction after armor (future — damage
+   types are not modeled in v22; proc names are flavor)
 ```
 
 **Unarmed combat:** A character with no weapon equipped can still attack. `base_damage` is 0 — there is no weapon damage roll — but `stat_bonus` and `acuity_mod` still apply, making unarmed attacks weaker but functional. This is intentional design, not a fallback. Attack flavor text for unarmed combat is drawn from the attacker's `UnarmedMessagePool` (configured on the `Archetype` model, falling back to the default pool). NPCs without a weapon also resolve unarmed attacks the same way, drawing from their `NpcDefinition.unarmed_message_pool`.
@@ -1053,6 +1117,8 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |Eldritch |Cosmic horror abilities                 |Bypasses most resistances; disrupts Acuity significantly|
 |Holy     |Clerical abilities                      |Extra damage vs. undead/demonic                         |
 |Shadow   |Shade abilities, dark magic             |Reduces target's defense temporarily                    |
+
+**v22 status note:** damage types are **not modeled** in v22 — all damage is untyped, and the proc-family stat names (bleed, stun, poison, electric) are flavor vocabulary only: they add damage, they carry no status effects and no elemental mechanics. The table above remains the design target for the future typed-damage system; when it ships, `magic_resist` and `radiation_resist` (deliberately inert in v22) gain their consumers.
 
 ### 5.6 Status Effects
 
@@ -1137,6 +1203,8 @@ Bosses have multi-phase fights with behavioral changes at HP thresholds. Some bo
 | Crowned Devourer | 10 | 42 | 34 | 280 | 2× drones (STR 28, HP 70) |
 
 Elite HP trims: elder-cave-spider 95, elder-cave-centipede 100, elder-cave-beetle 110, prowling-mountain-lion 110, territorial-brown-bear 120; all other elites changed only via the tier offset. Normals and villagers untouched. Verified budgets at intended level for the reference build: 8.7–13.0 encounter rounds, 0/6/8/7/7/10 potions. **Accepted consequence, recorded deliberately:** the delve trio remains reference-build content until #100 (v22) makes gear grant contest stats — no data-only tuning closes a 12+ DEX gap inside a 20-point die; the retune is shaped so gear completes it rather than undoing it.
+
+**The v22 armored re-bless (B5 budget guard).** With armor live, the six boss budgets were recomputed survey-lite for the 25/25 reference build in full Common Mk 1 armor (TAV 13, ~21% mitigation): expected rounds unchanged by construction (armor touches only incoming damage), expected potions 0/4/6/6/6/10 vs the naked 0/6/8/7/7/10. **No boss dropped to a zero-potion fight** (the Matron was already zero-potion naked) and the Crowned Devourer still demands 10 — the mitigation constant **K = 48 stands blessed**. The intended shape held: armor softens the ladder without trivializing it, and gear — not retuning — is what opens the delve trio to non-reference builds.
 
 -----
 
@@ -1266,7 +1334,21 @@ The number of secondary stats on an instance is determined by rarity:
 
 Secondary stats are drawn randomly without replacement from the pool at drop time. Two Rare items of the same type can have different secondary stats — which ones rolled is part of what makes individual drops feel distinct.
 
-**Proc-family authoring rule (v21, #68):** every proc-style secondary stat (crit_chance, bleed_chance, stun_chance, lifesteal, poison_chance, electric_damage_bonus, mana_regen) is authored at `base 0.5, factor 0.2` — the curve that guarantees Mk 1 rolls of ≥1 at every rarity. The four stats previously authored below this threshold rolled a deterministic 0 at Mk 1–2 forever. **Zero-value stats are never hidden in display** (ruled): a rendered zero is a bug signal, and sirens stay audible — the fix is always in the data, never in suppression. Stored zeros from the pre-fix era were re-rolled once by the idempotent `fix_zero_secondary_stats` management command (the stat identity kept, the value made real).
+**The proc rename (v22, #100 — completing #68's deferred half).** The stats formerly named `bleed_chance`, `stun_chance`, and `poison_chance` are **`bleed_factor`, `stun_factor`, `poison_factor`** — under the ruled semantics the old names lied: the rolled value V is a *factor* driving both frequency and size, not a chance. Three flavor-distinct names are kept (not collapsed to one) so weapon variety survives on examine. `crit_chance` keeps its name — under its wiring it genuinely is a chance contribution; `lifesteal` keeps its name — it genuinely steals life. The rename touched seed data and rolled instances only (the idempotent `rename_proc_stats` command); no curve values changed. Authoring rule unchanged from v21 (#68): every proc-family stat is authored at `base 0.5, factor 0.2` — the curve that guarantees Mk 1 rolls of ≥1 at every rarity. **Zero-value stats are never hidden in display** (standing ruling): a rendered zero is a bug signal, and sirens stay audible — the fix is always in the data, never in suppression.
+
+**The secondary-stat wiring map (v22, #100 — how every rolled stat is consumed).** Scope law governs: wire what combat reads, invent nothing for absent systems.
+
+| Rolled stat | Consumed by |
+|---|---|
+| `str` / `dex` / `end` / `int` / `wis` / `per` | +N via the effective-stat function (Section 3.4) — every gameplay read |
+| `physical_resist` | Joins TAV (Section 3.6). Not a proc. |
+| `crit_chance` | +V percentage points (summed × 0.01) inside the crit computation, still capped at CRIT_CAP |
+| `bleed_factor` / `stun_factor` / `poison_factor` | **Proc factors.** Per landed player hit, each equipped item rolls each of its proc-factor stats independently: chance = V × 0.05, capped at 50%; on success, bonus damage = random 1..⌈V⌉ ("up to N"). Names are flavor only — no DoT, no stun, no status effects in v22. |
+| `lifesteal` | Always-on: each landed player hit heals the attacker by the summed rolled values (flat), clamped to vitality_max. No roll, no output line — the bar moves. |
+| `electric_damage_bonus` | Always-on flat +V to the gear-bonus damage pool on every landed hit |
+| `spell_damage_bonus` / `mana_regen` / `magic_resist` / `radiation_resist` | **Inert by scope law** — their consuming systems (spells, mana, non-physical damage) do not exist. Visible per zeros-never-hidden; wired to nothing; the resists do NOT join TAV. |
+
+All gear bonus damage on a hit (proc successes + electric) sums into **one parenthetical** on the hit line — `You hit the giant cave spider for 14 (+7) damage.` No gear bonus → no parenthetical, line byte-identical (the quiet-line law). NPC damage to players never gains procs — NPCs have no equipment. Deferred by ruling: min–max ranged procs ("between 10 and 20 damage") are a new weapon kind in the midpoint-and-spread family (#127); the secondary-stat curves' shallow growth vs NPC band growth is a Mk-2-era retune, not a rework (#130 — same era as #104).
 
 **Slot counts are pool-capped** (settled at v18 closeout): an instance rolls `min(rarity's slot count, size of the item's secondary stat pool)`. Legendary's "all in pool" is this same principle stated at the ceiling — every rarity is implicitly "at most all in pool." A small-pool item therefore maxes out early: the copper accessories, with their deliberate two-stat pools, roll both secondaries at Epic and above — three stat lines total counting the primary. The rarity guarantee is about the roll's ceiling, not a promise that every item type can express every tier's slot count.
 
@@ -1295,7 +1377,7 @@ As durability drops, item performance degrades in threshold steps:
 |1–25%       |50%                    |
 |0%          |Non-functional (broken)|
 
-The performance penalty applies to the item's stat contributions and weapon damage output. At 0%, the item stops functioning entirely until repaired.
+The performance penalty applies to the item's stat contributions and weapon damage output. At 0%, the item stops functioning entirely until repaired — including its armor: **a broken piece contributes nothing to TAV** (Section 3.6), and its examine confession reads `(worn: 0 — broken)`.
 
 #### Degradation Rate
 
@@ -1471,21 +1553,19 @@ Bags are equipment items that expand carry capacity. They occupy equipment slots
 
 ### 6.11 Inventory Display
 
-The `inventory` command shows:
+The `inventory` command (v22 — the information standards of Section 9.1 applied) shows three sections:
 
-1. **Equipped items** — shown first, grouped by slot in order: HEAD, NECK, SHOULDERS, CHEST, HANDS, WAIST, LEGS, FEET, RING, MAIN_HAND, OFF_HAND, RANGED, BACK. Empty slots are omitted.
-1. **Carried items** — sorted by item type, then Mk tier (ascending), then rarity (ascending by power: Common → Uncommon → Rare → Epic → Legendary → Artifact), then name.
+1. **Equipment — the paper-doll.** A `Slot / Name / Details` table showing **all 14 slot rows, always**, in anatomical order head→feet: Head, Neck, Shoulders, Back, Chest, Main hand, Off hand, Ranged, Hands, Ring, Ring, Waist, Legs, Feet. Sentence-case labels; empty slots render a muted `-` in Name and Details. Reading your gear is reading your body.
+1. **Inventory.** A `Slot / Name / Quantity / Details` table, flat alphabetical by name. The Slot cell names the item's equip slot when slotted (`Main hand`), muted `-` when slotless; identical stacks fold into the Quantity column.
+1. **Wallet.** One key/value line, **byte-identical** to the `wallet` command's output — one shared renderer, by rule.
 
 Display rules:
 
-- Durability shown for items where `takes_durability_loss=True`; omitted for others (rings, etc.)
-- Bags show carry bonus instead of durability
-- Consumables of identical type and Mk tier are stacked with an `xN` count
-- Broken items show `BROKEN` instead of durability percentage
-- Carry count shown as `(current/max items)`
-- Cursed items that have not been identified show no curse indicator
-- Every item line shows a soulbind indicator: `[bound]` if soulbound to the character, `[drop]` if not yet bound and still droppable
-- Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name
+- **Details** reads `90%, Uncommon, Bound` — durability + rarity + binding, no brackets. The durability number is colored by the **mechanical durability band** (derived from the band table in 6.5, never its own thresholds: no penalty → value-color, penalty bands → say-color, broken → error-color); rarity words are always rarity-colored in information output; the binding flag reads `Bound | Unbound`.
+- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead.
+- Cursed items that have not been identified show no curse indicator.
+- Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name.
+- Carry count rides the section header: `Inventory (12/250)...`
 
 ### 6.12 Vendors
 
@@ -1503,10 +1583,12 @@ Vendor inventory is configured via the **`VendorEntry`** model. Each row links a
 - **Only unequipped items can be sold; soulbound items CAN be sold.** Selling is compensated disposal: the sold instance ceases to exist, vendors never resell player items, so the no-trading pillar stands untouched. (A cursed item can't be unequipped, therefore can't be sold while the curse holds — the curse keeps its teeth for free.)
 - **Vendor-bought items are always Common rarity**, generated at the entry's Mk tier.
 - **Repair is paid per attempt; failure is harmless** — copper spent, item unchanged, retry immediately. Success always restores 100% durability; items are never destroyed by repair. Cost per attempt = value × missing durability × 50%. Success chance = 20% + (current durability × 75%) — honoring the very-difficult-at-zero rule.
-- **Commands:** `list` (vendor stock with prices), `buy <item>`, `sell <item>`, `repair <item>`, bare `repair` (targets the most-damaged item; repeated use walks the damage list; reports "nothing to repair" when done), and `repair all` (one paid attempt per damaged item, most-damaged first, individual attempts may fail, stops if copper runs out). Commands route automatically: buy/sell/list to the living vendor in the room, repair to the living repairer — killed service NPCs are out of business until they respawn.
+- **Commands (v22 grammar — Section 9.1 is authoritative):** `list` (vendor stock), `buy [<N>] <item>` (numeric quantity only; `all` refused), `sell [<N>|all] <item>` and `sell all <rarity> [<item>]` (bare `sell all` is refused with wording that teaches the noun form), `repair <item>`, and `repair all` — which **loops**: passes over what is still damaged until everything is repaired, funds run out, or 5 passes (#75), each mend line printing as it lands. Bare `buy`/`sell`/`repair` prompt for a target (the v18 bare-repair convenience retired to the standard prompt). Commands route automatically: buy/sell/list to the living vendor in the room, repair to the living repairer — killed service NPCs are out of business until they respawn.
+- **The vendor list (v22, #123/#58):** a `Slot / Name / Details / Price` table — Details shows rarity only (entries are definitions, not instances — no durability, no binding flag); two groups, **free first** (Price reads a muted `free`), then priced, alphabetical within groups; every price through the tier formatter.
+- **Transactional aggregation (v22):** buy/sell/drop/pickup with N > 1 answer with **one count-form line per item definition** — `You buy Healing Draught Mk 1 ×100 for 9 silver.` (no article, total money) — a transaction is one act however many items it moves. `use`, `repair`, and `loot` stay **per-line**: each iteration is its own news (a swallow's effect, a mend's chance outcome, a find's identity). The count form is the deliberately plural-free first iteration; natural-English pluralization is a filed future subsystem (#126).
 - **Materials** are an item type (`material`) — no slots, stats, or durability; pure vendor-sellables (Animal Hide, Insect Carapace, and their future kin). Animals drop no copper — only higher sentient species carry money.
 
-**Combat QoL (settled alongside commerce):** targetless `attack`/`kill` auto-targets **only while the player has aggro** — "ouch, you hit me, I'm hitting you back." The target is the first attacker (earliest-engaged living NPC in the session); spamming the bare command stays on that enemy until it dies, then rolls to the next. With no aggro, a target is still required — auto-targeting a peaceful room would turn a typo into a murder.
+**Combat QoL (v18 → retired v22):** the v18-era targetless `attack`/`kill` auto-target under aggro was **removed in v22** as a fossil — aggressive NPCs engage the player themselves on entry and on their spawn tick (v21, #17), so the bare form no longer had a job; `attack` now requires a target and bare invocation gets the standard prompt (Section 9.1).
 
 **The Robotic Helper NPC:** A unique NPC that can be summoned by players in the field. There is only one. It is not instanced per player. It will not always come when called. It functions as a mobile vendor alternative to stationary vendors in town. Full design TBD.
 
@@ -1546,7 +1628,7 @@ Material gathering uses room-specific commands: `forage`, `mine`, `salvage`, `ha
 
 |Channel|Command             |Scope                          |
 |-------|--------------------|-------------------------------|
-|Say    |`say <text>`        |Current room only              |
+|Say    |`say <text>`        |Current room only. **v22 format:** speech renders `Name: message` in say-color — players and NPCs alike, no `[say]` prefix; the speaker receives their own broadcast (double vision is intentional; `echo off` is the remedy for the command echo, not the speech) |
 |Yell   |`yell <text>`       |Current room + adjacent rooms  |
 |Tell   |`tell <name> <text>`|Private, anywhere              |
 |Party  |`party <text>`      |All party members              |
@@ -1651,119 +1733,153 @@ This section is the authoritative list of all player-facing commands. Commands a
 
 Commands are case-insensitive. Arguments are separated from the verb by a space.
 
-### 9.1 Implemented Commands (v1)
+### 9.1 Implemented Commands (v22)
 
-These commands exist in the current codebase and are available to all players.
+This subsection is the authoritative command reference, absorbed from the v22 B2 command specification DD and synced to the shipped dispatch table at closeout. Every command belongs to one of four types — **action, information, movement, settings** — and its argument cell in the chart is law.
 
-#### Navigation
+#### The Command Chart
 
-|Command|Alias|Description                 |
-|-------|-----|----------------------------|
-|`north`|`n`  |Move north if an exit exists|
-|`south`|`s`  |Move south if an exit exists|
-|`east` |`e`  |Move east if an exit exists |
-|`west` |`w`  |Move west if an exit exists |
-|`up`   |`u`  |Move up if an exit exists   |
-|`down` |`d`  |Move down if an exit exists |
-|`travel`|—    |List revealed Obelisk Network destinations (obelisk rooms only — Section 2.11)|
-|`travel <destination>`|—    |Travel to a revealed checkpoint or obelisk (obelisk rooms only; case-insensitive prefix match, leading-The tolerance)|
+Cell notation: footnote numbers listed left-to-right in argument order; listed = admitted; requiredness per footnote text; `|` = alternatives.
 
-If no exit exists in the requested direction, the server responds with a message and no movement occurs. The message is either a custom per-direction message set on the room (via `no_exit_*_msg` fields) or the hardcoded default for that direction. Movement has no action economy cost outside of combat. **Directional movement is refused during active combat** ("You can't just walk away from a fight — flee!") — `flee` is the deliberate exit.
+| Type | Command | Arguments | New in v22 |
+|---|---|---|---|
+| action | attack (kill, k) | 5 \| 6 · 10 | |
+| | buy | 11 4 · 10 | |
+| | cancel | 12 | YES |
+| | drop | 11 4 · 10 · 16 | |
+| | equip (eq) | 4 · 10 | |
+| | examine (ex) | 4 \| 5 \| 6 · 10 | |
+| | flee | 2 | |
+| | home | 2 | YES |
+| | loot | 3 \| 5 · 10 | |
+| | pickup (p) | 7 4 · 10 · 13 | |
+| | quit | 2 | |
+| | repair | 3 \| 4 · 10 | |
+| | say | 9 · 10 | |
+| | sell | 7 4 · 10 · 13 · 17 | |
+| | spend | 7 14 · 10 · 15 | |
+| | sudo | 9 · 18 | YES |
+| | travel | 8 | |
+| | unequip (uneq) | 4 · 10 | |
+| | use | 11 4 · 10 | |
+| information | help (?) | 2 | |
+| | inventory (inv) | 2 | |
+| | last | 2 · 18 | YES |
+| | list | 2 | |
+| | look (l) | 2 | |
+| | stats | 2 | |
+| | wallet | 2 | |
+| | who | 2 | |
+| movement | down (d) | 2 | |
+| | east (e) | 2 | |
+| | north (n) | 2 | |
+| | south (s) | 2 | |
+| | up (u) | 2 | |
+| | west (w) | 2 | |
+| settings | brief | 1 | |
+| | echo | 1 | YES |
+| | timestamps | 1 | |
 
-#### Exploration
+#### Footnotes (stable numbering; never renumbered)
 
-|Command|Alias|Description                                                                  |
-|-------|-----|-----------------------------------------------------------------------------|
-|`look` |`l`  |Display the current room's full output — area description (if any) + long description, exits, occupants, players. Always full regardless of brief mode.|
+1. one optional argument, a human-readable boolean: exactly on, off, yes, no, true, false. Case-insensitive.
+2. no arguments expected or required; all arguments are ignored.
+3. a literal "all" targeting all possible matches for the command.
+4. `<item>` — match against an item name (with or without rarity words).
+5. `<NPC>` — match against an NPC name.
+6. `<player>` — match against a player name.
+7. `<quantity>` optional; a number or the literal "all" (as many as match).
+8. `<destination>` — match against a sphere or shard travel destination name.
+9. `<*>` — any arguments are accepted.
+10. a target is required: at least one listed argument must be present. Bare invocation responds with the standard prompt `What do you want to <verb>?` (error-color).
+11. `<quantity>` as footnote 7, but "all" not accepted (numeric only).
+12. `<command>` optional; match against the name of a currently running command (e.g. home).
+13. a numeric `<quantity>` must be accompanied by a target argument; "all" may stand alone. Bare numeric responds `<verb> <N> what?` (error-color).
+14. `<stat>` — match against a stat name (str dex end int wis per).
+15. as footnote 13, but the bare-numeric response is `spend <N> points on which stat?`
+16. bound items are excluded from this command's candidate pool.
+17. "all" requires the target argument for this command: bare `<verb> all` is refused (warn-color) with wording that teaches the noun form.
+18. admin-gated with stealth: requires membership in the `admins.shyland` Django auth Group, checked live per attempt. For non-members the command does not exist — absent from help, absent from tab completion, and attempts return the standard unknown-command response.
 
-#### Communication
+**Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`. A dispatch guard wraps every command: no input, however malformed, can drop the connection.
 
-|Command     |Alias|Description                             |
-|------------|-----|----------------------------------------|
-|`say <text>`|—    |Speak to all players in the current room. **Some NPCs listen** (Section 7.6) and answer in the room|
+#### The Three-Layer Response Doctrine (v22)
 
-#### Information
+Every response to a command belongs to exactly one layer, and the layer picks the voice:
 
-|Command|Alias|Description                                                     |
-|-------|-----|----------------------------------------------------------------|
-|`who`  |—    |List all players currently online (uses Redis presence tracking)|
-|`wallet`|—   |Show your money (tier-formatted) as one key/value line — `Wallet:` in key-color, amounts in value-color **(v21)**. `inventory` shows the identical Wallet section|
-|`help` |`?`  |Display the command reference **(v21)**: static six-direction movement line (documents the command set, not the current room), commands alphabetized, one-line `say` entry, `brief` documented, the `<item selection>` convention with a single grammar section, uniform `[x \| y]` spacing, section headers in key-color and content in value-color|
+- **CLI error (error-color, red):** the parser refused — unknown command, bad syntax, missing required argument (the footnote 10/13/15 standard prompts), settings usage lines. The machine didn't understand you.
+- **World declined (warn-color, yellow):** valid command, world says no — resolution failures (no match in the pool, bad index, ambiguity, the sell-all block) and mechanical failures (state-gate refusals, no vendor/repairer/obelisk here, can't afford, sold out, at capacity, repair didn't hold, heal at full, bound-drop attempt, unequip without bag room, failed flee). The world understood you and refused.
+- **World answered (normal voices):** success prose, the combat family, loot-color gains.
 
-#### Session
+**Consequence must be seen (#132):** the partial-fulfillment shortfall reports (`You only had N.` on use and drop, `There were only N here.` on pickup, `They only had N.` on buy) and use's no-effect `Nothing happens.` speak in the warn voice — a consequence delivered in the muted ambient voice goes unread. Deliberate exceptions, ruled correct: the sell shortfall keeps its friendly success voice (`You only had 3 — the vendor was happy to take them.`), and the ambient system voice keeps the logout farewell and the muted combat misses.
 
-|Command|Alias|Description|
-|-------|-----|-----------|
-|`quit` |—    |Leave the game and return to the games lobby. Blocked in combat (flee first) and while Dying|
+#### The State-Gating Matrix (v22)
 
-#### Character & Inventory
+- **In combat — allowed:** attack, flee, use, examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip, unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
+- **While dying — allowed:** use (self-rescue heal — deliberate design), cancel, say, sudo, quit, information, settings. Everything else refused (warn).
+- **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
+- `cancel` is allowed in every state — the escape hatch is never locked.
 
-|Command    |Alias|Description                              |
-|-----------|-----|-----------------------------------------|
-|`inventory`|`inv`|Show equipment, inventory, and wallet **(v21)**: `Equipment:` (slot-prefixed lines), `Inventory (N/M items):`, and `Wallet:` headers in key-color; every content line in value-color; item flag blocks keep their rarity colorization inside value lines|
-|`stats`    |—    |Show the character sheet **(v21)**: `Character Stats:` header in key-color; the Player line `Player: <name> - Level <N> <Origin> <Archetype>`; the full stat block, XP progress, and unspent points — everything under the header in value-color (no bracketed header; subkey-color considered and deferred)|
-|`spend <stat> <amount>`|—|Allocate unspent stat points to a primary stat (str, dex, end, int, wis, per)|
+#### Resolution Scope Pools
 
-#### Settings
+buy → room vendor stock · sell → inventory excluding equipped (bound sellable — vendors are the designed sink) · drop → inventory excluding equipped and excluding bound (footnote 16) · pickup → room floor · equip → carried equippables (equippability = mechanical layer) · unequip → equipped only (inventory room = mechanical layer) · use → carried consumables, never vendor stock · repair → everything owned including equipped · **examine → the union**: inventory + equipped + floor + vendor stock + NPCs here + corpses + players here (the vendor-examine gap closed; players answer with their composite line) · attack → living NPCs in the room · loot → lootable corpses here · travel → revealed destinations · spend → the six stats · cancel → your running delayed actions.
 
-|Command      |Alias|Description                                                              |
-|-------------|-----|-------------------------------------------------------------------------|
-|`brief`      |—    |Report the current brief-mode setting (bare form queries; it never sets) |
-|`brief on`   |—    |Enable brief mode (default): revisited rooms show the brief description only|
-|`brief off`  |—    |Disable brief mode: every entry shows the full area + long description   |
-|`timestamps` |—    |Report the current timestamp-display setting (bare form queries)         |
-|`timestamps on`|—  |Show the `[HH:MM:SS.ss]` prefix on stamped output lines (default; stored per character, survives reconnect and devices)|
-|`timestamps off`|— |Hide the timestamp prefix (the envelope's `ts`/`seq` remain on every message regardless)|
+Pool miss = warn. Same-segment ambiguity: **nearest wins** (self before room before vendor); ordinals and tab disambiguate.
 
-First entry to any room always shows the full text in both modes.
+**The name invariant (#122): a player and an NPC may never share a name.** Two enforcement edges: character creation rejects any name matching an NPC definition name, case-insensitive (`That name belongs to the world already.`), alongside the existing uniqueness and profanity checks; and seed verification permanently checks that no NPC definition name collides with any existing character name.
 
-#### Combat
+#### Partial Fulfillment Doctrine
 
-|Command                            |Alias|Description                  |
-|-----------------------------------|-----|-----------------------------|
-|`kill <target>` / `attack <target>`|`k`  |Initiate combat with a target|
-|`kill` / `attack` (bare)           |`k`  |Auto-target the first attacker — only while under aggro; refuses with no target otherwise|
-|`flee`                             |—    |Attempt to escape combat     |
+Do the possible part and report warmly; fail (warn) only when nothing is possible. Stop when purpose is fulfilled. Specifics:
 
-#### Commerce
+- Sell/drop/use/pickup shortfalls do the possible part with the warm note preceding the result; any pickup at capacity fails outright (warn); partial `pickup all` takes oldest-on-floor first.
+- **Heal sequences (#61, #65):** `use N` applies one item at a time — never pre-announcing a count (combat interleaves; stop-at-full fires mid-sequence); a heal that lands at full prints the loot-color `You have been restored to full health.` and stops the sequence; any heal attempted at full fails (warn).
+- **`repair all` (#75):** passes over what is still damaged until everything is repaired, funds run out, or 5 passes; each mend line prints as it lands.
 
-|Command|Alias|Description|
-|-------|-----|-----------|
-|`list`|—    |Show the room vendor's stock and prices (Section 6.12)|
-|`buy <item>`|—    |Buy from the room's living vendor (always Common rarity, entry's Mk tier)|
-|`sell <item>`|—    |Sell an unequipped item for one third of its value (soulbound OK; instance deleted)|
-|`sell all <item>` / `sell N <item>`|—|Bulk sell per the v20 grammar — per-sale messages plus a one-line total; `N` is all-or-nothing|
-|`sell all <rarity>` / `sell all <rarity> <item>`|—|Rarity-filtered bulk sell; noun optional with a rarity word (`sell all common` flushes every unequipped Common item; zero-value items skipped with a summary)|
-|`repair <item>`|—  |One paid repair attempt via the room's living repairer|
-|`repair`|—    |Bare form: targets the most-damaged item; repeated use walks the damage list|
-|`repair all`|—    |One paid attempt per damaged item, most-damaged first; stops if copper runs out|
+#### Success Sentences and Aggregation
 
-#### Item Interaction
+The transactional commands answer with one plain past-tense sentence, item names verbatim with rarity words rarity-colored, articles via the NPC-article machinery: `You buy the Iron Mace Mk 1 for 9 coppers.` · `You sell the Leather Gloves Mk 1 for 3 coppers.` · `You drop the Battle Axe Mk 1.` · `You pick up the Healing Draught Mk 1.` (loot-color) · `You equip the Iron Mace Mk 1.` / swap-aware `You equip the Battle Axe Mk 1, replacing the Iron Mace Mk 1.` (the slot is the paper-doll's job, not the sentence's) · `You unequip the Iron Mace Mk 1.` · `You use a Healing Draught Mk 1.` + effect line · repair's line stands · `You spend 3 points on Dexterity.` + the new value · `You stop heading home.` (cancel, named per action).
 
-|Command         |Alias|Description                                         |
-|----------------|-----|----------------------------------------------------|
-|`pickup <item>` |`p`  |Pick up a loose item from the current room          |
-|`drop <item>`   |—    |Drop a carried, unbound item into the current room  |
-|`equip <item>`  |`eq` |Equip a carried item into an equipment slot         |
-|`unequip <item>`|`uneq`|Move an equipped item back to carried inventory   |
-|`use <item>`    |—    |Use a consumable item                               |
-|`examine <item>`|`ex` |Inspect an item, live NPC, or corpse in detail      |
+**Multi-item output splits by nature:** buy, sell, drop, and pickup **aggregate** — a transaction is one act, so N > 1 emits one count-form line per item definition (`You sell Healing Draught Mk 1 ×100 for 4 silver 50 coppers.` — no article, total money; mixed sweeps emit one line per definition in floor order, singles staying singular; warm shortfall notes precede). **use, repair, and loot stay per-line** — each iteration is its own news. (#126 files the future natural-English pluralization; the count form is never wrong in the meantime.)
 
-#### Corpse Interaction
+#### Corpses and Loot (v22 form)
 
-|Command               |Alias|Description                                                          |
-|----------------------|-----|---------------------------------------------------------------------|
-|`loot [corpse] [item]`|—    |Loot a corpse; bare `loot` takes everything from the most recent kill|
-|`loot all`            |—    |**(v20)** Sweep EVERY corpse in the room — per-item loot lines, then a summary ("Looted 3 corpses; 2 carried nothing worth taking."); ownership rules enforced per corpse|
-|`loot all <item>` / `loot N <item>`|—|Item-quantified loot against the union of all corpse contents in the room|
+`loot` is `all | <NPC>`: `loot all` sweeps every corpse in the room (per-item lines, then the summary); `loot <NPC>` loots that NPC's corpse, with `N.noun` disambiguating among same-name corpses. Bare `loot` prompts (footnote 10 — the v18 most-recent-corpse convenience and the v20 item-noun/union forms are retired). Only the killing character may loot items; currency is always transferred on first loot of a corpse; a corpse that never had loot to give answers `The <npc> carried nothing worth taking.`
 
-**Corpse noun syntax:** `loot` targets the most recently created corpse in the room. `loot 2.corpse` targets the second most recent. `loot goblin` targets the first corpse whose name contains "goblin". An item noun may follow: `loot 2.corpse sword` loots the first sword from the second corpse. Only the killing character may loot items. Currency is always transferred on first loot of a corpse regardless of item noun. Bare `loot` after a corpse is emptied automatically targets the next most recent corpse in the room.
+#### Information Output Standards
 
-**Command grammar (v20 — one resolver for every noun-taking command):** `<verb> [all | N] [rarity] [noun]`, plus the retained `N.noun` index form. Matching is **ordered token-prefix** against the player-visible name-with-tier tokens (`battle axe mk 1` → any ordered-subsequence prefix reference matches: `axe`, `battle axe`, `axe 1`, `b a`; no mid-word matches). Case-insensitive; plural fallbacks tried in order (strip `es`/`s`, `ves`→`fe`, `ies`→`y`). **Rarity is never a name token** — it is a closed-vocabulary instance *filter* (`common`…`artifact`; item names never begin with a rarity word, enforced by seed verification), and with a rarity present the noun may be omitted. `all` = every match; `N` = exactly N, all-or-nothing. Ambiguity across *different* definitions → a refuse-list, never a guess. Multiple instances of the *same* definition select deterministically and protectively: `sell`/`drop` lowest rarity then most damaged; `equip` highest rarity then best condition; others oldest. **Equipped items are always excluded from `sell`/`drop`, including `all`.** Unidentified items match by their mystery name — what you see is what you type. The same token-prefix matching (no quantifiers) targets NPCs for `attack`/`kill`. **Tab completion is server-authoritative:** the client round-trips the current line and receives context-correct candidates (inventory, vendor stock, room NPCs, corpse contents, grammar words) and cycles them; the verb list arrives at connect. A **dispatch guard** wraps every command: no input, however malformed, can drop the connection — failures log server-side and answer with one error line.
+Three kinds, one punctuation law — **colon = the value is on the line; ellipsis = structure follows below**. Headers are uniformly key-color, embedded counts included (`Inventory (12/250)...`); table column guides are muted; rows are value-color.
 
-The `help` output is context-aware — it shows only the exits that actually exist in the current room, not a fixed list of all possible directions.
+- **Kind 1** — `Key: Value` (the `wallet` archetype).
+- **Kind 2** — `Key...` + indented value list.
+- **Kind 3** — `Key...` + table (muted column headers, value rows).
 
-The unknown command response directs players to `help`: *"Unknown command. Type 'help' for a list of commands."*
+Shipped surfaces: `inv` = the Equipment paper-doll + Inventory table + Wallet line (Section 6.11); `list` = the vendor table (Section 6.12); `wallet` = the shared Kind 1 line; `who` = one line, `Players online (3): Shy-Guy, Sharon-Love, Marvin`; `stats` = the character sheet with the six stat rows (base + gear parenthetical), a blank line, the Armor row, and a blank line before Unspent; `last` = the admin Kind 3 table; `look` untouched by the standards (the room render has its own v20/v21 rules). Durability numbers are colored by the mechanical band, derived, never owned; rarity words always rarity-colored.
+
+#### Settings Standard
+
+Three settings commands — `brief`, `echo` (v22, new), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, timestamps on.** Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and the future firehose are untouched; every command remains a stamped event.
+
+#### Help
+
+`help` is generated from the chart: four type sections (key-color `...` headers), Kind-3 `Command / Usage / Description` tables, usage strings compiled from the chart cells in BASH notation (`<>` required, `[]` optional, `|` alternatives), authored one-line descriptions, and four shared bottom sections (Arguments, Quantities, Settings, Tab completion). Admin commands render only for members. Help always ends with a blank line and the Kind-1 `Version:` line — `SHYLAND_VERSION`, the single source of truth for the player-visible version, bumped to the release stamp at every version closeout (point releases bump it on main). The constant tells the truth about the code it ships with.
+
+#### Admin Commands and Stealth Gating (v22)
+
+The Django auth Group **`admins.shyland`** grants in-game admin. `sudo` and `last` gate on membership, **checked live on every attempt** — no session caching, revocation instant. For non-members the commands do not exist: absent from help, absent from completion, and attempts return the unknown-command response **byte-identical to gibberish input** (footnote 18).
+
+- **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with the firehose (#33/#37).
+- **`last`** (#88) — the roster: a Kind-3 `Last seen...` table (`Character / Status / Last seen`), the composite character line (`Shy-Guy - Level 10 Highborn Blade`), Online/Offline from presence, and three time forms — `never` (no recorded connect), `since <ISO-8601 UTC>` (online), bare stamp (offline) — ordered online-by-recency, then offline-by-recency, then never. Every character's last-connect is recorded at websocket accept regardless of who can read it.
+
+#### Delayed Actions and `cancel` (v22)
+
+The **delayed-action registry** — one named, connection-bound task per running delayed action — is the standing template for every future delayed action; `home` is its first resident (design in Section 2.11). `cancel` (#113): bare with nothing running answers `You don't have anything to cancel.` (warn, verbatim); bare with exactly one running cancels it; a named argument prefix-matches the running-action names. A registry task dies silently with the connection — intent state dies with the intender.
+
+#### Tab Completion
+
+Server-authoritative (v20): the client round-trips the current line and receives context-correct candidates. The completer offers **exactly each command's pool at each position, literals included** — `all` only where the grammar accepts it, the six boolean words for settings, stat names for spend, revealed destinations for travel, corpse names for loot, running-action names for cancel, and examine's full union; ordinal forms where duplicates exist. The connect-time verb list omits admin verbs for non-members.
+
+The unknown command response directs players to `help`: *"Unknown command. Type 'help' for a list of commands."* — a CLI error, byte-identical to what a non-member sees for an admin command.
 
 ### 9.2 Planned Commands (not yet implemented)
 
@@ -1799,24 +1915,27 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 
 |Command           |Description              |
 |------------------|-------------------------|
-|`equipment` / `eq`|Show equipped items only |
 |`quests`          |Show active quest journal|
+
+*(The formerly planned `equipment`/`eq` command is superseded: `eq` is `equip`'s alias in the v22 chart, and the Equipment paper-doll in `inv` shows all 14 slots always — an equipped-only view no longer earns its own verb.)*
 
 #### Travel
 
 |Command            |Description                                            |
 |-------------------|-------------------------------------------------------|
-|`recall`           |Teleport to bound recall point (requires recall scroll)|
+|`recall`           |Teleport to bound recall point (requires recall scroll). *Note (v22): the `home` command now covers the command-driven return to the Heart (Section 2.11); recall survives as the item-driven variant and awaits the zones-and-travel version alongside attunement (#38).*|
 |`enter <exit name>`|Use a named exit (non-directional)                     |
 
 ### 9.3 Command Design Rules
 
 - Every command must work via keyboard input only — no mouse-only interactions. Screen reader users must be able to access all functionality through the input line.
 - Commands should be short, memorable, and consistent with classic MUD conventions where possible.
-- Every unrecognised command gets a helpful redirect, not a bare error. Currently: *"Unknown command. Type 'help' for a list of commands."*
-- `help` output must stay current as new commands are added. When a new command is implemented, update both this section of the GDD and the `cmd_help()` method in `consumers.py`.
-- **Boolean commands always require an explicit value.** Never a bare toggle. `brief on` / `brief off`, not bare `brief`. This rule applies to all future boolean-setting commands. (The bare form *queries*; querying is not setting — `brief` and `timestamps` both report their current value.)
-- **Every submitted command echoes** into the output pane before its result — `> command as typed`, dim gray, timestamped — a transcript of the player, never re-broadcast to others, echoed even for invalid input so errors keep their context.
+- **The chart is law.** Every command's argument behavior lives in its chart cell (Section 9.1); footnote numbers are stable and never renumbered. A new command enters the chart before it enters the code.
+- **Every refusal belongs to a layer** (the three-layer doctrine, Section 9.1): CLI errors are red, world-declines are yellow, and consequence must never speak in the ambient voice.
+- Every unrecognised command gets a helpful redirect, not a bare error: *"Unknown command. Type 'help' for a list of commands."*
+- `help` is generated from the chart and ends with the `Version:` line. When a new command is implemented, it is added to the chart, the dispatch table, and this section — one source of truth, three synchronized surfaces.
+- **Boolean commands always require an explicit value to set.** Never a bare toggle. The bare form *queries* — `brief`, `echo`, and `timestamps` all report their current value; six accepted words set it (the settings standard, Section 9.1).
+- **Every submitted command echoes** into the output pane before its result — `> command as typed`, muted, timestamped — a transcript of the player, never re-broadcast to others, echoed even for invalid input so errors keep their context. The `echo` setting suppresses the display pane-side only; the event still exists.
 - **Setting changes are events** (stamped confirmations); reports and renderings are not — see the envelope display rule in 10.2.
 
 -----
@@ -1860,13 +1979,29 @@ Web-only. Responsive down to phone screen size. No native app. **The app fits th
 
 **Location bar:** `Zone: Area: Room` (Area omitted when absent); zone and area names in their model-authored `theme_color`s, room near-white, separators chrome; one line; overflow truncates Area first, then Room, never Zone. Colors are server-delivered — one source of truth shared with output.
 
-**Right pane (fixed 300px):** the stats section — headed by the **character name, verbatim casing** — with Vitality and Longevity as ratio bars (numerals alongside) and **Acuity as a band gauge** (fixed 0.0–2.0 track, the Origin's optimal band shaded from server-supplied bounds, a tick at current value): the first surface that teaches the three-bars design. The whole section turns **combat-red** (from the state-sync combat boolean). Below it, the **fight panel**: one row per session enemy — name, hp bar, `hp/hp_max`, and the focus marker `»` — fed by a `fight` message each combat tick, empty outside combat, scrolling on overflow. The **map** (Section 2.5) sits fixed at the bottom.
+**Right pane (fixed 300px):** the stats section — headed by the **character name, verbatim casing, in value-color** — with Vitality and Longevity as ratio bars (fills in success-color — the loot-message green, verbatim, full strength; numerals and labels value-color) and **Acuity as a band gauge** (fixed 0.0–2.0 track, the Origin's optimal band as a **solid success-color block** — the translucency era ended in v22 — and a say-color gold position tick, 16×4px, extending above and below the track): the first surface that teaches the three-bars design, now speaking the chart's own colors. The whole section turns **combat-red** (from the state-sync combat boolean; the name re-points to error-color). Below it, the **fight panel**: one row per session enemy — name and `hp/hp_max` in value-color, hp bar and the focus marker `»` in error-color — fed by a `fight` message each combat tick, empty outside combat, scrolling on overflow. The **map** (Section 2.5) sits fixed at the bottom.
 
 **Command bar:** input line with the send button inside and the **connection indicator** at its right — a dot plus latency (client pings every 10s, server echoes; green healthy, amber degraded, red pulsing on reconnect, gray dead; accessible label, never announced).
 
 **The output envelope:** every outbound WebSocket message carries `ts` (epoch ms UTC, stamped at creation) and `seq` (per-connection monotonic, stamped at one audited delivery choke point — the designated future firehose tap; nothing may bypass it). **`seq` order is authoritative for rendering;** `ts` may lawfully be non-monotonic against it. **Display rule — timestamps mark events, not renderings:** combat, chat, presence, commerce, XP, errors, system/ambient, setting-change confirmations, and command echoes display the dim `[HH:MM:SS.ss]` local-time prefix (aria-hidden; governed by the `timestamps` preference); room renders and state reports (inventory, stats, vendor lists, examine, help) do not.
 
-**The output palette:** client-side styling driven by server-sent semantic categories (the server never sends hex for message text). **(v21) Named palette vocabulary:** **key-color** (`#7FB3D5`, the structural-header blue) and **value-color** (`#E8E4D8`, the room-content near-white) are CSS variables and citable design vocabulary; subcategories deferred until needed. Structural section headers share key-color — *every* header, present and future. Room-content lines (names, occupants, items) in value-color; **(v21)** room description prose also in value-color, and area description prose in the Area's `theme_color` — the two prose levels visually distinct, delivered as separate payload fields. **(v21) Structured key/value reports:** `report` messages may carry server-tagged lines (`k`/`v` per line); the client renders keys in key-color and values in value-color — adopted by `inv`, `stats`, `wallet`, and `help`; item flag blocks keep their colorization inside value lines. Who's-here / What's-here entries are bare noun phrases **(v21)** — no "is here"/"lies here" suffixes. Combat: outgoing `#C4453F`, crits `#E24B4A` bold, incoming `#E0724A` (direction readable at a glance — directional arrows were designed and **abandoned**), misses gray, kills/XP gold, success green, errors amber. Rarity colorizes the item flag block only (Common gray → Artifact red); the binding flag reads `Bound | Unbound` **(v21 rename from Droppable)**. **(v21) Zone-colored chrome:** all five pane borders (location bar/output, the full-height vertical divider, output/command bar, stats/fight, fight/map) render 5px in the current Zone's `theme_color` at ~0.75 alpha, re-tinting on zone change (`#CCCCCC` pre-first-render fallback); the combat-red takeover keeps precedence on the stats/fight border during a fight; the room separator runs slimmer at 3px so the frame outweighs the punctuation.
+**The output palette (v22 — the named chart):** client-side styling driven by server-sent semantic categories (the server never sends hex for message text). The complete named vocabulary, every name a CSS variable and citable design language:
+
+| Name | Value | Voice |
+|---|---|---|
+| key-color | `#7FB3D5` | labels; section headers; the map here-dot |
+| value-color | `#E8E4D8` | content; success prose; report text; the known |
+| muted-color | `#6b6b80` | column guides, command echo, system/ambient, combat misses, the unknown |
+| error-color / agro-color | `#E24B4A` | CLI errors; hostile map rooms (two names, deliberately separable, currently one value) |
+| warn-color | `#E8D44D` | the world declined — resolution and mechanical failures |
+| say-color | `#f0c060` | speech, player and NPC; the Epic rarity gold (deliberate reuse); the acuity tick |
+| loot-color / success-color | `#4caf7d` | gains: reward lines, pickups, heal-to-full, "Combat has ended."; the V/L bar fills and the acuity band |
+| combat family | hit-out `#C4453F` · crit-out `#E24B4A` bold · hit-in `#E0724A` · crit-in `#F08A50` bold | direction axis: red = dealing, orange = taking; crits brighter + bold; misses muted. Crit-in ships wired, dormant until NPC crits occur mechanically |
+| rarity scale | Common `#9C9A90` · Uncommon `#5FA8D3` · Rare `#B387E8` · Epic `#f0c060` · Legendary `#E0724A` · Artifact `#E24B4A` | the item flag block, and rarity words wherever item names render in information output |
+
+**Chart-as-license (v22 — standing law):** the color chart is not a description of the colors in use — it is the *license* to use them. A color literal not on the chart (or the documented chrome list) is a defect by definition, enforced by a set-equality palette conformance test: a new color appearing fails, and a licensed color disappearing fails, so every palette change is a deliberate two-place edit traceable in one diff. The v22 sweep killed the hard-coded error amber (#121), the dimmer report parchment (one content voice — report text is value-color), and the old translucent band — and named every survivor.
+
+Structural section headers share key-color — *every* header, present and future. Room-content lines in value-color; room description prose value-color and area prose in the Area's `theme_color` (the two prose levels visually distinct). **Structured reports (v21/v22):** `report` messages carry server-tagged lines — keys key-color, values value-color, plus segment-tagged spans naming a palette voice for the Kind-3 tables (muted headers, band-colored durability, rarity-colored words) — adopted by `inv`, `stats`, `wallet`, `help`, and the travel listing. Who's-here / What's-here entries are bare noun phrases. Speech is `Name: message` in say-color, both species, no prefix. Rarity colorizes the item flag block and rarity words; the binding flag reads `Bound | Unbound`. Directional combat arrows were designed and **abandoned**. **(v21) Zone-colored chrome:** all five pane borders render 5px in the current Zone's `theme_color` at ~0.75 alpha, re-tinting on zone change (`#CCCCCC` pre-first-render fallback); the combat-red takeover keeps precedence on the stats/fight border during a fight; the room separator runs slimmer at 3px so the frame outweighs the punctuation.
 
 **Accessibility:** Semantic HTML throughout. ARIA live regions on the output pane; timestamps, the map, the bars/gauge, and the separator are decorative to the reader — the numerals and text carry every fact. All functionality keyboard-accessible. Screen reader compatible from day one.
 
@@ -1896,6 +2031,8 @@ The game server runs a **tick engine** implemented as a Django management comman
 1. **`process_effects()`** — four phases per tick: (1) component ticking at round boundaries (`tick_number % COMBAT_ROUND_TICKS == 0`) — queries active `EffectComponentInstance` rows of ticking types (DoT, HoT, Acuity shift) and applies their effect to the target character's bars; (2) passive Acuity drift every tick — moves characters' `acuity_current` toward their Origin baseline by `ACUITY_DRIFT_RATE` (0.01) when no active shift component instance exists, snapping to baseline when within the drift step; (3) component expiry every tick — deactivates `EffectComponentInstance` rows whose `expires_at` has passed, reverses stat deltas for `stat_bonus`/`stat_penalty` components via `apply_stat_effect(reverse=True)`, sends one expiry message per parent `EffectInstance` if all components expire together or one per component if staggered, then closes the parent `EffectInstance` when all its components are inactive; (4) passive bar regeneration every tick — for all characters not in an active `CombatSession` and not `is_dying`, heals Vitality by `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` and Longevity by `ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)`, skipping bars already at max; sends a silent status update to the player's personal group when any bar changes; all Origins including Machinekind receive Phase 4 regen
 
 Each processor runs every tick regardless of whether it has work to do. Only `process_combat()` performs additional internal gating — a combat round only resolves when `tick_counter % COMBAT_ROUND_TICKS == 0` on the session.
+
+**Tick-loop async-safety rule (v22, #135 — standing):** synchronous helpers cross into the async tick loop **only** via `database_sync_to_async` or verifiably prefetched data — never as bare calls that execute ORM queries. The founding case: the full-expiry branch of `process_effects` called the expiry-message helper bare, and its fresh query raised `SynchronousOnlyOperation` and killed the entire engine on every full timed-effect expiry — a 100%-reproducible engine-killer, fixed surgically and field-proven against production as v22's final brief.
 
 **Status payload:** The status message sent to clients on every relevant event includes: `vitality`, `vitality_max`, `acuity`, `acuity_baseline`, `acuity_band_low`, `acuity_band_high`, `longevity`, `longevity_max`, `room_name`, `area_name`. All consumer and tick engine status sends use this same expanded shape.
 
@@ -1946,6 +2083,8 @@ Shared persistent world — all players inhabit the same rooms. No instancing fo
 
 Super user tools are **v1 critical infrastructure** — not an afterthought.
 
+**In-game admin (v22):** the Django auth Group **`admins.shyland`** is the in-game admin grant — membership checked live per command attempt (revocation is instant), gating the stealth commands `sudo` and `last` (Section 9.1). Grants are made through Django admin; the Group ships empty. Per-player mechanical overrides (e.g. `home_cooldown_seconds`) are likewise Django-admin edits.
+
 Required v1 admin capabilities:
 
 - Teleport to any room by ID or name
@@ -1975,9 +2114,9 @@ Required v1 admin capabilities:
 
 -----
 
-### 10.10 Standing Engineering Tenets (v19)
+### 10.10 Standing Engineering Tenets (v19+)
 
-Adopted as version-level law during v19, recorded here and in the architecture doc's design principles:
+Adopted as version-level law, recorded here and in the architecture doc's design principles:
 
 - **The code is definitive.** Reseeding restores the exact coded world configuration: every seed-owned table is enforced to authored values on every run, operator-added extras are deleted (cascades reported loudly), and a second consecutive run must report zero changes. Live-database edits are emergency mitigations at most — real changes go through the issue → design → brief → deploy workflow.
 - **Status payloads are always built from fresh DB reads, and every engine-side mutation of player-visible state pushes an update to the client.** The complement of "the server is the authority": the server must also *speak*.
@@ -1985,8 +2124,14 @@ Adopted as version-level law during v19, recorded here and in the architecture d
 - **Criticals are an independent roll on successful hits** — never a band of the to-hit roll.
 - **Dying interrupts combat in both directions**; revival restores exactly what the potion heals.
 - **Presence is ownership-tokened**: connect takes the key unconditionally; heartbeat and delete are guarded Lua operations; the heartbeat self-heals a lost key.
-- **The only legitimate exit from combat is `flee`** — `quit` refuses, and abandoning the connection abandons the character to the fight.
+- **The only legitimate exit from combat is `flee`** — quitting is allowed (v22) but ends nothing: combat continues after quit, and abandoning the connection abandons the character to the fight. Tab-closing and quitting are identical in cost.
 - **NPC-level protection is independent of room safety**: `attackable=False` refuses everywhere; safe rooms remain their own layer.
+- **(v21) Consumers never read-modify-write bar or stat fields** — mutations are atomic database operations, refreshed before display.
+- **(v21) Per-tick and per-operation query discipline** — new recurring work must justify its query count; the map payload's bounded-five-query build is the pattern.
+- **(v22) Fill fraction is invariant under every max-changing mutation** — the bar law (Section 4.4), one atomic rescale, no special cases.
+- **(v22) Sync helpers cross into the tick loop only via `database_sync_to_async` or verifiably prefetched data** — the async-safety rule (Section 10.4).
+- **(v22) The color chart is the license** — a color literal off the chart is a defect, enforced by set-equality test (Section 10.2).
+- **(v22) Consequence must be seen** — anything the player needs to act on speaks in a visible voice, never the muted ambient one; masking is done by construction on the server, never delegated to the client (the map's frontier rule is the pattern).
 
 -----
 
@@ -2046,9 +2191,15 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | Longevity's first drain (#70) | Nothing consumes `longevity_current` yet — the slow-burn bar is regen-only scaffolding. Candidates: flee exertion (the fiction already charges for it), sustained actions, DoT budgets. A features-version question. |
 | Identification visibility redesign (#80) | Knowledge-by-holding: mystery to observers, `examine` reveals without pickup, pickup unlocks, drop re-veils. Includes the examine double-line cleanup and the durability-leak question. |
-| Gear combat wiring (#100, v22) | No rolled item stat is currently applied to combat — player defense is raw DEX, NPC damage takes no mitigation; five of eight boss-loot groups are combat-inert. The v22 design pass rules how stat bonuses apply, whether armor mitigates, and how gear bridges the d20 contest window (the designed answer to the #89 knife-edge — and what unlocks the delve trio for non-reference builds). Includes the proc-stat semantics deferred from #68 and the #110 stat-field race. |
-| Mid-combat spend refill (#109, v22) | Spending a point in END/STR/WIS refills both bars to their new max — the level-up-refill family, but stat points are bankable on demand: a free full heal in any fight. Ruling due in v22: out-of-combat-only refill, delta refills, or keep as a deliberate mechanic. |
+| Zones-and-travel version (#30, #38, #41, #95) | The B4 bucket dropped whole from v22 by ruling: shard travel senders, obelisk attunement (player-set home destinations — `home` ships pointing at the Heart until then), Convergence-completion gating, and the ring's missing Area all belong to a future version dedicated to zones and travel, where new destinations force the questions as requirements rather than speculation. v22 kept only the destination-listing order. |
+| Pluralization subsystem (#126) | Aggregate transactional output ships with the deliberately plural-free count form (`Healing Draught Mk 1 ×100`). The upgrade: forward pluralization rules, an authored plural-name override for irregulars, multi-word head-noun handling — then the aggregates speak natural English. |
+| Ranged proc damage (#127) | "Between X and Y" proc floors — a second number per proc is a generation + stat-table + display + rolled-stat structure change: a new weapon kind in the midpoint-and-spread family, for a future itemization version. |
+| Authored per-item armor bases (#129) | A real armor field on ItemDefinition would let a set guarantee minimum coverage, with rolled `physical_resist` as bonus above it; v22's derived slot-weight table retires gracefully into it. Same family as #127's itemization deepening. |
+| Secondary-stat curves vs Mk band growth (#130) | Flat-value gear effects that matter at Mk 1 shrink toward irrelevance by Mk 3 if curves stay as seeded (midpoints grow +0.2/band while NPC numbers roughly double). A retune, not a rework — audit when Mk 2 content is designed, same era as #104. |
 | Mk-2 NPC HP scaling (#104) | NPC vitality does not scale with level/Mk tier (contest stats do) — the first Mk 2 spawn authored would carry level-12+ contest stats with Mk 1 HP. MUST be resolved before any Mk 2 content exists; blocks Mk 2 spawn authoring. |
+| Player macro/alias system (#125) | Client- or server-side command aliases. Unruled; filed during B3 planning. |
+| Repair kit (#134) | The seeded repair-kit consumable has no wired effect. Unruled. |
+| The firehose (#33, #37) | Universal event logging: every command, every output, every event through the envelope choke point. `sudo`'s listener arrives with it. |
 |**Mounts**                             |Deferred. Super user teleportation covers testing needs in v1.                                                                     |
 |**Housing**                            |Deferred. No player housing in v1.                                                                                                 |
 |**Auction House**                      |Permanently excluded. Items are soulbound; no player item trading ever.                                                            |
@@ -2060,13 +2211,8 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — fields and display logic are in place; trigger mechanism not yet implemented.|
 |**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. Corpse decay sweep and NPC respawn implemented in tick engine. Full NPC AI deferred.|
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
-|**Buy/Sell Commands**                  |`VendorEntry` model exists; vendor inventories can be authored in admin. No `buy` or `sell` commands yet implemented.              |
-|**Zone Gate Travel Command**           |`ZoneGate` model exists; gate configurations can be authored in admin. No travel command yet implemented.                          |
 |**Per-Combat-Tier NPC Behavior**       |`NpcDefinition.combat_tier` field exists (Normal/Elite/Champion/Boss/World Boss). No differentiated AI or balance behavior yet.    |
 |**Durability Degradation Tick**        |Model field exists; tick logic not yet implemented.                                                                                |
-|**Repair Mechanic**                    |Repair vendors and crafting-based repair not yet implemented.                                                                      |
-|**Minimap**                            |`RoomVisit` fog-of-war records exist but minimap rendering not yet built.                                                          |
-|**Acuity Bar Band Indicator**          |Acuity band and baseline values are now in the status payload; UI rendering of the band on the Acuity bar is deferred.            |
 |**Sanity / Acuity Edge Cases**         |Full design of Voidtouched Acuity immunity edges, eldritch stacking caps, and Warden party tools needs a dedicated design session. |
 |**Prestige / Post-Frontier Mastery**   |Mastery track outlined but not fully designed. Needs a dedicated session.                                                          |
 |**Colorblind / High Contrast Mode**    |Deferred to post-v1 accessibility pass.                                                                                            |
@@ -2081,17 +2227,14 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
 |**Starting Attire Rendering**          |`Origin.attire_material` and `Archetype.attire_silhouette` are seeded with real content and combined into flavor text at character creation, but that text is not yet surfaced anywhere in-game (no `look`/inventory display of it yet). |
 |**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) and The Verdant Reach (Z01, levels 1–10) are fully seeded and live. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order; each opening also opens new level content. Note for the next zone pass: the Convergence itself has no commerce yet — the Reach's checkpoint NPCs are the game's only vendors and repairers (architecture doc §7).|
-|**Checkpoint & Obelisk Fast-Travel Network**|**Design complete (Section 2.11); implementation pending.** Global network, destination-only checkpoints, per-character permanent revelation, free `travel` command, obelisk-sourced safe rooms, Shards. Open implementation-mapping questions for brief time: relationship to the existing `ZoneGate` model; whether revelation reuses `RoomVisit`; message pool machinery; Shard representation.|
 |**Outleveled-Content XP Reduction**    |**Designed and in v18** (carried in the engine mechanics brief). Full XP within the NPC's Mk band (band top = Mk tier × 10); −20% per level beyond it; multiplier floor 10%; absolute minimum 1 XP — outleveled kills always pay something.|
 |**Hide & Carapace Crafting**           |Animal Hide and Insect Carapace are vendor-sellables only for now. Giving players something to make with them is deferred — much later, alongside the crafting system (Section 6.13).|
 |**NPC Dialogue — deeper tiers**|The v19 listening system (Section 7.6) shipped keyword maps, greetings, and departure reactions for the Convergence roster. Future tiers: keyword vocabularies across battle zones, quest hooks, reputation-conditional responses, and Sirius-class persistent-memory entities.|
-|**Combat loot blocking**|Deferred by v19 ruling (issue filed): `loot`/`pickup`/`equip` restrictions during combat, corpse-decay interaction.|
-|**Attunement / home spawn & shard travel senders**|Deferred by v19 ruling (issues filed): player-set respawn via `attune` at network nodes; whether checkpoint shards may initiate travel.|
 |**Co-op combat rules**|Emergent v19 finding: shared-target combat exists accidentally (per-character sessions, racy kill credit, per-session NPC double actions). Kill credit, XP/loot sharing, and session semantics need a designed system.|
 |**Sirius — Special Vendor Entity**     |Unique bipedal feline special vendor (Section 6.12). Wish mechanics and persistent memory system need a dedicated design session before implementation.|
 |**Stat Respec Mechanic**               |Allow players to rebalance already-spent stat points using in-game currency. Needs a dedicated design session.|
 
 -----
 
-*Document version 21.1 — Shyland, Closed*
+*Document version 22.0 — Shyland, Closed*
 *All systems subject to revision during development.*
