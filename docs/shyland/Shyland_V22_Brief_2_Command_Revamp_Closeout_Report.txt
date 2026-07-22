@@ -1,0 +1,237 @@
+Shyland V22 Brief 2 — Command Revamp (B2) — Closeout Report
+============================================================
+Date: 2026-07-19/20
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Normative spec: docs/shyland/Shyland_V22_B2_Command_Spec_DD.md (committed 40656a0)
+Issues closed at this closeout: #111, #29, #54, #58, #59, #61, #65, #67,
+#75, #96, #98, #121, #122.
+
+WHAT SHIPPED, PER STEP
+----------------------
+Step 0  Brief self-committed (8d72c47).
+
+Step 1  Migration 0031 (b41dd93): Character.echo_mode (default on) added;
+        brief_mode field default flipped to off — no row alteration,
+        existing players keep their setting. Applied to the live DB.
+
+Step 2  Palette & client classes (52796a9): --warn-color #E8D44D,
+        --say-color #f0c060 (--chat deleted; sole reader migrated),
+        --loot-color #4caf7d; .msg-error -> var(--error) (#121 — amber
+        dead); .msg-warn new; .msg-combat-crit-in #F08A50 bold (dormant
+        until NPC crits occur mechanically; category plumbing wired);
+        .msg-combat-miss -> muted; #8A887F deleted from the file
+        entirely (its other users — .msg-system/.msg-room/.msg-echo and
+        --loc-sep — joined var(--muted); see Deltas); .msg-reward ->
+        var(--loot-color); .msg-success -> var(--value-color); seg-form
+        report lines (per-segment palette voices) added for the Kind-3
+        tables; client echoMode state + pane-only suppression of echo
+        lines, carried on verbs + status like show_timestamps.
+
+Step 3  Three-layer re-tag (50655e3). Counts: 49 fixed warn-layer
+        call sites in consumers.py (re-tagged from error/system/combat);
+        10 fixed error-layer sites (unknown command re-tagged
+        system->error; the central fn-10 prompt; fn-13/15 prompts;
+        settings/spend usage lines; dispatch-guard line; no-character
+        errors); 0 in the tick engine (its dying fatal-blow line keeps
+        the v19-ruled red — see Deltas); plus the dynamic resolver
+        mapping _refusal_category (usage/no_multi/bare_numeric -> error;
+        not_found/bad_index/too_few/ambiguous/equipped/bare_all -> warn).
+
+Step 4  Parser conformance (50655e3): central fn-10 prompts ("What do
+        you want to <verb>?") for all 13 required-target commands with
+        canonical verb names; fn-13 "<verb> <N> what?" / fn-15 spend
+        variant; spend order flipped to `spend [<quantity>|all] <stat>`
+        (old order errors); use takes numeric quantity (#65); buy/drop
+        reject "all"; drop pool excludes bound (fn 16); bare `sell all`
+        blocked with teaching wording (fn 17, warn); loot is
+        `all | <NPC>` only (item-noun/union forms retired, the #62
+        _loot_from_union helper removed); repair is `all | <item>`
+        (bare prompts; the repair-first-damaged convenience died);
+        attack requires a target (targetless auto-attack removed;
+        get_first_attacker_npc deleted); fn-2 commands ignore arguments;
+        settings accept the six boolean words any-case with DD §10
+        sentences verbatim and `Usage: <cmd> [on|off]` errors; cmd_echo
+        implemented; every command echo remains a stamped event (#59).
+
+Step 5  State-gating matrix (50655e3): central combat gate in _dispatch
+        (commerce/inventory/gear/travel/movement refused, warn, in
+        voice; attack/flee/use/spend/examine/say/quit/information/
+        settings allowed); dying gate rewritten to the matrix (use/say/
+        quit/information/settings allowed); quit's combat refusal
+        removed — combat continues after quit, no code path ends a
+        CombatSession on disconnect (verified; test proves the session
+        stays live through quit).
+
+Step 6  Pools + name invariant (50655e3, e32f6ce): examine resolves the
+        union (inventory + equipped + floor + NPCs + corpses + players +
+        vendor stock), nearest-first; players answer with their
+        composite line; drop excludes bound with the mechanical warn on
+        a bound-only match; #122 both edges — creation rejects NPC-name
+        collisions case-insensitively ("That name belongs to the world
+        already.") and seed_world._verify gains the permanent collision
+        check. Completion offers exactly each pool per position,
+        literals included (six words, stats, 'all' where legal, travel
+        destinations, corpse names); mixed-kind completion added to
+        command_grammar.complete.
+
+Step 7  Partial fulfillment (50655e3): sell shortfall sells-and-reports
+        with the DD §6 line verbatim; drop/use/pickup shortfalls do the
+        possible part with plain notes; pickup at capacity fails
+        outright (warn); partial pickup-all takes oldest-first
+        (created_at/pk proxy — see Deltas); use-N sequences stop at
+        full with the loot-color line and refuse at full (warn, #61);
+        repair-all passes over remaining damage up to 5 passes (#75).
+
+Step 8  Sentences, say, crits (50655e3): the ten transactional
+        sentences implemented verbatim (cancel is B3), item articles
+        via the new item_utils.item_ref, buy prints one line per item;
+        say is `Name: message` in say-color at both sites ([say] prefix
+        dead; NPC responder re-tagged 'chat'->'say'); [Critical]
+        brackets removed at both tick-engine sites, the word moved into
+        the damage clause ("for a critical N damage!"), NPC crits emit
+        combat-crit-in; death_message broadcasts re-tagged to reward
+        (loot-color per DD §2).
+
+Step 9  Information standards (5c8405a): Kind 1/2/3 with the header
+        punctuation law; seg-rendered Kind-3 tables (muted headers);
+        Equipment paper-doll — all 14 slot rows always, re-authored
+        anatomical SLOT_ORDER (Head, Neck, Shoulders, Back, Chest, Main
+        hand, Off hand, Ranged, Hands, Ring, Ring, Waist, Legs, Feet),
+        sentence-case labels, muted "-" empties; Inventory table
+        (Slot/Name/Quantity/Details, flat alphabetical); Details =
+        "90%, Uncommon, Bound" with durability colored by the
+        mechanical band (derived from get_durability_penalty/is_broken,
+        never own thresholds) and rarity words rarity-colored; list =
+        same table + Price, free group first with muted "free"; shared
+        wallet renderer byte-identical between wallet and inv; who
+        one-liner (#98); stats blank line before Unspent + hint updated
+        to the new spend order; look untouched.
+
+Step 10 Help regenerated (02fe15d): four chart-derived type sections,
+        Kind-3 Command/Usage/Description tables, BASH usage compiled
+        from the cells, the four bottom sections, authored descriptions
+        verbatim; echo included; B3 commands excluded.
+
+Step 11 Travel listing (50655e3): ascending straight-line map-space
+        distance (same-zone first; other-zone entries follow by name),
+        every entry labeled (shard) or (sphere).
+
+Step 12 Tests (2c8f262): new tests/test_command_revamp.py — 49 tests
+        covering all 11 required areas (chart conformance incl. fn
+        10/13/15/17 with correct layers; spend flip + old-order error +
+        use quantity; sell-all block + buy/drop 'all' rejection + bound
+        drop; state matrix incl. quit-leaves-session-live; pools incl.
+        vendor examine, NPC examine, use-scope, nearest-wins; name
+        invariant both edges; partial fulfillment incl. heal sequences
+        and the repair-all cap; settings six-words/sentences/defaults/
+        persistence; say both speakers; forced-crit engine round
+        proving no bracket + clause prose + combat-crit-in; completion
+        literals). Four pre-existing tests updated where the chart
+        supersedes v20 rulings (see Deltas).
+
+Step 14 Architecture doc (52422f2): §4.14 fully rewritten to the
+        chart/parser/layers/gates/pools reality with the DD cited as
+        design source; §4.16 palette table and v22 additions (three-layer
+        categories, named variables, Kinds, seg lines, say/crit prose);
+        §4.1 model note (echo_mode, brief default) and §4.12 message
+        inventory updated; header hash moved to 2c8f262.
+
+TEST RESULTS
+------------
+Container suite (python manage.py test apps.shyland.tests -t /app,
+after make build + migrate): 193 tests, 0 failures, 0 errors (48.98s).
+144 pre-suite -> 193: 49 new tests in test_command_revamp.py. Local
+scratch-venv run: 187/193 (the 6 failures are the known Redis-dependent
+container-only tests — connect-path presence; all pass in-container).
+
+CONFORMANCE DELTAS AND JUDGMENT CALLS (beyond Step 4's list)
+------------------------------------------------------------
+1.  attack's pool remains living NPCs only — DD §8 names players, but
+    no PvP mechanics exist to attack a player with; implementing the
+    refusal would invent design. Examine's union DOES include players.
+    Flag for the design chat if a PvP placeholder refusal is wanted.
+2.  buy: the funds check stays atomic all-or-nothing (DD §3 itself
+    files "can't afford" under mechanical failure/warn); the STOCK
+    shortfall is partial by analogy (buys what's left + "They only had
+    N."). Bare-numeric 'buy 3' answers "buy 3 what?" per fn 13.
+3.  Loot's per-item "You loot …" lines stay success/value-colored —
+    the DD §2 loot-color enumeration does not name them (only pickup
+    lines); flag if they should join loot-color.
+4.  Deleting #8A887F "from the file entirely" (Step 2.4) re-pointed
+    .msg-system, .msg-room, .msg-echo, and --loc-sep to var(--muted)
+    (#6b6b80) — a slight visible shift on system/ambient lines and the
+    location-bar separators.
+5.  The tick engine's dying fatal-blow line keeps category 'error' —
+    the v19 brief-4 ruling ("red fatal-blow line") predates and
+    survives the three-layer doctrine; error-color is the same red.
+6.  pickup-all's oldest-first order uses created_at/pk — the best
+    existing signal; there is no floor-arrival timestamp (a
+    player-dropped old item sorts by its mint time). No field added.
+7.  list's Details for vendor stock renders "100%, Common" (durability
+    items) / "Common" (others); no bind word — entries are definitions,
+    not instances. Quantity shows remaining stock for limited entries,
+    blank for unlimited.
+8.  spend/loot/repair bare invocations now prompt (fn 10), replacing
+    the old conveniences (spend->stats, loot->first corpse,
+    repair->first damaged). bare timestamps now reports the current
+    setting (DD §10) instead of erroring.
+9.  equip's sentence no longer names the slot (DD §6); the paper-doll
+    carries slot placement.
+10. Two v20 grammar-table cases and one dispatch-guard case were
+    updated where the chart supersedes them (sell partial fulfillment,
+    drop numeric-only, unknown-command error layer), plus
+    test_room_visits' revisit case now sets brief_mode explicitly
+    (default flipped). The v20 "add cases, change none" law yields to
+    the DD by the brief's own authority.
+11. who's empty-world line ("No players are currently online.") is
+    retained for the unreachable zero case (the asker is always
+    present in practice).
+12. Say completes no argument options (free text); the fn-9/10 pairing
+    means bare say prompts and anything else passes through.
+
+DEPLOYMENT NOTES
+----------------
+- Two make build container recreations this brief (one late after Step
+  1's local-venv migration generation made the mid-brief build
+  unnecessary; one final carrying everything) — each restarted all
+  three games. Migration 0031 applied to the live DB (add column with
+  default + default flip; no row rewrites).
+- The world was NOT reseeded; the #122 seed-verify check runs on the
+  next reseed (the equivalent query returns zero collisions live).
+- The scratch venv (python3.14 + Django 5.2.16 + channels/daphne/redis/
+  better-profanity) at /tmp/b2venv reproduces 187/193 locally.
+
+OPERATOR PLAYTEST — PENDING (Step 13; ready after deploy — deployed)
+--------------------------------------------------------------------
+- Bare-prompt tour: attack / say / loot / sell 3 — the standard prompts
+  in error red.
+- spend 2 dex works; spend dex 2 errors.
+- sell all block wording; drop-bound refusal in yellow.
+- examine a vendor item and an NPC.
+- combat refusals: loot mid-fight (yellow, in voice).
+- use 3 draughts stopping at full with the green line.
+- repair-all loop with per-mend lines.
+- the new inv paper-doll with empty slots; list's free group; who's
+  one-liner; help end to end.
+- brief/echo/timestamps sentences and defaults (brief off, echo on,
+  timestamps on); echo off hides your own '>' lines.
+- say's clean 'Name: message' line in gold, NPCs too.
+- amber gone — errors red, world-declines yellow.
+
+COMMITS (in order)
+------------------
+8d72c47  Step 0: self-commit brief
+b41dd93  Step 1: echo_mode + brief_mode default (migration 0031)
+52796a9  Step 2: palette + client classes
+50655e3  Steps 3-8: layers, chart, gates, pools, fulfillment, prose
+e32f6ce  Step 6: name invariant (#122)
+5c8405a  Step 9: information standards
+02fe15d  Step 10: help regeneration
+2c8f262  Step 12: test suite
+52422f2  Step 14: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+52422f2 (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).

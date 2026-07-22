@@ -73,8 +73,8 @@ class Command(BaseCommand):
             COMBAT_ROUND_TICKS, DYING_DURATION_SECS, STALE_SESSION_SECS,
         )
         from apps.shyland.combat_utils import (
-            get_npc_stats, roll_initiative, resolve_hit, calculate_damage,
-            get_npc_health_description, apply_death_penalties,
+            effective_stats, get_npc_stats, roll_initiative, resolve_hit,
+            calculate_damage, get_npc_health_description, apply_death_penalties,
             apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
@@ -357,7 +357,12 @@ class Command(BaseCommand):
                 else:
                     ordered_actions = npc_actions + player_actions
             else:
-                char_init = roll_initiative(character.stat_dex, character.stat_per)
+                # v22 B5 (#100): initiative reads effective DEX/PER.
+                @_dsa
+                def char_initiative(character):
+                    eff = effective_stats(character)
+                    return roll_initiative(eff['dex'], eff['per'])
+                char_init = await char_initiative(character)
                 avg_npc_init = (
                     sum(
                         roll_initiative(get_npc_stats(n)['dex'], get_npc_stats(n)['per'])
@@ -373,16 +378,19 @@ class Command(BaseCommand):
             def execute_actions(session, ordered_actions, character, npcs):
                 import random as _random
                 from datetime import timedelta as _td
+                from django.db.models import F as _F
+                from django.db.models.functions import Least as _Least
                 from django.utils import timezone as _tz
                 from apps.shyland.models import (
-                    CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
+                    Character, CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
                 )
                 from apps.shyland.combat_utils import (
-                    get_npc_stats, resolve_hit, calculate_damage,
-                    acuity_damage_modifier,
+                    apply_armor_mitigation, effective_stats, get_npc_stats,
+                    resolve_hit, calculate_damage, acuity_damage_modifier,
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
-                    npc_display, npc_display_name,
+                    npc_display, npc_display_name, roll_gear_bonus_damage,
+                    summed_gear_stat, total_armor_value,
                 )
                 from apps.shyland.item_utils import get_durability_penalty, create_corpse
 
@@ -390,6 +398,19 @@ class Command(BaseCommand):
                 messages = []
                 statuses = []
                 room_messages = []
+
+                # v22 B5 (#100): one equipped-set load per round feeds
+                # effective stats, TAV, and the gear wiring — armor and
+                # gear cannot change mid-round.
+                equipped_all = list(ItemInstance.objects.filter(
+                    owner=character, is_equipped=True,
+                ).select_related('definition'))
+                eff = effective_stats(character, equipped_all)
+                char_tav = total_armor_value(character, equipped_all)
+                # v22 B5 (#68/#100): gear crit joins the capped crit
+                # computation; lifesteal heals flat on landed hits.
+                gear_crit_bonus = summed_gear_stat(equipped_all, 'crit_chance') * 0.01
+                gear_lifesteal = int(round(summed_gear_stat(equipped_all, 'lifesteal')))
 
                 live_npcs = list(npcs)
                 focus_npc = resolve_focus_npc(session, live_npcs)
@@ -412,16 +433,17 @@ class Command(BaseCommand):
 
                         display = npc_display_name(npc, live_npcs)
 
-                        equipped_weapons = list(ItemInstance.objects.filter(
-                            owner=character,
-                            is_equipped=True,
-                            definition__item_type='weapon',
-                            is_broken=False,
-                        ).select_related('definition'))
+                        equipped_weapons = [
+                            i for i in equipped_all
+                            if i.definition.item_type == 'weapon' and not i.is_broken
+                        ]
                         weapon_item = equipped_weapons[0] if equipped_weapons else None
 
                         npc_stats = get_npc_stats(npc)
-                        hit_result = resolve_hit(character.stat_dex, npc_stats['dex'])
+                        # v22 B5 (#100): effective DEX to hit; gear
+                        # crit_chance rides the same capped computation.
+                        hit_result = resolve_hit(eff['dex'], npc_stats['dex'],
+                                                 crit_bonus=gear_crit_bonus)
 
                         # v20 brief 5 (#13): semantic combat categories —
                         # the client palette colors these; the server never
@@ -437,11 +459,11 @@ class Command(BaseCommand):
                                 weapon_item.damage_midpoint - spread,
                                 weapon_item.damage_midpoint + spread,
                             )
-                            stat_bonus = character.stat_str if not defn.is_ranged else character.stat_dex
+                            stat_bonus = eff['str'] if not defn.is_ranged else eff['dex']
                             dur_mod = 1.0 - get_durability_penalty(weapon_item)
                         else:
                             base_damage = _random.uniform(1, 3)
-                            stat_bonus = character.stat_str
+                            stat_bonus = eff['str']
                             dur_mod = 1.0
 
                         is_focus = (npc.pk == focus_npc_pk)
@@ -449,22 +471,51 @@ class Command(BaseCommand):
                         damage = calculate_damage(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
                         damage_int = max(1, int(damage))
 
-                        npc.vitality_current = max(0, npc.vitality_current - damage_int)
+                        # v22 B5 (#68/#100): landed hits (hit/critical —
+                        # never graze) roll the gear-bonus pool. Total
+                        # dealt = base + bonus; the parenthetical below is
+                        # gear's part; zero pool leaves the line
+                        # byte-identical to today.
+                        landed = hit_result in ('hit', 'critical')
+                        gear_bonus = roll_gear_bonus_damage(equipped_all) if landed else 0
+
+                        npc.vitality_current = max(0, npc.vitality_current - (damage_int + gear_bonus))
                         npc.save(update_fields=['vitality_current'])
 
+                        if landed and gear_lifesteal > 0:
+                            # Atomic F()-heal clamped to vitality_max; no
+                            # output line — the bar moving is the message.
+                            Character.objects.filter(pk=character.pk).update(
+                                vitality_current=_Least(
+                                    _F('vitality_current') + gear_lifesteal,
+                                    _F('vitality_max')))
+                            character.refresh_from_db(fields=['vitality_current'])
+                            statuses.append((character.pk, self._build_status(character)))
+
+                        # v22 brief 2 (DD §13, #54): color carries the
+                        # category, words carry the fiction — the
+                        # '[Critical]' bracket is dead; on the authored
+                        # unarmed path the word moves into the damage
+                        # clause. The weapon path's prose already conforms.
+                        # v22 B5 (#68/#100): a nonzero gear pool renders as
+                        # the parenthetical — base first, gear's part in
+                        # parens, total dealt = base + bonus.
+                        dmg_txt = (f"{damage_int} (+{gear_bonus})"
+                                   if gear_bonus > 0 else f"{damage_int}")
                         if weapon_item:
                             if hit_result == 'critical':
                                 flavor = f"You land a critical hit on {display}"
                             else:
                                 flavor = f"You hit {display}"
+                            msg = f"{flavor} for {dmg_txt} damage."
                         else:
                             pool = character.archetype.unarmed_message_pool if character.archetype_id else None
                             raw = get_unarmed_message(pool, display)
                             flavor = raw.rstrip('.')
                             if hit_result == 'critical':
-                                flavor = f"[Critical] {flavor}"
-
-                        msg = f"{flavor} for {damage_int} damage."
+                                msg = f"{flavor} for a critical {dmg_txt} damage!"
+                            else:
+                                msg = f"{flavor} for {dmg_txt} damage."
                         health_desc = get_npc_health_description(npc.vitality_current, npc.vitality_max)
                         msg += f" {display[0].upper()}{display[1:]} {health_desc}."
                         out_category = ('combat-crit-out' if hit_result == 'critical'
@@ -487,8 +538,10 @@ class Command(BaseCommand):
                             # v21 brief 3 (#64): ordinal-aware while
                             # same-name duplicates remain in the encounter.
                             room_messages.append((session.room_id, f"{character.name} has slain {npc_display_name(npc, live_npcs)}!", 'combat', character.pk))
+                            # v22 brief 2 (DD §2): death_message broadcasts
+                            # are gains-voiced — loot-color (reward).
                             if npc_def.death_message:
-                                room_messages.append((session.room_id, npc_def.death_message, 'combat', None))
+                                room_messages.append((session.room_id, npc_def.death_message, 'reward', None))
 
                             while character.xp >= xp_for_next_level(character.level):
                                 character.level += 1
@@ -517,7 +570,9 @@ class Command(BaseCommand):
                                 session.is_active = False
                                 session.focus_npc = None
                                 session.save(update_fields=['is_active', 'focus_npc'])
-                                messages.append((character.pk, "Combat has ended.", 'system', None))
+                                # v22 B2 amendment 1 (#124): a good outcome
+                                # — success-color (the reward class).
+                                messages.append((character.pk, "Combat has ended.", 'reward', None))
                                 break
 
                             if npc.pk == focus_npc_pk:
@@ -537,7 +592,8 @@ class Command(BaseCommand):
                             continue
 
                         npc_stats = get_npc_stats(npc)
-                        hit_result = resolve_hit(npc_stats['dex'], character.stat_dex)
+                        # v22 B5 (#100): effective DEX to dodge.
+                        hit_result = resolve_hit(npc_stats['dex'], eff['dex'])
 
                         # v20 brief 5 (#24): attacker references compose
                         # through the display helper — ordinal-aware,
@@ -554,6 +610,14 @@ class Command(BaseCommand):
                         )
                         damage = calculate_damage(base_damage, 0, 1.0, 1.0, hit_result, is_focus_target=True)
                         damage_int = max(1, int(damage))
+                        # v22 B5 (#100): armor mitigates NPC→player damage
+                        # only, after calculate_damage's final value —
+                        # deterministic, floored, at least 1 still lands.
+                        # (Amendment 2, #131 era: the incoming line shows
+                        # only this post-mitigation number — no armor
+                        # parenthetical; visibility lives in the stats
+                        # Armor row and the examine line.)
+                        damage_int = apply_armor_mitigation(damage_int, char_tav)
 
                         character.vitality_current = max(0, character.vitality_current - damage_int)
 
@@ -594,8 +658,11 @@ class Command(BaseCommand):
                                 fallback_slug='npc-default',
                             )
                             flavor = raw.rstrip('.')
+                            # v22 brief 2 (DD §13, #54): no bracket — the
+                            # word lives in the damage clause; NPC crits
+                            # carry their own category (combat-crit-in).
                             if hit_result == 'critical':
-                                msg = f"[Critical] {flavor} for {damage_int} damage!"
+                                msg = f"{flavor} for a critical {damage_int} damage!"
                             else:
                                 msg = f"{flavor} for {damage_int} damage."
 
@@ -605,7 +672,9 @@ class Command(BaseCommand):
 
                             # v20 brief 5 (#13): incoming hits are their own
                             # category — attack direction readable at a glance.
-                            messages.append((character.pk, msg, 'combat-hit-in', None))
+                            in_category = ('combat-crit-in' if hit_result == 'critical'
+                                           else 'combat-hit-in')
+                            messages.append((character.pk, msg, in_category, None))
 
                         statuses.append((character.pk, self._build_status(character)))
 
@@ -1158,7 +1227,15 @@ class Command(BaseCommand):
                         await self.send_to_player(character.pk, msg, 'system', None)
 
             if all_expiring_now:
-                msg = _expiry_message_for_effect(parent)
+                # v22 brief 6 (#135): the helper is documented-sync and runs
+                # a fresh ORM query (definition.components) — calling it bare
+                # in the async tick loop raised SynchronousOnlyOperation and
+                # killed the engine on every full timed-effect expiry.
+                # Async-safety rule: sync helpers cross into the tick loop
+                # only via database_sync_to_async or verifiably prefetched
+                # data. (The per-component sibling above stays bare because
+                # it reads only select_related-loaded attributes.)
+                msg = await database_sync_to_async(_expiry_message_for_effect)(parent)
                 if msg:
                     await self.send_to_player(parent.target.pk, msg, 'system', None)
 
@@ -1310,7 +1387,9 @@ class Command(BaseCommand):
             if connective:
                 await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
 
-        await self.broadcast_to_room(row.room_id, f'[say] {npc_name}: {response_text}', category='chat')
+        # v22 brief 2 (DD §13): NPC speech matches player speech — bare
+        # 'Name: message' in say-color, no '[say] ' prefix.
+        await self.broadcast_to_room(row.room_id, f'{npc_name}: {response_text}', category='say')
 
         if row.is_final:
             asker_room_id = await self.get_character_current_room_id(row.character_id)

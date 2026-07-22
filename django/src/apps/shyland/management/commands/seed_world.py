@@ -2108,17 +2108,28 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _seed_travel_nodes(self):
+        # v22 brief 2 amendment 3: listing_description is the stone's
+        # one-line sentence, harvested verbatim from each room's own
+        # authored prose (the Heart's long-prose opening line; the
+        # checkpoints' and the Crown's brief one-liners). Enforce-exact;
+        # every future node gets its one-liner at authoring time.
         nodes = [
-            ('heart', 'The Convergence', 'obelisk'),
-            ('vr-v07', 'Fordwatch', 'checkpoint'),
-            ('vr-f01', 'Stairhead', 'checkpoint'),
-            ('vr-c01', 'Cragfoot', 'checkpoint'),
-            ('vr-vc1', 'The Verdant Crown', 'obelisk'),
+            ('heart', 'The Convergence', 'obelisk',
+             'At the center of everything stands the Obelisk.'),
+            ('vr-v07', 'Fordwatch', 'checkpoint',
+             'A green shard drifts above the crossing where the fog gives way.'),
+            ('vr-f01', 'Stairhead', 'checkpoint',
+             'A green shard rides the wind above a trodden waystation.'),
+            ('vr-c01', 'Cragfoot', 'checkpoint',
+             "A green shard warms itself by a fire at the mountains' feet."),
+            ('vr-vc1', 'The Verdant Crown', 'obelisk',
+             'Eden on the roof of the world, and a green sphere in an obelisk.'),
         ]
-        for room_key, travel_name, node_type in nodes:
+        for room_key, travel_name, node_type, listing in nodes:
             node = self._reconcile(
                 TravelNode, {'room': self.rooms[room_key]},
-                {'travel_name': travel_name, 'node_type': node_type},
+                {'travel_name': travel_name, 'node_type': node_type,
+                 'listing_description': listing},
             )
             self.stdout.write(f'  TravelNode "{node.travel_name}" ({node.node_type}) seeded.')
 
@@ -2311,6 +2322,26 @@ class Command(BaseCommand):
             and checkpoint_nodes == 3,
         )
 
+        # v22 brief 2 amendment 3: the harvested stone sentences are
+        # enforce-exact — the listing_description of every node matches
+        # its room's own authored prose verbatim.
+        expected_listings = {
+            'The Convergence': 'At the center of everything stands the Obelisk.',
+            'Fordwatch': 'A green shard drifts above the crossing where the fog gives way.',
+            'Stairhead': 'A green shard rides the wind above a trodden waystation.',
+            'Cragfoot': "A green shard warms itself by a fire at the mountains' feet.",
+            'The Verdant Crown': 'Eden on the roof of the world, and a green sphere in an obelisk.',
+        }
+        self._check(
+            'TravelNode listing_descriptions match the harvested stone sentences',
+            all(
+                TravelNode.objects.filter(
+                    travel_name=name, listing_description=desc,
+                ).exists()
+                for name, desc in expected_listings.items()
+            ),
+        )
+
         msg_counts = {
             category: TravelMessage.objects.filter(category=category).count()
             for category in ('traveler', 'departure', 'arrival')
@@ -2452,6 +2483,34 @@ class Command(BaseCommand):
             slug='black-bear', indefinite_article='a',
         ).exists()
         self._check("Common NPCs default to 'a' (black bear pin)", commons_a)
+
+        # v22 brief 1 (#82): law — an octagon is a special room that will
+        # never have agro. Configuration-level: any RoomSpawn on a
+        # travel-node room referencing an aggressive definition fails.
+        self._check(
+            'travel-node rooms have no aggressive spawns (octagons never agro)',
+            not RoomSpawn.objects.filter(
+                room__travel_node__isnull=False,
+                npc_definition__is_aggressive=True,
+            ).exists(),
+        )
+
+        # v22 brief 2 (#122, DD §8): a player and an NPC may never share a
+        # name. Creation enforces the player edge; this enforces the
+        # authoring edge on every reseed. Case-insensitive.
+        from apps.shyland.models import Character as _Character
+        npc_names = {
+            n.lower() for n in NpcDefinition.objects.values_list('name', flat=True)
+        }
+        char_names = {
+            n.lower() for n in _Character.objects.values_list('name', flat=True)
+        }
+        colliding = sorted(npc_names & char_names)
+        self._check(
+            'no NPC definition name collides with any existing character name'
+            + (f' (collisions: {", ".join(colliding)})' if colliding else ''),
+            not colliding,
+        )
 
         self._verify_verdant()
         self._verify_map_geometry()
@@ -3163,7 +3222,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'bleed_factor', 'base': 0.3, 'factor': 0.1},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A reliable iron blade. Well-balanced and well-worn.',
@@ -3185,8 +3244,8 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'str', 'base': 1.0, 'factor': 0.3},
                     {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'poison_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'poison_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'Scratched and notched but still sharp. Does the job.',
             },
@@ -3251,7 +3310,7 @@ class Command(BaseCommand):
                 'primary_stats': [{'stat': 'str', 'base': 3.0, 'factor': 1.0}],
                 'secondary_stat_pool': [
                     {'stat': 'end', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'stun_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'stun_factor', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'physical_resist', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A heavy iron head on a short haft. Argument-ending.',
@@ -3273,7 +3332,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A long, wide blade that wants both hands. Steady and unhurried.',
@@ -3294,7 +3353,7 @@ class Command(BaseCommand):
                 'primary_stats': [{'stat': 'str', 'base': 4.0, 'factor': 1.2}],
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 1.0, 'factor': 0.3},
-                    {'stat': 'bleed_chance', 'base': 0.8, 'factor': 0.3},
+                    {'stat': 'bleed_factor', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'end', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A broad crescent blade on a long haft. Either it lands or it does not.',
@@ -3319,7 +3378,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'per', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A shortbow of laminated yew. Quiet, patient, accurate.',
             },
@@ -3764,7 +3823,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'dex', 'base': 1.0, 'factor': 0.5},
                     {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
-                    {'stat': 'bleed_chance', 'base': 0.3, 'factor': 0.1},
+                    {'stat': 'bleed_factor', 'base': 0.3, 'factor': 0.1},
                     {'stat': 'lifesteal', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A plain iron blade fresh off Morra\'s rack. No engraving, no nonsense.',
@@ -3807,7 +3866,7 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [
                     {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
                     {'stat': 'per', 'base': 1.0, 'factor': 0.4},
-                    {'stat': 'bleed_chance', 'base': 0.5, 'factor': 0.2},
+                    {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A simple leather sling, well-balanced. Morra swears by the pouch stitching.',
             },

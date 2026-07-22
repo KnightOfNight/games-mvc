@@ -186,7 +186,9 @@ class Policy:
     # 'oldest': oldest only (everything else)
     selection: str = 'oldest'
     allow_quantifier: bool = True     # all / N accepted at all
+    allow_all: bool = True            # v22 DD §1 fn 11: False = numeric-only quantity
     bare_all: bool = False            # bare 'all' (no rarity, no noun) allowed
+    partial: bool = False             # v22 DD §7: N > matches does the possible part
     purchase: bool = False            # N is a purchase count, not a match count (buy)
     allow_rarity: bool = True
     allow_plurals: bool = True
@@ -195,13 +197,16 @@ class Policy:
     bad_index: str = "You don't have that many of those."
     too_few: str = 'You only have {n}.'
     no_multi: str = ''                # refusal when quantifier not allowed
+    all_msg: str = ''                 # refusal when 'all' is not accepted (fn 11)
     bare_all_msg: str = ''            # refusal when bare 'all' not allowed
 
 
 POLICIES = {
+    # v22 brief 2 (DD §1, #65): use takes a numeric-only optional quantity.
     'use': Policy(
-        allow_quantifier=False,
-        no_multi="You can't use everything at once.",
+        allow_all=False,
+        partial=True,
+        all_msg="Use how many? Try 'use <N> <item>'.",
     ),
     'equip': Policy(
         selection='highest',
@@ -220,18 +225,26 @@ POLICIES = {
         not_found="You don't see that here.",
         bad_index="There aren't that many of those.",
     ),
+    # v22 brief 2 (DD §1 fn 17): bare 'sell all' refused with teaching
+    # wording; 'sell all <noun>' and 'sell all <rarity>' stay legal.
     'sell': Policy(
         selection='lowest',
+        partial=True,
         exclude_equipped=True,
         bare_all_msg="Sell all of what? Try 'sell all <item>' or 'sell all <rarity>'.",
     ),
+    # v22 brief 2 (DD §1 fn 11/16): drop is numeric-only and its candidate
+    # pool excludes bound items (the caller filters the pool).
     'drop': Policy(
         selection='lowest',
-        bare_all=True,
+        allow_all=False,
+        partial=True,
         exclude_equipped=True,
+        all_msg="Drop how many? Try 'drop <N> <item>'.",
     ),
     'pickup': Policy(
         bare_all=True,
+        partial=True,
         not_found="You don't see that here.",
         bad_index="There aren't that many of those here.",
         too_few='There are only {n} here.',
@@ -249,8 +262,10 @@ POLICIES = {
     'buy': Policy(
         kind='entry',
         purchase=True,
+        allow_all=False,
         not_found="They don't sell that.",
         bad_index="They don't sell that many.",
+        all_msg="Buy how many? Try 'buy <N> <item>'.",
         bare_all_msg="Buy how many? Try 'buy <N> <item>'.",
     ),
     'attack': Policy(
@@ -277,6 +292,9 @@ class Resolution:
     mode: str = 'single'              # 'single' | 'index' | 'all' | 'count'
     error: str = ''                   # code when not ok
     message: str = ''                 # player-facing refusal line
+    # v22 brief 2 (DD §7): on a partial-policy verb, the count the player
+    # asked for when it exceeded the matches (0 = exact fulfillment).
+    requested: int = 0
 
 
 def _err(code, message):
@@ -363,8 +381,9 @@ def resolve(verb, args, candidates):
 
     if quantifier is not None and not policy.allow_quantifier:
         return _err('no_multi', policy.no_multi)
-    if quantifier == 'all' and policy.purchase:
-        return _err('usage', policy.bare_all_msg)
+    # v22 brief 2 (DD §1 fn 11): numeric-only verbs reject 'all' outright.
+    if quantifier == 'all' and not policy.allow_all:
+        return _err('usage', policy.all_msg or policy.bare_all_msg)
 
     # [rarity]
     rarity = None
@@ -389,11 +408,15 @@ def resolve(verb, args, candidates):
 
     # Bare quantifier with nothing to qualify it.
     if not noun_tokens and rarity is None:
-        if quantifier == 'all' and policy.bare_all:
-            pass  # explicit everything — allowed for this verb
+        if quantifier == 'all':
+            if not policy.bare_all:
+                # v22 DD §1 fn 17: bare 'all' blocked — teaching wording,
+                # world-declined (the caller renders it warn).
+                return _err('bare_all', policy.bare_all_msg or policy.no_multi
+                            or policy.not_found)
         elif quantifier is not None:
-            return _err('usage', policy.bare_all_msg or policy.no_multi
-                        or policy.not_found)
+            # v22 DD §1 fn 13: a numeric quantity needs a target.
+            return _err('bare_numeric', f'{verb} {quantifier} what?')
         else:
             return _err('not_found', policy.not_found)
 
@@ -444,6 +467,11 @@ def resolve(verb, args, candidates):
         return Resolution(ok=True, items=ordered, mode='all')
     if isinstance(quantifier, int):
         if quantifier > len(ordered):
+            # v22 DD §7: partial fulfillment — do the possible part; the
+            # caller reports the shortfall warmly via `requested`.
+            if policy.partial:
+                return Resolution(ok=True, items=ordered, mode='count',
+                                  requested=quantifier)
             return _err('too_few', policy.too_few.format(n=len(ordered)))
         return Resolution(ok=True, items=ordered[:quantifier], mode='count')
 
@@ -455,6 +483,19 @@ def resolve(verb, args, candidates):
 # ----------------------------------------------------------------------
 
 COMPLETION_CAP = 50
+
+
+def _acc_for(candidate, default_acc):
+    """v22 brief 2 (DD §8): completion pools may mix kinds (examine's
+    union spans items, vendor entries, and NPCs). Duck-type the accessor
+    per candidate; fall back to the policy's kind."""
+    if hasattr(candidate, 'item_definition_id'):
+        return _EntryAccessor
+    if hasattr(candidate, 'is_alive') and hasattr(candidate, 'definition_id'):
+        return _NpcAccessor
+    if hasattr(candidate, 'definition_id'):
+        return _ItemAccessor
+    return default_acc
 
 
 def complete(verb, arg_text, candidates):
@@ -486,24 +527,30 @@ def complete(verb, arg_text, candidates):
 
     pool = candidates
     if consumed_rarity is not None:
-        pool = [c for c in pool if acc.rarity(c) == consumed_rarity]
+        pool = [c for c in pool
+                if _acc_for(c, acc).rarity(c) == consumed_rarity]
 
     options = set()
     for cand in pool:
-        name_tokens = acc.tokens(cand)
+        cand_acc = _acc_for(cand, acc)
+        name_tokens = cand_acc.tokens(cand)
         if not tokens_match(noun_prev, name_tokens, policy.allow_plurals):
             continue
         for t in name_tokens:
             if t.startswith(partial):
                 options.add(t)
 
-    # Qualifier words are only valid before any noun token.
+    # Qualifier words are only valid before any noun token. 'all' is
+    # offered only where the grammar accepts it (v22 DD §1 fn 11).
     if not noun_prev:
-        if policy.allow_quantifier and not policy.purchase and qualifiers_done == 0:
+        if (policy.allow_quantifier and policy.allow_all
+                and not policy.purchase and qualifiers_done == 0):
             if 'all'.startswith(partial):
                 options.add('all')
         if policy.allow_rarity and consumed_rarity is None:
-            rarities_present = {acc.rarity(c) for c in candidates}
+            rarities_present = {
+                _acc_for(c, acc).rarity(c) for c in candidates
+            }
             for word in RARITY_WORDS:
                 if word.startswith(partial) and word in rarities_present:
                     options.add(word)

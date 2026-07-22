@@ -1,0 +1,87 @@
+Shyland V22 Brief 2 — Amendment 1 (Listings, Colors, Version) — Closeout
+=========================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Amends: V22 Brief 2 (Command Revamp). Issues: #123, #124, #120 (closed).
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 91d2d12).
+
+Step 1  Vocabulary law: swept django/ (python + templates) and all
+        player-facing strings, help text, and completion sources for
+        "Droppable"/"Undroppable". SURVIVORS FOUND: 0 — B2/v21 (#60)
+        already conformed. A source-scan test now pins it.
+
+Step 2  #123 listing fixes (commit 83f2002):
+        - Vendor list table is Slot / Name / Details / Price — the
+          Quantity column removed; Details shows rarity only (no
+          durability, no binding flag).
+        - The Slot cell on both the vendor list and the player Inventory
+          table names the item's equip slot in sentence-case label form
+          (first valid slot; e.g. Main hand), muted '-' when slotless.
+          The Equipment paper-doll is untouched.
+
+Step 3  #124 color fixes (commit 83f2002):
+        1. --success-color: #4caf7d added as loot-color's general alias.
+        2. "Combat has ended." re-tagged system -> reward (success class)
+           at its single tick-engine site.
+        3. The two "You loot <item> [rarity, binding]." sites re-tagged
+           success -> reward (loot-color). Other loot-family messages
+           (the copper line) untouched, per the amendment.
+        4. Dead variables --bar-v / --bar-a / --bar-l / --combat deleted
+           (verified zero readers first).
+        5. Combat colors named: --hit-out-color #C4453F, --crit-out-color
+           #E24B4A, --hit-in-color #E0724A, --crit-in-color #F08A50; the
+           .msg-combat* classes read the variables (no rendered change).
+        6. --error updated to #E24B4A (the crit-out/Artifact red,
+           deliberate reuse). --agro-color already existed as its own
+           variable from B1 (#cc4444) and the map already read it — the
+           two names now carry two values, as designed.
+        7. .rar-epic updated to #f0c060 (the say-color gold, deliberate
+           reuse).
+
+Step 4  #120 version (commit 83f2002): apps/shyland/version.py with
+        SHYLAND_VERSION = "22.0-DEV"; help ends with a blank line and
+        the Kind-1 'Version: 22.0-DEV' line, always last. PROCESS NOTE
+        RECORDED: the version-closeout ritual gains a step — bump
+        SHYLAND_VERSION to the release stamp (22.0) alongside the GDD
+        and architecture stamps; point releases bump it on main (e.g.
+        22.1). The constant tells the truth about the code it ships with.
+
+Step 5  Tests (commit 83f2002): new tests/test_b2_amendment1.py — 7
+        tests (vendor-list columns/cells, Inventory Slot cell, help
+        version line + blank separator + constant value, loot-line
+        reward category, Combat-has-ended reward category via a driven
+        engine round, vocabulary source scans, help-section vocabulary).
+        Container suite: 200 tests, 0 failures (54.49s; was 193 — 7
+        new). Local scratch-venv run: 194/200 (the known 6
+        Redis-dependent container-only tests).
+
+Step 6  Architecture doc (commit b41644f): palette table updated (named
+        combat variables, reward scope incl. loot lines and Combat has
+        ended, error #E24B4A with the agro divergence note, success-color
+        alias), Epic #f0c060 in the rarity scale, listing-column changes,
+        the version constant and its ritual; header hash -> 83f2002.
+
+DEVIATIONS
+----------
+None. Judgment call: multi-slot items' Slot cell shows the first valid
+slot's label (no current item has more than one distinct slot family
+beyond the RING pair, which shows "Ring").
+
+DEPLOYMENT NOTE
+---------------
+One make build container recreation (all three games restarted); the
+amendment is live. No migrations, no reseed.
+
+COMMITS (in order)
+------------------
+91d2d12  Step 0: self-commit amendment
+83f2002  Steps 1-5: listings, colors, version, tests
+b41644f  Step 6: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+b41644f (this closeout report and the post-closeout issues report land
+in follow-up commits on the same branch).

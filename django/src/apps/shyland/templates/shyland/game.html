@@ -13,18 +13,32 @@
     --muted: #6b6b80;
     --accent: #7b68ee;
     --room: #a8d8a8;
-    --chat: #f0c060;
-    --combat: #e06060;
+    /* v22 brief 2 (DD §2): named palette completions — say-color is the
+       named form of the old --chat; warn-color is the world-declined
+       voice (three-layer doctrine, DD §3); loot-color is the named form
+       of the reward green (gains: reward, pickups, heal-to-full). */
+    --say-color: #f0c060;
+    --warn-color: #E8D44D;
+    --loot-color: #4caf7d;
+    /* v22 B2 amendment 1 (#124): success-color is loot-color's general
+       name for good-outcome lines; both names are valid. The combat
+       family colors get names of their own. */
+    --success-color: #4caf7d;
+    --hit-out-color: #C4453F;
+    --crit-out-color: #E24B4A;
+    --hit-in-color: #E0724A;
+    --crit-in-color: #F08A50;
     --system: #8888aa;
-    --error: #cc4444;
-    --bar-v: #4caf7d;
-    --bar-a: #7b68ee;
-    --bar-l: #e07040;
+    /* v22 B2 amendment 1 (#124): error-color is the crit-out/Artifact
+       red — deliberate reuse. Amendment 2 re-unified agro-color with it;
+       the dual naming survives for future divergence. */
+    --error: #E24B4A;
     /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
-       colon separators neutral chrome gray. Zone/area colors arrive from
-       the server per message. */
+       colon separators neutral gray. Zone/area colors arrive from the
+       server per message. (v22 brief 2 / DD §2: the old chrome gray is
+       deleted from the palette; the separators join the muted voice.) */
     --loc-room: #E8E4D8;
-    --loc-sep: #8A887F;
+    --loc-sep: var(--muted);
     /* v20 brief 4 (#2): combat-red family base values. The v20 output
        palette derives its shades from this family later. */
     --combat-bg: #3A1212;
@@ -39,6 +53,11 @@
        and stays independently declared per #1.) */
     --key-color: #7FB3D5;
     --value-color: #E8E4D8;
+    /* v22 brief 1 (#82): agro-color strokes visited rooms with an
+       aggressive spawn configured. v22 B2 amendment 2: unified back to
+       error-color's red — the two names stay deliberately separable in
+       the future; map code must use --agro-color, never --error. */
+    --agro-color: #E24B4A;
     /* v21 brief 1 (#85): pane borders take the current zone's theme
        color at ~0.75 alpha ('BF' appended in JS when zone_color
        arrives). Fallback matches the render payload's #CCCCCC. */
@@ -105,24 +124,38 @@
      combat reds are one family with the stats panel's combat state
      (#E24B4A / #3A1212) — never introduce a second red.
      ================================================================ */
-  .msg-room-render { color: #B8B4A6; }           /* room-render block container */
+  /* v22 B2 amendment 4: the dimmer parchment dies — one content voice.
+     (The container fallback joins value-color with the report text;
+     the prose blocks inside carry their own ruled colors.) */
+  .msg-room-render { color: var(--value-color); } /* room-render block container */
   .room-content    { color: var(--value-color); } /* names, occupants, items */
-  .msg-report  { color: #B8B4A6; }
+  .msg-report  { color: var(--value-color); }    /* one content voice (amendment 4) */
   /* v21 brief 1 (#90/#91/#92): structured key/value report lines. */
   .msg-key   { color: var(--key-color); }
   .msg-value { color: var(--value-color); }
-  .msg-chat    { color: var(--chat); }
-  .msg-combat  { color: #C4453F; }               /* engagement / generic combat */
-  .msg-combat-hit-out  { color: #C4453F; }       /* your hit */
-  .msg-combat-crit-out { color: #E24B4A; font-weight: bold; } /* your crit */
-  .msg-combat-hit-in   { color: #E0724A; }       /* it hits you */
-  .msg-combat-miss     { color: #8A887F; }       /* miss, either direction */
-  .msg-reward  { color: #D8B45A; }               /* kill / XP / level */
-  .msg-success { color: #8FCF9F; }               /* sales, repairs, pickups */
-  .msg-error   { color: #C08A3E; }               /* amber */
-  .msg-system  { color: #8A887F; }               /* system / ambient */
-  .msg-room    { color: #8A887F; }               /* ambient room events */
-  .msg-echo    { color: #8A887F; }               /* '> command' transcript (#15) */
+  /* v22 brief 2 (DD §9): segmented report lines — the server names a
+     voice per segment; the client maps it to the palette. */
+  .seg-key   { color: var(--key-color); }
+  .seg-value { color: var(--value-color); }
+  .seg-muted { color: var(--muted); }
+  .seg-error { color: var(--error); }
+  .seg-warn  { color: var(--warn-color); }
+  .seg-say   { color: var(--say-color); }
+  .seg-reward { color: var(--loot-color); }
+  .msg-say     { color: var(--say-color); }      /* speech, player and NPC (DD §13) */
+  .msg-combat  { color: var(--hit-out-color); }  /* engagement / generic combat */
+  .msg-combat-hit-out  { color: var(--hit-out-color); }  /* your hit */
+  .msg-combat-crit-out { color: var(--crit-out-color); font-weight: bold; } /* your crit */
+  .msg-combat-hit-in   { color: var(--hit-in-color); }   /* it hits you */
+  .msg-combat-crit-in  { color: var(--crit-in-color); font-weight: bold; } /* its crit on you (DD §2) */
+  .msg-combat-miss     { color: var(--muted); }  /* miss, either direction */
+  .msg-reward  { color: var(--loot-color); }     /* gains: kill / XP / level / pickups / heal-to-full */
+  .msg-success { color: var(--value-color); }    /* transactional success prose (DD §6) */
+  .msg-error   { color: var(--error); }          /* CLI errors (three-layer doctrine, #121) */
+  .msg-warn    { color: var(--warn-color); }     /* the world declined (DD §3) */
+  .msg-system  { color: var(--muted); }          /* system / ambient */
+  .msg-room    { color: var(--muted); }          /* ambient room events */
+  .msg-echo    { color: var(--muted); }          /* '> command' transcript (#15) */
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
   .msg-section strong  { color: var(--key-color); font-weight: bold; }
   /* v20 brief 5 amendment 1 (#78): zone-colored separator closing the
@@ -137,7 +170,7 @@
   .rar-common    { color: #9C9A90; }
   .rar-uncommon  { color: #5FA8D3; }
   .rar-rare      { color: #B387E8; }
-  .rar-epic      { color: #D8B45A; }
+  .rar-epic      { color: #f0c060; }  /* the say-color gold — deliberate reuse (#124) */
   .rar-legendary { color: #E0724A; }
   .rar-artifact  { color: #E24B4A; }
   /* v20 brief 2 (#32): dim local-time prefix on output lines — the
@@ -163,7 +196,9 @@
   }
   /* v20 brief 4 amendment 1 (#71): the header is the character's name,
      verbatim — no text-transform or case styling of any kind. */
-  #stats-name { font-size: 12px; font-weight: bold; color: var(--text); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* v22 B2 amendment 3: the name is value-colored at rest; the combat
+     red re-points to var(--error) for naming hygiene (same pixels). */
+  #stats-name { font-size: 12px; font-weight: bold; color: var(--value-color); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #side-stats {
     flex: none;
     padding: 10px;
@@ -173,14 +208,14 @@
   /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
      Stat text colors unchanged. */
   #side-stats.in-combat { background: var(--combat-bg); border-bottom-color: var(--combat-accent); }
-  #side-stats.in-combat #stats-name { color: var(--combat-accent); }
+  #side-stats.in-combat #stats-name { color: var(--error); }
 
   /* v20 brief 4 amendment 1 (#72): V/L ratio bars + the Acuity band
      gauge. Numerals stay real text (the accessible values); tracks are
      decorative (aria-hidden). Bar height matches the fight panel's. */
   #bars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-top: 8px; }
   .statbar { display: flex; align-items: center; gap: 6px; }
-  .bar-label { flex: none; width: 10px; color: var(--muted); }
+  .bar-label { flex: none; width: 10px; color: var(--value-color); }
   .statbar-track, .gauge-track {
     flex: 1 1 auto;
     min-width: 0;
@@ -190,14 +225,20 @@
     position: relative;
   }
   .statbar-track { overflow: hidden; }
+  /* v22 B2 amendment 2: the bar green is the loot-message green,
+     verbatim — success-color, full strength. */
   .statbar-fill { height: 100%; width: 0; }
-  .statbar-fill.v { background: #8FCF9F; }
-  .statbar-fill.l { background: #D8B45A; }
+  .statbar-fill.v { background: var(--success-color); }
+  .statbar-fill.l { background: var(--success-color); }
   /* Acuity band gauge: fixed 0.0–2.0 track, shaded Origin band,
      position tick clamped to the track. */
-  .gauge-band { position: absolute; top: 0; bottom: 0; background: rgba(64, 181, 140, .3); }
-  .gauge-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #40B58C; }
-  .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--muted); }
+  /* v22 B2 amendment 2: the band's translucency era ends — a solid
+     success-color block; the tick is the say-color gold. */
+  .gauge-band { position: absolute; top: 0; bottom: 0; background: var(--success-color); }
+  /* Amendment 3: the tick fattens to 16×4 (4px above and below the
+     8px track). */
+  .gauge-tick { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: var(--say-color); }
+  .bar-num { flex: none; min-width: 9ch; text-align: right; color: var(--value-color); }
 
   /* Fight info (#2): one row per enemy; scrolls on overflow; completely
      empty outside combat. */
@@ -209,11 +250,13 @@
     background: var(--surface);
   }
   .fight-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-  .fight-focus { flex: none; width: 10px; color: var(--combat-accent); font-weight: bold; }
-  .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--combat-accent); }
-  .fight-fill { height: 100%; background: var(--combat-accent); }
-  .fight-nums { flex: none; color: var(--muted); font-size: 11px; }
+  /* v22 B2 amendment 3: fight panel — error-color arrow/bars,
+     value-color names and counts. */
+  .fight-focus { flex: none; width: 10px; color: var(--error); font-weight: bold; }
+  .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--value-color); }
+  .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--error); }
+  .fight-fill { height: 100%; background: var(--error); }
+  .fight-nums { flex: none; color: var(--value-color); font-size: 11px; }
 
   /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom.
      v21 brief 1 (#85): +5px zone-colored border-top; height grows to
@@ -226,14 +269,21 @@
     border-top: 5px solid var(--zone-border);
   }
   #map { display: block; }
-  .map-open  { stroke: var(--room); stroke-width: 2; }
-  .map-stub  { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 3 3; }
-  .map-tick  { stroke: var(--muted); stroke-width: 2; }
-  .map-room  { fill: var(--surface); stroke: var(--room); stroke-width: 1.5; }
-  .map-room.here { fill: var(--room); }
-  .map-here-ring { fill: none; stroke: var(--accent); stroke-width: 2; }
-  .map-badge { fill: var(--muted); font-size: 8px; font-family: 'Courier New', Courier, monospace; }
-  .map-badge.here { fill: var(--bg); font-weight: bold; }
+  /* v22 brief 1 (#82): Maps V2 vocabulary. Stroke color carries room state
+     (value / agro); solid fills mean points (here-dot, frontier dot);
+     value-vs-muted carries known-vs-unknown everywhere. */
+  .map-edge-known    { stroke: var(--value-color); stroke-width: 2; }
+  .map-edge-unknown  { stroke: var(--muted); stroke-width: 2; }
+  .map-gate-known    { stroke: var(--value-color); stroke-width: 2; fill: var(--value-color); }
+  .map-gate-unknown  { stroke: var(--muted); stroke-width: 2; fill: var(--muted); }
+  .map-room          { fill: var(--surface); stroke: var(--value-color); stroke-width: 2; }
+  .map-room.agro     { stroke: var(--agro-color); }
+  .map-node          { fill: var(--surface); stroke: var(--value-color); stroke-width: 4; }
+  .map-frontier      { fill: var(--muted); }
+  .map-here          { fill: var(--key-color); }
+  .map-updown        { font: bold 14px 'Courier New', Courier, monospace; }
+  .map-updown.known  { fill: var(--value-color); }
+  .map-updown.unknown { fill: var(--muted); }
 
   /* Command bar (v20 brief 4): send button lives inside it; the
      connection indicator (#31) sits at its right end, before the button. */
@@ -411,6 +461,10 @@
   // prefix. Server-authoritative — carried by the connect-time verbs
   // message and every status payload.
   let showTimestamps = true;
+  // v22 brief 2 (DD §10): pane-only echo preference — when off, the
+  // player's own '> command' echo lines are not rendered. Same carriage
+  // as show_timestamps; never affects anything beyond the pane.
+  let echoMode = true;
 
   // v20 brief 3 (#19): tab completion. Verb position completes locally
   // from the server-sent verb list; argument position asks the server.
@@ -565,10 +619,12 @@
     } else if (msg.type === 'verbs') {
       if (Array.isArray(msg.verbs)) verbList = msg.verbs;
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
+      if (typeof msg.echo_mode === 'boolean') echoMode = msg.echo_mode;
     } else if (msg.type === 'complete') {
       applyCompletion(msg);
     } else if (msg.type === 'status') {
       if (typeof msg.show_timestamps === 'boolean') showTimestamps = msg.show_timestamps;
+      if (typeof msg.echo_mode === 'boolean') echoMode = msg.echo_mode;
       updateLocation(msg);
       // v20 brief 4 (#2): combat-membership boolean drives the stats
       // section's combat-red state.
@@ -681,11 +737,28 @@
     });
   }
 
-  // v20 brief 1 (#36): map renderer. North is up; fixed 9×9 cell window
-  // (radius 4) centered on the current room, no zoom; rooms outside the
-  // window are not drawn. Every map message discards and fully re-renders.
-  const MAP_SIZE = 300, MAP_RADIUS = 4, CELL = MAP_SIZE / 9;
+  // v22 brief 1 (#82, #115): Maps V2 renderer. North is up; fixed 7×7 cell
+  // window (radius 3) centered on the current room, drawn inside a pinned
+  // 16px margin (268×268 drawable area centered in the unchanged 300×300
+  // SVG — #115). Rooms outside the window are not drawn. Every map message
+  // discards and fully re-renders.
+  const MAP_SIZE = 300, MARGIN = 16, INNER = MAP_SIZE - 2 * MARGIN;
+  const MAP_RADIUS = 3, CELL = INNER / 7;
   const MAP_DELTA = { north: [0, 1], south: [0, -1], east: [1, 0], west: [-1, 0] };
+  // Attachment law: anything attaching to a glyph starts at the outer edge
+  // of its stroke, never the geometric radius — circle 10 + 1 = 11; octagon
+  // apothem 12·cos 22.5° ≈ 11.09 + 2 = 13.09.
+  const ROOM_R = 10, ROOM_EDGE = ROOM_R + 1;
+  const OCT_R = 12, OCT_EDGE = OCT_R * Math.cos(Math.PI / 8) + 2;
+  const GATE_LINE = 8, GATE_SIDE = 10;
+  // Badge tuck (v22 brief 1 amendment 1): each U/D badge sits as close to
+  // its glyph as possible without touching — the letter's ink clears the
+  // glyph's outer stroke edge by ~0.5px on the 45° diagonal (the attachment
+  // law's spirit applied to text). Offsets are derived from the measured
+  // rendered ink of 14px bold Courier New (U/D ink ≈6.8px wide, spanning
+  // −4.2..+5.0px vertically around the placement point); if the rendering
+  // font's metrics ever change, re-derive under closest-without-touching.
+  const BADGE_OFF_ROOM = 12.25, BADGE_OFF_NODE = 13.75;
 
   function renderMap(msg) {
     while (mapSvg.firstChild) mapSvg.removeChild(mapSvg.firstChild);
@@ -697,58 +770,105 @@
       for (const k in attrs) e.setAttribute(k, attrs[k]);
       return e;
     };
-    const px = (x) => MAP_SIZE / 2 + (x - cx0) * CELL;
-    const py = (y) => MAP_SIZE / 2 - (y - cy0) * CELL;   // north is up
+    const px = (x) => MARGIN + INNER / 2 + (x - cx0) * CELL;
+    const py = (y) => MARGIN + INNER / 2 - (y - cy0) * CELL;   // north is up
     const inWindow = (r) => Math.abs(r.x - cx0) <= MAP_RADIUS && Math.abs(r.y - cy0) <= MAP_RADIUS;
     const byCell = new Map();
     msg.rooms.forEach((r) => byCell.set(r.x + ',' + r.y, r));
     const drawn = msg.rooms.filter(inWindow);
+    const isGate = (status) => status === 'gate-known' || status === 'gate-unknown';
 
-    // Edges first so rooms draw over them.
+    // Edges first so glyphs draw over them. Frontier rooms draw no exits
+    // of their own — only lines from discovered rooms reach them.
     drawn.forEach((r) => {
+      if (!r.discovered) return;
       const x = px(r.x), y = py(r.y);
-      for (const dir in r.exits) {
+      for (const dir in (r.exits || {})) {
         const d = MAP_DELTA[dir];
         if (!d) continue;
         const status = r.exits[dir];
+        if (isGate(status)) continue;   // gates render as glyph attachments
+        const cls = status === 'known' ? 'map-edge-known' : 'map-edge-unknown';
         const nb = byCell.get((r.x + d[0]) + ',' + (r.y + d[1]));
-        const ex = x + d[0] * CELL / 2, ey = y - d[1] * CELL / 2;
-        if (status === 'open' && nb && inWindow(nb)) {
+        if (nb && inWindow(nb)) {
           mapSvg.appendChild(el('line', {
-            x1: x, y1: y, x2: px(nb.x), y2: py(nb.y), class: 'map-open',
+            x1: x, y1: y, x2: px(nb.x), y2: py(nb.y), class: cls,
           }));
-        } else if (status === 'open') {
-          // Open exit whose destination is outside the window: solid stub.
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-open' }));
-        } else if (status === 'unexplored') {
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
-        } else if (status === 'boundary') {
-          mapSvg.appendChild(el('line', { x1: x, y1: y, x2: ex, y2: ey, class: 'map-stub' }));
-          const t = CELL * 0.18;  // perpendicular tick at the stub's end
+        } else {
+          // Destination outside the window: solid half-cell stub.
           mapSvg.appendChild(el('line', {
-            x1: ex - d[1] * t, y1: ey - d[0] * t,
-            x2: ex + d[1] * t, y2: ey + d[0] * t, class: 'map-tick',
+            x1: x, y1: y,
+            x2: x + d[0] * CELL / 2, y2: y - d[1] * CELL / 2, class: cls,
           }));
         }
       }
     });
 
+    // Glyphs: gate attachments, then the room shape.
     drawn.forEach((r) => {
       const x = px(r.x), y = py(r.y);
+      if (!r.discovered) {
+        // Frontier room: solid muted dot at half diameter, no stroke.
+        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 5, class: 'map-frontier' }));
+        return;
+      }
+      const isNode = !!r.travel_node;
+      const edge = isNode ? OCT_EDGE : ROOM_EDGE;
+      for (const dir in (r.exits || {})) {
+        const status = r.exits[dir];
+        if (!isGate(status)) continue;
+        const d = MAP_DELTA[dir];
+        if (!d) continue;
+        const cls = status === 'gate-known' ? 'map-gate-known' : 'map-gate-unknown';
+        const ux = d[0], uy = -d[1];   // outward unit vector, screen space
+        const sx = x + ux * edge, sy = y + uy * edge;
+        const bx = sx + ux * GATE_LINE, by = sy + uy * GATE_LINE;
+        mapSvg.appendChild(el('line', { x1: sx, y1: sy, x2: bx, y2: by, class: cls }));
+        // Solid equilateral triangle: base midpoint at the line end, apex
+        // a further side·√3/2 out.
+        const ax = bx + ux * GATE_SIDE * Math.sqrt(3) / 2;
+        const ay = by + uy * GATE_SIDE * Math.sqrt(3) / 2;
+        const hx = -uy * GATE_SIDE / 2, hy = ux * GATE_SIDE / 2;
+        mapSvg.appendChild(el('polygon', {
+          points: (bx + hx) + ',' + (by + hy) + ' ' + (bx - hx) + ',' + (by - hy)
+                  + ' ' + ax + ',' + ay,
+          class: cls,
+        }));
+      }
+      if (isNode) {
+        // Travel node: octagon, flat sides facing the cardinals. Never agro.
+        const pts = [];
+        for (let k = 0; k < 8; k++) {
+          const a = Math.PI / 8 + k * Math.PI / 4;   // 22.5° + 45k°
+          pts.push((x + OCT_R * Math.cos(a)) + ',' + (y + OCT_R * Math.sin(a)));
+        }
+        mapSvg.appendChild(el('polygon', { points: pts.join(' '), class: 'map-node' }));
+      } else {
+        mapSvg.appendChild(el('circle', {
+          cx: x, cy: y, r: ROOM_R,
+          class: 'map-room' + (r.agro ? ' agro' : ''),
+        }));
+      }
+    });
+
+    // Here-dot and badges last.
+    drawn.forEach((r) => {
+      if (!r.discovered) return;
+      const x = px(r.x), y = py(r.y);
       if (r.here) {
-        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 12, class: 'map-here-ring' }));
+        mapSvg.appendChild(el('circle', { cx: x, cy: y, r: 6, class: 'map-here' }));
       }
-      mapSvg.appendChild(el('circle', {
-        cx: x, cy: y, r: 8, class: 'map-room' + (r.here ? ' here' : ''),
-      }));
-      if (r.up || r.down) {
+      const off = r.travel_node ? BADGE_OFF_NODE : BADGE_OFF_ROOM;
+      [['up', 'U', -1], ['down', 'D', 1]].forEach(([dir, label, sign]) => {
+        const status = r[dir];
+        if (!status) return;
         const badge = el('text', {
-          x: x, y: y + 3, 'text-anchor': 'middle',
-          class: 'map-badge' + (r.here ? ' here' : ''),
+          x: x + off, y: y + sign * off + 5, 'text-anchor': 'middle',
+          class: 'map-updown ' + (status === 'known' ? 'known' : 'unknown'),
         });
-        badge.textContent = (r.up && r.down) ? 'UD' : (r.up ? 'U' : 'D');
+        badge.textContent = label;
         mapSvg.appendChild(badge);
-      }
+      });
     });
   }
 
@@ -899,10 +1019,43 @@
   // value-color, concatenated in that order; an entry with neither is a
   // blank line. Value text passes through appendFlaggedText so item
   // flag blocks keep their rarity/chrome colorization (design rule 3).
+  // v22 brief 2 (DD §9): a report line may instead carry 'segs' — an
+  // array of {t, c} segments where c names a palette voice (key, value,
+  // muted, error, warn, say, reward, rar-*, flag-chrome). Used for the
+  // Kind-3 tables: muted column headers, band-colored durability, and
+  // rarity-colored words inside otherwise value-colored rows.
+  const SEG_CLASSES = new Set([
+    'key', 'value', 'muted', 'error', 'warn', 'say', 'reward',
+  ]);
   function appendReportLines(lines) {
     lines.forEach((entry) => {
       const el = document.createElement('div');
       el.className = 'msg-report';
+      if (Array.isArray(entry.segs)) {
+        entry.segs.forEach((seg) => {
+          const s = document.createElement('span');
+          // v22 B2 amendment 3: a seg may instead carry 'x' — a raw
+          // theme-color hex. This is the same licensed exception as the
+          // zone/area theme colors on location updates and room renders;
+          // anything else stays palette-named.
+          if (typeof seg.x === 'string' && /^#[0-9A-Fa-f]{6,8}$/.test(seg.x)) {
+            s.style.color = seg.x;
+          } else {
+            const c = seg.c || 'value';
+            if (SEG_CLASSES.has(c)) {
+              s.className = 'seg-' + c;
+            } else if (/^(rar-[a-z]+|flag-chrome)$/.test(c)) {
+              s.className = c;
+            } else {
+              s.className = 'seg-value';
+            }
+          }
+          s.textContent = seg.t || '';
+          el.appendChild(s);
+        });
+        output.appendChild(el);
+        return;
+      }
       const hasK = typeof entry.k === 'string' && entry.k !== '';
       const hasV = typeof entry.v === 'string' && entry.v !== '';
       if (!hasK && !hasV) {
@@ -927,6 +1080,9 @@
   }
 
   function append(msg) {
+    // v22 brief 2 (DD §10): echo is a pane-only preference — off means
+    // the player's own command-echo lines simply don't render.
+    if (msg.category === 'echo' && !echoMode) return;
     if (msg.category === 'report' && Array.isArray(msg.lines)) {
       appendReportLines(msg.lines);
       return;

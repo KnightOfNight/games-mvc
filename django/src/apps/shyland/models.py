@@ -260,11 +260,29 @@ class Character(models.Model):
     is_dead = models.BooleanField(default=False)
     is_dying    = models.BooleanField(default=False)
     dying_since = models.DateTimeField(null=True, blank=True)
-    brief_mode = models.BooleanField(default=True)
+    # v22 brief 2 (DD §10): brief defaults off — new characters see long
+    # room descriptions until they opt in. Existing rows keep their value.
+    brief_mode = models.BooleanField(default=False)
     # v20 brief 3 (#45): whether the client shows the [HH:MM:SS.ss]
     # prefix on stamped messages. Envelope ts/seq fields are always
     # present regardless — this is display preference only.
     show_timestamps = models.BooleanField(default=True)
+    # v22 brief 2 (DD §10): pane-only preference — when off, the client
+    # suppresses the player's own command-echo line. Never affects the
+    # firehose or anything server-side beyond the flag itself.
+    echo_mode = models.BooleanField(default=True)
+    # v22 brief 3 (#57): home's cooldown. Completion-only consumption —
+    # home_last_completed is set only when the traveler actually lands
+    # at the Heart; interrupted countdowns never start the clock.
+    home_cooldown_seconds = models.PositiveIntegerField(
+        default=900,
+        help_text='Per-player home cooldown override (seconds); edit here '
+                  'in the admin to change one character.',
+    )
+    home_last_completed = models.DateTimeField(null=True, blank=True)
+    # v22 brief 3 (#88): written at every websocket accept — the data
+    # accrues for all players regardless of who can read `last`.
+    last_connect = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
@@ -947,6 +965,11 @@ class TravelNode(models.Model):
         help_text='Obelisks are travel sources and destinations. '
                   'Checkpoints are destinations only.',
     )
+    # v22 brief 2 amendment 3: the stone's one-line sentence shown in the
+    # travel listing's Description column. Harvested from the world's own
+    # prose at authoring time (seed-owned, enforce-exact); every new node
+    # gets its one-liner when it is authored.
+    listing_description = models.TextField(blank=True, default='')
 
     def __str__(self):
         return f'{self.travel_name} ({self.node_type})'

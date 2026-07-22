@@ -1,0 +1,109 @@
+Shyland V22 Brief 2 — Amendment 3 (Pane Recolors & Travel Listing) —
+Closeout Report
+=====================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's
+action)
+Issues: none founded, none closed — design-chat rulings direct.
+Out of scope, untouched as instructed: #side-stats.in-combat
+background/border behavior beyond the single in-combat name variable
+re-point; #119; travel sort order, pools, and mechanics (display only).
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 32117d8).
+
+Step 2  Fight panel CSS (commit 74be521): .fight-focus color and
+        .fight-bar border and .fight-fill background -> var(--error);
+        .fight-name and .fight-nums -> var(--value-color).
+        --combat-accent and --text survive with their remaining readers.
+
+Step 3  Player pane CSS (commit 74be521): #stats-name ->
+        var(--value-color) (the --text fossil read retired);
+        #side-stats.in-combat #stats-name -> var(--error) (same pixels,
+        naming hygiene); .bar-label and .bar-num -> var(--value-color);
+        .gauge-tick grows to 16px x 4px (top/bottom -4px, width 4px,
+        margin-left -2px), still var(--say-color).
+
+Step 4  Travel listing rebuild (commit 8a6ccab): the bare-travel branch
+        renders per-zone blocks — key-color opener 'The Obelisk offers
+        passage to...'; per zone a Kind-1 heading 'Zone: <name>' with
+        the zone name in the zone's theme_color (the licensed hex
+        exception, carried as a validated seg 'x' field in the client);
+        a Kind-3 table Type / Destination / Description (muted headers,
+        value rows, Sphere/Shard capitalized exactly) through the
+        established _table_lines machinery, with min_widths sharing one
+        column x-geometry across every block. Zones order by hardness
+        via TRAVEL_ZONE_ORDER in consumers.py (GDD danger ladder cited
+        in its comment; the single interim authority — no danger_rank
+        field). Within-zone order keeps the ruled ascending-distance
+        interim sort. The traveling path is untouched.
+
+        HARVESTED CROWN SENTENCE (verbatim, for the design record):
+        "Eden on the roof of the world, and a green sphere in an
+        obelisk." — vr-vc1's authored brief one-liner, the room's
+        sphere/obelisk opening sentence, matching the harvest pattern of
+        the three checkpoint one-liners (their rooms' briefs) and the
+        Heart's long-prose opening line. No fresh authoring occurred.
+        All five sentences verified verbatim against seed_world.py
+        before storage.
+
+Step 5  Migration 0032 (commit 8a6ccab): TravelNode.listing_description
+        (TextField, blank default). Applied to the live DB; seed_world
+        reseed populated the five nodes (enforce-exact via _reconcile);
+        seed-verify gained the pinning check 'TravelNode
+        listing_descriptions match the harvested stone sentences' —
+        PASS on the live reseed, alongside all pre-existing checks.
+
+Step 6  Tests (commit 8a6ccab): tests/test_b2_amendment3.py — 6 tests
+        (fight/stats selector conformance incl. no --text among the
+        changed selectors; gauge-tick 16x4 geometry; the two-zone
+        listing end to end — hardness order, single shared header
+        geometry, capitalized types, theme-color heading seg, harvested
+        sentences verbatim; the field's shape + seed source pin).
+        Container suite: 208 tests, 0 failures (was 202 — 6 new).
+        Local scratch-venv run: 202/208 (the known 6 Redis-dependent
+        container-only tests).
+
+Step 8  Architecture doc (commit 7e8a167): §4.14's travel-listing
+        entry rewritten to the per-zone renderer with the
+        listing_description field, authoring convention, and
+        TRAVEL_ZONE_ORDER's location; §4.15's stats-pane and fight-panel
+        color reads and the 16x4 tick; header hash -> 8a6ccab.
+
+DEVIATIONS
+----------
+None. The Crown's prose contained a suitable single opening
+sphere/obelisk sentence (its authored brief one-liner) — no stop-and-flag
+needed, zero fresh authoring.
+
+DEPLOYMENT NOTES
+----------------
+- One make build container recreation (all three games restarted).
+- Migration 0032 applied; seed_world reseed run to populate the field
+  (enforce-exact; runtime state untouched per the standing reseed
+  semantics). All verification checks passed on the live reseed.
+
+OPERATOR PLAYTEST — PENDING (Step 7; ready after deploy — deployed)
+-------------------------------------------------------------------
+- Fight panel in a multi-enemy fight: red arrow/bars, parchment names
+  and counts.
+- Stats pane at rest (parchment name, labels, numbers) and in combat
+  (name in the unified red).
+- The fat gold tick.
+- travel at the Heart (one zone block) and at the Verdant Crown (both
+  blocks, hardness order, aligned columns, the stones' own sentences in
+  the Description column).
+
+COMMITS (in order)
+------------------
+32117d8  Step 0: self-commit amendment
+74be521  Steps 2-3: pane CSS recolors + tick geometry
+8a6ccab  Steps 4-6: travel listing, migration 0032, seed, tests
+7e8a167  Step 8: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+7e8a167 (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).

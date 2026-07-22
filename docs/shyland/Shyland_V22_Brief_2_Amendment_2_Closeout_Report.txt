@@ -1,0 +1,72 @@
+Shyland V22 Brief 2 — Amendment 2 (Agro Unification & Stats Pane
+Repaint) — Closeout Report
+================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's
+action)
+Issues: none founded, none closed — this amendment executes two design
+rulings (2026-07-20) recorded in the amendment itself.
+Out of scope, untouched as instructed: #side-stats.in-combat, border
+coloring, #119.
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 617b203).
+
+Step 2  Implementation (commit 5b5b0de), game.html only:
+        1. --agro-color -> #E24B4A (re-unified with error-color; dual
+           naming retained; the map's hostile-room strokes brighten —
+           no other map reads changed).
+        2. .statbar-fill.v -> var(--success-color).
+        3. .statbar-fill.l -> var(--success-color).
+        4. .gauge-band -> var(--success-color), solid — the
+           rgba(64, 181, 140, .3) value is dead; no opacity anywhere on
+           the band.
+        5. .gauge-tick -> var(--say-color).
+        6. DEAD-HEX SCAN: #8FCF9F, #D8B45A, #40B58C, and the rgba band
+           value survive NOWHERE in the file (verified by grep and
+           pinned by test). No server changes, no migrations, no reseed.
+
+Step 3  Tests (commit 3c7a044): tests/test_b2_amendment2.py — the
+        source-conformance scan (dead hexes absent; --agro-color:
+        #E24B4A present), in Amendment 1's scan pattern.
+        Container suite: 202 tests, 0 failures (was 200 — 2 new).
+        Local scratch-venv run: 196/202 (the known 6 Redis-dependent
+        container-only tests).
+
+Step 5  Architecture doc (this commit's predecessor): §4.12's palette
+        table agro entry re-unified at #E24B4A with the divergence
+        history noted; §4.15's stats-pane description now states the
+        success-color fills, the solid success-color band (translucency
+        removed), and the say-color tick; §4.16's error row note
+        updated; header hash -> 3c7a044.
+
+DEVIATIONS
+----------
+None.
+
+DEPLOYMENT NOTE
+---------------
+One make build container recreation (all three games restarted); the
+repaint is live.
+
+OPERATOR PLAYTEST — PENDING (Step 4; ready after deploy — deployed)
+-------------------------------------------------------------------
+- The map's agro rooms in the brighter red: Lion's Watch / Bear's
+  Throne, the Undercrag.
+- The stats pane's three green elements (V fill, L fill, acuity band)
+  color-matching a fresh loot line by eye.
+- The gold tick visible against the solid band across the band's range.
+
+COMMITS (in order)
+------------------
+617b203  Step 0: self-commit amendment
+5b5b0de  Step 2: repaint implementation
+3c7a044  Step 3: source-conformance test
+ad1852e  Step 5: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+ad1852e (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).

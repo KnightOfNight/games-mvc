@@ -1,0 +1,44 @@
+Shyland Brief — V22 B4 Travel Deferral Housekeeping — Closeout Report
+======================================================================
+Date: 2026-07-19
+Branch: version_22 (worktree; never merged — merging is the operator's action)
+Type: ops/housekeeping. No game code changes of any kind.
+
+WHAT WAS DONE
+-------------
+Step 0  Brief self-committed verbatim to
+        docs/shyland/Shyland_Brief_V22_B4_Travel_Deferral_Housekeeping.md
+        (commit 77d43bc).
+
+Step 2  Issue demotions (#30 shard senders, #38 attunement):
+        - Deferral ruling comment posted on both (standard "Design ruling
+          (2026-07-19)." prefix, pointing at the future zones-and-travel
+          version alongside #41/#95, the retained B2 destination-listing
+          item, and home's v22 default destination).
+        - Both removed from the Version 22 milestone — verified milestone
+          is now null on each.
+        - B4 bucket labels left in place on both (bucket labels are
+          version-agnostic; the missing milestone is the disposition).
+        No other issues touched.
+
+Step 3  Version 22 milestone description updated by APPEND, not replace:
+        the existing description contained operator-authored content (the
+        original five-bucket breakdown with issue references), so per the
+        brief's preservation rule the ruled text was appended as a new
+        paragraph after it. The original paragraph intentionally still
+        describes B4 as it stood at planning; the appended paragraph
+        records the final four-bucket shape and the 2026-07-19 drop.
+
+DEVIATIONS
+----------
+None. The append-instead-of-replace path is the brief's own contingency,
+noted here as it instructs.
+
+COMMITS (in order)
+------------------
+77d43bc  Step 0: self-commit brief
+
+FINAL COMMIT HASH
+-----------------
+77d43bc (last content commit; this closeout report and the post-closeout
+issues report land in follow-up commits on the same branch).

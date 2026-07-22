@@ -1,0 +1,100 @@
+Shyland V22 Brief 2 — Amendment 4 (Report Color & Palette Conformance)
+— Closeout Report
+======================================================================
+Date: 2026-07-20
+Branch: version_22 (worktree; never merged — merging is the operator's
+action)
+Issues: none founded, none closed — design-chat rulings direct.
+Out of scope, untouched: every color beyond Step 2 (--text keeps its
+readers; chrome colors reported, not changed).
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 36d55bd).
+
+Step 2  CSS (commit 0059191): .msg-report -> var(--value-color). The
+        #B8B4A6 parchment survives NOWHERE in the file — it also lived
+        on the .msg-room-render block container, which joined
+        value-color in the same stroke (the ruling kills the hex
+        entirely; the prose blocks inside the render carry their own
+        ruled colors, so the container fallback is the same one-voice
+        conformance).
+
+Step 3  Exhaustive palette conformance test (commit 0059191):
+        tests/test_b2_amendment4.py extracts every value-position color
+        literal (#RGB/#RRGGBB/#RRGGBBAA case-insensitive, #RGB expanded;
+        rgb()/rgba() forms; issue references in comments excluded by the
+        value-position rule) and asserts SET EQUALITY against
+        ALLOWED_COLORS — new colors fail, vanished licensed colors fail;
+        every future palette change is a two-place edit. The amendments
+        1-3 scan tests remain in their modules (their assertions are
+        implied: any dead hex reappearing breaks equality).
+
+        ALLOWED_COLORS AS SHIPPED — Chart group:
+          #7FB3D5   key-color
+          #E8E4D8   value-color (also --loc-room, independent per #1)
+          #6B6B80   muted-color (also --conn-gray)
+          #E24B4A   error / agro / crit-out / Artifact / --combat-accent
+          #F0C060   say-color / Epic rarity
+          #E8D44D   warn-color
+          #4CAF7D   loot-color / success-color (also --conn-green)
+          #C4453F   hit-out-color (and generic combat)
+          #E0724A   hit-in-color / Legendary rarity
+          #F08A50   crit-in-color
+          #9C9A90   Common rarity / flag-chrome
+          #5FA8D3   Uncommon rarity
+          #B387E8   Rare rarity
+          #3A1212   combat-bg (v20 #2 combat-red family tint)
+
+        ALLOWED_COLORS AS SHIPPED — Chrome group (VERBATIM: the design
+        chat's ruling queue; each is chrome — pending chart ruling):
+          #0D0D0F   --bg
+          #16161A   --surface
+          #2A2A35   --border
+          #C8C8D4   --text (body default, input field)
+          #7B68EE   --accent (prompt, caret, send button background)
+          #A8D8A8   --room (DEAD declaration — zero readers remain)
+          #8888AA   --system (DEAD declaration — zero readers remain)
+          #E0A840   --conn-amber (connection dot)
+          #6E6C64   .msg-ts (timestamp prefix)
+          #CCCCCC   zone/area color JS fallbacks (location bar, separator)
+          #CCCCCCBF --zone-border fallback (~0.75 alpha)
+          #FFFFFF   #send-btn text (authored as #fff)
+
+TEST RESULTS
+------------
+Container suite: 210 tests, 0 failures (was 208 — 2 new). Local
+scratch-venv run: 204/210 (the known 6 Redis-dependent container-only
+tests).
+
+DEVIATIONS
+----------
+None. Notes for the record: (1) the #B8B4A6 kill required touching
+.msg-room-render as well as .msg-report — same ruling, same value-color
+destination, called out above; (2) --room and --system are dead
+declarations with zero readers — reported on the chrome queue, not
+removed (color changes beyond Step 2 are out of scope).
+
+DEPLOYMENT NOTE
+---------------
+One make build container recreation (all three games restarted); the
+change is live. No migrations, no reseed.
+
+OPERATOR PLAYTEST — PENDING (Step 4; ready after deploy — deployed)
+-------------------------------------------------------------------
+- Examine something: its prose at full value-color brightness beside a
+  room render.
+- An inv/stats report likewise.
+- Nothing else visibly changes.
+
+COMMITS (in order)
+------------------
+36d55bd  Step 0: self-commit amendment
+0059191  Steps 2-3: report color + conformance test
+5db042e  Step 5: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+5db042e (last implementation/documentation commit; this closeout report
+and the post-closeout issues report land in follow-up commits on the
+same branch).

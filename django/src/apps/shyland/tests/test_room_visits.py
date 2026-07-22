@@ -197,6 +197,10 @@ class ArrivalRecordingTests(TransactionTestCase):
     async def test_peaceful_entry_first_long_then_brief(self):
         zone, room_a, room_b = await sync_to_async(make_world)('Peace')
         character = await sync_to_async(make_character)('Peace', room_a)
+        # v22 brief 2 (DD §10): brief now defaults off — this test's
+        # revisit-brief assertion needs the preference on.
+        character.brief_mode = True
+        await sync_to_async(character.save)(update_fields=['brief_mode'])
 
         communicator = await self._connect(character)
         try:

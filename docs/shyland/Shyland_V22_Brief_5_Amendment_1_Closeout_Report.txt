@@ -1,0 +1,123 @@
+Shyland V22 Brief 5 — Amendment 1 — Armor Visibility — Closeout Report
+========================================================================
+Date: 2026-07-21
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). Display-only amendment to the Gear Combat Wiring brief; zero
+migrations, zero mitigation-math changes, no re-bless needed.
+
+PRE-FLIGHT
+----------
+Tree clean and synced at e71bf8c (the parent brief fully applied —
+Steps 2-7 present, the amendment's stated dependency); gh authenticated.
+Pattern audit passed (branch-only/never-merge verbatim, no pruning,
+#117 workaround, comment-don't-reopen).
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 37c6d59).
+
+Step 1  The armor-visibility ruling comment posted on #100 verbatim
+        (extracted mechanically from the committed amendment's fenced
+        block). #100 remained CLOSED — commented without reopening, as
+        directed. No other tracked change; the amendment file itself
+        was the step's commit.
+
+Step 2  Stats Armor row (commit 5085abe). One kind-1 value row directly
+        after the six stat rows: 'Armor: <TAV>' with '(blocks N%)'
+        appended when TAV > 0, N = round(100 × TAV/(TAV +
+        ARMOR_MITIGATION_K)) — computed from the live constant. Naked:
+        'Armor: 0', bare. The former get_gear_stat_bonus DB helper
+        became get_stats_gear_context — ONE equipped-set query now
+        feeds both the stat parentheticals and the Armor row.
+
+Step 3  Examine contribution line (commit 5085abe).
+        EXAMINE-LINE PLACEMENT CHOSEN: in _format_identified_item_lines,
+        with the class-defining property lines — immediately after the
+        weapon Damage block position and directly above Durability —
+        in the file's aligned-label column ('  Armor:      3 per Mk';
+        the DD-style padded label matches Damage/Durability/Type;
+        the amendment's bare 'Armor: 3 per Mk' example is read as
+        content, alignment per composition convention). Gated on
+        item_type == 'armor' AND a valid_slots slot present in
+        ARMOR_SLOT_WEIGHTS; multiple valid slots render per-slot
+        weights only when the weights differ ('2 (Head) / 1
+        (Shoulders) per Mk' form — no seeded armor currently needs
+        it). Equipped pieces append '(worn: weight × mk_tier)';
+        the broken confession '(worn: 0 — broken)' fires on the same
+        non-functional band as total_armor_value (is_broken OR
+        durability_current == 0 — the TAV-consistent reading of
+        "broken"). physical_resist untouched on its own stat lines.
+
+Step 4  Incoming hit parenthetical (commit 5085abe). The NPC-attack
+        branch now keeps raw_damage (post-calculate_damage, pre-
+        mitigation) and blocked = raw − landed; the line's leading
+        number is the post-mitigation, post-clamp value that moved the
+        bar, with ' (-N)' (ASCII hyphen-minus) appended when blocked >
+        0. Composes identically through the plain ('for 14 (-6)
+        damage.'), crit ('for a critical 24 (-6) damage!'), and graze
+        (same plain form at half raw) renderings — one code path, the
+        same composition point as the outgoing proc parenthetical.
+        BYTE-IDENTICAL UNARMORED LINES CONFIRMED: TAV 0 short-circuits
+        in apply_armor_mitigation (blocked = 0 → no parenthetical);
+        asserted by test (regex 'for \d+ damage\.' + explicit no-'(-'
+        check). The dying killing-blow path prints no hit line —
+        unchanged.
+
+Step 5  VERIFICATION. tests/test_b5_amendment1.py — 13 tests (Armor
+        row naked/full-set-21%/broken-17%; examine unworn/worn/
+        broken/non-armor/Mk-2 scaling; incoming byte-identical
+        unarmored, armored leading-number-equals-bar-delta with
+        (landed, blocked) = (16, 4) on a raw 20 vs TAV 13, crit and
+        graze composition, TAV-1 floor case '(-1)'). Local scratch
+        venv: 272/278 (the known 6 Redis-dependent container-only
+        tests). Production container after the operator-authorized
+        make build: *** 278/278 green *** as apps.shyland.tests.
+
+Step 6  Architecture doc updated in place (commit dfc457a): header
+        hash -> 5085abe; the stats-report paragraph gains the Armor
+        row and the declined right-pane ruling; §4.6 the examine
+        contribution line; §4.9 the one-vocabulary rule (+N outgoing
+        procs / -N incoming armor, leading number = bar delta).
+
+Step 7  This report. Nothing removed or pruned.
+
+DISCREPANCIES / CONTRADICTIONS
+------------------------------
+None. Judgment calls recorded: (1) the aligned-label rendering of the
+examine line (above); (2) "broken" read as the TAV non-functional band
+(is_broken OR zero durability) for the worn confession, keeping the
+two surfaces consistent; (3) the fixture import in the new test module
+avoids importing TotalArmorValueTests (importing a TestCase class
+re-registers its tests in the importing module — caught when the local
+run found 17 tests instead of 13). Process note: this amendment's
+make build required fresh operator authorization (the parent brief's
+grant was per-instance); the operator authorized it and subsequently
+granted make build for the remainder of the session.
+
+DEPLOYMENT NOTES
+----------------
+- One make build (operator-authorized) — all three games bounced.
+- No migrations, no reseed, no data commands. The parent brief's
+  deploy-time data actions (seed_world + rename_proc_stats) remain
+  pending and are unaffected by this amendment.
+
+OPERATOR PLAYTEST — PENDING (with the parent brief's checklist)
+----------------------------------------------------------------
+- stats naked: 'Armor: 0'; don the full leather set: 'Armor: 13
+  (blocks 21%)'; break the chestpiece: both numbers drop.
+- examine a held chestpiece ('Armor: 3 per Mk'), equip it ('(worn:
+  3)'), break it ('(worn: 0 — broken)').
+- Take hits armored and read the receipts: 'for 14 (-6) damage.' —
+  the bar moves by exactly the leading number; strip naked and watch
+  the parenthetical vanish.
+
+COMMITS (in order)
+------------------
+37c6d59  Step 0: self-commit amendment
+5085abe  Steps 2-4 + tests: armor visibility
+dfc457a  Step 6: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+dfc457a (this closeout and the post-closeout issues report land in
+follow-up commits on the same branch).

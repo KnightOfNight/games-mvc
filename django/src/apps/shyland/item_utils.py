@@ -3,8 +3,9 @@ import random
 from .models import ItemInstance
 
 SLOT_DISPLAY_NAMES = {
-    'MAIN_HAND':  'Main Hand',
-    'OFF_HAND':   'Off Hand',
+    # v22 brief 2 (DD §9): sentence-case labels; bracket codes are dead.
+    'MAIN_HAND':  'Main hand',
+    'OFF_HAND':   'Off hand',
     'RANGED':     'Ranged',
     'HEAD':       'Head',
     'NECK':       'Neck',
@@ -158,6 +159,19 @@ def get_display_name_with_tier(item):
     if item.definition.suppress_mk_suffix:
         return name
     return f"{name} Mk {item.mk_tier}"
+
+
+def item_ref(item, indefinite=False):
+    """v22 brief 2 (DD §6): the article-composed item reference for the
+    transactional sentences — 'the Iron Mace Mk 1' / 'a Healing Draught
+    Mk 1'. The NPC article machinery's shape applied to items, which
+    carry no authored article field: definite is always 'the';
+    indefinite picks a/an by initial vowel."""
+    name = get_display_name_with_tier(item)
+    if not indefinite:
+        return f'the {name}'
+    article = 'an' if name[:1].lower() in 'aeiou' else 'a'
+    return f'{article} {name}'
 
 
 def get_display_description(item):

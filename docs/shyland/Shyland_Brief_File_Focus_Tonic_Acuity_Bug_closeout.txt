@@ -1,0 +1,38 @@
+Shyland Brief — File Focus Tonic Acuity Bug — Closeout Report
+==============================================================
+Date: 2026-07-22
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). Ops/housekeeping brief: zero code changes, zero data changes.
+
+PRE-FLIGHT
+----------
+Tree clean and synced at ac01d37 (the brief's own cited branch state);
+no pending deploy-time data actions (the B5 pair ran against production
+2026-07-21, verified read-only: definitions 0 old-keyed / 9 new-keyed);
+gh authenticated.
+
+STEP 0
+------
+Brief self-committed verbatim (commit b6373f7).
+
+STEP 1 — ISSUE FILED (verification gate PASSED)
+-----------------------------------------------
+#133 "Focus Tonic overshoots the acuity band system and announces
+no-op ticks at the 1.9 clamp" — label exactly `bug`, no milestone,
+body content-identical on gh issue view (GitHub trailing-whitespace
+normalization only, as always). Filed with --assignee @me per the
+standing assignment rule (the brief was silent on assignee — the
+recorded standing deviation-from-literal). No further diagnosis, no
+additional labels, no code or data touched, per the brief's scope
+line.
+
+STEP 2 — THIS REPORT. Nothing removed or pruned.
+
+COMMITS (in order)
+------------------
+b6373f7  Step 0: self-commit brief
+
+FINAL COMMIT HASH
+-----------------
+b6373f7 (this closeout and the post-closeout issues report land in
+follow-up commits on the same branch).

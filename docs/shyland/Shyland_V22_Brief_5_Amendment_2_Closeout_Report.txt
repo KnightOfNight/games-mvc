@@ -1,0 +1,135 @@
+Shyland V22 Brief 5 — Amendment 2 — Spend Block and Display Trims —
+Closeout Report
+====================================================================
+Date: 2026-07-21
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). Combined file-and-fix amendment; zero migrations; mitigation
+math untouched (no re-bless).
+
+FOUNDING ISSUE
+--------------
+#131 "Block stat spend during combat" — filed with milestone Version 22,
+no labels, body verbatim; HARD GATE passed (title, body
+content-identical, milestone, labels verified via gh issue view before
+any code change). Filed with --assignee @me per the standing rule (the
+amendment was silent on assignee — recorded, as with all prior briefs).
+Closed at Step 7 with the implementation comment after the suite passed.
+
+PRE-FLIGHT
+----------
+Tree clean and synced at d4a0def; parent brief + Amendment 1 both
+present on the branch (the stated dependency); gh authenticated.
+Pattern audit passed.
+
+PER-STEP RESULTS
+----------------
+Step 0  Amendment self-committed verbatim (commit 5630916).
+
+Step 1  #131 filed; hard gate passed (above).
+
+Step 2  Housekeeping comments posted verbatim (mechanically extracted
+        from the committed amendment's fenced blocks; <N> -> 131 in
+        2b): 2a on #131; 2b on #109 (full supersession — no refill, no
+        in-combat spend); 2c on #100 (the two display rulings). #109
+        and #100 remained CLOSED — commented without reopening.
+
+Step 3  Spend combat gate (commit ed59901).
+        GATE ORDERING CHOSEN: the central dying gate lives in _dispatch
+        (spend is not in DYING_ALLOWED) and fires before cmd_spend is
+        ever reached — its precedence is untouched. The new combat gate
+        is the handler's first act: get_character_fresh, then
+        get_active_combat_session; on a session, exactly
+        "You can't do that while in combat." (warn) and return — before
+        argument parsing, any validation output, or any mutation.
+        Dispatch-table note: spend deliberately did NOT join
+        COMBAT_BLOCKED — the ruling authorizes the generic line, and
+        COMBAT_BLOCKED entries are per-command authored voices; the
+        handler gate keeps the two families distinct (the first generic
+        in-combat refusal, per the issue body).
+
+Step 4  Stats spacing (commit ed59901): one blank entry between the PER
+        row and the Armor row; the pre-existing blank after the block
+        (before Vitality) is unchanged — no trailing blank added.
+
+Step 5  Incoming parenthetical removed (commit ed59901).
+        BOOKKEEPING REMOVED: the raw_damage local and the blocked
+        derivation (raw − landed) in the NPC-attack branch, plus the
+        in_dmg_txt composition — the branch is back to the parent
+        brief's exact form (damage_int = max(1, int(damage)) ->
+        apply_armor_mitigation -> subtraction), with the composition
+        reading damage_int directly. Nothing else consumed raw/blocked.
+        apply_armor_mitigation and every mitigation number: untouched.
+
+        TEST REWRITES: tests/test_b5_amendment1.py's
+        IncomingParentheticalTests became IncomingLineTests — the four
+        armored cases (plain, crit, graze, TAV-1 floor) now assert NO
+        '(-' and the plain pre-Amendment-1 form, with mitigation still
+        proven through the numbers (raw 20 vs TAV 13 -> leading 16 ==
+        the bar delta; crit 24; graze 8; floor 1); the unarmored
+        byte-identical case kept. tests/test_gear_combat.py's
+        test_spend_end_mid_combat_no_refill became
+        test_spend_end_no_refill — the bar-law spend case now runs out
+        of combat (in-combat spend is blocked by this amendment), same
+        fraction-preserving assertions; its stale "spend is not
+        combat-gated" matrix assertion removed. New
+        tests/test_b5_amendment2.py — 5 tests: in-combat refusal is
+        exactly the ruled line, warn category, and mutates nothing
+        (stat, points, bars all verified unchanged); the gate precedes
+        argument validation (garbage args still get only the refusal);
+        out-of-combat spend unchanged (11 END, 72/145 — the bar law);
+        exactly one blank between PER and Armor with the pre-existing
+        blank following Armor.
+
+Step 6  VERIFICATION. Local scratch venv: 276/282 (the known 6
+        Redis-dependent container-only tests). Production container
+        after make build (session-wide operator authorization):
+        *** 282/282 green *** as apps.shyland.tests.
+
+Step 7  #131 closed with the implementation comment (gated on Step 6).
+
+Step 8  Architecture doc updated in place (commit d083526): header hash
+        -> ed59901; spend documentation gains the block + the
+        first-generic-refusal note; the state matrix moves spend to
+        refused-in-combat; the stats paragraph notes the blank-line
+        grouping; §4.9's one-vocabulary rule narrowed to outgoing-only,
+        incoming documented parenthetical-free under the unconditional
+        quiet-line law.
+
+Step 9  This report. Nothing removed or pruned (code scaffolding
+        removal was the amendment's explicit instruction; no documents
+        touched).
+
+DISCREPANCIES / CONTRADICTIONS
+------------------------------
+None. Judgment calls recorded: (1) spend gate in the handler, not
+COMBAT_BLOCKED (above — keeps generic vs authored families distinct);
+(2) the gear-combat bar-law spend test necessarily moved out of combat
+(the amendment's Step 3 "out of combat, spend behaves exactly as
+before" reading); (3) #131 assignee per standing rule.
+
+DEPLOYMENT NOTES
+----------------
+- One make build under the operator's session-wide authorization — all
+  three games bounced.
+- No migrations, no reseed, no data commands. The parent brief's
+  deploy-time data actions (seed_world + rename_proc_stats) remain
+  pending and unaffected.
+
+OPERATOR PLAYTEST — PENDING (with the B5 checklist)
+----------------------------------------------------
+- spend mid-fight: "You can't do that while in combat." and nothing
+  moves; win the fight and spend normally.
+- stats: the Armor row now sits apart beneath the six stats.
+- Take armored hits: plain lines again ("for 14 damage.") with the bar
+  moving by exactly that number; armor's work reads from stats/examine.
+
+COMMITS (in order)
+------------------
+5630916  Step 0: self-commit amendment
+ed59901  Steps 3-5 + tests: spend block, display trims
+d083526  Step 8: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+d083526 (this closeout and the post-closeout issues report land in
+follow-up commits on the same branch).
