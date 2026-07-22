@@ -1149,7 +1149,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'warn',
             )
         if res.requested and not capacity_hit and taken:
-            await self.output(f'There were only {len(taken)} here.', 'system')
+            # v22 B5 amendment 3 (#132): shortfalls carry consequence — warn.
+            await self.output(f'There were only {len(taken)} here.', 'warn')
         for name, group in self._aggregate_by_name(taken):
             if len(group) == 1:
                 await self.output(f'You pick up {item_ref(group[0])}.', 'reward')
@@ -1203,7 +1204,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             })
         # The warm shortfall note precedes the aggregates.
         if res.requested:
-            await self.output(f'You only had {len(res.items)}.', 'system')
+            # v22 B5 amendment 3 (#132): shortfalls carry consequence — warn.
+            await self.output(f'You only had {len(res.items)}.', 'warn')
         for line in agg_lines:
             await self.output(line, 'success')
 
@@ -1379,7 +1381,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             effect_def = item.definition.effect
 
             if effect_def is None:
-                await self.output('Nothing happens.', 'system')
+                # v22 B5 amendment 3 (#132): functionally a refusal — warn.
+                await self.output('Nothing happens.', 'warn')
                 break
 
             is_heal = await self.effect_restores_vitality(effect_def)
@@ -1425,7 +1428,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if used:
             if res.requested and not stopped_at_full and used == len(res.items):
-                await self.output(f'You only had {used}.', 'system')
+                # v22 B5 amendment 3 (#132): the founding case — the player
+                # believes they healed more than they did. Warn.
+                await self.output(f'You only had {used}.', 'warn')
             room = await self.get_current_room()
             char_fresh = await self.get_character_fresh()
             await self.send_json(await self._status_payload(char_fresh, room))
@@ -1896,7 +1901,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # to the count form with the total price; the warm shortfall note
         # precedes it; N=1 keeps the shipped singular sentence.
         if requested:
-            await self.output(f'They only had {qty}.', 'system')
+            # v22 B5 amendment 3 (#132): shortfalls carry consequence — warn.
+            await self.output(f'They only had {qty}.', 'warn')
         if qty == 1:
             await self.output(
                 f'You buy {item_ref(result[0])} for '
