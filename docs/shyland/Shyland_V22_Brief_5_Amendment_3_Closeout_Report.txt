@@ -1,0 +1,114 @@
+Shyland V22 Brief 5 — Amendment 3 — Shortfall Visibility — Closeout
+Report
+====================================================================
+Date: 2026-07-22
+Branch: version_22 (worktree; never merged — merging is the operator's
+action). Category-only amendment: five 'system' -> 'warn'
+recategorizations, zero wording changes, zero logic changes, zero
+migrations.
+
+FOUNDING ISSUE
+--------------
+#132 "Shortfall and no-effect reports render in the muted system voice"
+— filed with milestone Version 22, no labels, body verbatim; HARD GATE
+passed before any code change (title, body content-identical,
+milestone, labels verified via gh issue view). Filed with --assignee
+@me per the standing rule (recorded as with all prior briefs). The
+Step 2 housekeeping comment posted verbatim. Closed at Step 5 with the
+implementation comment after the suite passed.
+
+PRE-FLIGHT
+----------
+Tree clean and synced at 5828a1c; gh authenticated. Deploy-time actions
+check (standing rule): the parent brief's two data actions ran against
+production 2026-07-21 in this session — verified read-only immediately
+afterward (definitions 0 old-keyed / 9 new-keyed; instance rename
+no-op at 0), matching the amendment's stated expectation exactly.
+
+THE FIVE SITES AS FOUND (consumers.py, matched on text per the
+amendment; line numbers at time of edit)
+--------------------------------------------------------------
+1. cmd_use partial fulfillment (~1428): f'You only had {used}.'
+2. cmd_drop partial fulfillment (~1206): f'You only had {len(res.items)}.'
+3. cmd_pickup partial fulfillment (~1152): f'There were only
+   {len(taken)} here.'  (the get/loot-side pickup path)
+4. cmd_buy partial fulfillment (~1899): f'They only had {qty}.'
+   (finite-stock vendors: requested > stock_limit − sold_count)
+5. cmd_use no-effect branch (~1382): 'Nothing happens.'
+All five: the category argument changed 'system' -> 'warn'; no other
+character of any message changed (each gained only a code comment).
+
+TESTS
+-----
+No existing test asserted the 'system' category on any of the five
+lines — the only suite contact was
+test_command_revamp.SellDropPickupTests.test_sell_shortfall_sells_and_
+reports_verbatim, which asserts the SELL shortfall's text only (and
+sell is the ruled exception, untouched) — so zero existing tests
+changed. New tests/test_b5_amendment3.py — 6 tests: the five warn
+assertions (each also pinning the wording byte-identical via exact-text
+match) plus the guard that the sell shortfall remains 'success'.
+
+ADDITIONAL 'system' SENDS DISCOVERED, LEFT UNTOUCHED (future ruling
+material, per the amendment's scope rule)
+--------------------------------------------------------------------
+- Departure/arrival room broadcasts ('{name} has left.' / '{name} has
+  arrived.', movement paths)
+- The logout farewell ('The world folds itself away behind you...') —
+  a ruled exception
+- Effect lines after 'You use ...' (the msgs loop in cmd_use)
+- The revival line ('Breath floods back into your lungs...')
+- The loot-all sweep summary ('Looted N corpses...')
+- The sell worthless-skipped note ('(N worthless items skipped.)')
+- The repair-all summary ('Repaired N items, M attempts failed, X
+  spent.')
+- The settings sentences (current-state and 'now' forms, timestamps
+  variant) — the DD §10 standard
+- The session-superseded line ('The world's attention shifts...')
+- Non-send default parameters (send_output/output signatures, relay
+  passthroughs) — not messages
+
+VERIFICATION
+------------
+Local scratch venv: 282/288 (the known 6 Redis-dependent
+container-only tests). Production container after make build (the
+operator's session-wide authorization): *** 288/288 green *** as
+apps.shyland.tests.
+
+ARCHITECTURE DOC
+----------------
+Updated in place (commit dbfa36b): header hash -> ce38055; the
+three-layer response doctrine paragraph (§4.14) records the
+warn-voice recategorization with the sell-success and ambient-system
+exceptions.
+
+DISCREPANCIES / CONTRADICTIONS
+------------------------------
+None. The amendment's "six known 'system' sends" undercounts the
+consumer's actual population — the sweep found the additional sends
+listed above; all left untouched per the amendment's own scope rule.
+
+DEPLOYMENT NOTES
+----------------
+- One make build (session-wide operator authorization) — all three
+  games bounced. No migrations, no reseed, no data commands; no
+  pending deploy-time actions remain.
+
+OPERATOR PLAYTEST — PENDING
+---------------------------
+- use N draughts with fewer in the bag: the shortfall note now reads
+  in yellow.
+- buy N from a finite stall, drop/get N with fewer present: same.
+- use an effect-less item: 'Nothing happens.' now visible.
+- sell N with fewer: still the friendly green line.
+
+COMMITS (in order)
+------------------
+8f1c0ee  Step 0: self-commit amendment
+ce38055  Step 3 + tests: the five recategorizations
+dbfa36b  Step 6: architecture doc
+
+FINAL COMMIT HASH
+-----------------
+dbfa36b (this closeout and the post-closeout issues report land in
+follow-up commits on the same branch).
