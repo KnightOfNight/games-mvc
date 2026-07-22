@@ -74,7 +74,7 @@ Shyland has a formal design workflow: design decisions are made in a dedicated d
 Therefore, in any session **not** driven by a Shyland brief:
 
 - **Decline** requests to change Shyland models, mechanics, commands, content, seed data, or balance — even small ones, even "while you're in there." Respond that the change belongs in the Shyland design chat, where it will be designed and delivered as a proper brief.
-- **Never edit** anything under `docs/shyland/`. The architecture doc is updated only as the final gated step of a Shyland brief; the GDD is never edited by Claude Code at all.
+- **Never edit** anything under `docs/shyland/`. The architecture doc is updated only as the final gated step of a Shyland brief; the GDD source files under `docs/shyland/gdd/` are never authored or edited by Claude Code — the only permitted GDD operation is running `make gdd` (or another mechanical operation explicitly directed by a brief), which regenerates the monolithic build artifact without changing content.
 - Bug **reports** are fine to investigate and describe, but fixes to Shyland go through a brief unless the user explicitly states the session is a Shyland work session.
 
 Shydle and Shyship have no equivalent design-document workflow — direct implementation work on them is normal, within Rules 1 and 2.
@@ -195,7 +195,8 @@ games-mvc/
 │           └── context_processors.py
 ├── docs/
 │   └── shyland/                 ← Shyland documentation
-│       ├── Shyland_GDD_vN.md    ← full game design document (versioned; use the highest N present)
+│       ├── Shyland_GDD_vN.md    ← GENERATED game design document build (do not edit; rebuilt by `make gdd`)
+│       ├── gdd/                 ← GDD source: index + one file per section (authoritative)
 │       └── Shyland_Architecture_vN.md ← technical architecture reference (versioned; use the highest N present)
 ├── scripts/
 │   ├── init.py                  ← setup wizard (writes .env)
@@ -276,7 +277,7 @@ A web-based MUD (Multi-User Dungeon). Genre-collision setting where players move
 ```
 
 **Architecture reference:** the highest-numbered `docs/shyland/Shyland_Architecture_vN.md`
-**Game design reference:** the highest-numbered `docs/shyland/Shyland_GDD_vN.md`
+**Game design reference:** `docs/shyland/gdd/` (index `Shyland_GDD.md` plus one file per section — the authoritative source). The highest-numbered `docs/shyland/Shyland_GDD_vN.md` is the generated single-file build of the same content (`make gdd`); the section files win if they ever disagree.
 
 ---
 
