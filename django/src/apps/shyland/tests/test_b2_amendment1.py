@@ -113,7 +113,8 @@ class VersionLineTests(TransactionTestCase):
         lines, texts = line_texts(sent)
         self.assertEqual(lines[-1], {'k': 'Version:', 'v': f' {SHYLAND_VERSION}'})
         self.assertEqual(lines[-2], {})
-        self.assertEqual(SHYLAND_VERSION, '22.0-DEV')
+        # Version-closeout ritual: the constant carries the release stamp.
+        self.assertEqual(SHYLAND_VERSION, '22.0')
 
 
 class CategoryRetagTests(TransactionTestCase):
