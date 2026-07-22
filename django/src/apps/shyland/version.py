@@ -4,4 +4,4 @@ the release stamp (e.g. "22.0") alongside the GDD and architecture
 stamps; point releases bump it on main ("22.1", ...). The constant tells
 the truth about the code it ships with."""
 
-SHYLAND_VERSION = "22.0-DEV"
+SHYLAND_VERSION = "22.0"
