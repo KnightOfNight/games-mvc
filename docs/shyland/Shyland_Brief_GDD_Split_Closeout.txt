@@ -1,0 +1,76 @@
+Shyland Ops Brief — GDD Split — CLOSEOUT
+Executed: 2026-07-22, on main (no worktree), per Shyland_Brief_GDD_Split.md
+Founding issue: #140 (filed and closed by this brief)
+
+PRE-FLIGHT
+  Clean tree on main, up to date with origin/main.
+  docs/shyland/Shyland_GDD_v22.md present (288215 bytes).
+  Structure checks all held exactly as the brief expected:
+    grep -c '^## ' /tmp/gdd_v22_original.md  -> 14
+    wc -l /tmp/gdd_v22_original.md           -> 2240
+    line 1                                   -> "# Shyland — Game Design Document"
+    heading order                            -> matched the brief's 14-item list verbatim
+  No stop-and-flag conditions encountered anywhere in the brief.
+
+STEP RESULTS
+
+Step 0 — brief self-committed as docs/shyland/Shyland_Brief_GDD_Split.md,
+  commit 8bde981, pushed immediately.
+
+Step 1 — founding issue #140 created and number captured cleanly. HARD GATE passed.
+
+Step 2 — carve: awk split of /tmp/gdd_v22_original.md at '^## ' into the 15
+  target files under docs/shyland/gdd/ (commit 7f3bf9b).
+  CARVE INVARIANT:
+    cat <15 section files in build order> | cmp - /tmp/gdd_v22_original.md
+    -> exit 0 (byte-identical)
+
+Step 3 — index file docs/shyland/gdd/Shyland_GDD.md created with the brief's
+  exact content (commit 1a35913).
+
+Step 4 — Makefile: GDD_MAJOR := 22, explicit ordered GDD_SECTIONS list, gdd
+  target (4-line banner + concatenation), gdd added to .PHONY, "Docs:" section
+  added to help output (commit 75757b1).
+
+Step 5 — build and verify (commit 5d87124; the diff is exactly the 4 banner
+  lines):
+  BUILD INVARIANT:
+    tail -n +5 docs/shyland/Shyland_GDD_v22.md | cmp - /tmp/gdd_v22_original.md
+    -> exit 0
+  BANNER CHECK:
+    head -4 shows the three comment lines then one blank line; line 5 is
+    "# Shyland — Game Design Document"  -> pass
+  IDEMPOTENCE:
+    cp built file aside; make gdd; cmp saved copy vs rebuilt
+    -> exit 0 (byte-identical)
+
+Step 6 — CLAUDE.md, all three quoted texts matched the file exactly before
+  editing; all three edits applied (commit 32aabeb):
+    1. Tree diagram: GDD line replaced with GENERATED-build line + gdd/ source line.
+    2. Game design reference pointer: now names docs/shyland/gdd/ as authoritative,
+       monolith as the generated build.
+    3. Rule 3 never-edit bullet: GDD source files never authored/edited; make gdd
+       (or brief-directed mechanical operation) is the only permitted GDD operation.
+
+VERIFICATION ARITHMETIC
+  16 files under docs/shyland/gdd/ (15 build files + 1 index)  -> pass
+  Exactly one issue created (#140) and exactly that one closed  -> pass
+  Shyland_GDD_v22.md at original path with 4-line banner; stripped of the
+    banner, byte-identical to pre-brief committed content        -> pass
+  Shyland_Architecture_v22.md untouched (no diff)               -> pass
+  Nothing under django/ changed; no migrations                  -> pass
+  Working tree clean                                            -> pass
+
+PENDING DEPLOY-TIME ACTIONS
+  none — documentation and build tooling only
+
+COMMITS (main, all pushed)
+  8bde981  Step 0 brief self-commit
+  7f3bf9b  Step 2 carve (15 section files)
+  1a35913  Step 3 index file
+  75757b1  Step 4 make gdd target
+  5d87124  Step 5 generated monolith (banner)
+  32aabeb  Step 6 CLAUDE.md edits
+  Final commit hash on main: the closeout commit carrying this file
+  (child of 32aabeb; recorded in git as the commit that adds
+  Shyland_Brief_GDD_Split_Closeout.txt).
