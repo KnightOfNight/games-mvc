@@ -15,9 +15,26 @@ DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
+GDD_MAJOR := 22
+GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
+                docs/shyland/gdd/_01_version_history.md \
+                docs/shyland/gdd/_02_table_of_contents.md \
+                docs/shyland/gdd/section_01_vision_and_pillars.md \
+                docs/shyland/gdd/section_02_world_model.md \
+                docs/shyland/gdd/section_03_character_system.md \
+                docs/shyland/gdd/section_04_the_three_bars.md \
+                docs/shyland/gdd/section_05_combat_system.md \
+                docs/shyland/gdd/section_06_economy_and_items.md \
+                docs/shyland/gdd/section_07_social_systems.md \
+                docs/shyland/gdd/section_08_quest_and_narrative.md \
+                docs/shyland/gdd/section_09_player_command_reference.md \
+                docs/shyland/gdd/section_10_technical_architecture.md \
+                docs/shyland/gdd/section_11_admin_and_content_tools.md \
+                docs/shyland/gdd/section_12_future_systems.md
+
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs reset seed help
+        new-app push-certs reset seed gdd help
 
 # ---------------------------------------------------------------------------
 # First-time setup
@@ -195,6 +212,14 @@ check-secrets:
 	@python3 scripts/check_secrets.py
 
 # ---------------------------------------------------------------------------
+# Docs
+# ---------------------------------------------------------------------------
+
+## gdd: rebuild the monolithic GDD from the section files in docs/shyland/gdd/
+gdd:
+	{ printf '<!-- GENERATED FILE - DO NOT EDIT.\n     Built by `make gdd` from the section files in docs/shyland/gdd/.\n     Edit the section files; the sections are authoritative if this file ever disagrees. -->\n\n'; cat $(GDD_SECTIONS); } > docs/shyland/Shyland_GDD_v$(GDD_MAJOR).md
+
+# ---------------------------------------------------------------------------
 # Help
 # ---------------------------------------------------------------------------
 
@@ -228,3 +253,6 @@ help:
 	@echo "SSL:"
 	@echo "  gen-certs              Generate self-signed test certs via OpenSSL"
 	@echo "  check-secrets          Verify .env and cert files exist"
+	@echo ""
+	@echo "Docs:"
+	@echo "  gdd                    Rebuild the monolithic GDD from docs/shyland/gdd/"
