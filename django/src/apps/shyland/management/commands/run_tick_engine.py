@@ -1227,7 +1227,15 @@ class Command(BaseCommand):
                         await self.send_to_player(character.pk, msg, 'system', None)
 
             if all_expiring_now:
-                msg = _expiry_message_for_effect(parent)
+                # v22 brief 6 (#135): the helper is documented-sync and runs
+                # a fresh ORM query (definition.components) — calling it bare
+                # in the async tick loop raised SynchronousOnlyOperation and
+                # killed the engine on every full timed-effect expiry.
+                # Async-safety rule: sync helpers cross into the tick loop
+                # only via database_sync_to_async or verifiably prefetched
+                # data. (The per-component sibling above stays bare because
+                # it reads only select_related-loaded attributes.)
+                msg = await database_sync_to_async(_expiry_message_for_effect)(parent)
                 if msg:
                     await self.send_to_player(parent.target.pk, msg, 'system', None)
 
