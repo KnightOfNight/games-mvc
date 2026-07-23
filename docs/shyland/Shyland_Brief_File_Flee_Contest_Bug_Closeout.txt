@@ -1,0 +1,26 @@
+Shyland Brief: File Flee-Contest Bug (Fat, Ruled, Triaged) — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at c36c51f before start.
+- Labels `bug` and `triaged` both confirmed to exist.
+- No deployment surface touched.
+
+STEP 1 — ISSUE FILED
+- Created issue #143: "Flee is mathematically impossible — the contest
+  computes NPC PER with pre-v21 scaling_factor semantics"
+  https://github.com/KnightOfNight/games-mvc/issues/143
+- Verified post-create via gh issue view: milestone Version 23, labels
+  [bug, triaged], assignee KnightOfNight (--assignee "@me"). Body verbatim
+  from the brief.
+
+CONFIRMATIONS
+- Exactly one issue touched (#143, created). No other issue modified in any
+  way. No dependency links — the #25 same-version coupling is body text only.
+- Zero code changes.
+- Commits under this brief: 4604ec2 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
