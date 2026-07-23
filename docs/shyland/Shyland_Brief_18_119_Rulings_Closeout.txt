@@ -1,0 +1,42 @@
+Shyland Brief: Issues #18 + #119 Rulings Recorded + Triaged — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at e08f62b before start.
+- Label `triaged` confirmed to exist.
+- No deployment surface touched.
+
+STEP 1 — #18 RULING COMMENT
+- Posted verbatim from the brief (diagnosis: consumable-only grouping in
+  cmd_inventory, materials fall through; general stackability table —
+  consumable/material/readable/key stack, weapon/armor/accessory/bag never;
+  grouping key extends to include soulbound state; scope = inventory display
+  only, no grammar/model/migration):
+  https://github.com/KnightOfNight/games-mvc/issues/18#issuecomment-5060508590
+
+STEP 2 — #18 LABEL
+- `triaged` added. Verified: labels now [bug, triaged].
+
+STEP 3 — #119 RULING COMMENT
+- Posted verbatim from the brief (diagnosis: v20 #2 border-red vs v21 #85
+  zone-theme borders collision at game.html:210; fix = delete the
+  border-bottom-color declaration only, combat background and name color
+  stay; doctrine promoted — pane borders are zone/area theming exclusively,
+  transient state expresses through backgrounds/text; parked pane-reddening
+  observation stays parked):
+  https://github.com/KnightOfNight/games-mvc/issues/119#issuecomment-5060508964
+
+STEP 4 — #119 LABEL
+- `triaged` added. Verified: labels now [bug, triaged].
+
+CONFIRMATIONS
+- Exactly two issues touched (#18, #119): one comment + triaged label each.
+  Both remain OPEN on milestone Version 23. No closes, no milestone changes,
+  no assignee changes, no dependency links, no other labels modified.
+- Zero code changes.
+- Commits under this brief: df85b74 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
