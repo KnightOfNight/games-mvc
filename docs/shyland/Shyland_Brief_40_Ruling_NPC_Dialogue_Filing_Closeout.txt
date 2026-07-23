@@ -1,0 +1,50 @@
+Shyland Brief: Issue #40 Full-Sweep Ruling + Triaged, and File the
+Dialogue-less NPC Bug — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at 2bcb599 before start.
+- Labels `bug` and `triaged` both confirmed to exist.
+- No deployment surface touched.
+
+STEP 1 — #40 RULING COMMENT
+- Posted verbatim from the brief (FULL SWEEP scope: every single-line site in
+  the spike table gets a variant pool; four components — pity lines data-only,
+  paid-repair pools at the composition site, vendor transactional flavor built
+  new incl. the two #138-mandated pools, all remaining sites incl. any
+  death_message-style migration; Claude-authored pool content; kibitz-style
+  random-pick mechanics; six dialogue-less NPCs explicitly out of scope):
+  https://github.com/KnightOfNight/games-mvc/issues/40#issuecomment-5061813449
+
+STEP 2 — #40 LABEL
+- `triaged` added. Verified: #40 labels now [triaged] (it had no prior
+  labels; nothing removed). Still OPEN on milestone Version 23.
+
+STEP 3 — NEW ISSUE FILED
+- Created issue #144: "Six service NPCs have zero dialogue entries — they
+  have never greeted anyone"
+  https://github.com/KnightOfNight/games-mvc/issues/144
+- Verified post-create: milestone Version 23, labels [bug, triaged],
+  assignee KnightOfNight (--assignee "@me").
+- THE SIX enumerated from the #40 spike findings comment (unambiguous list
+  of exactly six), with seed slugs verified against seed_world.py:
+  Maro the Mender (maro-the-mender), Tavik the Mender (tavik-the-mender),
+  Old Brammel (old-brammel), Essa the Trader (essa-the-trader),
+  Sona the Trader (sona-the-trader), Ridda the Trader (ridda-the-trader).
+- One cross-link comment posted on #144 (its #40 mention also surfaces on
+  #40's timeline below the ruling comment):
+  https://github.com/KnightOfNight/games-mvc/issues/144#issuecomment-5061819719
+
+CONFIRMATIONS
+- Exactly two issues touched: #40 (one comment + triaged label) and #144
+  (created + one cross-link comment). No closes, no milestone changes beyond
+  #144's own filing, no assignee changes beyond #144's own filing, no
+  dependency links (relationships are body/comment text only), no other
+  labels modified anywhere.
+- Zero code changes.
+- Commits under this brief: bc06b5f (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
