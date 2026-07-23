@@ -1,0 +1,69 @@
+Shyland Brief V23 Research Spikes (#27, #40) — Closeout Report
+Date: 2026-07-22
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at cee8a88 before start.
+- No evidence found of unexecuted deploy-time actions from prior versions.
+- No deployment surface touched: no build, no deploy, no restart, no management
+  command executed against any database. Read-only code/seed/git-history access only.
+
+WHAT WAS READ
+- run_tick_engine.py end to end (current, plus v19 state at commit 8ab51cd).
+- effect_utils.py (current + v19 state), combat_utils.py (apply_npc_effects),
+  models.py (constants, computed_magnitude, dialogue/death_message/travel models).
+- consumers.py: movement/flee aggro paths, cmd_use, cmd_repair, vendor buy/sell/list,
+  kibitz, dialogue trigger/greeting-gate, start_combat.
+- seed_world.py: effects, service NPCs, repairers, dialogue seeds, travel messages.
+- Git history: f4d212e (v14 regen introduction), 0ba36ef (v12 effect redesign),
+  b8073bc (v20 B4), 8ab51cd (v19 head), v21 #17 / v22 #135 territory.
+
+SPIKE A — #27 MECHANISM VERDICT: (c)
+The logged "You feel your body recover. (+25 Vitality)" lines are not passive
+regen. The regen pass (process_effects Phase 4) has been silent (status-only)
+and has excluded in-combat characters since its introduction in v14 (f4d212e);
+both facts hold in v19 (8ab51cd) and in current code (exclusion at
+run_tick_engine.py:1267). The line is the instant restore_vitality component
+message (effect_utils.py:100), reachable standalone only via the consumable
+`use` path; a Mk 1 Healing Draught restores exactly 25 (20 + 5x1). The
+engagement-to-first-blows window is real but benign: rounds resolve every 3rd
+session tick (COMBAT_ROUND_TICKS=3), leaving ~3s after "moves to attack!" for
+player-initiated heals to print. No tick-internal ordering race exists
+(respawn-aggro engagement at tick step 3 precedes regen at step 4); the
+cross-process walk-in window is at most one tick wide and can only produce a
+silent status update. Per-bar: Vitality+Longevity share Phase 4 and its
+exclusion; Acuity drifts in Phase 2 with NO combat-membership check.
+Mechanism confirmed unchanged v19 -> current. Comment:
+https://github.com/KnightOfNight/games-mvc/issues/27#issuecomment-5053229207
+
+SPIKE B — #40 HEADLINE COUNTS
+Issue confirmed: every pity-repair NPC has exactly one authored line — Morra,
+Pella, Ferwick, Repairbot Prime one each (PITY_REPAIR_LINES dict,
+consumers.py:64-84, straight dict lookup, no random.choice); Maro, Tavik, Old
+Brammel share one fallback template. Paid repairs: one template per outcome
+(success/failure/can't-afford, bulk+single), shared by all repairers. Vendor
+buy/sell/list: no NPC flavor at all, single system templates; the only
+variant-ready vendor flavor is the 3-line kibitz pool. Keyword dialogue is the
+one properly variant-ready system (DialogueResponse rows, random with
+no-consecutive-repeat): 10 NPCs seeded, entries carry 1-3 responses. Ambient/
+idle barks: no such system exists. death_message is a scalar TextField (only
+category needing a migration for variants). Comment:
+https://github.com/KnightOfNight/games-mvc/issues/40#issuecomment-5053235481
+
+SURPRISES
+- #27's premise was misattributed: the observed lines were consumable heals,
+  not regen — regen has never printed text.
+- Acuity drift (Phase 2) has no in-combat exclusion, unlike the two regen bars —
+  relevant if the design chat rules regen out-of-combat-only.
+- Six Verdant Reach service NPCs (Maro, Tavik, Old Brammel, Essa, Sona, Ridda)
+  have zero dialogue entries — they never greet and never answer.
+- The aggro engagement line ("snarls and moves to attack!") is one string
+  hardcoded at three sites.
+
+CONFIRMATIONS
+- Zero code changes made. Zero seed-data changes. Zero issue state changes
+  (no closes, no labels, no milestones) — comments only, on #27 and #40.
+- Commits under this brief: 3708fbe (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary).
