@@ -20,6 +20,7 @@ This is the source of truth for all code, architecture, and every in-flight docu
 
 - `django/src/apps/shyland/` — the Shyland Django app (models, consumers, currency, admin, templates)
 - `docs/shyland/` — the authoritative home of the GDD, the architecture doc, all transient documents (briefs, amendments, closeout reports, issues reports), and the MapFrag audit history
+- `docs/shyland/gdd/` — the GDD **source**: one file per top-level section plus the stamped index `Shyland_GDD.md` (see Documents below)
 - `CLAUDE.md` — repo-wide orientation document (read this first in any Claude Code session)
 - `Makefile` — all build and management commands
 - `.claude/agents/` — reusable agents (the issues-report agent lives here); `.claude/` also holds skills (e.g. the test-items skill)
@@ -30,14 +31,14 @@ This is the source of truth for all code, architecture, and every in-flight docu
 
 ## Documents in This Project
 
-The project caches **finals only**: the closed `Shyland_GDD_vN.md` and `Shyland_Architecture_vN.md` for the current version, refreshed once at each version closeout (upload the new pair, remove the old). They exist for fast session grounding; **the repo remains the authoritative home of both documents at all times.**
+The project caches **finals only**: the closed `Shyland_GDD_vN.md` (the generated GDD build — see below) and `Shyland_Architecture_vN.md` for the current version, refreshed once at each version closeout (upload the new pair, remove the old). They exist for fast session grounding; **the repo remains the authoritative home of both documents at all times.**
 
 All in-flight documents — briefs, amendments, closeout reports, issues reports, RC states — live in git (`docs/shyland/`) as the **sole channel**. Claude reads them from the repo, verified at commit hashes the operator supplies. Do not ask the operator to paste long documents into chat (long pastes are unreliable); route documents through git.
 
-- **Shyland_GDD_vN.md** — the authoritative source for game design decisions. When design questions arise, check here first.
-- **Shyland_Architecture_vN.md** — the authoritative technical reference describing what is actually built. When implementation questions arise, check here first.
+- **The GDD** — the authoritative source for game design decisions; check here first when design questions arise. Since the GDD split (issue #140, 2026-07-22) its **source** is `docs/shyland/gdd/`: one file per top-level section (unversioned filenames; section numbering preserved verbatim so every §-reference stays valid) plus the index `Shyland_GDD.md`, which carries the version stamp of record, the lockstep note, and the build-order table. The monolithic **`Shyland_GDD_vN.md`** is a **generated build artifact** — `make gdd` prepends a 4-line banner and concatenates the sections in order (output filename driven by the Makefile's `GDD_MAJOR` variable). It exists for single-file grounding and for mirroring to this project. **The section files win if the two ever disagree**; the monolith is never hand-edited.
+- **Shyland_Architecture_vN.md** — the authoritative technical reference describing what is actually built; check here first when implementation questions arise. The architecture doc remains **monolithic** — the split applies to the GDD only.
 
-The two documents' version numbers are always in sync — including point-release stamps (N.M). A **point release never creates new document files**: both documents are updated **in place**, their version stamps move to N.M, and only affected sections are touched. Filenames keep the major-version `vN` name, so "use the highest N present" continues to resolve correctly in the repo and in Claude Code sessions.
+The two documents' version numbers are always in sync — including point-release stamps (N.M). The GDD's stamp of record lives in the index; a stamp change touches the index, `_00_header.md`, and the changelog (`_01_version_history.md`), followed by a `make gdd` rebuild. A **point release never creates new document files**: both documents are updated **in place**, their version stamps move to N.M, and only affected sections are touched. The monolith's filename keeps the major-version `vN` name (`GDD_MAJOR` bumps only at major closeouts, with the old monolith `git rm`'d at the rename), so "use the highest N present" continues to resolve correctly in the repo and in Claude Code sessions.
 
 The architecture doc's header records the git commit hash of the version's architectural changes; a design-only version (or a doc-only point-release change) increments the stamp without moving the hash. An architectural point release moves the hash.
 
@@ -89,11 +90,11 @@ A point release is a surgical release outside the major-version cadence, for wor
 
 **4. Operator playtest.** Between briefs, per the playtest checklists. Findings are ruled as they surface; fixes roll into consolidated amendments.
 
-**5. Version closeout ritual (major versions):** final architecture doc committed by CC → `SHYLAND_VERSION` bumped to the release stamp (`N.0`) alongside the doc stamps (the constant tells the truth about the code it ships with; point releases bump it on main) → GDD vN.0 written in this chat and committed by the operator → finals mirrored to project files (upload new pair, remove old) → project instructions refreshed if process rules changed during the version → transient documents pruned **by the operator only** → project memory updated (standing rule since v18).
+**5. Version closeout ritual (major versions):** final architecture doc committed by CC → `SHYLAND_VERSION` bumped to the release stamp (`N.0`) alongside the doc stamps (the constant tells the truth about the code it ships with; point releases bump it on main) → GDD vN.0 closed in this chat as **per-section updates**: only the changed section files are rewritten, plus the changelog row (`_01_version_history.md`) and the stamp bumps (index + `_00_header.md`), all committed by the operator → `GDD_MAJOR` bumped in the Makefile, the old monolith `git rm`'d, and `make gdd` run to produce the new `Shyland_GDD_vN.md` (operator, or CC under the mechanical-generation allowance) → finals mirrored to project files (upload new pair, remove old) → project instructions refreshed if process rules changed during the version → transient documents pruned **by the operator only** → project memory updated (standing rule since v18).
 
-**5a. Point-release closeout (lightweight variant):** verification from committed reports → GDD changelog row and stamp bump (in place) → finals re-mirrored to project files → project memory updated. Pruning covers only the point release's own transients — and the operator does it, as always.
+**5a. Point-release closeout (lightweight variant):** verification from committed reports → GDD changelog row (`_01_version_history.md`) and stamp bump to N.M (index + `_00_header.md`), any affected section files updated in place, `make gdd` rebuild (`GDD_MAJOR` unchanged — the monolith filename never moves at a point release) → finals re-mirrored to project files → project memory updated. Pruning covers only the point release's own transients — and the operator does it, as always.
 
-**The GDD is updated here. The architecture doc is updated by Claude Code.** These are not interchangeable.
+**The GDD is updated here. The architecture doc is updated by Claude Code.** These are not interchangeable. CC never authors or edits the GDD source files under `docs/shyland/gdd/`; its only permitted GDD operation is running `make gdd` (or another mechanical operation explicitly directed by a brief), which regenerates the monolith without changing content.
 
 ---
 
