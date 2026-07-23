@@ -1,0 +1,24 @@
+Shyland Brief: Issue #137 Ruling Recorded — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at 7756b74 before start.
+- No deployment surface touched: no build, no deploy, no management command run.
+
+STEP 1 — RULING COMMENT
+- Posted on #137, verbatim from the brief (four-part ruling: vanish-on-decay,
+  CASCADE on ItemInstance.corpse, exactly-one location invariant with the
+  transient-state verification caveat, purge command with post-run zero-count
+  verification as a deploy-time data action; plus the implementer sequencing note):
+  https://github.com/KnightOfNight/games-mvc/issues/137#issuecomment-5059328885
+
+CONFIRMATIONS
+- Zero code changes. Zero issue state changes: no closes, no label changes,
+  no milestone changes, no assignee changes, no dependency links. #137 was the
+  only issue touched, comment only.
+- Commits under this brief: 4094ad1 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
