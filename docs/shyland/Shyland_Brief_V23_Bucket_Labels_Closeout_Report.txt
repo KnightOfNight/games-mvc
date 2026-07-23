@@ -1,0 +1,36 @@
+Shyland Brief — V23 Bucket Labels — Closeout Report
+Date: 2026-07-23
+Branch: main (ops brief, per brief)
+
+PRE-FLIGHT
+- gh auth status: logged in as KnightOfNight (active account).
+- Working tree clean, on main at 5415ae9 before start.
+- check_docker_host.py exit 0 (session pre-flight; no deployment surface touched).
+
+STEP 1 — BUCKET LABELS
+- B4 was PRE-EXISTING (color d964ad, description "Issue scheduled for
+  milestone brief 4."), contrary to the brief's expectation that it might be
+  missing — no label created, no existing label's name/color/description
+  modified. B1, B2, B3 likewise pre-existing and untouched.
+
+STEP 2 — LABELS APPLIED (verified post-edit, one bucket label each)
+- B1: #143 (now B1,bug,triaged), #25 (B1,bug,triaged)
+- B2: #137 (B2,bug,triaged), #117 (B2,bug,triaged), #18 (B2,bug,triaged)
+- B3: #133 (B3,bug,triaged), #119 (B3,bug,triaged), #141 (B3,triaged)
+- B4: #40 (B4,triaged), #144 (B4,bug,triaged), #138 (B4,bug,triaged)
+
+VERIFICATION (all passed)
+- Each of the 11 issues carries exactly one of B1/B2/B3/B4, matching the
+  brief's table. Repo-wide open-issue queries per bucket label return
+  exactly: B1={25,143}, B2={18,117,137}, B3={119,133,141}, B4={40,138,144}
+  — no other open issue carries a bucket label.
+- Pre-state labels captured before editing; every pre-existing label (bug,
+  triaged) is still present on every issue. Only additions were made.
+- All 11 issues remain OPEN and milestoned Version 23; no milestone changed.
+- No issue was opened, closed, or commented on. Zero code changes.
+
+COMMITS
+- 239b995 (brief self-commit, message "V23: bucket-labels housekeeping
+  brief") and this closeout report commit, which is the final commit of the
+  brief (HEAD of main at push; hash reported in the session summary). The
+  subsequent issues-report commit follows closeout per the brief.
