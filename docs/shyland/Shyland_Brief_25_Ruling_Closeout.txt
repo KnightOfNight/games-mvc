@@ -1,0 +1,31 @@
+Shyland Brief: Issue #25 Ruling Recorded + Triaged — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at 68cb8ed before start.
+- Label `triaged` confirmed to exist.
+- No deployment surface touched.
+
+STEP 1 — RULING COMMENT
+- Posted on #25, verbatim from the brief (uniform session-end-without-death
+  full reset: no regen curve, no tier check, all disengagement paths, the
+  last-active-session multiplayer guard, effects cleared with the reset;
+  plus the #143 flee-fix same-version coupling context and flee-first
+  sequencing note):
+  https://github.com/KnightOfNight/games-mvc/issues/25#issuecomment-5060156456
+
+STEP 2 — LABEL
+- `triaged` added to #25. Verified post-edit via gh issue view: labels now
+  [bug, triaged] — bug preserved, nothing removed.
+
+CONFIRMATIONS
+- Exactly one issue touched (#25): comment + triaged label only. Issue
+  remains OPEN on milestone Version 23. No closes, no milestone changes,
+  no assignee changes, no dependency links, no other labels modified.
+- Zero code changes.
+- Commits under this brief: 733c6ff (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
