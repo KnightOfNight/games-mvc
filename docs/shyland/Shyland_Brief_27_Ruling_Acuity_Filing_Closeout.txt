@@ -1,0 +1,33 @@
+Shyland Brief: Issue #27 Ruling + Acuity Design Filing — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at add3870 before start.
+- No deployment surface touched: no build, no deploy, no management command run.
+
+STEP 1 — MILESTONE
+- Milestone "Version 24" FOUND (already existed, milestone number 13). Not created.
+
+STEP 2 — NEW ISSUE
+- Created issue #142: "Finish the acuity design: in-combat drift is unruled"
+  https://github.com/KnightOfNight/games-mvc/issues/142
+- Milestone: Version 24. No labels. Body verbatim from the brief.
+- Assigned to operator (--assignee "@me", standing convention).
+
+STEPS 3-4 — SEQUENCE CONFIRMATION (exact order executed)
+1. Ruling comment posted on #27 (#N substituted with #142):
+   https://github.com/KnightOfNight/games-mvc/issues/27#issuecomment-5059111894
+2. #27 closed (gh default close reason: completed).
+3. Back-link comment posted on #142:
+   https://github.com/KnightOfNight/games-mvc/issues/142#issuecomment-5059112218
+
+CONFIRMATIONS
+- Zero code changes. Zero label changes on any issue. Zero dependency links —
+  all cross-references (#27 <-> #142, #133, #25, #26) are comment/body text only.
+- Issues touched: #27 (comment + close), #142 (create + milestone + comment). No others.
+- Commits under this brief: 1a04f83 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
