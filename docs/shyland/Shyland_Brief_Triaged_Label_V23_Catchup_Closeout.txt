@@ -1,0 +1,29 @@
+Shyland Brief: Apply `triaged` Label — V23 Catch-Up Pass — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at 0a2d159 before start.
+- Label `triaged` confirmed to exist ("This issue has been reviewed in design
+  chat and has all required details.") — not created by this brief.
+- No deployment surface touched.
+
+STEP 1 — LABEL ADDITIONS (verified post-edit via gh issue view)
+- #117: labels now [bug, triaged] — triaged added, bug preserved.
+- #137: labels now [bug, triaged] — triaged added, bug preserved.
+- #138: labels now [bug, triaged] — triaged added, bug preserved.
+- #141: labels now [triaged] — triaged added (no prior labels).
+
+CONFIRMATIONS
+- Exactly four issues touched (#117, #137, #138, #141), label addition only.
+- No labels removed or modified anywhere. No closes, no milestone changes,
+  no assignee changes, no comments, no dependency links. #18, #119, #25, #40,
+  and #133 left unlabeled per the operator's applied definition.
+- Zero code changes.
+- Standing rule noted: future ruling-recording housekeeping briefs add
+  `triaged` in the same motion; this catch-up pass is one-time.
+- Commits under this brief: 5fb1520 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
