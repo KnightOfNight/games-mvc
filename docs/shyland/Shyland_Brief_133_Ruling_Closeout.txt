@@ -1,0 +1,34 @@
+Shyland Brief: Issue #133 Ruling Recorded + Triaged — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at 9c8d5c1 before start.
+- Label `triaged` confirmed to exist.
+- No deployment surface touched.
+
+STEP 1 — RULING COMMENT
+- Posted on #133, verbatim from the brief (facet-1 correction: over-band is
+  an unwired-drawback damage steroid, not a penalty zone; six-part ruling —
+  band-edge stop clamping shift_acuity_high to the drinker's band_high,
+  climb-and-sustain hold for full duration, change-only announcements with
+  one authored terminal line promoted to standing doctrine, seeded
+  magnitudes/prices unchanged, 0.1/1.9 clamps promoted to named engine
+  constants, shift_acuity_low gets announcements only; implementer rounding
+  note — clamp first, round for display, stored value equals band_high):
+  https://github.com/KnightOfNight/games-mvc/issues/133#issuecomment-5061686329
+
+STEP 2 — LABEL
+- `triaged` added to #133. Verified post-edit via gh issue view: labels now
+  [bug, triaged] — bug preserved, nothing removed.
+
+CONFIRMATIONS
+- Exactly one issue touched (#133): comment + triaged label only. Issue
+  remains OPEN on milestone Version 23. No closes, no milestone changes,
+  no assignee changes, no dependency links, no other labels modified.
+- Zero code changes.
+- Commits under this brief: 0403f08 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
