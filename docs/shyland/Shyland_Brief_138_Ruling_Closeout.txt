@@ -1,0 +1,27 @@
+Shyland Brief: Issue #138 Ruling Recorded — Closeout Report
+Date: 2026-07-23
+Branch: main (no worktree, per brief)
+
+PRE-FLIGHT
+- check_docker_host.py exit 0 (DOCKER_HOST=ssh://ec2-user@games.magrathea.com, reachable).
+- Working tree clean, on main at cc2b216 before start.
+- No deployment surface touched: no build, no deploy, no management command run.
+
+STEP 1 — RULING COMMENT
+- Posted on #138, verbatim from the brief (Option 1 refined: uniform zero-value
+  acceptance with the base_value=0 refusal removed; Artifact-rarity vendor
+  refusal exception incl. the no-disposal-path-for-bound-artifacts consequence;
+  voice/flavor rules — variant-pool snark on net-0 transactions, mixed-bulk
+  trailing form with sanctioned fallback, warn-voice pricelessness refusal;
+  GDD §6.12 doctrine amendment at version closeout; option 4 and the
+  base_value >= 1 invariant recorded as not adopted):
+  https://github.com/KnightOfNight/games-mvc/issues/138#issuecomment-5059518007
+
+CONFIRMATIONS
+- Zero code changes. Zero issue state changes: no closes, no label changes,
+  no milestone changes, no assignee changes, no dependency links. #138 was the
+  only issue touched, comment only.
+- Commits under this brief: da90048 (brief self-commit) and this closeout
+  report commit, which is the final commit of the brief (HEAD of main at push;
+  hash reported in the session summary). The subsequent issues-report commit
+  follows closeout per the brief's step 3.
