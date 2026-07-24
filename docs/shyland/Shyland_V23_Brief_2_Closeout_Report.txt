@@ -136,6 +136,15 @@ PENDING DEPLOY-TIME ACTIONS
   Re-run the (idempotent) command once at the v23 deploy; subsequent
   Version 23 briefs pre-flight that final confirmation.
 
+  UPDATE 2026-07-24 (later) — RESIDUE CLOSED. Operator-directed v23
+  dev deploy executed this session: SHYLAND_VERSION -> 23.0-DEV
+  (commit 0c46da8), make build from the worktree (production .env/ssl
+  copied from main and sanity-checked; all three games bounced),
+  migration 0035 applied, final purge sweep 0 found / 0 deleted /
+  0 remaining. CASCADE is live; the leak mechanism is dead. #137 is
+  FIELD-COMPLETE (recorded on the issue). NOTHING PENDING remains
+  from this brief.
+
 ARCHITECTURE DOC (Step 6)
 -------------------------
 Path taken: CREATED Shyland_Architecture_v23.md (no v23 doc existed —
