@@ -76,6 +76,7 @@ class Command(BaseCommand):
             effective_stats, get_npc_stats, roll_initiative, resolve_hit,
             calculate_damage, get_npc_health_description, apply_death_penalties,
             apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
+            release_session_npcs,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
 
@@ -108,6 +109,10 @@ class Command(BaseCommand):
             player, so the fight pane and combat-red state must clear."""
             session.is_active = False
             session.save(update_fields=['is_active'])
+            # v23 B1 (#25): stale close now releases NPCs like every
+            # other end path (deliberate membership alignment — this
+            # path previously left NPC rows on the inactive session).
+            release_session_npcs(session)
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
@@ -200,7 +205,9 @@ class Command(BaseCommand):
                 if session.characters.count() == 0:
                     session.is_active = False
                     session.save(update_fields=['is_active'])
-                    session.npcs.clear()
+                    # v23 B1 (#25): player-death disengagement — the
+                    # NPCs the faller was fighting reset to full.
+                    release_session_npcs(session)
             return broken, recall
 
         dying_chars = await get_expired_dying()
@@ -570,6 +577,11 @@ class Command(BaseCommand):
                                 session.is_active = False
                                 session.focus_npc = None
                                 session.save(update_fields=['is_active', 'focus_npc'])
+                                # v23 B1 (#25): uniformity + membership
+                                # hygiene — every kill was already removed
+                                # and dead stragglers are filtered, so the
+                                # reset loop is a no-op here by design.
+                                release_session_npcs(session)
                                 # v22 B2 amendment 1 (#124): a good outcome
                                 # — success-color (the reward class).
                                 messages.append((character.pk, "Combat has ended.", 'reward', None))

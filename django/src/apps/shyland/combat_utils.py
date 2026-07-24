@@ -328,6 +328,34 @@ def flee_contest_npc_side(npcs):
     return sum(get_npc_stats(npc)['per'] for npc in npcs) / len(npcs)
 
 
+def release_session_npcs(session):
+    """v23 B1 (#25): session-end-without-death NPC reset.
+
+    Called at EVERY session-end site, after the session has been marked
+    inactive and saved. For each living NPC still in the session: if the
+    NPC participates in no other active combat session (the multiplayer
+    guard — a shared NpcInstance another player is still fighting is
+    live state and must not snap to full), reset it to full vitality.
+    All NPCs uniformly — no tier check. Full reset, not regeneration.
+
+    INVARIANT: any NPC-targeted lingering-effect state must be cleared
+    here as part of the reset. As of v23 no such state exists
+    (EffectInstance targets Characters only; player procs are instant
+    bonus damage) — a future NPC-effects system extends this function,
+    nowhere else.
+
+    Clears the session's NPC membership last.
+    """
+    npcs = list(session.npcs.filter(is_alive=True))
+    for npc in npcs:
+        if npc.combat_sessions.filter(is_active=True).exclude(pk=session.pk).exists():
+            continue
+        if npc.vitality_current != npc.vitality_max:
+            npc.vitality_current = npc.vitality_max
+            npc.save(update_fields=['vitality_current'])
+    session.npcs.clear()
+
+
 def get_npc_health_description(vitality_current, vitality_max):
     """Return a descriptive phrase for NPC health state (no raw numbers)."""
     if vitality_max <= 0:

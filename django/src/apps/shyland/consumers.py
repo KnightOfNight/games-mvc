@@ -17,6 +17,7 @@ from . import currency
 from .combat_utils import (
     ARMOR_SLOT_WEIGHTS, bar_rescale_updates, effective_stats,
     flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
+    release_session_npcs,
 )
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
@@ -4016,7 +4017,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def end_combat_session(self, session):
         session.is_active = False
         session.save(update_fields=['is_active'])
-        session.npcs.clear()
+        # v23 B1 (#25): session-end-without-death — surviving NPCs reset
+        # to full (last-active-session guard inside the helper).
+        release_session_npcs(session)
 
     @database_sync_to_async
     def get_flee_destination(self, character):
