@@ -128,6 +128,14 @@ PENDING DEPLOY-TIME ACTIONS
   Every subsequent Version 23 brief/amendment pre-flights whether this
   has executed, until confirmed done.
 
+  UPDATE 2026-07-24 — EXECUTED early, operator-directed: 87 found,
+  87 deleted, 0 remaining, post-run assertion passed ("database
+  clean"). Recorded on #137. RESIDUE STILL OPEN: the running
+  containers execute v22 code (SET_NULL) until the v23 make build, so
+  the leak mechanism remains live and interim orphans can accumulate.
+  Re-run the (idempotent) command once at the v23 deploy; subsequent
+  Version 23 briefs pre-flight that final confirmation.
+
 ARCHITECTURE DOC (Step 6)
 -------------------------
 Path taken: CREATED Shyland_Architecture_v23.md (no v23 doc existed —
