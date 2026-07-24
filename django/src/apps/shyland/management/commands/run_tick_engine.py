@@ -560,9 +560,15 @@ class Command(BaseCommand):
                                     'longevity_max', 'longevity_current',
                                 ])
                                 pts = character.unspent_stat_points
+                                # v23 B3 (#141): two messages, each with its
+                                # own envelope; no *** prefix; short spend
+                                # hint; pts already includes prior unspent.
                                 messages.append((character.pk,
-                                    f"*** You have reached level {character.level}! "
-                                    f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}. "
+                                    f"You have reached level {character.level}! "
+                                    f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}.",
+                                    'reward', None
+                                ))
+                                messages.append((character.pk,
                                     f"You have {pts} unspent stat point{'s' if pts != 1 else ''}. "
                                     f"Type 'spend' to allocate them.",
                                     'reward', None

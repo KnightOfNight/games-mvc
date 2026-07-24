@@ -2311,10 +2311,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             {},
             {'v': f'  Unspent stat points: {character.unspent_stat_points}'},
         ]
-        if character.unspent_stat_points > 0:
-            lines.append(
-                {'v': "  Type 'spend [<quantity>] <stat>' to allocate. (e.g. 'spend 2 str')"},
-            )
         await self.send_report_lines(lines)
 
     # v22 brief 2 (DD §1): 'spend [<quantity>] <stat>' — the argument
