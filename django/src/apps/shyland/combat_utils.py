@@ -319,6 +319,15 @@ def get_npc_stats(npc_instance):
     }
 
 
+def flee_contest_npc_side(npcs):
+    """v23 B1 (#143): the NPC side of the flee contest — the session
+    mean of effective PER from get_npc_stats(), the same effective-stats
+    read every other combat contest uses. Replaces a pre-v21 inline
+    formula that multiplied base_per by scaling_factor (which since the
+    v21 retune, #101, encodes within-band level, not a multiplier)."""
+    return sum(get_npc_stats(npc)['per'] for npc in npcs) / len(npcs)
+
+
 def get_npc_health_description(vitality_current, vitality_max):
     """Return a descriptive phrase for NPC health state (no raw numbers)."""
     if vitality_max <= 0:

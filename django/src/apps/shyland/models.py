@@ -750,7 +750,7 @@ class NpcDefinition(models.Model):
     base_int        = models.IntegerField()
     base_wis        = models.IntegerField()
     base_per        = models.IntegerField()
-    scaling_factor  = models.FloatField(default=1.0, help_text="Stat multiplier per Mk tier.")
+    scaling_factor  = models.FloatField(default=1.0, help_text="Within-band level (1-10); Mk tier lifts the effective level by whole bands. See combat_utils.npc_level().")
 
     loot_table          = models.ForeignKey(
         LootTable, null=True, blank=True, on_delete=models.SET_NULL,

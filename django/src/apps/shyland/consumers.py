@@ -16,7 +16,7 @@ from django.utils import timezone
 from . import currency
 from .combat_utils import (
     ARMOR_SLOT_WEIGHTS, bar_rescale_updates, effective_stats,
-    gear_stat_bonus, npc_display, npc_display_name,
+    flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
 )
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
@@ -2186,10 +2186,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_status_refresh()
             return
 
-        avg_per = sum(
-            npc.definition.base_per * npc.definition.scaling_factor * npc.mk_tier
-            for npc in npcs
-        ) / len(npcs)
+        # v23 B1 (#143): the NPC side reads the same effective stats as every
+        # other combat contest — session mean of get_npc_stats()['per'].
+        avg_per = flee_contest_npc_side(npcs)
 
         # v22 B5 (#100): the flee contest reads effective DEX (base + gear).
         eff = await self.get_effective_stats(character)
