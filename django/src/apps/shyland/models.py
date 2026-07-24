@@ -571,7 +571,10 @@ class ItemInstance(models.Model):
     corpse = models.ForeignKey(
         'Corpse',
         null=True, blank=True,
-        on_delete=models.SET_NULL,
+        # v23 B2 (#137): contents die with the corpse — corpse contents are
+        # by definition unowned, unequipped, unbound loot, so unconditional
+        # destruction on corpse delete is always correct.
+        on_delete=models.CASCADE,
         related_name='contents',
     )
 
@@ -581,7 +584,7 @@ class ItemInstance(models.Model):
             self.current_room_id is not None,
             self.corpse_id is not None,
         ])
-        if non_null > 1:
+        if non_null != 1:
             raise ValidationError(
                 "ItemInstance must be in exactly one location: owner, current_room, or corpse. "
                 f"Got {non_null} non-null location fields."
