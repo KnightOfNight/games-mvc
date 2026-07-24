@@ -205,9 +205,11 @@
     background: var(--surface);
     border-bottom: 5px solid var(--zone-border);
   }
-  /* v20 brief 4 (#2): the whole stats subsection turns red during combat.
-     Stat text colors unchanged. */
-  #side-stats.in-combat { background: var(--combat-bg); border-bottom-color: var(--combat-accent); }
+  /* v20 brief 4 (#2): the stats subsection turns red during combat.
+     Stat text colors unchanged. v23 B3 (#119): background + name color
+     only — pane borders belong to zone/area theming exclusively;
+     transient state never expresses through borders. */
+  #side-stats.in-combat { background: var(--combat-bg); }
   #side-stats.in-combat #stats-name { color: var(--error); }
 
   /* v20 brief 4 amendment 1 (#72): V/L ratio bars + the Acuity band
