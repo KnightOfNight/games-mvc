@@ -52,6 +52,11 @@ SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
 # RING is the only slot a character has two of.
 SLOT_CAPACITY = {'RING': 2}
 
+# v23 B2 (#18): the item types that stack in the inventory display.
+# Wear-free interchangeable types stack; per-instance-identity types
+# (durability, rolled stats — weapon/armor/accessory/bag) never stack.
+STACKABLE_ITEM_TYPES = {'consumable', 'material', 'readable', 'key'}
+
 # v19 brief 10: kibitz lines (gazebo double-vendor transactions) and
 # pity-repair lines (repairs whose computed value is 0). Not part of the
 # brief 9 dialogue engine — plain authored pools, keyed and consumed here.
@@ -940,23 +945,32 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # Inventory table: Quantity after Name, Slot empty unless slotted
         # (unequipped items never are), flat alphabetical by name.
+        # v23 B2 (#18): all STACKABLE_ITEM_TYPES group on (definition,
+        # mk_tier, rarity, soulbound state) — the trailing sort-key
+        # components exist only to make same-group rows adjacent;
+        # alphabetical-by-name stays the visible order.
         lines.append({})
         lines.append({'k': f'Inventory ({current_carry}/{max_carry})...'})
         unequipped_sorted = sorted(
-            unequipped, key=lambda i: get_display_name_with_tier(i).lower(),
+            unequipped,
+            key=lambda i: (
+                get_display_name_with_tier(i).lower(),
+                i.definition_id, i.mk_tier, i.rarity, i.is_soulbound,
+            ),
         )
         inv_rows = []
         idx = 0
         while idx < len(unequipped_sorted):
             item = unequipped_sorted[idx]
             count = 1
-            if item.definition.item_type == 'consumable':
+            if item.definition.item_type in STACKABLE_ITEM_TYPES:
                 j = idx + 1
                 while j < len(unequipped_sorted):
                     other = unequipped_sorted[j]
                     if (other.definition_id == item.definition_id
                             and other.mk_tier == item.mk_tier
-                            and other.rarity == item.rarity):
+                            and other.rarity == item.rarity
+                            and other.is_soulbound == item.is_soulbound):
                         count += 1
                         j += 1
                     else:

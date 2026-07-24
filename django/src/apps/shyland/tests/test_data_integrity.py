@@ -10,14 +10,17 @@ rarity, soulbound state)."""
 from datetime import timedelta
 from io import StringIO
 
+from asgiref.sync import sync_to_async
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.shyland.models import Corpse, ItemInstance
+from apps.shyland.tests.test_b2_amendment1 import line_texts
 from apps.shyland.tests.test_command_revamp import (
-    make_character, make_item_def, make_world,
+    make_character, make_item_def, make_owned_item, make_stub_consumer,
+    make_world,
 )
 
 
@@ -156,3 +159,81 @@ class PurgeOrphanedItemsTests(TestCase):
         self.assertIn('0 orphaned item instance(s) found.', text)
         self.assertIn('0 deleted; 0 remaining.', text)
         self.assertIn('database clean', text)
+
+
+class InventoryStackingTests(TransactionTestCase):
+    """#18: wear-free types (consumable/material/readable/key) stack in
+    the inventory display on (definition, mk_tier, rarity, soulbound
+    state); per-instance-identity types never stack."""
+
+    def _rows_for(self, sent, name):
+        lines, texts = line_texts(sent)
+        return [t for t in texts if name in t]
+
+    async def _inventory_rows(self, prefix, item_type, name, unbound=0,
+                              bound=0):
+        zone, room = await sync_to_async(make_world)(prefix)
+
+        def setup():
+            char = make_character(prefix, room)
+            defn = make_item_def(prefix, name, item_type)
+            for _ in range(unbound):
+                make_owned_item(defn, char)
+            for _ in range(bound):
+                make_owned_item(defn, char, bound=True)
+            return char
+        char = await sync_to_async(setup)()
+
+        sent = []
+        consumer = make_stub_consumer(char, sent)
+        await consumer.cmd_inventory()
+        return self._rows_for(sent, name)
+
+    async def test_materials_stack_into_one_row(self):
+        rows = await self._inventory_rows(
+            'stA', 'material', 'Test Ore', unbound=3)
+        self.assertEqual(len(rows), 1)
+        self.assertIn('3', rows[0].split())
+
+    async def test_bound_copy_never_merges_with_unbound(self):
+        rows = await self._inventory_rows(
+            'stB', 'material', 'Test Ore', unbound=2, bound=1)
+        self.assertEqual(len(rows), 2)
+        bound_rows = [r for r in rows if 'Bound' in r.split()]
+        unbound_rows = [r for r in rows if 'Unbound' in r.split()]
+        self.assertEqual(len(bound_rows), 1)
+        self.assertEqual(len(unbound_rows), 1)
+        self.assertIn('1', bound_rows[0].split())
+        self.assertIn('2', unbound_rows[0].split())
+
+    async def test_consumables_still_stack(self):
+        rows = await self._inventory_rows(
+            'stC', 'consumable', 'Test Tonic', unbound=3)
+        self.assertEqual(len(rows), 1)
+        self.assertIn('3', rows[0].split())
+
+    async def test_consumable_bound_unbound_split(self):
+        # The ruled key deliberately tightens consumable stacking too: a
+        # bound stack and an unbound stack render as two rows.
+        rows = await self._inventory_rows(
+            'stD', 'consumable', 'Test Tonic', unbound=2, bound=2)
+        self.assertEqual(len(rows), 2)
+
+    async def test_weapons_never_stack(self):
+        rows = await self._inventory_rows(
+            'stE', 'weapon', 'Test Blade', unbound=3)
+        self.assertEqual(len(rows), 3)
+        for row in rows:
+            self.assertIn('1', row.split())
+
+    async def test_readables_stack(self):
+        rows = await self._inventory_rows(
+            'stF', 'readable', 'Test Scroll', unbound=2)
+        self.assertEqual(len(rows), 1)
+        self.assertIn('2', rows[0].split())
+
+    async def test_keys_stack(self):
+        rows = await self._inventory_rows(
+            'stG', 'key', 'Test Key', unbound=2)
+        self.assertEqual(len(rows), 1)
+        self.assertIn('2', rows[0].split())
