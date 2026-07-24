@@ -30,6 +30,9 @@ PRIMARY_STAT_KEYS = ('str', 'dex', 'end', 'int', 'wis', 'per')
 # climb (contests add; quantities like vitality multiply).
 NPC_CONTEST_BASE = 18        # matches a level-1 player's primary stat
 NPC_CONTEST_STEP = 2.5       # per level, matches player primary-stat growth
+
+ACUITY_FLOOR = 0.1     # the acuity meter's physical range — engine
+ACUITY_CEILING = 1.9   # absolutes, ruled #133 (v23); rails for everything
 NPC_TIER_OFFSET = {'normal': 0, 'elite': 2, 'boss': 2}   # blessed: 55% / 45% / 45% at-level hit
 MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
 
@@ -241,7 +244,7 @@ def acuity_damage_modifier(character):
     Inside the Origin band: neutral. Above band_high: bonus by the distance
     beyond it (applied to focus target only, enforced by calculate_damage).
     Below band_low: penalty by the distance beyond it (always applies)."""
-    a = min(1.9, max(0.1, character.acuity_current))
+    a = min(ACUITY_CEILING, max(ACUITY_FLOOR, character.acuity_current))
     if a > character.acuity_band_high:
         return 1.0 + (a - character.acuity_band_high)
     if a < character.acuity_band_low:

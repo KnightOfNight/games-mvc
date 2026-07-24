@@ -967,6 +967,7 @@ class Command(BaseCommand):
             COMBAT_ROUND_TICKS, ACUITY_DRIFT_RATE,
         )
         from apps.shyland.effect_utils import apply_stat_effect, _expiry_message_for_effect, _expiry_message_for_component
+        from apps.shyland.combat_utils import ACUITY_CEILING, ACUITY_FLOOR
 
         now = timezone.now()
         is_round_boundary = (tick_number % COMBAT_ROUND_TICKS == 0)
@@ -1064,7 +1065,7 @@ class Command(BaseCommand):
 
                 elif ctype == 'dot_acuity':
                     character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current - magnitude)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
                     status = await self._build_status_async(character)
@@ -1103,7 +1104,7 @@ class Command(BaseCommand):
                     diff = character.acuity_baseline - character.acuity_current
                     step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
                     character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current + step)), 1
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current + step)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
                     status = await self._build_status_async(character)
@@ -1115,28 +1116,66 @@ class Command(BaseCommand):
                     )
 
                 elif ctype == 'shift_acuity_high':
-                    character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current + magnitude)), 1
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
-                        'system', status,
-                    )
+                    # v23 B3 (#133): band-edge stop — the tonic sharpens you
+                    # to your mind's own limit, never past it. Directional
+                    # invariant: the high shift never lowers acuity (at or
+                    # above band_high = silent no-op, not a pull-down).
+                    # Announcement doctrine (#133 ruling 3): change-only
+                    # ticks; one terminal line at boundary arrival; holding
+                    # is silent.
+                    old = character.acuity_current
+                    band_high = character.acuity_band_high
+                    if old >= band_high:
+                        new = old                # never lowers, never exceeds
+                    else:
+                        candidate = old + magnitude
+                        if candidate >= band_high:
+                            # Stored EXACTLY (bands are 2-decimal): the
+                            # in-band check and the band gauge must agree.
+                            new = band_high
+                        else:
+                            new = round(max(ACUITY_FLOOR, candidate), 1)
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == band_high:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your focus settles at its keenest.",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
+                                'system', status,
+                            )
 
                 elif ctype == 'shift_acuity_low':
-                    character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
-                        'system', status,
-                    )
+                    # v23 B3 (#133 ruling 6): announcement pattern only — no
+                    # band-edge stop; the boundary stays the hard floor
+                    # (dragging below band into fizzle territory is a hostile
+                    # effect's entire point). Only ever subtracts, so the
+                    # directional invariant holds by construction.
+                    old = character.acuity_current
+                    new = round(max(ACUITY_FLOOR, min(ACUITY_CEILING, old - magnitude)), 1)
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == ACUITY_FLOOR:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your focus frays to nothing.",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
+                                'system', status,
+                            )
 
         # ---- Phase 2: Passive Acuity drift (every tick) ----
         @database_sync_to_async
@@ -1176,7 +1215,7 @@ class Command(BaseCommand):
             else:
                 new_acuity = round(current - ACUITY_DRIFT_RATE, 2)
 
-            new_acuity = round(max(0.1, min(1.9, new_acuity)), 2)
+            new_acuity = round(max(ACUITY_FLOOR, min(ACUITY_CEILING, new_acuity)), 2)
             await save_acuity(character, new_acuity)
 
         # ---- Phase 3: Component expiry (every tick) ----
