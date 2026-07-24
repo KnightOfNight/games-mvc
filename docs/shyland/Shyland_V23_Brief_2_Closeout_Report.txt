@@ -1,0 +1,183 @@
+SHYLAND V23 BRIEF 2 — DATA INTEGRITY — CLOSEOUT REPORT
+=======================================================
+Date: 2026-07-23
+Branch: version_23 (worktree; branch start 4d3016d)
+Issues: #137, #117, #18 — all three CLOSED (gated on Step 4, which passed)
+
+WHAT SHIPPED
+------------
+#117 (stub tests.py breaks discovery) — commit 5c1ee76
+    git rm django/src/apps/shyland/tests.py; nothing else. Whole-app
+    discovery restored: `python manage.py test apps.shyland -t /app`
+    discovers and runs the full suite. This invocation is the standard
+    test command from this brief forward; the prior "run as
+    apps.shyland.tests" standing workaround is retired.
+
+#137 (corpse decay orphans) — commit ffdd110, per the four-part
+    operator-confirmed ruling (2026-07-23):
+    - ItemInstance.corpse on_delete SET_NULL -> CASCADE. Migration:
+      **0035_alter_iteminstance_corpse** (AlterField, generated via
+      makemigrations in-container; all other field attributes
+      unchanged). The tick engine's delete_corpse ORM delete needed no
+      code change — Django's collector cascades the contents.
+    - ItemInstance.save() location invariant tightened from `> 1` to
+      `!= 1` — exactly one of owner/current_room/corpse; the message
+      wording ("must be in exactly one location...") was already
+      correct and truthfully reports the count in both directions.
+    - New management command purge_orphaned_items (mold:
+      fix_zero_secondary_stats): exact ruled filter (owner,
+      current_room, corpse all NULL), reports the count found at run
+      time (never assumes 87), queryset .delete() (per-model count from
+      the delete map, so cascaded related rows can never inflate it),
+      re-runs the query, reports the post-run count, raises
+      CommandError if nonzero, SUCCESS "database clean" line otherwise.
+      Idempotent. Its production run is a PENDING DEPLOY-TIME ACTION
+      (block below).
+
+#18 (materials don't stack) — commit 81b0a20, display-only per the
+    operator-confirmed ruling (2026-07-23):
+    - STACKABLE_ITEM_TYPES = {'consumable', 'material', 'readable',
+      'key'} module constant in consumers.py (with SLOT_ORDER/
+      SLOT_CAPACITY; string literals — consumers.py does not import
+      ItemDefinition and local style is string literals). The
+      cmd_inventory grouping gate is now membership in this set.
+      weapon/armor/accessory/bag never stack.
+    - Grouping key extended to (definition_id, mk_tier, rarity,
+      is_soulbound). The bound/unbound split deliberately tightens
+      consumable stacking too, per the ruling.
+    - Sort key extended to (display name lowercased, definition_id,
+      mk_tier, rarity, is_soulbound) — same-group adjacency guaranteed,
+      alphabetical-by-name stays the visible order.
+    - Grouped rows render exactly as the existing consumable grouped
+      row (representative = first instance, Quantity = count). No
+      grammar/model/migration changes.
+
+STEP 2a AUDIT (the gate — PASSED, no STOP)
+------------------------------------------
+Flows examined, every ItemInstance creation/transfer/save site outside
+tests (grep-swept for constructors, objects.create, location-field
+assignment, and .save() across the app):
+  - Loot generation: generate_loot_from_table returns unsaved
+    zero-location instances; its ONLY caller create_corpse
+    (item_utils.py) sets item.corpse before every save. Clean.
+  - Buy: do_buy generates with owner=char. Clean.
+  - Pickup: transfer_to_character sets owner, clears current_room
+    before save. Clean.
+  - Drop: transfer_to_room sets current_room, clears owner. Clean.
+  - Loot take: do_loot_item clears corpse, sets owner. Clean.
+  - Equip/unequip/repair/durability decay (consumers.py, combat_utils
+    item damage): non-location writes on owned items. Clean.
+  - Sell / use: delete, not save. Clean.
+  - Gift: generate_item_instance(gift=True) has no in-repo caller
+    outside buy (admin gifting is a shell action; gift semantics
+    require an owner anyway). Clean.
+  - Tick engine: no ItemInstance location writes anywhere (reads
+    equipped sets; delete_corpse deletes the Corpse row).
+  - Seed: seed_world.py creates no ItemInstances. Clean.
+  - Admin: standard ModelAdmin. A hand-crafted zero-location instance
+    via the admin form now raises ValidationError from save() (surfaces
+    as an error page, same as the pre-existing >1 behavior) — desired
+    enforcement, not a legitimate transient state.
+FINDING: no legitimate zero-location save exists in any game flow.
+Invariant tightened with zero workarounds.
+
+Test hygiene: NONE NEEDED. All test .objects.create() sites set exactly
+one location; the two in-memory item builders (test_command_revamp
+mem_item, test_command_grammar) never call save().
+
+Two audit side-notes (no action, cited for completeness):
+  - fix_zero_secondary_stats / rename_proc_stats save existing items
+    (non-location fields); run against a hypothetical pre-purge orphan
+    they would now raise. Both are one-time commands already executed
+    on production (2026-07-21), and the purge removes all orphans at
+    deploy — moot in practice.
+  - CombatAction.item (SET_NULL FK to ItemInstance) is unaffected by
+    the purge; the delete-map form of the count keeps the reported
+    deleted count exact regardless.
+
+TESTS
+-----
+Placement: NEW FILE django/src/apps/shyland/tests/test_data_integrity.py
+(15 tests — 8 for #137: CASCADE incl. bystander survival, invariant
+zero/two/each-of-three, purge with counts + keeper survival + no-op
+second run; 7 for #18: material stack, bound/unbound split, consumable
+regression + split, weapons never stack, readable stack, key stack).
+Helpers imported from the established shared fixtures
+(test_command_revamp make_world/make_character/make_item_def/
+make_owned_item/make_stub_consumer; test_b2_amendment1 line_texts).
+
+VERIFICATION (Step 4 — ALL PASSED)
+----------------------------------
+1. Full suite green via whole-app discovery, in-container
+   (game-mvc-django on the production DOCKER_HOST):
+   `python manage.py test apps.shyland -t /app --noinput`
+   *** 306/306 OK *** (was 291 at branch start; +15 new).
+   Baseline before Step 1: 291/291 via the old apps.shyland.tests
+   invocation.
+2. makemigrations --check: "No changes detected".
+3. Invariant arithmetic (diff 4d3016d..HEAD): exactly ONE migration
+   added (0035), exactly ONE management command added
+   (purge_orphaned_items.py), exactly ONE file deleted (tests.py),
+   ZERO model fields added or removed (one field's on_delete changed).
+
+PENDING DEPLOY-TIME ACTIONS
+- Run `python manage.py purge_orphaned_items` on production after this
+  version deploys. The command reports the deleted count and asserts a
+  post-run orphan count of zero. #137 is not field-complete until this
+  execution — including the zero-count confirmation — is reported.
+  Every subsequent Version 23 brief/amendment pre-flights whether this
+  has executed, until confirmed done.
+
+ARCHITECTURE DOC (Step 6)
+-------------------------
+Path taken: CREATED Shyland_Architecture_v23.md (no v23 doc existed —
+this is the version's first landed implementation brief). v22 doc
+git-rm'd; header written first (version 23.0 in progress, hash 81b0a20,
+narrative opens with this brief's entry), content copied one section
+chunk at a time from v22 (base copy verified byte-identical before
+edits), then the six ruled section changes applied: S1 continuation
+sentence, 4.1 ItemInstance location-integrity block + roll-up
+adjustment, 4.3 inventory-stacking subsection + changed-in-v23 line,
+4.6 purge_orphaned_items paragraph with deploy note, 4.9 decay-cascade
+paragraph, S8 tests.py entry removed.
+
+ISSUE CLOSES (Step 5)
+---------------------
+#117, #18, #137 closed 2026-07-23 with ruling-citing comments; #137's
+comment states the pending deploy-time action explicitly. (gh issue
+close has no --comment-file flag — each close was comment-then-close,
+two commands; content as specified.) Step 5 changed nothing repo-side,
+so no commit exists for it.
+
+DEVIATIONS / DISCREPANCIES
+--------------------------
+1. Verification permissions: the auto-mode permission classifier
+   blocked writes into the production container (docker cp / exec rm),
+   which the brief's standard in-container test command requires for
+   modified code. STOPPED and asked; the operator authorized container
+   sync for this session. Files were synced into game-mvc-django's
+   writable layer via docker cp (running Daphne/ticker processes
+   untouched; zero restarts). NOTE: the container's /app now carries
+   this brief's shyland files ahead of the image (stub tests.py
+   removed; models.py, consumers.py, migration 0035,
+   purge_orphaned_items.py, test_data_integrity.py present) — the
+   writable layer reconciles with the image at the version's
+   make build deploy. Migration 0035 is NOT applied to the production
+   database (test runs use throwaway test databases); it applies at
+   deploy-time make migrate as normal.
+2. No other deviations. No repo fact contradicted the brief; no
+   out-of-scope discoveries requiring thin issues.
+
+COMMITS (branch version_23)
+---------------------------
+4d3016d  branch start (operator; issues report)
+601c447  Step 0: brief self-commit
+5c1ee76  Step 1: #117 stub tests.py deleted
+ffdd110  Step 2: #137 CASCADE migration 0035 + exactly-one invariant +
+         purge_orphaned_items + tests (299/299)
+81b0a20  Step 3: #18 wear-free stacking + tests (306/306)
+b93baf3  Step 6: architecture doc v23
+
+FINAL COMMIT: b93baf3 is the final implementation/doc commit; this
+closeout report's own commit (followed by the Step 8 issues-report
+commit) is the branch tip.
