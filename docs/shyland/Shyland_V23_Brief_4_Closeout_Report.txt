@@ -1,0 +1,150 @@
+SHYLAND V23 BRIEF 4 — VOICE MACHINERY & TRANSACTIONS — CLOSEOUT REPORT
+=======================================================================
+Date: 2026-07-24
+Branch: version_23 (worktree)
+Issues: #138 CLOSED, #146 (Step 1b filing) CLOSED, #40 OPEN with the
+code-half comment (Brief 5 closes it).
+
+PRE-FLIGHT
+----------
+DOCKER_HOST set and reachable; tree clean on version_23 synced at
+0f1b525; no prior pending deploy-time actions outstanding (B2's purge
+confirmed executed 87/87/0 then 0/0/0; B1 and B3 left none);
+SHYLAND_VERSION reads "23.0-DEV" (untouched); Architecture v23 doc
+present (updated in place). Pre-start workflow review performed;
+findings operator-ruled before start (deviations 1-2 below).
+
+STEP 1 / 1b
+-----------
+2026-07-24 amendments posted to #40 and #138 (tracker never lags the
+chat). Step 1b filed **#146** "Remove dead ItemInstance.is_artifact
+field — a trap for hand-authored artifacts": HARD GATE verified —
+milestone Version 23, labels bug + B4 + triaged, assignee
+KnightOfNight. (Deviation 3: the brief's `--assignee KnightOfNight/@me`
+is not valid gh syntax; the standing `--assignee "@me"` was used.)
+
+WHAT SHIPPED — implementation commit 8ab074c
+--------------------------------------------
+- npc_voice.py: pick() + the full pool inventory (sell refusals /
+  acknowledgments / worthless acceptance, buy, sold-out, per-NPC pity
+  repair for all seven repairers, paid repair outcomes ×6, kibitz,
+  AGGRO_ENGAGE). Kibitz-style plain random selection; no per-player
+  state. SELL_REFUSAL_FALLBACK defined, deliberately unwired.
+- #138: get_sale_price zero floor; cmd_sell single+bulk reworked
+  (worthless sells for 0 — the bound-kit trap opens; artifacts refused
+  on rarity, generically; skipped-counter branch deleted; bulk
+  partitions paying/worthless/refused with fixed report order).
+  **THE TRAILING FORM SHIPPED** — the ruling's sanctioned fallback was
+  not needed; _aggregate_by_name took the partition cleanly.
+- #40 code half: buy pools (the vendor's first words), SOLD_OUT,
+  all six repair outcome sites, pity pools, kibitz moved+grown,
+  AGGRO_ENGAGE at all three sites in lockstep.
+- #146: is_artifact removed (model + admin Flags fieldset).
+
+MIGRATION INVENTORY — exactly one, as authorized
+------------------------------------------------
+0037_remove_iteminstance_is_artifact.py — operations:
+  [RemoveField(model_name='iteminstance', name='is_artifact')]
+Docstring cites #146. makemigrations --check: "No changes detected."
+manage.py check: no issues (no dangling-admin failure).
+
+TESTS
+-----
+tests/test_npc_voice.py — 12 tests covering all twelve required areas
+(zero floor incl. the 1-copper non-over-correction, worthless sell,
+bound-worthless trap, artifact refusal single/bulk-partial/bulk-total,
+mixed-bulk trailing order, no-leak invariant, pity coverage, aggro
+lockstep, substitution completeness, field-gone guard).
+Suite: 321 at B3 close -> **333/333 OK** in-container, zero failures,
+zero errors (+12).
+
+BUG FOUND AND FIXED IN SCOPE (cmd_sell bulk — latent since v22 A5)
+-------------------------------------------------------------------
+The bulk price map was keyed `prices[item.pk]` AFTER do_sell — but
+do_sell deletes the row and Django nulls the in-memory pk, so every
+sale wrote prices[None] and every read returned the LAST-sold price.
+Numerically invisible pre-#138 (the skipped-counter kept batches
+uniform-value; totals came out len(group) × last-price = correct for
+uniform groups) but wrong for mixed-value groups and catastrophic with
+0-value items in the batch (the whole batch partitioned worthless —
+caught by this brief's own test 7). Fixed by keying on id(item). In
+scope: cmd_sell's bulk path is this brief's §3.3. No thin issue filed
+— the defective code no longer exists.
+
+VERIFICATION (§5) — grep results verbatim
+------------------------------------------
+5.2  grep -rn "That's not worth anything to me" apps/shyland/
+     -> no output (exit 1)
+5.3  grep -rn "worthless item" apps/shyland/consumers.py
+     -> no output (exit 1)
+5.4  grep -rn "snarls and moves to attack" apps/shyland/
+     -> apps/shyland/npc_voice.py:233:    '{name} snarls and moves to attack!',
+     (exactly one hit, in npc_voice.py)
+5.5  grep -rn "PITY_REPAIR_LINES\|KIBITZ_LINES" apps/shyland/consumers.py
+     -> apps/shyland/consumers.py:67:    pool = npc_voice.PITY_REPAIR_LINES.get(repairer.definition.slug)
+     -> apps/shyland/consumers.py:2975:            npc_voice.KIBITZ_LINES, other=npc_display(other, capitalize=True))
+     (only npc_voice.-qualified references)
+5.6  0037 present with exactly one RemoveField; --check clean.
+5.7  manage.py check: "System check identified no issues (0 silenced)."
+5.8  grep -rn "is_artifact" apps/shyland/ --include=*.py | grep -v migrations/
+     -> no output (exit 1)
+
+PENDING DEPLOY-TIME ACTIONS: none
+----------------------------------
+The one migration (0037) is a plain column drop applied by make
+migrate in the §8 deploy below; no data command, nothing deferred.
+
+DEPLOY (§8) — AUTHORIZED AND EXECUTED IN-SESSION
+-------------------------------------------------
+`make build && make migrate` — exactly the ruled invocation (not make
+prod, not make deploy). All five containers recreated (all three games
+bounced); migrate applied 0037 OK. Post-deploy: 23.0-DEV, npc_voice
+pools importable in the deployed image, is_artifact absent from the
+deployed model, tick engine running, /shyland/ HTTP 200.
+
+DEVIATIONS / DISCREPANCIES
+--------------------------
+1. Operator-ruled hygiene (pre-start findings): tests/test_combat_state
+   .py's exact-string engagement assertion -> AGGRO_ENGAGE pool
+   membership; combat_utils npc_display docstring example reworded off
+   the literal. Both required for gates §5.4 / test 10.
+2. Same hygiene class, discovered at §5.1 (five more pre-existing
+   tests pinned strings that are now pool draws — they passed only
+   when random luck picked the legacy-identical line):
+   test_b2_amendment5 buy-aggregate/buy-single/sell-aggregate ->
+   BUY_BULK/BUY_SINGLE/SELL_BULK membership (original intents — count
+   form, total price, no article — preserved as explicit assertions);
+   test_command_revamp five-pass-cap -> REPAIR_FAIL_BULK
+   template-regex count; sell-shortfall -> SELL_BULK membership (the
+   verbatim shortfall line assertion untouched).
+3. Step 1b's `--assignee KnightOfNight/@me` replaced with the valid
+   standing `--assignee "@me"` (resolves to KnightOfNight; gate
+   verified).
+4. The tick-engine aggro site composes its name via
+   npc_display(introduction=True) (#79 first-presentation), not
+   npc_display_name as the brief's prose loosely said — each site kept
+   its ruled composer; only the sentence was pooled.
+5. Two comment-only rewordings so §5.3's literal grep passes (my new
+   §3.3 comment and a pre-existing v19 repair comment: "worthless" ->
+   "zero-value"); test_npc_voice's own docstring/method name avoid the
+   §5.8 literal via the same hygiene.
+6. Step 1/1b produced no repo change to commit (GitHub-side only), per
+   the brief's own note.
+7. No whitespace drift on the Step 0 self-commit.
+
+COMMITS (branch version_23)
+---------------------------
+3eb2028  Step 0: brief self-commit
+8ab074c  §3-§5: implementation + tests (FINAL IMPLEMENTATION COMMIT)
+b996f26  §7: architecture doc (in place, header hash -> 8ab074c)
+
+This closeout's own commit (followed by the §11 issues-report commit)
+is the branch tip.
+
+OPERATOR PLAYTEST — OPEN (post-deploy, human-only)
+---------------------------------------------------
+Per the brief's 11-item checklist: the bound-kit sell trap, mixed
+bulk order, snark variety, the seven repairer voices, paid-repair
+variety, vendor buy speech, kibitz, aggro-line variety across all
+three paths, the caption that must NOT vary, the unchanged boss death
+message, and the Flags-free admin form.
