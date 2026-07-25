@@ -7,6 +7,8 @@ definition (a transaction is one act); use/repair/loot stay per-line
 from asgiref.sync import sync_to_async
 from django.test import TransactionTestCase
 
+from apps.shyland import npc_voice
+from apps.shyland.combat_utils import npc_display
 from apps.shyland.models import Character, ItemInstance
 from apps.shyland.tests.test_command_revamp import (
     make_character, make_item_def, make_owned_item, make_stub_consumer,
@@ -30,18 +32,24 @@ class AggregateSentenceTests(TransactionTestCase):
             char = make_character('agA', room)
             Character.objects.filter(pk=char.pk).update(copper=10_000)
             draught = make_item_def('agA', 'Healing Draught', 'consumable')
-            make_vendor('agA', room, [(draught, 9)])
-            return char
-        char = await sync_to_async(setup)()
+            vendor = make_vendor('agA', room, [(draught, 9)])
+            return char, vendor
+        char, vendor = await sync_to_async(setup)()
 
         sent = []
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_buy('3 healing draught')
         texts = [m['text'] for m in outputs(sent)]
-        buys = [t for t in texts if t.startswith('You buy')]
+        # v23 B4 (#40): the buy acknowledgment draws from BUY_BULK —
+        # assert membership of the substituted pool. The intents pinned
+        # here survive: count form, total price (not the 9-copper unit)
+        # through the tier formatter, name verbatim with no article.
+        expected = {npc_voice.pick(
+            [line], vendor=npc_display(vendor, capitalize=True),
+            name='Healing Draught Mk 1', qty=3, amount='2 silvers, 7 coppers')
+            for line in npc_voice.BUY_BULK}
+        buys = [t for t in texts if t in expected]
         self.assertEqual(len(buys), 1)
-        self.assertTrue(buys[0].startswith('You buy Healing Draught Mk 1 ×3 for'))
-        # Total, not the 9-copper unit, through the tier formatter.
         self.assertIn('2 silvers, 7 coppers', buys[0])
         self.assertNotIn('the Healing', buys[0])
 
@@ -52,16 +60,21 @@ class AggregateSentenceTests(TransactionTestCase):
             char = make_character('agB', room)
             Character.objects.filter(pk=char.pk).update(copper=100)
             mace = make_item_def('agB', 'Iron Mace', 'weapon', base_value=9)
-            make_vendor('agB', room, [(mace, 9)])
-            return char
-        char = await sync_to_async(setup)()
+            vendor = make_vendor('agB', room, [(mace, 9)])
+            return char, vendor
+        char, vendor = await sync_to_async(setup)()
 
         sent = []
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_buy('iron mace')
         texts = [m['text'] for m in outputs(sent)]
-        self.assertTrue(any(
-            t.startswith('You buy the Iron Mace Mk 1 for') for t in texts))
+        # v23 B4 (#40): singular buys draw from BUY_SINGLE (article via
+        # item_ref, exactly as before the pooling).
+        expected = {npc_voice.pick(
+            [line], vendor=npc_display(vendor, capitalize=True),
+            name='the Iron Mace Mk 1', amount='9 coppers')
+            for line in npc_voice.BUY_SINGLE}
+        self.assertTrue(any(t in expected for t in texts))
 
     async def test_sell_aggregate_total(self):
         zone, room = await sync_to_async(make_world)('agC')
@@ -71,17 +84,22 @@ class AggregateSentenceTests(TransactionTestCase):
             hide = make_item_def('agC', 'Animal Hide', base_value=4)
             for _ in range(3):
                 make_owned_item(hide, char)
-            make_vendor('agC', room, [(hide, 10)])
-            return char
-        char = await sync_to_async(setup)()
+            vendor = make_vendor('agC', room, [(hide, 10)])
+            return char, vendor
+        char, vendor = await sync_to_async(setup)()
 
         sent = []
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_sell('3 hide')
         texts = [m['text'] for m in outputs(sent)]
-        sells = [t for t in texts if t.startswith('You sell')]
+        # v23 B4 (#40): the sale aggregate draws from SELL_BULK — count
+        # form with the group total (3 × 1 copper), name verbatim.
+        expected = {npc_voice.pick(
+            [line], vendor=npc_display(vendor, capitalize=True),
+            name='Animal Hide Mk 1', qty=3, amount='3 coppers')
+            for line in npc_voice.SELL_BULK}
+        sells = [t for t in texts if t in expected]
         self.assertEqual(len(sells), 1)
-        self.assertTrue(sells[0].startswith('You sell Animal Hide Mk 1 ×3 for'))
 
     async def test_drop_aggregate_names_captured_before_reveil(self):
         zone, room = await sync_to_async(make_world)('agD')

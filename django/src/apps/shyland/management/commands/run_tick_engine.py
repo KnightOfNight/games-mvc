@@ -5,6 +5,7 @@ import random
 from channels.db import database_sync_to_async
 from django.core.management.base import BaseCommand
 
+from apps.shyland import npc_voice
 from apps.shyland.envelope import envelope_ts
 
 logger = logging.getLogger('shyland.tick')
@@ -949,8 +950,12 @@ class Command(BaseCommand):
             for npc in new_npcs:
                 await self.broadcast_to_room(
                     room_id,
-                    f"{npc_display(npc, capitalize=True, introduction=True)} "
-                    "snarls and moves to attack!",
+                    # v23 B4 (#40): pooled engagement line; the name keeps
+                    # its #79 first-presentation (indefinite) composition.
+                    npc_voice.pick(
+                        npc_voice.AGGRO_ENGAGE,
+                        name=npc_display(npc, capitalize=True, introduction=True),
+                    ),
                     'combat',
                     exclude_pks=dying_pks or None,
                 )

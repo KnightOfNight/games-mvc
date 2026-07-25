@@ -244,8 +244,12 @@ class RespawnAggroTests(TransactionTestCase):
         self.assertEqual(len(combat_lines), 1)
         # No respawn message precedes, so the engagement line introduces
         # (indefinite article — the #79 first-presentation context).
-        self.assertEqual(combat_lines[0][1],
-                         'A cave spider snarls and moves to attack!')
+        # v23 B4 (#40): the line draws from the AGGRO_ENGAGE pool; assert
+        # membership of the substituted pool, not one exact string.
+        from apps.shyland import npc_voice
+        expected = {npc_voice.pick([line], name='A cave spider')
+                    for line in npc_voice.AGGRO_ENGAGE}
+        self.assertIn(combat_lines[0][1], expected)
 
         self.assertEqual(len(cmd.player_sends), 1)
         pk, status, fight = cmd.player_sends[0]

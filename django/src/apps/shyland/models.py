@@ -547,8 +547,6 @@ class ItemInstance(models.Model):
         related_name='cursed_item',
     )
 
-    is_artifact = models.BooleanField(default=False)
-
     is_identified = models.BooleanField(
         default=True,
         help_text=(

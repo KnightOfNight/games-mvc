@@ -58,8 +58,20 @@ def get_item_value(item):
 
 
 def get_sale_price(item):
-    """What a vendor pays: one third of value, minimum 1 copper."""
-    return max(1, get_item_value(item) // 3)
+    """What a vendor pays: one third of value, minimum 1 copper — except a
+    worthless item, which pays nothing at all.
+
+    v23 B4 (#138): vendors now accept zero-value items instead of refusing
+    them, which reopens the disposal path for bound starter-kit junk. The
+    zero floor is what keeps that from becoming a copper faucet — the free
+    kit on Morra's shelf would otherwise sell back at 1 copper a piece,
+    forever. The exploit-proofing that the old refusal provided now lives
+    here, in arithmetic.
+    """
+    value = get_item_value(item)
+    if value == 0:
+        return 0
+    return max(1, value // 3)
 
 
 def get_repair_cost(item):

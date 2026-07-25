@@ -18,6 +18,7 @@ from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.utils import timezone
 
+from apps.shyland.combat_utils import npc_display
 from apps.shyland.command_grammar import complete as grammar_complete, resolve
 from apps.shyland.consumers import SkylandConsumer
 from apps.shyland.forms import CharacterCreationForm
@@ -421,9 +422,9 @@ class SellDropPickupTests(TransactionTestCase):
             hide = make_item_def('sd', 'Animal Hide', base_value=4)
             for _ in range(3):
                 make_owned_item(hide, char)
-            make_vendor('sd', room, [(hide, 10)])
-            return char
-        char = await sync_to_async(setup)()
+            vendor = make_vendor('sd', room, [(hide, 10)])
+            return char, vendor
+        char, vendor = await sync_to_async(setup)()
 
         sent = []
         consumer = make_stub_consumer(char, sent)
@@ -431,8 +432,14 @@ class SellDropPickupTests(TransactionTestCase):
         texts = [m['text'] for m in outputs(sent)]
         # v22 B2 amendment 5: the sale aggregates to one count-form line
         # with the actual count, after the warm shortfall line.
+        # v23 B4 (#40): the aggregate draws from SELL_BULK — membership.
+        from apps.shyland import npc_voice
         self.assertIn('You only had 3 — the vendor was happy to take them.', texts)
-        aggregate = [t for t in texts if t.startswith('You sell Animal Hide Mk 1 ×3')]
+        expected = {npc_voice.pick(
+            [line], vendor=npc_display(vendor, capitalize=True),
+            name='Animal Hide Mk 1', qty=3, amount='3 coppers')
+            for line in npc_voice.SELL_BULK}
+        aggregate = [t for t in texts if t in expected]
         self.assertEqual(len(aggregate), 1)
 
     async def test_drop_bound_refused_warn_and_excluded_from_pool(self):
@@ -887,7 +894,18 @@ class RepairAllCapTests(TransactionTestCase):
                         return_value=0.0):
             await consumer.cmd_repair('all')
         texts = [m['text'] for m in outputs(sent)]
-        failed_lines = [t for t in texts if "didn't take" in t]
+        # v23 B4 (#40): failure lines draw from REPAIR_FAIL_BULK — match
+        # any pool template with the known name and a wildcard cost.
+        import re
+        from apps.shyland import npc_voice
+        patterns = [
+            re.compile('^' + re.escape(line)
+                       .replace(re.escape('{name}'), re.escape('Iron Helm Mk 1'))
+                       .replace(re.escape('{cost}'), '.+?') + '$')
+            for line in npc_voice.REPAIR_FAIL_BULK
+        ]
+        failed_lines = [t for t in texts
+                        if any(p.match(t) for p in patterns)]
         self.assertEqual(len(failed_lines), 5)
         self.assertIn('Repaired 0 items, 5 attempts failed', texts[-1])
 

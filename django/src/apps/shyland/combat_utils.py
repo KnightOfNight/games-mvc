@@ -55,8 +55,8 @@ def npc_display(npc, capitalize=False, introduction=False):
     context — room occupant lines and aggro-engagement lines, exactly
     those two families. It uses indefinite_article ("A black bear is
     here."); a blank indefinite_article (proper nouns, bosses, unique
-    landmarks) falls back to the definite/bare composition, so "The
-    Silk Matron snarls and moves to attack!" is unchanged."""
+    landmarks) falls back to the definite/bare composition, so a boss's
+    AGGRO_ENGAGE line still opens "The Silk Matron ..." unchanged."""
     definition = getattr(npc, 'definition', npc)
     if definition.plural_phrase:
         text = definition.plural_phrase
