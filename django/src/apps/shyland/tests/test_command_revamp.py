@@ -777,8 +777,11 @@ class SayTests(TransactionTestCase):
                 character=char, room=room, position=0, is_final=False,
                 fire_at=timezone.now(),
             )
+            # v23 brief 5 (#147): mirror the engine's due-rows query —
+            # deliver_dialogue_response reads row.entry.entry_type, which
+            # relies on the same select_related the production loader uses.
             return PendingDialogueResponse.objects.select_related(
-                'npc_instance__definition').get(pk=row.pk)
+                'npc_instance__definition', 'entry').get(pk=row.pk)
         row = await sync_to_async(setup)()
 
         from apps.shyland.management.commands.run_tick_engine import Command

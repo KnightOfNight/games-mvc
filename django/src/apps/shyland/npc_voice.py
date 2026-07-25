@@ -217,6 +217,21 @@ REPAIR_POOR_SINGLE = [
 ]
 
 
+# v23 brief 5 (#147): the render rule. Keyword responses are SPEECH — they
+# take the 'Name: ' attribution and the say color, matching player speech.
+# Greeting and departure entries are NARRATION — authored in the third person,
+# they broadcast verbatim at category 'room', unprefixed and unconnectived.
+# Mirrors DialogueEntry.ENTRY_KEYWORD; the lockstep is guarded by test.
+SPEECH_ENTRY_TYPES = ('keyword',)
+
+
+def dialogue_line(entry_type, npc_name, text):
+    """Compose one delivered dialogue line. Returns (text, category)."""
+    if entry_type in SPEECH_ENTRY_TYPES:
+        return (f'{npc_name}: {text}', 'say')
+    return (text, 'room')
+
+
 # --- Kibitz (#40). Machinery already existed; the pool grows. ---
 KIBITZ_LINES = [
     '{other} watches the exchange and nods approvingly.',

@@ -1440,18 +1440,26 @@ class Command(BaseCommand):
         from apps.shyland.combat_utils import npc_display
         npc_name = npc_display(row.npc_instance.definition, capitalize=True)
 
-        if row.position == 1:
-            connective = await self.draw_connective('second')
-            if connective:
-                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
-        elif row.position >= 2:
-            connective = await self.draw_connective('later')
-            if connective:
-                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+        # v23 brief 5 (#147): connectives belong to the say-response path
+        # only — a narration greeting must not announce an answer to a
+        # question nobody asked.
+        if row.entry.entry_type in npc_voice.SPEECH_ENTRY_TYPES:
+            if row.position == 1:
+                connective = await self.draw_connective('second')
+                if connective:
+                    await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+            elif row.position >= 2:
+                connective = await self.draw_connective('later')
+                if connective:
+                    await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
 
-        # v22 brief 2 (DD §13): NPC speech matches player speech — bare
-        # 'Name: message' in say-color, no '[say] ' prefix.
-        await self.broadcast_to_room(row.room_id, f'{npc_name}: {response_text}', category='say')
+        # v22 brief 2 (DD §13) + v23 brief 5 (#147): speech is prefixed and
+        # say-colored ('Name: message'); greeting/departed narration goes
+        # out verbatim at category 'room'. One composer decides.
+        line, category = npc_voice.dialogue_line(
+            row.entry.entry_type, npc_name, response_text,
+        )
+        await self.broadcast_to_room(row.room_id, line, category=category)
 
         if row.is_final:
             asker_room_id = await self.get_character_current_room_id(row.character_id)
@@ -1460,7 +1468,11 @@ class Command(BaseCommand):
                     row.npc_instance_id, row.npc_instance.definition_id,
                 )
                 if departure_line:
-                    await self.broadcast_to_room(row.room_id, departure_line, category='room')
+                    from apps.shyland.models import DialogueEntry
+                    dep_line, dep_category = npc_voice.dialogue_line(
+                        DialogueEntry.ENTRY_DEPARTED, npc_name, departure_line,
+                    )
+                    await self.broadcast_to_room(row.room_id, dep_line, category=dep_category)
 
         await self.delete_pending_dialogue_response(row.pk)
 
