@@ -457,7 +457,8 @@ class Command(BaseCommand):
                         # the client palette colors these; the server never
                         # sends colors.
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"You miss {display}.", 'combat-miss', None))
+                            # v23 B5 amendment 1 (#152): your whiff is a warning, not chrome.
+                            messages.append((character.pk, f"You miss {display}.", 'combat-miss-out', None))
                             continue
 
                         if weapon_item:
@@ -620,7 +621,8 @@ class Command(BaseCommand):
                         attacker_ref = npc_display_name(npc, live_npcs, capitalize=True)
 
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss', None))
+                            # v23 B5 amendment 1 (#152): their whiff is good news.
+                            messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss-in', None))
                             continue
 
                         base_damage = _random.uniform(

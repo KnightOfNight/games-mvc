@@ -1660,7 +1660,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if amount > 0:
             zone_slug = room.zone.slug if room.zone_id else None
             copper_str = display_for_zone(amount, zone_slug)
-            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "success")
+            # v23 B5 amendment 1 (#152): parity with the item-loot lines, which have
+            # been reward/loot-color since v22 B2 amendment 1 (#124).
+            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "reward")
         return amount
 
     @staticmethod

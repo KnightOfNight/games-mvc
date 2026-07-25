@@ -148,13 +148,25 @@
   .msg-combat-crit-out { color: var(--crit-out-color); font-weight: bold; } /* your crit */
   .msg-combat-hit-in   { color: var(--hit-in-color); }   /* it hits you */
   .msg-combat-crit-in  { color: var(--crit-in-color); font-weight: bold; } /* its crit on you (DD §2) */
-  .msg-combat-miss     { color: var(--muted); }  /* miss, either direction */
+  /* v23 B5 amendment 1 (#152): misses split by direction — your whiff is
+     a warning, their whiff is good news. The legacy rule is retained with
+     zero senders; the client's combat family is prefix-matched
+     (indexOf('combat') === 0), so both new categories inherit assertive
+     announcement and stamping with no client-JS change. */
+  .msg-combat-miss     { color: var(--muted); }  /* legacy — zero senders */
+  .msg-combat-miss-out { color: var(--warn-color); }    /* your miss */
+  .msg-combat-miss-in  { color: var(--success-color); } /* their miss on you */
   .msg-reward  { color: var(--loot-color); }     /* gains: kill / XP / level / pickups / heal-to-full */
   .msg-success { color: var(--value-color); }    /* transactional success prose (DD §6) */
   .msg-error   { color: var(--error); }          /* CLI errors (three-layer doctrine, #121) */
   .msg-warn    { color: var(--warn-color); }     /* the world declined (DD §3) */
-  .msg-system  { color: var(--muted); }          /* system / ambient */
-  .msg-room    { color: var(--muted); }          /* ambient room events */
+  /* v23 B5 amendment 1 (#152): ambient and narration read as content, not
+     chrome. #147 put dialogue narration (greetings, departures,
+     connectives) on category room, where muted made it nearly invisible
+     mid-exchange. --muted keeps its other users: echo, seg-muted, map
+     unknowns, placeholders, the legacy miss rule. */
+  .msg-system  { color: var(--value-color); }    /* system / ambient */
+  .msg-room    { color: var(--value-color); }    /* ambient room events, narration */
   .msg-echo    { color: var(--muted); }          /* '> command' transcript (#15) */
   .msg-section         { color: #E8E4D8; margin-top: 1.55em; }
   .msg-section strong  { color: var(--key-color); font-weight: bold; }
