@@ -1,0 +1,164 @@
+SHYLAND V23 BRIEF 5 — VOICE CONTENT & COVERAGE — CLOSEOUT REPORT
+=================================================================
+Date: 2026-07-25
+Branch: version_23 (worktree)
+Issues: #40 CLOSED (data half — bucket B4 complete), #144 CLOSED,
+#147 (the Step 1 filing) CLOSED.
+
+PRE-FLIGHT
+----------
+DOCKER_HOST set, target reachable. Tree clean on version_23, synced at
+8cf1752. SHYLAND_VERSION reads "23.0-DEV" (untouched). Pending
+deploy-time actions from prior briefs: NONE outstanding (B2's purge
+confirmed executed 87/87/0 then 0/0/0; B1/B3/B4 left none). Baseline
+suite: 333/333 OK. makemigrations --check clean. Pre-start review
+performed; three findings operator-ruled before start (deviations 1-3).
+
+STEP 1 FILING (HARD GATE — PASSED)
+-----------------------------------
+#147 "First-contact greetings render as speech — the NPC's name is
+printed twice": milestone Version 23, labels bug + B4 + triaged,
+assignee KnightOfNight. Verified via gh issue view before any code
+change. #GREET = #147 everywhere; no placeholders survive.
+
+WHAT SHIPPED — final implementation commit d20b88c
+---------------------------------------------------
+NO MIGRATION. No model changes. (Stated explicitly per the brief.)
+
+§2 The seed lift: DIALOGUE_CONNECTIVES and the new NPC_DIALOGUE map
+    (slug -> entry specs, four-key shape) are module-level constants in
+    seed_world.py; _seed_dialogue is a loop; _seed_dialogue_connectives
+    reads the module name; the _seed_dialogue() call MOVED to the end
+    of handle() (after _seed_ridge_vendors, last before the sweep) —
+    the fresh-database DoesNotExist trap, with the call-site comment.
+§3 The render rule (#147): npc_voice.SPEECH_ENTRY_TYPES = ('keyword',)
+    + dialogue_line(entry_type, npc_name, text) -> (text, category).
+    deliver_dialogue_response gates connectives on speech entries and
+    composes every broadcast (speech, greeting, departure) through the
+    one helper; departure output byte-identical to before.
+§4 The content: six new voices (#144 — maro/tavik/old-brammel,
+    essa/sona/ridda: 3 keywords + greeting + 3-response departure
+    each); roster top-ups landing every keyword/departed entry exactly
+    on the 3-response pool floor; NEW departed entries for Seris,
+    Veris, VND-9, Mother Tansy; the two speech-form greetings
+    re-authored as narration; connectives 3+3 -> 6 per class.
+    Corpus: 16 voices, 73 authored entries.
+§5 Seed invariants: _verify_dialogue with the seven ruled checks
+    (roster closure, silent-by-ruling, pool floor, greeting shape,
+    voice completeness, connective pools, #144 coverage), wired into
+    _verify after the Verdant checks.
+
+TESTS
+-----
+New file tests/test_npc_dialogue_data.py — 14 tests, SimpleTestCase
+(no DB): pool floor, greeting/departure/keyword shapes, note
+uniqueness, keyword-token legality via the real _tokenize_said_words,
+duplicate detection (cross-corpus report-only), #144 coverage, silent
+roster, connectives, the render rule, the SPEECH_ENTRY_TYPES lockstep,
+the connective-gating source guard, and the seed-call-ordering guard.
+Suite: 333 at pre-flight -> **347/347 OK** in-container.
+
+GEOGRAPHY AUDIT (§4.4) — 13/13 CONFIRMED
+-----------------------------------------
+All twelve coordinate claims verified against the seeded room graph
+exactly as tabled (vr-v01 (0,0) … vr-ll1 (1,52); delve mouths m13/m25/
+m40 east-side). Safe-room claim confirmed via the seed's own standing
+_check: {vr-v07, vr-f01, vr-c01, vr-vc1} are the only safe Verdant
+rooms. Mother Tansy's green-gate line is deliberately direction-free.
+
+VERIFICATION (§7)
+-----------------
+7.1 makemigrations --check: "No changes detected".
+7.2 grep SPEECH_ENTRY_TYPES|dialogue_line (non-test): npc_voice.py
+    :225/:228/:230 (definition) + run_tick_engine.py :1446/:1459/:1472
+    (use). No other hits.
+7.3 grep "npc_name}: " run_tick_engine.py: no output (exit 1) — the
+    inline speech composition is gone.
+7.4 grep -c "'responses'" seed_world.py: **74** — 73 authored entry
+    specs + exactly one code reference (spec['responses'] in
+    _seed_npc_dialogue). The authored-entry count is 73, verified by
+    summing NPC_DIALOGUE.
+7.5 EXECUTED AS THE §10 make seed (post-deploy, operator-ruled
+    ordering — deviation 2). Reconciliation: DialogueEntry created 34
+    (the four new departed entries + the six new NPCs' 30);
+    DialogueResponse created 123, DELETED EXACTLY 2 — the two replaced
+    speech-form greetings (VND-9, Mother Tansy), the ruled REPLACE
+    meeting the enforce-exact sweep, corrected from the brief's
+    zero-deletion expectation at pre-start review (deviation 1);
+    DialogueConnective created 6. End-state verified at the DB: 73
+    entries / 187 responses / 12 connectives; the two old greeting
+    texts absent, both narration replacements present. Every
+    _verify_dialogue check PASSED. (Process note: the first run's full
+    stdout went through a filter and was not retained verbatim; the
+    end-state figures above are DB-verified and the second run's clean
+    report confirms consistency.)
+7.6 Second make seed: "No differences — database matches coded
+    configuration exactly." All verification checks passed.
+7.7 Full suite: 347/347 OK (baseline 333 + 14 new).
+7.8 Fresh-database proof EXECUTED (no fallback needed): scratch
+    database b5_scratch created on the production postgres, migrated
+    from zero, and seeded end-to-end with the new ordering — completed
+    with NO NpcDefinition.DoesNotExist and "All verification checks
+    passed" (the apply-from-scratch migrate output confirms the env
+    override targeted the scratch DB, not production). Scratch DB
+    dropped after. Test 14 remains the standing regression guard.
+
+DEPLOY (§10) — AUTHORIZED AND EXECUTED IN-SESSION
+--------------------------------------------------
+make build && make migrate (exactly; migrate "No migrations to
+apply."), all three games bounced once; then make seed twice (§7.5/
+7.6 above). Post-deploy sanity: SHYLAND_VERSION 23.0-DEV, tick engine
+running, /shyland/ HTTP 200.
+
+PENDING DEPLOY-TIME ACTIONS: NONE — make seed ran and verified in
+session; nothing deferred.
+
+ARCHITECTURE DOC (§8)
+---------------------
+Updated IN PLACE; header hash -> d20b88c; version line records Brief 5
+applied fifth. §1 continuation sentence; §4.8 corpus block (map shape,
+end-of-handle ordering, seven invariants, corpus shape); §4.9 delivery
+steps 3-5 rewritten for the connective gate and the render rule (also
+retiring stale v19-era '[say]/chat' text superseded in v22); §4.17
+gains the render rule as npc_voice's second standing decision.
+
+DEVIATIONS / DISCREPANCIES
+--------------------------
+1. (Operator-ruled at pre-start review) §7.5/§10's "zero deletions"
+   expectation corrected: DialogueResponse is in SEED_OWNED_MODELS, so
+   the brief's own two greeting REPLACEs necessarily produce exactly 2
+   deletions. Exactly 2 occurred; nothing else was deleted.
+2. (Operator-ruled) §7.5/7.6 executed as the §10 make seed AFTER the
+   code deploy — seeding narration greetings under the old render code
+   would have served the exact #147 bug live. Code first, data second.
+3. (Operator-ruled attempt succeeded) §7.8 used a scratch database on
+   the production postgres; make reset was never a candidate under the
+   production DOCKER_HOST.
+4. Test hygiene (Brief 4 pattern, §6's own provision): SayTests'
+   PendingDialogueResponse load gained select_related('entry') to
+   mirror the engine's due-rows query — deliver_dialogue_response now
+   reads row.entry.entry_type under the tick-loop async-safety rule
+   (the production loader already carried it; the brief's no-new-query
+   claim verified true).
+5. §7.4's grep metric includes one code reference; the authored count
+   is 73 (recorded above; no content missing — per-slug DB diff clean).
+6. No whitespace drift on the Step 0 self-commit.
+
+COMMITS (branch version_23)
+---------------------------
+15bfcea  Step 0: brief self-commit
+d20b88c  §2-§6: implementation + content + tests
+         (FINAL IMPLEMENTATION COMMIT)
+ffefc7c  §8: architecture doc (in place, header hash -> d20b88c)
+
+This closeout's own commit (followed by the issues-report commit) is
+the branch tip.
+
+OPERATOR PLAYTEST — OPEN (post-deploy, human-only)
+---------------------------------------------------
+Per the brief's 10-item checklist: the six speak (narration greetings,
+no doubled names, no connectives), say-keyword answers at every
+checkpoint in each NPC's voice, variety, departure reactions
+(including the four new ones), Convergence top-up spot-checks,
+greetings fire once ever, renderings stable, and the shard/spheres/
+obelisks stay silent.
