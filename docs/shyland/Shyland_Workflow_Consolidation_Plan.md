@@ -42,7 +42,7 @@ The firewall that matters — *implementation never invents design* — survives
 
 Consequences worth naming:
 
-- **Main's GDD always describes the shipped game.** Unshipped design exists only on the version branch, so nobody reading main can be misled by not-yet-built rulings. (The "(vNN, pending implementation)" tag from plan v1 survives only as an *intra-branch* courtesy marker between buckets — main never needs it.)
+- **Main's GDD always describes the released game — main is the state of record, not necessarily what's running.** Unshipped design exists only on the version branch, so nobody reading main can be misled by not-yet-built rulings. (The "(vNN, pending implementation)" tag from plan v1 survives only as an *intra-branch* courtesy marker between buckets — main never needs it.) Deployment is a separate axis: today production runs branch builds mid-version for playtests; under the future deployment restructure (its own gated plan), production will track main and the dev server will run anything — main, a branch, or a crash loop mid-fix. That change is deliberately NOT bundled here: one major workflow change at a time.
 - **Issues reports fork by session type:** design sessions commit theirs to the version branch; ops sessions commit theirs to main. Timestamped filenames mean the streams never collide at merge.
 - **Issue state is not git.** Rulings, labels, and filings from a design session hit GitHub live regardless of branch — the branch carries the *documents*, the tracker carries the *state*. This is the same split v23 ran.
 - Design-session worktrees never need `.env`/`ssl/` (they never build or deploy) — that copy step stays implementation-only.
