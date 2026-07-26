@@ -5,15 +5,13 @@
 
 -include .env
 
-# When DOCKER_HOST is set (remote EC2 daemon), bind-mount the postgres data
-# directory to the pre-mounted EBS volume instead of using a named volume.
-ifdef DOCKER_HOST
-export POSTGRES_DATA_VOLUME := /mnt/postgresqldb
-endif
-
 DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
+
+# The production Docker daemon. Owned by deploy-prod, which pins it per
+# command — this value is never exported ambiently and nothing else uses it.
+PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 
 GDD_MAJOR := 23
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
@@ -34,26 +32,48 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs reset seed gdd help
+        new-app push-certs seed gdd help require-local crosscheck-env hooks \
+        deploy-dev deploy-prod
+
+# ---------------------------------------------------------------------------
+# Guards
+# ---------------------------------------------------------------------------
+
+# Prerequisite guard: add `require-local` to any target that must never run
+# against a remote daemon. Catches DOCKER_HOST from the environment and from
+# the included .env alike.
+require-local:
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is set ($(DOCKER_HOST)) — this target is local-only. Refusing to run against a remote daemon." && exit 1)
+
+# Prerequisite guard: verify .env matches the deployment target implied by
+# DOCKER_HOST before any daemon-touching operation runs. Standing rule:
+# DOCKER_HOST set — any value — means PRODUCTION, so .env must be identical
+# to .env.prod; unset means the local dev daemon, so .env must be identical
+# to .env.dev. Expand this guard before ever pointing DOCKER_HOST at a
+# non-production remote host.
+crosscheck-env:
+	@if [ -n "$(DOCKER_HOST)" ]; then \
+	    test -s .env.prod || { echo "ERROR: .env.prod missing or empty."; exit 1; }; \
+	    cmp -s .env .env.prod || { echo "ERROR: DOCKER_HOST is set — target is PRODUCTION — but .env does not match .env.prod."; exit 1; }; \
+	    echo "crosscheck-env: PRODUCTION posture OK (.env == .env.prod, DOCKER_HOST=$(DOCKER_HOST))"; \
+	else \
+	    test -s .env.dev || { echo "ERROR: .env.dev missing or empty."; exit 1; }; \
+	    cmp -s .env .env.dev || { echo "ERROR: DOCKER_HOST is unset — target is local dev — but .env does not match .env.dev."; exit 1; }; \
+	    echo "crosscheck-env: dev posture OK (.env == .env.dev)"; \
+	fi
 
 # ---------------------------------------------------------------------------
 # First-time setup
+#
+# There is no one-button bootstrap anymore, and there isn't going to be one.
+# These are real servers now, with real data, and the last thing anyone needs
+# is a make target cheerfully rebuilding production because somebody was in
+# the wrong terminal. Standing up a fleet is a deliberate, manual, eyes-open
+# procedure — wizard, certs, build, migrate, seed, superuser — typed one
+# command at a time by a human who read the output and can be blamed
+# afterward. The guards below will catch the common accidents. They will not
+# catch ambition.
 # ---------------------------------------------------------------------------
-
-dev: ENV_FILE := .env.dev
-dev:
-	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
-	@cp -v $(ENV_FILE) .env
-	$(MAKE) setup
-	@echo "deployed developer environment"
-
-prod: ENV_FILE := .env.prod
-prod:
-	@test -n "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is not set. 'make prod' requires a remote Docker host." && exit 1)
-	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
-	@cp -v $(ENV_FILE) .env
-	$(MAKE) setup
-	@echo "deployed production environment"
 
 ## setup: wizard + build + start (single command for a fresh install)
 setup: init check-secrets push-certs build start
@@ -64,12 +84,17 @@ setup: init check-secrets push-certs build start
 init:
 	python3 scripts/init.py
 
+## hooks: activate the committed git hooks (one-time per clone)
+hooks:
+	git config core.hooksPath scripts/git-hooks
+	@echo "git core.hooksPath -> scripts/git-hooks (worktrees now auto-initialize env files)"
+
 # ---------------------------------------------------------------------------
 # SSL certs
 # ---------------------------------------------------------------------------
 
 ## push-certs: upload local ssl/ certs into the Docker ssl volume (works with DOCKER_HOST)
-push-certs:
+push-certs: crosscheck-env
 	@test -n "$(TLS_CERT_NAME)" || (echo "Run 'make init' first to set TLS_CERT_NAME" && exit 1)
 	docker run -d --name ssl-tmp -v $(COMPOSE_PROJECT)_ssldata:/ssl alpine tail -f /dev/null
 	docker cp ssl/. ssl-tmp:/ssl/
@@ -81,12 +106,12 @@ push-certs:
 # ---------------------------------------------------------------------------
 
 ## build: build Docker images and recreate containers
-build: check-secrets
+build: crosscheck-env check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) build --no-cache
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --force-recreate
 
 ## start: start all containers
-start: check-secrets
+start: crosscheck-env check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d
 
 ## stop: stop all containers
@@ -97,8 +122,8 @@ stop:
 ## restart: stop + start
 restart: stop start
 
-## nuke: remove all containers, volumes, and images for this project
-nuke:
+## nuke: remove all containers, volumes, and images for this project (local daemon only)
+nuke: require-local
 	-$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
 	-docker volume rm $(COMPOSE_PROJECT)_ssldata
 	-docker rmi shyland-django $(COMPOSE_PROJECT)-nginx
@@ -112,21 +137,56 @@ tick-logs:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) logs -f ticker
 
 # ---------------------------------------------------------------------------
+# Deployment
+#
+# These two targets are the only things in this Makefile permitted to set the
+# posture (.env) — declaring the target IS the deliberate act. Everything
+# else checks and stops.
+# ---------------------------------------------------------------------------
+
+## deploy-dev: deploy current source to the local dev stack (build + migrate)
+deploy-dev: require-local
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty." && exit 1)
+	cp .env.dev .env
+	python3 scripts/check_docker_host.py
+	$(MAKE) build
+	$(MAKE) migrate
+	@echo "deploy-dev complete — local dev stack refreshed."
+
+## deploy-prod: operator-authorized production deploy — flips posture, deploys, restores
+# Pins its own DOCKER_HOST; refuses to run if one is already in the
+# environment (nothing should be ambient anymore — a set DOCKER_HOST here
+# means stale state, and stale state gets investigated, not inherited).
+# If this fails partway, .env deliberately REMAINS in prod posture: a
+# half-finished production deploy needs a human, and the guards will block
+# all dev work until the posture is restored by hand (cp .env.dev .env).
+deploy-prod:
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). deploy-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
+	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty — deploy-prod needs it to restore the resting posture." && exit 1)
+	cp .env.prod .env
+	DOCKER_HOST=$(PROD_DOCKER_HOST) python3 scripts/check_docker_host.py
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) build
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) migrate
+	cp .env.dev .env
+	@echo "deploy-prod complete — production deployed, resting posture restored (.env == .env.dev)."
+
+# ---------------------------------------------------------------------------
 # Django management
 # ---------------------------------------------------------------------------
 
 ## shell: Django shell inside the container
-shell:
+shell: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py shell
 
 ## migrate: run database migrations
-migrate:
+migrate: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py migrate
 
 ## makemigrations: make migrations (APP=<name> optional) and sync generated files to local tree
-makemigrations:
+makemigrations: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py makemigrations $(APP)
 	@for app in $$(ls $(PROJECT_DIR)/django/src/apps/); do \
@@ -137,7 +197,7 @@ makemigrations:
 	@echo "  → migrations synced to local filesystem"
 
 ## createsuperuser: create a Django admin superuser
-createsuperuser:
+createsuperuser: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py createsuperuser
 
@@ -194,16 +254,8 @@ gen-certs:
 	@echo "      Use your vendor certs for a trusted connection."
 	$(MAKE) push-certs
 
-## reset: wipe the database, rebuild, migrate, and reseed
-reset:
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
-	$(MAKE) build
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --wait
-	$(MAKE) migrate
-	$(MAKE) seed
-
 ## seed: run seed_world to populate game world data
-seed:
+seed: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py seed_world
 
@@ -236,8 +288,14 @@ help:
 	@echo "  start                  Start all containers"
 	@echo "  stop                   Stop all containers"
 	@echo "  restart                stop + start"
+	@echo "  nuke                   Remove containers, volumes, images (local daemon only)"
 	@echo "  logs                   Follow all container logs"
 	@echo "  tick-logs              Follow ticker container logs only"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  deploy-dev             Deploy current source to the local dev stack (build + migrate)"
+	@echo "  deploy-prod            Operator-authorized production deploy (flips posture,"
+	@echo "                         pre-flights, builds, migrates, restores dev posture)"
 	@echo ""
 	@echo "Django:"
 	@echo "  shell                  Django shell in the container"
@@ -245,14 +303,22 @@ help:
 	@echo "  makemigrations         Make migrations (APP=<name> optional)"
 	@echo "  createsuperuser        Create a Django admin superuser"
 	@echo "  seed                   Run seed_world to populate game world data"
-	@echo "  reset                  Wipe database, rebuild, migrate, and reseed"
 	@echo ""
 	@echo "Games:"
 	@echo "  new-app NAME=<name>    Scaffold a new game app in apps/"
 	@echo ""
 	@echo "SSL:"
 	@echo "  gen-certs              Generate self-signed test certs via OpenSSL"
+	@echo "  push-certs             Upload local ssl/ certs into the Docker ssl volume"
 	@echo "  check-secrets          Verify .env and cert files exist"
+	@echo ""
+	@echo "Guards (run automatically; check-only, never fix):"
+	@echo "  require-local          Block when DOCKER_HOST is set (nuke)"
+	@echo "  crosscheck-env         DOCKER_HOST set = production, .env must match .env.prod;"
+	@echo "                         unset = local dev, .env must match .env.dev"
+	@echo ""
+	@echo "Setup:"
+	@echo "  hooks                  Activate committed git hooks (one-time per clone)"
 	@echo ""
 	@echo "Docs:"
 	@echo "  gdd                    Rebuild the monolithic GDD from docs/shyland/gdd/"

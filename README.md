@@ -120,6 +120,7 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 |--------|-------------|
 | `make setup` | Full first-time setup: runs the wizard, checks secrets, generates the nginx config, builds Docker images, and starts all containers. The single command for a fresh install. |
 | `make init` | Runs the setup wizard only. Prompts for configuration and writes `.env`. Safe to re-run — existing values are shown as defaults. |
+| `make hooks` | Points git at the committed hooks in `scripts/git-hooks/` (one-time per clone). New worktrees then auto-initialize their gitignored `.env*` files and SSL certs from the main checkout. |
 
 ### Docker
 
@@ -131,7 +132,14 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | `make restart` | Runs `stop` then `start`. |
 | `make logs` | Follows live log output from all containers. Ctrl-C to stop. |
 | `make tick-logs` | Follows logs from the `ticker` container only. |
-| `make nuke` | Removes all containers, volumes, and images for this project. More destructive than `make stop` — wipes the database and SSL volume entirely. |
+
+### Deployment
+
+| Target | Description |
+|--------|-------------|
+| `make deploy-dev` | Deploys current source to the local dev stack: sets dev posture, pre-flights, builds, migrates. Refuses to run if `DOCKER_HOST` is set. |
+| `make deploy-prod` | Production deploy. Pins the production `DOCKER_HOST` itself (refuses if one is already in the environment), sets prod posture, pre-flights, builds, migrates, then restores dev resting posture. On partial failure `.env` deliberately remains in prod posture so the guards block everything until a human intervenes. |
+| `make nuke` | Removes all containers, volumes, and images for this project. More destructive than `make stop` — wipes the database and SSL volume entirely. Refuses to run when `DOCKER_HOST` is set: local daemon only. |
 
 ### Django
 
@@ -141,7 +149,6 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | `make migrate` | Runs `manage.py migrate` inside the running Django container. Run this after the initial start and after any model changes. |
 | `make makemigrations` | Runs `manage.py makemigrations`. Pass `APP=<name>` to limit to a specific app: `make makemigrations APP=battleship`. |
 | `make createsuperuser` | Creates a Django admin superuser interactively inside the running Django container. |
-| `make db-reset` | Drops all volumes, rebuilds, starts, runs migrations, and calls `seed_world`. A full database wipe and re-seed in one command. |
 
 ### Games
 
@@ -162,6 +169,31 @@ The Django admin is at `https://<your-domain>:40443/admin/`.
 | Target | Description |
 |--------|-------------|
 | `make help` | Prints a summary of all available targets. |
+
+---
+
+## Deployment Targets and Guards
+
+The repo keeps one env file per deployment target alongside the active `.env` (all gitignored):
+
+- `.env.prod` — the production stack (remote Docker daemon reached via `DOCKER_HOST`)
+- `.env.dev` — the local development stack (local Docker daemon, `DOCKER_HOST` unset)
+- `.env` — the active posture: a byte-for-byte copy of one of the two
+
+**The standing rule: `DOCKER_HOST` set — any value — means production.** Unset means the local dev daemon. Two check-only guard targets enforce this; they stop on a problem and never modify anything:
+
+| Guard | Rule |
+|-------|------|
+| `crosscheck-env` | If `DOCKER_HOST` is set, `.env` must match `.env.prod`; if unset, `.env` must match `.env.dev`. Runs automatically before every daemon-touching, state-changing target: `build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, `push-certs`. |
+| `require-local` | Blocks the target outright when `DOCKER_HOST` is set. Runs before `nuke`. |
+
+Switching posture is always a deliberate act. The only things that set `.env` for you are the two deploy targets — invoking `make deploy-dev` or `make deploy-prod` *is* the deliberate act, and each sets exactly the posture it names — and the worktree `post-checkout` hook (activated by `make hooks`), which initializes a new worktree with `.env.dev`, `.env.prod`, certs, and a dev-posture `.env`, since worktrees host development work by convention. Everything else checks and stops.
+
+### A note on bootstrapping
+
+There used to be targets that would stand up an entire environment while you fetched coffee. They're gone, and they're not coming back. This project runs real servers with real data now, and convenience is how databases die: one ambient environment variable, one stale `.env`, and your "quick local rebuild" becomes production archaeology.
+
+Bootstrapping a fresh fleet is a manual, deliberate procedure — wizard, certs, build, migrate, seed, superuser — executed one command at a time by a human who is reading the output and can be held responsible afterward. The guards will catch the common mistakes. They will not catch ambition.
 
 ---
 

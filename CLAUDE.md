@@ -22,11 +22,19 @@ Run the pre-flight check script and gate on its exit code:
 python3 scripts/check_docker_host.py
 ```
 
-- **Exit 0** — `DOCKER_HOST` is set and the target daemon is reachable. Proceed.
-- **Exit 1** — `DOCKER_HOST` is set but the target is unreachable. This is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a local Docker daemon. (A common cause is an unloaded SSH key — the operator may only need an `ssh-add` — but diagnosing and fixing connectivity is the operator's call, not yours.)
-- **Exit 2** — `DOCKER_HOST` is not set. Do NOT assume a local Docker installation is the intended target. Ask the operator whether to proceed against the local install or stop the brief, and wait for the answer before touching anything.
+- **Exit 0** — target identified (the script prints **PRODUCTION** or **local dev**), posture coherent, daemon reachable. Proceed — but confirm the printed target matches the session's intent: production is for ops sessions and operator-authorized deploys only; design/implementation sessions belong on local dev.
+- **Exit 1** — the target daemon is unreachable. This is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a different daemon. (For production, a common cause is an unloaded SSH key — the operator may only need an `ssh-add`; for local dev, the daemon may simply not be running. Diagnosing and fixing connectivity is the operator's call, not yours.)
+- **Exit 2** — posture incoherent: `.env` is missing or does not match the env file the target implies (`.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset). Stop and report to the operator. **Never copy or edit an env file to make the check pass** — switching posture is the operator's deliberate act.
 
 Rationale: the deployment target is production infrastructure. A brief that runs migrations, reseeds, or `docker` commands against the wrong daemon fails in the worst way — silently, against the wrong world.
+
+### The standing target rule
+
+**`DOCKER_HOST` set — any value — means production. Unset means the local dev daemon.** There is no third target; expanding this rule is an operator decision. The active `.env` must be a byte-for-byte copy of the matching target file — `.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset. The `crosscheck-env` Make guard enforces this automatically before every daemon-touching, state-changing target (`build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, `push-certs`); `require-local` blocks `nuke` outright when `DOCKER_HOST` is set. Both guards are check-only — they stop on mismatch and never copy or repair anything. Switching posture (`cp .env.prod .env` / `cp .env.dev .env`) is always a deliberate act, never something Claude does silently to make a guard pass.
+
+Worktrees are initialized automatically: the committed `post-checkout` hook (activated once per clone with `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` certs from the main checkout into a new worktree and sets its `.env` to **dev posture** — worktrees host design/implementation work, and a dev `.env` fails safe under `crosscheck-env` if an ambient `DOCKER_HOST` leaks in.
+
+The two deploy targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev` and `make deploy-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
 
 ---
 
@@ -127,6 +135,7 @@ make setup          # wizard + build + start (single command for fresh install)
 make init           # wizard only — writes .env
 make gen-certs      # self-signed TLS certs for local dev (requires make init first)
 make check-secrets  # validates .env and SSL certs (auto-runs before make start)
+make hooks          # activate committed git hooks (one-time per clone; auto-inits worktree env files)
 ```
 
 **Daily workflow:**
@@ -138,7 +147,16 @@ make logs           # follow live logs from all containers
 make build          # rebuild Django image and recreate containers
 ```
 
+**Deploy:**
+```
+make deploy-dev     # deploy current source to the local dev stack (build + migrate)
+make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips posture,
+                    # pre-flights, builds, migrates, restores dev posture
+```
+
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
+
+> **Guards:** `build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, and `push-certs` all run `crosscheck-env` first, and `nuke` runs `require-local` (see the standing target rule in Session Pre-Flight). A guard failure means the posture is wrong — stop and resolve it deliberately; never copy an env file just to get past the guard.
 
 **Django:**
 ```
@@ -366,6 +384,9 @@ Required `.env` keys (template at `.env.example`; generate with `make init`):
 | `DJANGO_SECRET_KEY` | Django secret key | Auto-generated if blank |
 | `HOST_PORT` | SSL port (default: `40443`) | Prompted by wizard |
 | `DJANGO_SETTINGS_MODULE` | Settings module to use | Set to `game_mvc.settings.production` by wizard |
+| `POSTGRES_DATA_VOLUME` | Postgres data location: `pgdata` named volume (dev) or `/mnt/postgresqldb` EBS bind mount (prod) | Per-target env file |
+
+**Per-target env files:** `.env.prod` and `.env.dev` live alongside `.env` (all gitignored). The active `.env` is always a byte-for-byte copy of one of them — see the standing target rule in Session Pre-Flight. `crosscheck-env` blocks daemon-touching targets when they disagree.
 
 **SSL certs** — two files must exist in `ssl/` before `make start` will succeed:
 ```
