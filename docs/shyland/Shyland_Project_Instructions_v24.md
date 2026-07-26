@@ -2,7 +2,7 @@
 
 **Status: ACTIVE — approved by the operator 2026-07-26. Supersedes Shyland_Project_Instructions_v23.md.**
 
-These instructions govern every Claude Code session doing Shyland work, of every type. Read them at the start of any Shyland session. The document is versioned in sync with the game's current major version; refreshing it (when process rules changed during the version) is part of the version closeout ritual. This v24 edition is the workflow-consolidation rewrite (2026-07-26, per `Shyland_Workflow_Consolidation_Plan.md`): the claude.ai design chat is retired, and design, implementation, and ops all run as typed Claude Code sessions. It governs all sessions from its approval onward, including any v23.x point release.
+These instructions govern every Claude Code session doing Shyland work, of every type. Read them at the start of any Shyland session. The document is versioned in sync with the game's current major version; refreshing it (when process rules changed during the version) is part of the version closeout ritual. This v24 edition is the workflow-consolidation rewrite (2026-07-26, per `Shyland_Workflow_Consolidation_Plan.md`): the claude.ai design chat is retired, and design, implementation, and ops all run as typed Claude Code sessions. It governs all sessions from its approval onward, including any v23.x point release. **Amended in place 2026-07-26 (#156): the Deployment Law section added — production runs main only, playtests run on dev, the -DEV gate at closeout — with the implementation-brief deploy requirements rewritten to match.**
 
 ---
 
@@ -40,7 +40,7 @@ The two documents' version numbers are always in sync — including point-releas
 
 The architecture doc's header records the git commit hash of the version's architectural changes; a design-only version (or doc-only point-release change) increments the stamp without moving the hash. An architectural point release moves the hash.
 
-**Main is the state of record, not necessarily what's running.** Main's GDD always describes the released game; unshipped design exists only on version branches. (Deployment is a separate axis: production may run branch builds mid-version for playtests.) Within a version branch, GDD sections describing rulings whose implementation hasn't landed yet may carry a "(vNN, pending implementation)" marker as an intra-branch courtesy between buckets. **Marker removal is design-session work** — implementation sessions never edit GDD source, markers included: the next design session sweeps markers whose implementation has landed (a startup agenda item), and the GDD close at version closeout removes any stragglers.
+**Main is the state of record, not necessarily what's running.** Main's GDD always describes the released game; unshipped design exists only on version branches. (Deployment follows the same law: the **dev stack** runs branch builds during development and hosts all playtests; **production runs main only** — see Deployment Law.) Within a version branch, GDD sections describing rulings whose implementation hasn't landed yet may carry a "(vNN, pending implementation)" marker as an intra-branch courtesy between buckets. **Marker removal is design-session work** — implementation sessions never edit GDD source, markers included: the next design session sweeps markers whose implementation has landed (a startup agenda item), and the GDD close at version closeout removes any stragglers.
 
 ---
 
@@ -51,7 +51,7 @@ Every Shyland session has an operator-declared type. The type bounds what the se
 | Session type | Runs on | May touch | Never touches |
 |---|---|---|---|
 | **Design** | Version-branch worktree | GDD source, GitHub issue state, design/planning docs, briefs (writes and commits them) | Game code, migrations, seed data, deployment |
-| **Implementation** | Version-branch worktree (operator supplies the branch name) | Game code, tests, seed data, migrations, architecture doc (final gated step), operator-authorized deploys | GDD source (reads, never writes; `make gdd` / brief-directed mechanical ops only) |
+| **Implementation** | Version-branch worktree (operator supplies the branch name) | Game code, tests, seed data, migrations, architecture doc (final gated step), dev-stack deploys (`make deploy-dev`) | GDD source (reads, never writes; `make gdd` / brief-directed mechanical ops only); production deploys — `make deploy-prod` is operator-run, from main, post-merge (Deployment Law) |
 | **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs | Game code, GDD source |
 
 **Design sessions are the design-and-ruling environment** — brainstorming, system design, rulings, GDD maintenance, brief writing. **Implementation sessions are the build environment.** The firewall is absolute: implementation never invents design; design never touches code.
@@ -72,9 +72,29 @@ No doc or code changes land on main except via PR — the sole exceptions are op
 2. **Every later design session for that release joins the same branch** — new worktree, same branch. One branch per release, however many sessions it takes.
 3. **Implementation sessions demand a branch name as their first act**, start a worktree on it, and find everything already there: committed briefs, updated GDD, prior buckets' code.
 4. **Everything for the release accumulates on the branch** — briefs, GDD edits, code, tests, arch doc, closeout reports, design-session issues reports — and merges to main as **one version PR at closeout**, reviewed and merged by the operator.
-5. The point-release **scope law** (below) constrains what goes on a point-release branch, not how the branch works. Any in-flight branch rebases after another release lands.
+5. The point-release **scope law** (below) constrains what goes on a point-release branch, not how the branch works. Any in-flight branch **merges main forward** after another release lands (never a rebase — Deployment Law).
 
 Notes: issue state is not git — rulings, labels, and filings hit GitHub live from any session regardless of branch. Issues reports fork by session type: design sessions commit theirs to the version branch, ops sessions to main; timestamped filenames never collide at merge. Worktree env files are automated: the committed `post-checkout` git hook (activated per clone via `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` from the main checkout into every new worktree and initializes `.env` in **dev posture** (`.env.dev`). Design-session worktrees never use them (they never build or deploy); implementation worktrees get them ready-made — and still sanity-check `DOMAIN` before any deploy.
+
+---
+
+## Deployment Law — Dev and Prod (operator-ruled 2026-07-26, #156)
+
+Two invariants, absolute:
+
+1. **Production runs `main` — nothing else, ever.** `make deploy-prod` is run by the operator, from the **main checkout**, only **after** the version PR has merged. Never from a worktree; never with unmerged code; never invoked by a Claude session under any circumstances (the permission layer is a backstop, not the decision point).
+2. **`main` never contains a `-DEV` suffix in `SHYLAND_VERSION` — on any commit, at any time.** `-DEV` exists only on version branches, between the version-start bump and the closeout stamp. A version PR whose tip still reads `N.M-DEV` is not mergeable; the closeout stamp step is the gate that makes it so.
+
+The flow every release follows (major `N.0` or point `N.M` alike):
+
+1. **Version start** (first implementation brief, opening act): bump `SHYLAND_VERSION` to `N.M-DEV` in its own commit (the pin test moves with it), then `make deploy-dev` from the worktree.
+2. **Every brief deploys to dev**: `make deploy-dev` from the worktree once implementation and verification pass. The dev stack is where the release lives during development.
+3. **All operator playtests run on the dev stack.** Brief playtest checklists target dev; production hosts no mid-version builds.
+4. **Closeout stamps on the branch**: `N.M-DEV → N.M` before the PR opens, alongside the doc stamps. The **-DEV gate**: no version PR opens while `version.py` reads `-DEV`.
+5. **The version PR merges to main** (operator-reviewed).
+6. **The operator deploys production from main**: `make deploy-prod` from the main checkout. Deploy-time data actions (seed reruns, `make seed`, fixups) execute against production **here**, in the operator's post-merge deploy window — PENDING DEPLOY-TIME ACTIONS blocks stay open until this point.
+
+**Main moves mid-release → merge forward, never rebase.** When main advances while a release is in flight (ops work, another release landing), bring it into the version branch with an ordinary `git merge main` from the worktree. Published branches are never rebased or force-pushed. In particular, process-doc changes on main (instructions, skills) must be merged into the branch **before** the next session that depends on them runs there — worktree sessions read process docs from their own checkout.
 
 ---
 
@@ -94,7 +114,7 @@ Notes: issue state is not git — rulings, labels, and filings hit GitHub live f
 - **Entry bar:** urgent / critical / i-want-it-now only. Bug or feature — odd/even parity applies only to major versions.
 - **Numbering:** M is a **minor version number, not a decimal** — 21.5 < 21.15, ordering numeric on M.
 - **Scope law:** exactly **one bucket (B1)**, **one implementation brief**, **one founding ticket**. Additional tickets only as dependencies (`gh --blocked-by`) describing the same problem, never widening it. Mid-build discoveries file thin into the normal pipeline; a second breaking issue means a second point release.
-- **Timing:** may plan and ship while a major version is in flight, and may land ahead of it; in-flight branches rebase after it lands.
+- **Timing:** may plan and ship while a major version is in flight, and may land ahead of it; in-flight branches merge main forward after it lands (never a rebase).
 - **Sessions:** its own design session, its own branch — same lifecycle as any release.
 - **Documents:** no new files — GDD and architecture doc updated in place. The GDD gets its own changelog row.
 - **Closeout:** the lightweight variant (Workflow step 5a).
@@ -109,11 +129,11 @@ Notes: issue state is not git — rulings, labels, and filings hit GitHub live f
 
 **3. Verification from committed reports.** Post-implementation verification belongs to the **next design session for the release, as its first agenda item** (the design-session skill enforces this — the commissioning session is closed by the time implementation runs). It fetches the committed reports from the repo and verifies the end state against expectations — a required gate. Verify from committed reports, never a closeout narrative alone; report drift as a discrepancy list. Verification arithmetic states invariants ("exactly one issue added"), not absolute counts that go stale.
 
-**4. Operator playtest.** Between briefs, per the playtest checklists. Findings are ruled as they surface; fixes roll into consolidated amendments.
+**4. Operator playtest.** Between briefs, per the playtest checklists, **against the dev stack** (production hosts no mid-version builds — Deployment Law). Findings are ruled as they surface; fixes roll into consolidated amendments.
 
-**5. Version closeout ritual (major versions):** final architecture doc committed by the implementation session → `SHYLAND_VERSION` bumped to the release stamp (`N.0`) alongside the doc stamps → GDD vN.0 closed by a design session as **per-section updates** (changed section files, changelog row, stamp bumps in index + `_00_header.md`) → `GDD_MAJOR` bumped in the Makefile, old monolith `git rm`'d, `make gdd` run → **the version PR opened for operator review and merge** → project instructions refreshed if process rules changed during the version → transient documents pruned **by the operator only** → Claude Code project memory updated (the standing closeout habit, retargeted from the retired chat's memory).
+**5. Version closeout ritual (major versions):** final architecture doc committed by the implementation session → `SHYLAND_VERSION` bumped to the release stamp (`N.0`) alongside the doc stamps → GDD vN.0 closed by a design session as **per-section updates** (changed section files, changelog row, stamp bumps in index + `_00_header.md`) → `GDD_MAJOR` bumped in the Makefile, old monolith `git rm`'d, `make gdd` run → **-DEV gate verified** (`version.py` at the branch tip carries no `-DEV`) → **the version PR opened for operator review and merge** → project instructions refreshed if process rules changed during the version → **after the merge, the operator deploys production from the main checkout (`make deploy-prod`), executing any pending deploy-time data actions in that window** → transient documents pruned **by the operator only** → Claude Code project memory updated (the standing closeout habit, retargeted from the retired chat's memory).
 
-**5a. Point-release closeout (lightweight):** verification from committed reports → GDD changelog row and stamp bump to N.M, affected sections updated in place, `make gdd` rebuild (`GDD_MAJOR` unchanged) → version PR opened for operator review and merge → memory updated. Pruning is the operator's, as always.
+**5a. Point-release closeout (lightweight):** verification from committed reports → GDD changelog row and stamp bump to N.M, affected sections updated in place, `make gdd` rebuild (`GDD_MAJOR` unchanged) → `SHYLAND_VERSION` bumped `N.M-DEV → N.M` (pin test in the same commit) → **-DEV gate verified** → version PR opened for operator review and merge → after the merge, the operator deploys production from the main checkout (`make deploy-prod`) → memory updated. Pruning is the operator's, as always.
 
 **The GDD is authored by design sessions. The architecture doc is authored by implementation sessions.** These are not interchangeable. Implementation and ops sessions never author or edit GDD source; their only permitted GDD operation is `make gdd` (or another mechanical operation explicitly directed by a brief).
 
@@ -124,7 +144,7 @@ Notes: issue state is not git — rulings, labels, and filings hit GitHub live f
 - Briefs are self-contained — the implementation session reads only the brief (and the repo), never a design conversation
 - Briefs are **born committed**: the design session writes the brief file into `docs/shyland/` on the version branch and commits it (standalone ops briefs are the exception: an ops session commits them to `main`). Pasted briefs are never actionable (CLAUDE.md Rule 4) — actionability = committed + operator-directed by name
 - **Push cadence (every implementation brief):** commit and push at every step boundary — WIP-sized intermediate commits desired; **branch only, NEVER merge to main on the session's own initiative** (merging is the operator's action; operator-directed merges via the scoped `gh pr merge` allowance are standing capability, not a discrepancy)
-- **Deploy-time data-action rule:** any brief deferring actions to deploy time (seed reruns, data fixup commands, `make seed` itself) must (a) list them in a dedicated **PENDING DEPLOY-TIME ACTIONS** block in its closeout, and (b) every subsequent brief/amendment in the same version carries a pre-flight line reporting whether prior pending actions executed, until confirmed done. Verification treats unexecuted deploy-time actions as open items — never silently passed. **`make seed` is one of these**
+- **Deploy-time data-action rule:** for production, "deploy time" means the operator's **post-merge `make deploy-prod` window** (Deployment Law step 6) — sessions run data actions against the **dev stack** in-session as their briefs require, but the production execution always waits for that window. Any brief with such actions (seed reruns, data fixup commands, `make seed` itself) must (a) list them in a dedicated **PENDING DEPLOY-TIME ACTIONS** block in its closeout, and (b) every subsequent brief/amendment in the same version carries a pre-flight line reporting whether prior pending actions executed on dev, until confirmed done; the block itself stays open until the production execution at release deploy. Verification treats unexecuted deploy-time actions as open items — never silently passed. **`make seed` is one of these**
 - **Code first, data second:** when a brief ships both a behavior change and dependent seed data, the code deploys **before** the data action runs
 - **Seed-owned replacements delete rows — say how many.** State the **expected deletion count as a number**; the closeout reports actual against expected
 - **Test hygiene when a fixed string becomes a pool:** literal-pinning tests convert to pool-membership assertions with original intent preserved as explicit assertions, reported as a deviation in the closeout — never changed silently
@@ -136,9 +156,9 @@ Notes: issue state is not git — rulings, labels, and filings hit GitHub live f
 - The architecture doc update goes last, gated: "This step is gated on all implementation and verification steps above being complete and passing." Specify exactly which sections change
 - **Architecture doc file handling — create-or-update, always:** every implementation brief of a major version carries the same conditional step: **create** `Shyland_Architecture_vN.md` if absent (`git rm` the old, written header-first then one section at a time), **update in place** if present. Creation duty follows **first-to-execute, not brief number**. A point-release brief never creates a new file — in-place update, stamp to N.M, hash moves only for architectural changes
 - **Standing implementation-brief requirements — never omit:**
-  1. **Version constant.** The *first* implementation brief of a major version bumps `SHYLAND_VERSION` to `"N.0-DEV"` (the closeout bumps to `"N.0"`); later briefs state they leave it alone.
-  2. **An operator-authorized in-session production deploy** — **exactly `make deploy-prod`** (it pins the production `DOCKER_HOST` itself, verifies posture and reachability via pre-flight, builds, migrates, and restores dev resting posture; never hand-roll the sequence; the legacy `make prod` no longer exists). It refuses to run if a `DOCKER_HOST` is already in the environment — investigate stale state, don't inherit it. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — report that state, never repair it silently. Deploy-time data actions (e.g. `make seed`) execute in the production container in the same authorized session via a manual prod window — `cp .env.prod .env`, `DOCKER_HOST` set on **each** command, `cp .env.dev .env` when done — results recorded in the closeout; the PENDING block is the fallback only when the deploy isn't authorized.
-  3. **A "Ready after deploy" operator playtest checklist**, itemized.
+  1. **Version constant.** The *first* implementation brief of a release bumps `SHYLAND_VERSION` to `"N.0-DEV"` (`"N.M-DEV"` for a point release) **as its opening act** — its own commit, pin test moved with it, followed by the version-start `make deploy-dev`; the closeout bumps to the release stamp. Later briefs state they leave it alone.
+  2. **An in-session dev deploy — exactly `make deploy-dev`**, run from the worktree once implementation and verification pass (build + migrate against the local dev stack; never hand-roll the sequence). **Production is never deployed from an implementation session** — `make deploy-prod` is the operator's, from the main checkout, only after the version PR merges (Deployment Law). Dev-side data actions (e.g. `make seed`) run in-session against the dev stack; the production execution stays in the PENDING DEPLOY-TIME ACTIONS block for the operator's post-merge window.
+  3. **An operator playtest checklist targeting the dev stack**, itemized — ready after the brief's `make deploy-dev`.
 - **Never include removal/pruning steps for transient documents** — committed and left in place; the operator does all pruning
 - **Operator stashes are apply-only** — `git stash apply` permitted only with line-for-line diff verification against the brief and experiment markers replaced by permanent issue-referenced comments; **never `drop`, never `pop`**
 - **Binary documentation assets are never chased** — if a generated asset needs regenerating and no renderer is present, report it **stale in the closeout** and stop
