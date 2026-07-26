@@ -38,7 +38,7 @@ The firewall that matters — *implementation never invents design* — survives
 2. **Every later design session for that release joins the same branch** — new worktree, same branch. One branch per version, however many sessions it takes.
 3. **Implementation sessions demand a branch name as their first act**, start a worktree on it, and find everything already there: the committed briefs, the updated GDD, the prior buckets' code. No handoff artifacts beyond the branch itself.
 4. **Everything for the version accumulates on the branch** — briefs, GDD section edits, rulings' paper trail, code, tests, arch doc, closeout reports — and merges to main as **one version PR at closeout**, reviewed and merged by you (the v23 PR #153 pattern).
-5. **Point releases** get their own short branch anchored to their founding ticket, as today (`version_21_1` pattern); in-flight version branches rebase after a point release lands, as today.
+5. **A release is a release — major or point, same lifecycle.** The branch is named for the milestone (`version_24`, `version_23_1` per the existing convention); the point-release scope law (one bucket, one brief, one founding ticket) constrains what goes on the branch, not how the branch works. The one mechanic that survives as point-release-specific: any in-flight branch rebases after another release lands, as today.
 
 Consequences worth naming:
 
@@ -136,7 +136,7 @@ Deliberately never automated: merges, deploys, pruning, playtest sign-off, scope
 6. I build the three checklist/skill definitions (§7) for your review.
 7. Optional: you enable branch protection on main (§2).
 8. You say goodbye to the claude.ai project and archive/delete it at your leisure — nothing depends on it from step 4 onward.
-9. **Version 24 planning runs as the first design session** — it creates `version_24` and proves the model on the zone-build feature version.
+9. **The next release's planning runs as the first design session** — the upcoming point release or Version 24, whichever you start first. A point release proving the model on a small, sharply-scoped branch before v24's zone build is arguably the ideal first test.
 
 **Not part of this plan:** the deployment-structure change (one dev stack, `make prod` disabled). It stays its own gated effort; consolidation just means you teach one system instead of two when you're ready.
 
