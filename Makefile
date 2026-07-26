@@ -28,7 +28,7 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs seed gdd help require-local
+        new-app push-certs seed gdd help require-local crosscheck-env
 
 # ---------------------------------------------------------------------------
 # Guards
@@ -39,6 +39,23 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 # the included .env alike.
 require-local:
 	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is set ($(DOCKER_HOST)) — this target is local-only. Refusing to run against a remote daemon." && exit 1)
+
+# Prerequisite guard: verify .env matches the deployment target implied by
+# DOCKER_HOST before any daemon-touching operation runs. Standing rule:
+# DOCKER_HOST set — any value — means PRODUCTION, so .env must be identical
+# to .env.prod; unset means the local dev daemon, so .env must be identical
+# to .env.dev. Expand this guard before ever pointing DOCKER_HOST at a
+# non-production remote host.
+crosscheck-env:
+	@if [ -n "$(DOCKER_HOST)" ]; then \
+	    test -s .env.prod || { echo "ERROR: .env.prod missing or empty."; exit 1; }; \
+	    cmp -s .env .env.prod || { echo "ERROR: DOCKER_HOST is set — target is PRODUCTION — but .env does not match .env.prod."; exit 1; }; \
+	    echo "crosscheck-env: PRODUCTION posture OK (.env == .env.prod, DOCKER_HOST=$(DOCKER_HOST))"; \
+	else \
+	    test -s .env.dev || { echo "ERROR: .env.dev missing or empty."; exit 1; }; \
+	    cmp -s .env .env.dev || { echo "ERROR: DOCKER_HOST is unset — target is local dev — but .env does not match .env.dev."; exit 1; }; \
+	    echo "crosscheck-env: dev posture OK (.env == .env.dev)"; \
+	fi
 
 # ---------------------------------------------------------------------------
 # First-time setup
@@ -70,12 +87,12 @@ push-certs:
 # ---------------------------------------------------------------------------
 
 ## build: build Docker images and recreate containers
-build: check-secrets
+build: crosscheck-env check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) build --no-cache
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --force-recreate
 
 ## start: start all containers
-start: check-secrets
+start: crosscheck-env check-secrets
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d
 
 ## stop: stop all containers
@@ -110,7 +127,7 @@ shell:
 	    exec django python manage.py shell
 
 ## migrate: run database migrations
-migrate:
+migrate: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py migrate
 
@@ -184,7 +201,7 @@ gen-certs:
 	$(MAKE) push-certs
 
 ## seed: run seed_world to populate game world data
-seed:
+seed: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py seed_world
 
