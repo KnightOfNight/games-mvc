@@ -44,21 +44,6 @@ require-local:
 # First-time setup
 # ---------------------------------------------------------------------------
 
-dev: ENV_FILE := .env.dev
-dev:
-	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
-	@cp -v $(ENV_FILE) .env
-	$(MAKE) setup
-	@echo "deployed developer environment"
-
-prod: ENV_FILE := .env.prod
-prod:
-	@test -n "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is not set. 'make prod' requires a remote Docker host." && exit 1)
-	@test -s $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) empty or not found" && exit 1)
-	@cp -v $(ENV_FILE) .env
-	$(MAKE) setup
-	@echo "deployed production environment"
-
 ## setup: wizard + build + start (single command for a fresh install)
 setup: init check-secrets push-certs build start
 	@echo ""
