@@ -48,4 +48,4 @@ Prepared 2026-07-25 at branch `version_23` tip `f5406bb`.
 ## Operator-side loose ends (non-blocking)
 
 - `Shyland_Color_Chart.png` re-export (SVG updated by B5 A1; no renderer in the container).
-- Stash `428bc16c` (the color experiment) is fully landed — safe to prune.
+- ~~Stash `428bc16c` (the color experiment)~~ — landed and pruned 2026-07-25; stash stack empty.
