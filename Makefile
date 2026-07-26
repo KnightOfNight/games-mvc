@@ -28,7 +28,7 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs seed gdd help require-local crosscheck-env
+        new-app push-certs seed gdd help require-local crosscheck-env hooks
 
 # ---------------------------------------------------------------------------
 # Guards
@@ -69,6 +69,11 @@ setup: init check-secrets push-certs build start
 ## init: wizard only — prompts for config, writes .env
 init:
 	python3 scripts/init.py
+
+## hooks: activate the committed git hooks (one-time per clone)
+hooks:
+	git config core.hooksPath scripts/git-hooks
+	@echo "git core.hooksPath -> scripts/git-hooks (worktrees now auto-initialize env files)"
 
 # ---------------------------------------------------------------------------
 # SSL certs

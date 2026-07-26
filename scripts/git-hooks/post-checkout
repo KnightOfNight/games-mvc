@@ -1,0 +1,55 @@
+#!/bin/sh
+# post-checkout: initialize gitignored env files in a newly created worktree.
+#
+# Fires on `git worktree add` (and every branch checkout — it no-ops unless
+# this is a linked worktree missing its env files). Copies .env.dev,
+# .env.prod, and ssl/ from the main checkout, and initializes .env from
+# .env.dev: worktrees host design/implementation sessions, which are
+# dev-target by rule. Never overwrites an existing file — and never sets a
+# prod posture; switching a worktree to .env.prod is a deliberate manual act.
+#
+# Activate once per clone with `make hooks` (sets core.hooksPath).
+#
+# Args: <prev-HEAD> <new-HEAD> <flag>; flag=1 means branch checkout.
+
+[ "$3" = "1" ] || exit 0
+
+git_dir=$(git rev-parse --absolute-git-dir)
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+
+# Only act in a linked worktree (its git-dir differs from the common dir).
+[ "$git_dir" != "$common_dir" ] || exit 0
+
+main_root=$(dirname "$common_dir")
+copied=""
+
+for f in .env.dev .env.prod; do
+    if [ ! -e "$f" ] && [ -f "$main_root/$f" ]; then
+        cp "$main_root/$f" "$f" && copied="$copied $f"
+    fi
+done
+
+if [ ! -e .env ] && [ -f "$main_root/.env.dev" ]; then
+    cp "$main_root/.env.dev" .env && copied="$copied .env(=dev)"
+fi
+
+# ssl/ already exists in a fresh worktree (its .gitignore is tracked), so
+# copy missing cert files individually rather than the directory wholesale.
+if [ -d "$main_root/ssl" ]; then
+    mkdir -p ssl
+    copied_ssl=0
+    for f in "$main_root"/ssl/*; do
+        [ -f "$f" ] || continue
+        base=$(basename "$f")
+        if [ ! -e "ssl/$base" ]; then
+            cp -p "$f" "ssl/$base" && copied_ssl=1
+        fi
+    done
+    [ "$copied_ssl" = "1" ] && copied="$copied ssl/"
+fi
+
+if [ -n "$copied" ]; then
+    echo "post-checkout: initialized$copied from $main_root (dev posture)"
+fi
+
+exit 0
