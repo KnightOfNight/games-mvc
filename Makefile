@@ -5,12 +5,6 @@
 
 -include .env
 
-# When DOCKER_HOST is set (remote EC2 daemon), bind-mount the postgres data
-# directory to the pre-mounted EBS volume instead of using a named volume.
-ifdef DOCKER_HOST
-export POSTGRES_DATA_VOLUME := /mnt/postgresqldb
-endif
-
 DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
@@ -34,7 +28,17 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs reset seed gdd help
+        new-app push-certs seed gdd help require-local
+
+# ---------------------------------------------------------------------------
+# Guards
+# ---------------------------------------------------------------------------
+
+# Prerequisite guard: add `require-local` to any target that must never run
+# against a remote daemon. Catches DOCKER_HOST from the environment and from
+# the included .env alike.
+require-local:
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is set ($(DOCKER_HOST)) — this target is local-only. Refusing to run against a remote daemon." && exit 1)
 
 # ---------------------------------------------------------------------------
 # First-time setup
@@ -97,8 +101,8 @@ stop:
 ## restart: stop + start
 restart: stop start
 
-## nuke: remove all containers, volumes, and images for this project
-nuke:
+## nuke: remove all containers, volumes, and images for this project (local daemon only)
+nuke: require-local
 	-$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
 	-docker volume rm $(COMPOSE_PROJECT)_ssldata
 	-docker rmi shyland-django $(COMPOSE_PROJECT)-nginx
@@ -194,14 +198,6 @@ gen-certs:
 	@echo "      Use your vendor certs for a trusted connection."
 	$(MAKE) push-certs
 
-## reset: wipe the database, rebuild, migrate, and reseed
-reset:
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) down -v
-	$(MAKE) build
-	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) up -d --wait
-	$(MAKE) migrate
-	$(MAKE) seed
-
 ## seed: run seed_world to populate game world data
 seed:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
@@ -245,7 +241,6 @@ help:
 	@echo "  makemigrations         Make migrations (APP=<name> optional)"
 	@echo "  createsuperuser        Create a Django admin superuser"
 	@echo "  seed                   Run seed_world to populate game world data"
-	@echo "  reset                  Wipe database, rebuild, migrate, and reseed"
 	@echo ""
 	@echo "Games:"
 	@echo "  new-app NAME=<name>    Scaffold a new game app in apps/"
