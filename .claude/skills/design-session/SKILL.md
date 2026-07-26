@@ -22,7 +22,7 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 ## 3. Create or join the version branch
 
 - `git fetch origin`, then check `git ls-remote --heads origin <branch>`.
-- **Branch absent → this is the FIRST design session for the release:** create it from current `origin/main`, push with `-u`. The design-session version-start ritual is branch creation + push only — the `SHYLAND_VERSION → "N.0-DEV"` bump and deploy remain the FIRST IMPLEMENTATION brief's duty (standing requirement; design sessions don't touch code).
+- **Branch absent → this is the FIRST design session for the release:** create it from current `origin/main`, push with `-u`. The design-session version-start ritual is branch creation + push only — the `SHYLAND_VERSION → "N.M-DEV"` bump and the version-start `make deploy-dev` remain the FIRST IMPLEMENTATION brief's opening act (standing requirement; design sessions don't touch code, and production only ever runs main — Deployment Law).
 - **Branch present → join it:** you are a later session for this release; do not rebase or reset it.
 
 ## 4. Worktree

@@ -154,6 +154,8 @@ make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips post
                     # pre-flights, builds, migrates, restores dev posture
 ```
 
+> **Deployment law:** production runs `main` only — `make deploy-prod` is operator-run from the main checkout, after the release PR merges; never from a worktree, never with unmerged code, never invoked by a Claude session. `SHYLAND_VERSION` on main never carries a `-DEV` suffix.
+
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
 
 > **Guards:** `build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, and `push-certs` all run `crosscheck-env` first, and `nuke` runs `require-local` (see the standing target rule in Session Pre-Flight). A guard failure means the posture is wrong — stop and resolve it deliberately; never copy an env file just to get past the guard.
