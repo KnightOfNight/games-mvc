@@ -1,6 +1,6 @@
 # Shyland Project Instructions v24
 
-**Status: DRAFT — for operator review (consolidation plan §9 step 5). The v23 instructions remain in force until this draft is approved.**
+**Status: ACTIVE — approved by the operator 2026-07-26. Supersedes Shyland_Project_Instructions_v23.md.**
 
 These instructions govern every Claude Code session doing Shyland work, of every type. Read them at the start of any Shyland session. The document is versioned in sync with the game's current major version; refreshing it (when process rules changed during the version) is part of the version closeout ritual. This v24 edition is the workflow-consolidation rewrite (2026-07-26, per `Shyland_Workflow_Consolidation_Plan.md`): the claude.ai design chat is retired, and design, implementation, and ops all run as typed Claude Code sessions. It governs all sessions from its approval onward, including any v23.x point release.
 
