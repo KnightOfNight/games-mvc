@@ -27,7 +27,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | quit | 2 | |
 | | repair | 3 \| 4 · 10 | |
 | | say | 9 · 10 | |
-| | sell | 7 4 · 10 · 13 · 17 | |
+| | sell | 7 4 · 10 · 13 · 17 · 19 | |
 | | spend | 7 14 · 10 · 15 | |
 | | sudo | 9 · 18 | YES |
 | | travel | 8 | |
@@ -71,15 +71,16 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 16. bound items are excluded from this command's candidate pool.
 17. "all" requires the target argument for this command: bare `<verb> all` is refused (warn-color) with wording that teaches the noun form.
 18. admin-gated with stealth: requires membership in the `admins.shyland` Django auth Group, checked live per attempt. For non-members the command does not exist — absent from help, absent from tab completion, and attempts return the standard unknown-command response.
+19. the consumable item type is excluded from this command's noun-less bulk form (`all <rarity>` with no noun): matching consumables are skipped, and the skip is announced with one note line teaching the named form. A noun-less bulk sell whose matches are *all* consumables is refused (warn-color). Named-noun forms (`sell all draught`, `sell 5 draught`) reach consumables normally. (v23.1, #150)
 
-**Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`. A dispatch guard wraps every command: no input, however malformed, can drop the connection.
+**Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`, consumables excluded from the noun-less `sell all <rarity>` bulk form (footnote 19; v23.1). A dispatch guard wraps every command: no input, however malformed, can drop the connection.
 
 #### The Three-Layer Response Doctrine (v22)
 
 Every response to a command belongs to exactly one layer, and the layer picks the voice:
 
 - **CLI error (error-color, red):** the parser refused — unknown command, bad syntax, missing required argument (the footnote 10/13/15 standard prompts), settings usage lines. The machine didn't understand you.
-- **World declined (warn-color, yellow):** valid command, world says no — resolution failures (no match in the pool, bad index, ambiguity, the sell-all block) and mechanical failures (state-gate refusals, no vendor/repairer/obelisk here, can't afford, sold out, at capacity, repair didn't hold, heal at full, bound-drop attempt, unequip without bag room, failed flee, the generic Artifact sale refusal — no-leak, Section 6.13). The world understood you and refused.
+- **World declined (warn-color, yellow):** valid command, world says no — resolution failures (no match in the pool, bad index, ambiguity, the sell-all block, the consumables-only bulk sell (v23.1)) and mechanical failures (state-gate refusals, no vendor/repairer/obelisk here, can't afford, sold out, at capacity, repair didn't hold, heal at full, bound-drop attempt, unequip without bag room, failed flee, the generic Artifact sale refusal — no-leak, Section 6.13). The world understood you and refused.
 - **World answered (normal voices):** success prose, the combat family, loot-color gains.
 
 **Consequence must be seen (#132):** the partial-fulfillment shortfall reports (`You only had N.` on use and drop, `There were only N here.` on pickup, `They only had N.` on buy) and use's no-effect `Nothing happens.` speak in the warn voice — a consequence delivered in the muted ambient voice goes unread. Deliberate exceptions, ruled correct: the sell shortfall keeps its friendly success voice (`You only had 3 — the vendor was happy to take them.`), and the ambient system voice keeps the logout farewell and the muted combat misses.
