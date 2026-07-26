@@ -92,6 +92,10 @@ class _ItemAccessor:
     def is_equipped(item):
         return item.is_equipped
 
+    @staticmethod
+    def item_type(item):
+        return item.definition.item_type
+
 
 class _EntryAccessor:
     """VendorEntry candidates (buy). Vendor stock mints Common instances,
@@ -129,6 +133,10 @@ class _EntryAccessor:
     @staticmethod
     def is_equipped(entry):
         return False
+
+    @staticmethod
+    def item_type(entry):
+        return entry.item_definition.item_type
 
 
 class _NpcAccessor:
@@ -170,6 +178,10 @@ class _NpcAccessor:
     def is_equipped(npc):
         return False
 
+    @staticmethod
+    def item_type(npc):
+        return ''
+
 
 _ACCESSORS = {'item': _ItemAccessor, 'entry': _EntryAccessor, 'npc': _NpcAccessor}
 
@@ -199,6 +211,10 @@ class Policy:
     no_multi: str = ''                # refusal when quantifier not allowed
     all_msg: str = ''                 # refusal when 'all' is not accepted (fn 11)
     bare_all_msg: str = ''            # refusal when bare 'all' not allowed
+    # v23.1 (#150): item_type excluded from the noun-less bulk form only
+    # ('sell all <rarity>'); every noun-carrying form bypasses the guard.
+    bulk_exclude_type: str = ''
+    bulk_excluded_msg: str = ''       # refusal when the guard empties the pool
 
 
 POLICIES = {
@@ -227,11 +243,16 @@ POLICIES = {
     ),
     # v22 brief 2 (DD §1 fn 17): bare 'sell all' refused with teaching
     # wording; 'sell all <noun>' and 'sell all <rarity>' stay legal.
+    # v23.1 (#150, GDD §9.1 fn 19): the noun-less 'sell all <rarity>'
+    # form skips consumables; naming a noun always reaches them.
     'sell': Policy(
         selection='lowest',
         partial=True,
         exclude_equipped=True,
         bare_all_msg="Sell all of what? Try 'sell all <item>' or 'sell all <rarity>'.",
+        bulk_exclude_type='consumable',
+        bulk_excluded_msg="That's all consumables — name them ('sell all draught') "
+                          "if you mean to sell them.",
     ),
     # v22 brief 2 (DD §1 fn 11/16): drop is numeric-only and its candidate
     # pool excludes bound items (the caller filters the pool).
@@ -295,6 +316,9 @@ class Resolution:
     # v22 brief 2 (DD §7): on a partial-policy verb, the count the player
     # asked for when it exceeded the matches (0 = exact fulfillment).
     requested: int = 0
+    # v23.1 (#150): True when the noun-less bulk guard skipped candidates
+    # (the caller owes the player one teaching note).
+    bulk_excluded: bool = False
 
 
 def _err(code, message):
@@ -437,6 +461,19 @@ def resolve(verb, args, candidates):
     if not matches:
         return _err('not_found', policy.not_found)
 
+    # v23.1 (#150): the noun-less bulk guard. Keys on the absence of a
+    # noun token — never on what a noun matched — and runs before
+    # selection and all value math. An all-excluded pool is the world
+    # declining, not a bare "nothing to sell."
+    bulk_excluded = False
+    if policy.bulk_exclude_type and quantifier == 'all' and not noun_tokens:
+        kept = [c for c in matches
+                if acc.item_type(c) != policy.bulk_exclude_type]
+        if not kept:
+            return _err('bulk_excluded', policy.bulk_excluded_msg)
+        bulk_excluded = len(kept) < len(matches)
+        matches = kept
+
     # Cross-definition ambiguity: never guess. The one exception is an
     # explicit 'all' with no noun ('sell all common', 'loot all').
     def_keys = {acc.def_key(c) for c in matches}
@@ -464,7 +501,8 @@ def resolve(verb, args, candidates):
                           mode='count' if quantity > 1 else 'single')
 
     if quantifier == 'all':
-        return Resolution(ok=True, items=ordered, mode='all')
+        return Resolution(ok=True, items=ordered, mode='all',
+                          bulk_excluded=bulk_excluded)
     if isinstance(quantifier, int):
         if quantifier > len(ordered):
             # v22 DD §7: partial fulfillment — do the possible part; the

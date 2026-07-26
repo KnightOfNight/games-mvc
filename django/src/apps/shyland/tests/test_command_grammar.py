@@ -203,12 +203,20 @@ class AuthoritativeTableTests(GrammarFixtureMixin, SimpleTestCase):
         self.assertEqual(res.items, [self.knife_rare])
 
     def test_17_sell_all_common_every_unequipped_common(self):
+        # v23.1 (#150, GDD §9.1 fn 19): the noun-less bulk form now
+        # excludes consumables. Original intent preserved: every
+        # unequipped common still resolves — minus the consumables,
+        # whose exclusion is flagged for the caller's teaching note.
         res = resolve('sell', 'all common', self.carried)
         self.assertTrue(res.ok)
         expected = {i for i in self.carried
-                    if i.rarity == 'common' and not i.is_equipped}
+                    if i.rarity == 'common' and not i.is_equipped
+                    and i.definition.item_type != 'consumable'}
         self.assertEqual(set(res.items), expected)
         self.assertNotIn(self.mace, res.items)
+        for draught in self.draughts:
+            self.assertNotIn(draught, res.items)
+        self.assertTrue(res.bulk_excluded)
 
     def test_18_bare_sell_all_refused_with_usage(self):
         res = resolve('sell', 'all', self.carried)

@@ -2063,6 +2063,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     ),
                     'warn',
                 )
+            # v23.1 (#150): the noun-less bulk guard skipped consumables —
+            # one teaching note after the sale lines, authored wording.
+            if res.bulk_excluded:
+                await self.output(
+                    "Your consumables stay in your pack — name them "
+                    "('sell all draught') to sell them.",
+                    'warn',
+                )
             await self.maybe_kibitz(room, vendor)
         else:
             # Nothing moved at all — everything in the batch was refused.
@@ -2072,6 +2080,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 ),
                 'warn',
             )
+            # v23.1 (#150): even an all-refused batch owes the teaching
+            # note when consumables were silently skipped alongside it.
+            if res.bulk_excluded:
+                await self.output(
+                    "Your consumables stay in your pack — name them "
+                    "('sell all draught') to sell them.",
+                    'warn',
+                )
 
     async def cmd_repair(self, args):
         char = await self.get_character_fresh()
