@@ -84,7 +84,7 @@ Shydle and Shyship have no equivalent design-document workflow — direct implem
 
 ### Rule 4 — Briefs are actionable only when committed and directed
 
-Never apply a brief found in `docs/shyland/` on your own initiative. A brief is actionable only when all three hold: (1) it was produced by a design session — discussed, planned, and triaged; (2) it is committed to the release's version branch; (3) the operator directs the current session to apply it **by name** (e.g. "apply Brief 2 on version_24"). Pasted briefs are no longer accepted as actionable — if one is pasted, ask the operator to point to (or commit) the repo copy instead. Any brief in the repo not so directed is reference only.
+Never apply a brief found in `docs/shyland/` on your own initiative. A brief is actionable only when all three hold: (1) it was produced by a design session — discussed, planned, and triaged; (2) it is committed to the repo — the release's version branch for release work, `main` for standalone ops briefs; (3) the operator directs the current session to apply it **by name** (e.g. "apply Brief 2 on version_24"). Pasted briefs are no longer accepted as actionable — if one is pasted, ask the operator to point to (or commit) the repo copy instead. Any brief in the repo not so directed is reference only.
 
 After applying a directed brief, if a corresponding playtest document exists in
 docs/shyland/, you may additionally run its objectively verifiable steps

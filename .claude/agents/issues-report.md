@@ -56,7 +56,7 @@ end your turn with a question.
    git add <report file path the script printed>
    git commit -m "Add Shyland issues report (<report filename>)
 
-   Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+   Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
    git push -u origin <current branch>
 
    The -u sets the upstream when the branch has none yet (the first push

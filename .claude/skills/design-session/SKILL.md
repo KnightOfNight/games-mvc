@@ -11,7 +11,7 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 
 ## 1. Pre-flight
 
-- Run `python3 scripts/check_docker_host.py`. Expect exit 0 (design sessions never deploy, but the environment check is standing; exit 1 = report and stop, exit 2 = ask).
+- Run `python3 scripts/check_docker_host.py` and report the result. For design sessions this is **informational only** — they never touch the daemon — so any non-zero exit is reported to the operator, not blocking. (Implementation sessions keep the hard gate.)
 - `git -C <main checkout> status --porcelain` on the main checkout must be clean before creating any branch from it.
 
 ## 2. Identify the release
@@ -36,7 +36,13 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 - Read the latest committed `Shyland_Issues_Report_*.md` (highest timestamp, on this branch or main, whichever is newer) and cross-check the milestone's issue set against it. If session context depends on a prior session's work, verify it from committed reports/documents — never assume.
 - Read the GDD index (`docs/shyland/gdd/Shyland_GDD.md`) and the sections relevant to the session's topic.
 
-## 6. Readiness report
+## 6. Prior-bucket verification (first agenda item, unconditional)
+
+- If any implementation brief for this release has closed since the last design session, verify it NOW from its committed closeout report plus the issues report: end-state invariants, deploy-time actions executed, drift reported as a discrepancy list. This is the release's post-implementation verification home — no closeout sits unverified past this point.
+- Sweep the GDD on this branch for "(vNN, pending implementation)" markers whose implementation has landed, and remove them (marker removal is design-session work; implementation sessions never touch GDD source).
+- If nothing has closed since the last session, state that explicitly and move on.
+
+## 7. Readiness report
 
 Summarize to the operator: branch (created or joined), worktree path, milestone issue set (open/triaged/bucketed counts), any drift found in step 5, and the session's proposed agenda.
 
