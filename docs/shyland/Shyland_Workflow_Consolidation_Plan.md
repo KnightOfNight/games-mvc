@@ -1,6 +1,6 @@
 # Shyland Workflow Consolidation Plan
 
-**Status:** DRAFT v2 — for operator review. Nothing in this document takes effect until approved.
+**Status:** APPROVED by the operator 2026-07-26 (v2 + refinements). In effect; migration per §9.
 **Date:** 2026-07-26 (v2 same day; v1 revised per operator fixes: paste retirement, branch discipline, automation items accepted)
 **What this is:** the plan for retiring the claude.ai design chat and running the entire Shyland workflow — design and implementation — in Claude Code.
 
