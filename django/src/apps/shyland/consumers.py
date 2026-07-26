@@ -14,9 +14,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import currency
+from . import npc_voice
 from .combat_utils import (
     ARMOR_SLOT_WEIGHTS, bar_rescale_updates, effective_stats,
-    gear_stat_bonus, npc_display, npc_display_name,
+    flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
+    release_session_npcs,
 )
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
@@ -52,43 +54,23 @@ SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
 # RING is the only slot a character has two of.
 SLOT_CAPACITY = {'RING': 2}
 
-# v19 brief 10: kibitz lines (gazebo double-vendor transactions) and
-# pity-repair lines (repairs whose computed value is 0). Not part of the
-# brief 9 dialogue engine — plain authored pools, keyed and consumed here.
-KIBITZ_LINES = [
-    '{other} watches the exchange and nods approvingly.',
-    '{other} pretends not to supervise, and supervises.',
-    '{other} rearranges the shelf, satisfied.',
-]
+# v23 B2 (#18): the item types that stack in the inventory display.
+# Wear-free interchangeable types stack; per-instance-identity types
+# (durability, rolled stats — weapon/armor/accessory/bag) never stack.
+STACKABLE_ITEM_TYPES = {'consumable', 'material', 'readable', 'key'}
 
-PITY_REPAIR_LINES = {
-    'morra': (
-        'Morra turns the piece over once, snorts softly, and fixes it for '
-        'nothing. "Come back when you\'ve got something worth charging for."'
-    ),
-    'pella': (
-        "Pella tuts over the wear like it's a personal affront and mends it "
-        'free. "There. Don\'t thank me, just eat something."'
-    ),
-    'ferwick': (
-        'Ferwick waves off payment before you can reach for your purse. '
-        '"The city gave it to you; the city can keep it standing."'
-    ),
-    'repairbot-prime': (
-        'Repairbot Prime completes the work in silence. "COST: NEGLIGIBLE. '
-        'WAIVED. MAINTAIN YOUR EQUIPMENT."'
-    ),
-}
-PITY_REPAIR_FALLBACK = (
-    '{name} looks your battered gear over, takes pity, and repairs it for nothing.'
-)
+# v23 B4 (#40): the kibitz and pity-repair pools moved to npc_voice.py
+# with every other flavor pool; selection goes through npc_voice.pick.
 
 
 def _pity_repair_line(repairer):
-    template = PITY_REPAIR_LINES.get(repairer.definition.slug)
-    if template:
-        return template
-    return PITY_REPAIR_FALLBACK.replace('{name}', npc_display(repairer, capitalize=True))
+    pool = npc_voice.PITY_REPAIR_LINES.get(repairer.definition.slug)
+    if pool:
+        return npc_voice.pick(pool)
+    return npc_voice.pick(
+        npc_voice.PITY_REPAIR_FALLBACK,
+        name=npc_display(repairer, capitalize=True),
+    )
 
 
 logger = logging.getLogger('shyland.envelope')
@@ -632,8 +614,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 # v21 brief 3 (#64): ordinal-aware while duplicates share
                 # the visible name — singles render exactly as before.
                 await self.send_output(
-                    f"{npc_display_name(npc, aggro_npcs, capitalize=True)} "
-                    "snarls and moves to attack!",
+                    npc_voice.pick(
+                        npc_voice.AGGRO_ENGAGE,
+                        name=npc_display_name(npc, aggro_npcs, capitalize=True),
+                    ),
                     'combat',
                 )
             session = await self.start_combat(aggro_npcs, first_attacker='npc')
@@ -940,23 +924,32 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # Inventory table: Quantity after Name, Slot empty unless slotted
         # (unequipped items never are), flat alphabetical by name.
+        # v23 B2 (#18): all STACKABLE_ITEM_TYPES group on (definition,
+        # mk_tier, rarity, soulbound state) — the trailing sort-key
+        # components exist only to make same-group rows adjacent;
+        # alphabetical-by-name stays the visible order.
         lines.append({})
         lines.append({'k': f'Inventory ({current_carry}/{max_carry})...'})
         unequipped_sorted = sorted(
-            unequipped, key=lambda i: get_display_name_with_tier(i).lower(),
+            unequipped,
+            key=lambda i: (
+                get_display_name_with_tier(i).lower(),
+                i.definition_id, i.mk_tier, i.rarity, i.is_soulbound,
+            ),
         )
         inv_rows = []
         idx = 0
         while idx < len(unequipped_sorted):
             item = unequipped_sorted[idx]
             count = 1
-            if item.definition.item_type == 'consumable':
+            if item.definition.item_type in STACKABLE_ITEM_TYPES:
                 j = idx + 1
                 while j < len(unequipped_sorted):
                     other = unequipped_sorted[j]
                     if (other.definition_id == item.definition_id
                             and other.mk_tier == item.mk_tier
-                            and other.rarity == item.rarity):
+                            and other.rarity == item.rarity
+                            and other.is_soulbound == item.is_soulbound):
                         count += 1
                         j += 1
                     else:
@@ -1667,7 +1660,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if amount > 0:
             zone_slug = room.zone.slug if room.zone_id else None
             copper_str = display_for_zone(amount, zone_slug)
-            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "success")
+            # v23 B5 amendment 1 (#152): parity with the item-loot lines, which have
+            # been reward/loot-color since v22 B2 amendment 1 (#124).
+            await self.output(f"You loot {copper_str} from {corpse.display_name}.", "reward")
         return amount
 
     @staticmethod
@@ -1857,7 +1852,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         qty = res.quantity
         requested = 0
         if self._entry_exhausted(entry):
-            await self.output('Sold out.', 'warn')
+            # v23 B4 (#40): the vendor speaks here now — pooled.
+            await self.output(
+                npc_voice.pick(
+                    npc_voice.SOLD_OUT,
+                    vendor=npc_display(vendor, capitalize=True),
+                ),
+                'warn',
+            )
             return
         if entry.stock_limit is not None:
             left = entry.stock_limit - entry.sold_count
@@ -1895,7 +1897,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
         if result == 'sold_out':
-            await self.output('Sold out.', 'warn')
+            await self.output(
+                npc_voice.pick(
+                    npc_voice.SOLD_OUT,
+                    vendor=npc_display(vendor, capitalize=True),
+                ),
+                'warn',
+            )
             return
         # v22 B2 amendment 5: a transaction is one act — N>1 aggregates
         # to the count form with the total price; the warm shortfall note
@@ -1903,16 +1911,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if requested:
             # v22 B5 amendment 3 (#132): shortfalls carry consequence — warn.
             await self.output(f'They only had {qty}.', 'warn')
+        # v23 B4 (#40): pooled buy acknowledgments — the vendor never
+        # spoke here before.
         if qty == 1:
             await self.output(
-                f'You buy {item_ref(result[0])} for '
-                f'{self.format_amount(char, total)}.', 'success',
+                npc_voice.pick(
+                    npc_voice.BUY_SINGLE,
+                    vendor=npc_display(vendor, capitalize=True),
+                    name=item_ref(result[0]),
+                    amount=self.format_amount(char, total),
+                ),
+                'success',
             )
         else:
-            name = get_display_name_with_tier(result[0])
             await self.output(
-                f'You buy {name} ×{qty} for '
-                f'{self.format_amount(char, total)}.', 'success',
+                npc_voice.pick(
+                    npc_voice.BUY_BULK,
+                    vendor=npc_display(vendor, capitalize=True),
+                    name=get_display_name_with_tier(result[0]),
+                    qty=qty,
+                    amount=self.format_amount(char, total),
+                ),
+                'success',
             )
         await self.maybe_kibitz(room, vendor)
 
@@ -1932,12 +1952,43 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if res.mode in ('single', 'index'):
             item = res.items[0]
-            if get_item_value(item) == 0:
-                await self.output("That's not worth anything to me.", 'warn')
+            # v23 B4 (#138): artifacts are never bought, at any value. The
+            # refusal is deliberately generic — it never names the rarity,
+            # because an unidentified item veils it and vendor speech must
+            # not lift the veil.
+            if item.rarity == 'artifact':
+                await self.output(
+                    npc_voice.pick(
+                        npc_voice.SELL_REFUSAL_SINGLE,
+                        vendor=npc_display(vendor, capitalize=True),
+                    ),
+                    'warn',
+                )
                 return
             display = item_ref(item)
             price = await self.do_sell(item, char)
-            await self.output(f'You sell {display} for {self.format_amount(char, price)}.', 'success')
+            # v23 B4 (#138): a transaction that nets nothing replaces the
+            # payment sentence with the snark. The player still learns the
+            # item is gone.
+            if price == 0:
+                await self.output(
+                    npc_voice.pick(
+                        npc_voice.SELL_WORTHLESS_SINGLE,
+                        vendor=npc_display(vendor, capitalize=True),
+                        name=display,
+                    ),
+                    'success',
+                )
+            else:
+                await self.output(
+                    npc_voice.pick(
+                        npc_voice.SELL_SINGLE,
+                        vendor=npc_display(vendor, capitalize=True),
+                        name=display,
+                        amount=self.format_amount(char, price),
+                    ),
+                    'success',
+                )
             await self.maybe_kibitz(room, vendor)
             return
 
@@ -1947,48 +1998,79 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # definition (total price), superseding the #63 per-item stream
         # for the four transactional verbs; the warm shortfall line
         # precedes the aggregates; singles keep the singular sentence.
+        # v23 B4 (#138): artifacts are refused; everything else sells,
+        # including zero-value items (which pay 0 — see get_sale_price).
         sold_items = []
+        # Keyed by id(): do_sell deletes the row and Django then sets the
+        # in-memory pk to None, so pk-keyed prices would collapse to one
+        # entry (a latent v22 shape this rework inherited and fixes —
+        # group totals silently read the last-sold price before this).
         prices = {}
-        skipped = 0
-        total = 0
+        refused = 0
         for item in res.items:
-            if get_item_value(item) == 0:
-                skipped += 1
+            if item.rarity == 'artifact':
+                refused += 1
                 continue
             price = await self.do_sell(item, char)
             sold_items.append(item)
-            prices[item.pk] = price
-            total += price
-        sold = len(sold_items)
-        if sold:
+            prices[id(item)] = price
+        paying = [i for i in sold_items if prices[id(i)] > 0]
+        worthless = [i for i in sold_items if prices[id(i)] == 0]
+        vendor_name = npc_display(vendor, capitalize=True)
+        if sold_items:
             # v22 brief 2 (DD §6/§7): the shortfall report, verbatim.
             if res.requested:
                 await self.output(
-                    f'You only had {sold} — the vendor was happy to take them.',
+                    f'You only had {len(sold_items)} — the vendor was happy to take them.',
                     'success',
                 )
-            for name, group in self._aggregate_by_name(sold_items):
-                group_total = sum(prices[i.pk] for i in group)
+            for name, group in self._aggregate_by_name(paying):
+                group_total = sum(prices[id(i)] for i in group)
                 if len(group) == 1:
                     await self.output(
-                        f'You sell {item_ref(group[0])} for '
-                        f'{self.format_amount(char, group_total)}.', 'success',
+                        npc_voice.pick(
+                            npc_voice.SELL_SINGLE,
+                            vendor=vendor_name,
+                            name=item_ref(group[0]),
+                            amount=self.format_amount(char, group_total),
+                        ),
+                        'success',
                     )
                 else:
                     await self.output(
-                        f'You sell {name} ×{len(group)} for '
-                        f'{self.format_amount(char, group_total)}.', 'success',
+                        npc_voice.pick(
+                            npc_voice.SELL_BULK,
+                            vendor=vendor_name,
+                            name=name,
+                            qty=len(group),
+                            amount=self.format_amount(char, group_total),
+                        ),
+                        'success',
                     )
-            if skipped:
+            # One trailing remark covers every worthless rider, however many.
+            if worthless:
                 await self.output(
-                    f'({skipped} worthless item'
-                    f'{"s" if skipped != 1 else ""} skipped.)', 'system',
+                    npc_voice.pick(
+                        npc_voice.SELL_WORTHLESS_TRAILING, vendor=vendor_name,
+                    ),
+                    'success',
+                )
+            # One trailing remark covers every refused item, however many.
+            if refused:
+                await self.output(
+                    npc_voice.pick(
+                        npc_voice.SELL_REFUSAL_PARTIAL, vendor=vendor_name,
+                    ),
+                    'warn',
                 )
             await self.maybe_kibitz(room, vendor)
         else:
+            # Nothing moved at all — everything in the batch was refused.
             await self.output(
-                f'Nothing sold — {skipped} worthless item'
-                f'{"s" if skipped != 1 else ""} skipped.', 'warn',
+                npc_voice.pick(
+                    npc_voice.SELL_REFUSAL_NONE, vendor=vendor_name,
+                ),
+                'warn',
             )
 
     async def cmd_repair(self, args):
@@ -2023,9 +2105,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     name = get_display_name_with_tier(item)
                     outcome, cost = await self.do_repair_attempt(item, char)
                     if outcome == 'poor':
+                        # v23 B4 (#40): repair outcomes draw from pools.
                         await self.output(
-                            f"You can't afford to repair {name} "
-                            f"({self.format_amount(char, cost)}) — you stop there.",
+                            npc_voice.pick(
+                                npc_voice.REPAIR_POOR_BULK, name=name,
+                                cost=self.format_amount(char, cost),
+                            ),
                             'warn',
                         )
                         out_of_funds = True
@@ -2037,16 +2122,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                             await self.output(_pity_repair_line(repairer), 'success')
                         else:
                             await self.output(
-                                f'{name} is restored to full condition. '
-                                f'({self.format_amount(char, cost)})',
+                                npc_voice.pick(
+                                    npc_voice.REPAIR_SUCCESS_BULK, name=name,
+                                    cost=self.format_amount(char, cost),
+                                ),
                                 'success',
                             )
                     else:
                         failed += 1
                         still_damaged.append(item)
                         await self.output(
-                            f"The mending on {name} didn't take. "
-                            f"({self.format_amount(char, cost)})",
+                            npc_voice.pick(
+                                npc_voice.REPAIR_FAIL_BULK, name=name,
+                                cost=self.format_amount(char, cost),
+                            ),
                             'warn',
                         )
                 damaged = still_damaged
@@ -2075,9 +2164,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         name = get_display_name_with_tier(item)
         outcome, cost = await self.do_repair_attempt(item, char)
         if outcome == 'poor':
+            # v23 B4 (#40): repair outcomes draw from pools.
             await self.output(
-                f"Repairing your {name} costs {self.format_amount(char, cost)} — "
-                "you can't afford it.",
+                npc_voice.pick(
+                    npc_voice.REPAIR_POOR_SINGLE, name=name,
+                    cost=self.format_amount(char, cost),
+                ),
                 'warn',
             )
         elif outcome == 'success':
@@ -2085,13 +2177,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.output(_pity_repair_line(repairer), 'success')
             else:
                 await self.output(
-                    f'{npc_display(repairer, capitalize=True)} restores your {name} '
-                    f'to full condition. ({self.format_amount(char, cost)})', 'success',
+                    npc_voice.pick(
+                        npc_voice.REPAIR_SUCCESS_SINGLE,
+                        repairer=npc_display(repairer, capitalize=True),
+                        name=name, cost=self.format_amount(char, cost),
+                    ),
+                    'success',
                 )
         else:
             await self.output(
-                f"{npc_display(repairer, capitalize=True)} works on your {name}, "
-                f"but the mending didn't take. ({self.format_amount(char, cost)})",
+                npc_voice.pick(
+                    npc_voice.REPAIR_FAIL_SINGLE,
+                    repairer=npc_display(repairer, capitalize=True),
+                    name=name, cost=self.format_amount(char, cost),
+                ),
                 'warn',
             )
 
@@ -2172,10 +2271,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_status_refresh()
             return
 
-        avg_per = sum(
-            npc.definition.base_per * npc.definition.scaling_factor * npc.mk_tier
-            for npc in npcs
-        ) / len(npcs)
+        # v23 B1 (#143): the NPC side reads the same effective stats as every
+        # other combat contest — session mean of get_npc_stats()['per'].
+        avg_per = flee_contest_npc_side(npcs)
 
         # v22 B5 (#100): the flee contest reads effective DEX (base + gear).
         eff = await self.get_effective_stats(character)
@@ -2218,8 +2316,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     # v21 brief 3 (#64): ordinal-aware while duplicates
                     # share the visible name.
                     await self.send_output(
-                        f"{npc_display_name(npc, aggro_npcs, capitalize=True)} "
-                        "snarls and moves to attack!",
+                        npc_voice.pick(
+                            npc_voice.AGGRO_ENGAGE,
+                            name=npc_display_name(npc, aggro_npcs, capitalize=True),
+                        ),
                         'combat',
                     )
                 new_session = await self.start_combat(aggro_npcs, first_attacker='npc')
@@ -2297,10 +2397,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             {},
             {'v': f'  Unspent stat points: {character.unspent_stat_points}'},
         ]
-        if character.unspent_stat_points > 0:
-            lines.append(
-                {'v': "  Type 'spend [<quantity>] <stat>' to allocate. (e.g. 'spend 2 str')"},
-            )
         await self.send_report_lines(lines)
 
     # v22 brief 2 (DD §1): 'spend [<quantity>] <stat>' — the argument
@@ -2877,7 +2973,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         other = await self.get_other_vendor_in_room(room, vendor.pk)
         if other is None:
             return
-        line = random.choice(KIBITZ_LINES).replace('{other}', npc_display(other, capitalize=True))
+        line = npc_voice.pick(
+            npc_voice.KIBITZ_LINES, other=npc_display(other, capitalize=True))
         await self.channel_layer.group_send(self.room_group, {
             'type': 'room_message',
             'text': line,
@@ -3767,7 +3864,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         item unchanged)."""
         from django.db import transaction
         # v19 brief 10: get_repair_cost floors to a minimum of 1 copper, but
-        # a genuinely worthless item (base_value 0 — the newbie kit) repairs
+        # a genuinely zero-value item (base_value 0 — the newbie kit) repairs
         # for real zero, not a token copper, so the pity framing is honest.
         cost = 0 if get_item_value(item) == 0 else get_repair_cost(item)
         with transaction.atomic():
@@ -4003,7 +4100,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def end_combat_session(self, session):
         session.is_active = False
         session.save(update_fields=['is_active'])
-        session.npcs.clear()
+        # v23 B1 (#25): session-end-without-death — surviving NPCs reset
+        # to full (last-active-session guard inside the helper).
+        release_session_npcs(session)
 
     @database_sync_to_async
     def get_flee_destination(self, character):

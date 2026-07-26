@@ -547,8 +547,6 @@ class ItemInstance(models.Model):
         related_name='cursed_item',
     )
 
-    is_artifact = models.BooleanField(default=False)
-
     is_identified = models.BooleanField(
         default=True,
         help_text=(
@@ -571,7 +569,10 @@ class ItemInstance(models.Model):
     corpse = models.ForeignKey(
         'Corpse',
         null=True, blank=True,
-        on_delete=models.SET_NULL,
+        # v23 B2 (#137): contents die with the corpse — corpse contents are
+        # by definition unowned, unequipped, unbound loot, so unconditional
+        # destruction on corpse delete is always correct.
+        on_delete=models.CASCADE,
         related_name='contents',
     )
 
@@ -581,7 +582,7 @@ class ItemInstance(models.Model):
             self.current_room_id is not None,
             self.corpse_id is not None,
         ])
-        if non_null > 1:
+        if non_null != 1:
             raise ValidationError(
                 "ItemInstance must be in exactly one location: owner, current_room, or corpse. "
                 f"Got {non_null} non-null location fields."
@@ -747,7 +748,7 @@ class NpcDefinition(models.Model):
     base_int        = models.IntegerField()
     base_wis        = models.IntegerField()
     base_per        = models.IntegerField()
-    scaling_factor  = models.FloatField(default=1.0, help_text="Stat multiplier per Mk tier.")
+    scaling_factor  = models.FloatField(default=1.0, help_text="Within-band level (1-10); Mk tier lifts the effective level by whole bands. See combat_utils.npc_level().")
 
     loot_table          = models.ForeignKey(
         LootTable, null=True, blank=True, on_delete=models.SET_NULL,

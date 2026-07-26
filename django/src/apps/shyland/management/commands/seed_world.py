@@ -261,6 +261,772 @@ MINIMAL_STATS = {
 }
 
 
+# v19 brief 9 / v23 brief 5 (#40): the connective pools — position-aware
+# color for the second and later speakers in a multi-NPC reply.
+DIALOGUE_CONNECTIVES = {
+    DialogueConnective.POSITION_SECOND: [
+        '{name} also looks up and answers.',
+        '{name} glances over and adds their piece.',
+        "{name} doesn't wait to be asked.",
+        '{name} looks over and takes up the thread.',
+        '{name} answers before the words have quite settled.',
+        '{name} has something to add, and adds it.',
+    ],
+    DialogueConnective.POSITION_LATER: [
+        '{name} chimes in, not to be left out.',
+        '{name} adds a word from where they stand.',
+        'Last of all, {name} weighs in.',
+        '{name} puts in a word, unhurried.',
+        'Not to be outdone, {name} speaks up.',
+        '{name} rounds it off from across the way.',
+    ],
+}
+
+# v23 brief 5 (#40 data half, #144): every authored NPC voice, lifted out of
+# the seeding method so the content is testable without a database. Ordered
+# by seeding order: the Convergence roster, then the two ring carts, then the
+# Verdant Reach checkpoint services. Slug -> list of entry specs.
+#
+# THE POOL FLOOR: every keyword and departed entry carries at least three
+# responses. Greetings carry exactly one — a greeting fires once per character
+# per NPC, forever, so variety in that pool is invisible by construction.
+#
+# The (npc, entry_type, note) triple is the seed's lookup key: two entries of
+# the same type on the same NPC must never share a note.
+NPC_DIALOGUE = {
+    'aldric': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'information', 'lost', 'new'],
+            'responses': [
+                'Help. Hm. Everyone wants the whole world explained before lunch. Walk the ring road. Talk to who you meet. The paths are honest here, which is more than I can say for most places.',
+                'You look sturdy enough to figure things out the hard way. But fine: the gate north of the Heart leads to the Verdant Reach. Green place. Things in it will kill you politely.',
+                "Ask the machine on the eastern side if you want facts. Ask me if you want the truth. They overlap less than you'd hope.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'obelisk',
+            'keywords': ['obelisk', 'sphere', 'heart'],
+            'responses': [
+                "The Obelisk was here before the city, and the city grew around it the way bark grows around a nail. The sphere inside it watches. Don't ask me what it watches for.",
+                "Older than me, and I'm older than I look. It hums if you stand close. Some nights it hums back.",
+                "It doesn't do anything. That is the considered opinion of everyone who has stood near it for less than a minute.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Aldric looks you over once, unhurried, and nods as if confirming a private guess.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Aldric snorts. "Youth," he mutters, to no one in particular.',
+                'Aldric watches the empty doorway a moment. "And they say I don\'t listen," he says.',
+                'Aldric goes back to whatever he was thinking about before you interrupted it.',
+            ],
+        },
+    ],
+    'info-prime': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'information', 'directions', 'where'],
+            'responses': [
+                'QUERY ACKNOWLEDGED. The Convergence ring road connects all districts. The northern gate accesses the Verdant Reach, hazard rating: moderate. Further queries accepted.',
+                'INFORMATION SERVICE ACTIVE. State a subject: the Obelisk. The districts. The Verdant Reach. This unit does not editorialize. The old man editorializes.',
+                'QUERY FORMAT ACCEPTED: SPEAK A SUBJECT ALOUD. THIS UNIT HEARS EVERYTHING SAID IN THIS DISTRICT AND ANSWERS ONLY WHAT IS ASKED. A COURTESY.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'network',
+            'keywords': ['obelisk', 'travel', 'network'],
+            'responses': [
+                'SUBJECT: OBELISK NETWORK. Attune by standing near a node. Travel between revealed nodes is instantaneous and free of charge. This unit finds the pricing model inexplicable and correct.',
+                'NODE STATUS: THE HEART IS ALWAYS AVAILABLE. OTHER NODES REQUIRE PRIOR VISITATION. THE NETWORK WILL NOT DELIVER YOU SOMEWHERE YOU HAVE NEVER BEEN. POLICY, NOT LIMITATION.',
+                'CORRECTION FREQUENTLY REQUIRED: THE STONES ARE NOT DOORS. THE STONES ARE ADDRESSES. THE DISTINCTION MATTERS TO THE STONES.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Info Prime\'s lenses rotate toward you with a soft click. "NEW ENTITY LOGGED. WELCOME."',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Info Prime\'s lenses linger on the empty doorway. "QUERY ABANDONED. LOGGED."',
+                'Info Prime\'s lenses hold on the empty air. "SESSION TERMINATED BY CLIENT. NO FAULT ASSIGNED."',
+                'Info Prime files something with a soft click. "INCOMPLETE QUERIES: ONE. RUNNING TOTAL: SUBSTANTIAL."',
+            ],
+        },
+    ],
+    'morra': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'repair',
+            'keywords': ['repair', 'mend', 'fix', 'broken'],
+            'responses': [
+                "Bring it here. If it's metal I can save it, if it's leather I can shame it into holding together another week.",
+                "Repairs, aye. I fix what's broken. The price depends on how insulted the item is.",
+                'Everything breaks. The trick is breaking slower than your gear. Hand it over.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['weapon', 'armor', 'buy', 'sell', 'wares'],
+            'responses': [
+                "The rack's what I've got: honest iron, no engraving, no nonsense. The castoff bin's free to anyone who needs it — no shame in starting somewhere.",
+                "Buy what you can afford, sell me what you've outgrown. I'll give fair thirds; don't haggle, it bores me.",
+                "If you're new, take the worn things — free. When you've earned better, the shortsword will be waiting.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'work', 'smith'],
+            'responses': [
+                "Help is what the anvil's for. Yours is the gate north, if you're the adventuring kind — go bleed on something and bring me the pieces after.",
+                'I smith, I mend, I mind my fire. Anything cleverer, ask the old man or the machine.',
+                "You want the truth? Mend your own gear when you can, pay me when you can't, and don't stand between me and the fire.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Morra looks up from the anvil, takes your measure like stock to be worked, and returns to her hammering.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Morra shakes her head at the empty doorway and strikes the next blow a little harder.',
+                "Morra doesn't stop hammering. She wasn't going to anyway.",
+                'Morra glances at the empty doorway. "Come back when it breaks," she says, certain that it will.',
+            ],
+        },
+    ],
+    'pella': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'welcome', 'new'],
+            'responses': [
+                "Oh, a new face! Sit, look, touch anything — Ferwick pretends the stock is delicate but it's survived him, hasn't it.",
+                "Welcome, dear. The city's kinder than it looks and meaner than it admits. Take a trinket, take a bag, take your time.",
+                "Lost? Everyone is, at first. That's what the ring road is for — it always brings you back around.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
+            'responses': [
+                "The little things are free to the new — the band, the pendant. They're not much, but nothing's nothing, is it.",
+                'Every piece on this table had a life before. Take one and give it another.',
+                "Ferwick says I'd give the whole table away. Ferwick is right and I don't care.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'bag',
+            'keywords': ['bag', 'satchel', 'pouch', 'carry'],
+            'responses': [
+                "You'll want the satchel, love — small, but it's carried worse than your future through this city.",
+                "A body can't adventure with full hands. Take the patchwork one; it means well.",
+                'Hands full already, look at you. Take the satchel before you drop something precious in the road.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Pella brightens the moment she sees you, as if you were expected and slightly late.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Pella presses a hand to her chest. "Well I never," she says, delighted to be scandalized.',
+                'Pella waves at the doorway anyway, in case you turn around.',
+                'Pella sighs happily. "They\'re always in such a rush at that age," she says, of an age she has not specified.',
+            ],
+        },
+    ],
+    'ferwick': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'welcome', 'new'],
+            'responses': [
+                'Mind the table legs, mind the missus, and mind that the free things are for them as need them. You look like you qualify. No offense meant.',
+                'Advice? Keep your gear mended and your opinions few. Both are cheaper here than anywhere north of the gate.',
+                "New, are you. The city will explain itself if you let it. We're merely the friendliest part of the explanation.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
+            'responses': [
+                "Everything Pella hasn't given away yet is for sale, and everything for sale she's about to give away. Choose quickly.",
+                "The glass pendant's fogged, the band's tarnished, and both are free. Quality costs; kindness doesn't. House policy.",
+                "I keep the ledger. The ledger says we lose money on charm. I've been outvoted.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'bag',
+            'keywords': ['bag', 'satchel', 'pouch', 'carry'],
+            'responses': [
+                "The satchel's four bags' worth of survivors sewn together. Sentimental value nil, carrying value modest, price nothing.",
+                'Take the bag. Pella will worry about your pockets otherwise, and then I have to hear about your pockets.',
+                'One satchel, no charge, and no I will not itemize it. Pella has already won that argument on your behalf.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                "Ferwick gives you a shopkeeper's nod — cordial, appraising, and already calculating what you need.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Ferwick sighs at the doorway. "They never buy the good shelf," he informs the stock.',
+                'Ferwick makes a small note in the ledger. "Browsed," he writes. "Bought nothing."',
+                'Ferwick straightens the table by an inch that did not need straightening.',
+            ],
+        },
+    ],
+    'repairbot-prime': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'repair',
+            'keywords': ['repair', 'fix', 'broken', 'mend'],
+            'responses': [
+                'REPAIR SERVICE ACTIVE. PRESENT DAMAGED EQUIPMENT. THIS UNIT HAS MAINTAINED THE DISTRICT FOR THREE CENTURIES. YOUR BOOTS ARE NOT A CHALLENGE.',
+                'DIAGNOSIS AVAILABLE ON PRESENTATION. PROGNOSIS: REPAIRABLE. EVERYTHING IS REPAIRABLE. SOME THINGS TWICE.',
+                "STATE OF EQUIPMENT: YOUR CONCERN. RESTORATION OF EQUIPMENT: THIS UNIT'S FUNCTION. AN EFFICIENT ARRANGEMENT.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help'],
+            'responses': [
+                'ASSISTANCE PARAMETERS: MECHANICAL. FOR NAVIGATION, CONSULT INFO PRIME. FOR OPINIONS, CONSULT THE OLD MAN. FOR REPAIRS, YOU HAVE ARRIVED.',
+                'FUNCTIONAL SUMMARY: THIS UNIT RESTORES DURABILITY. THIS UNIT DOES NOT RESTORE JUDGMENT. PRESENT ITEMS, NOT DECISIONS.',
+                'ADVISORY: EQUIPMENT DEGRADES CONTINUOUSLY AND SILENTLY. YOU WILL NOTICE AT THE WORST AVAILABLE MOMENT. THIS UNIT SUGGESTS EARLIER.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Repairbot Prime\'s sensors sweep you once, head to boots. "EQUIPMENT LOGGED. WEAR PATTERNS: PREDICTABLE."',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Repairbot Prime\'s servos settle. "CLIENT DEPARTED MID-CONSULTATION. NOTED. NOT TAKEN PERSONALLY."',
+                'Repairbot Prime powers down its work lamp. "QUEUE EMPTY. RESUMING STANDBY."',
+                'Repairbot Prime records something. "CLIENT PATTERN: RETURNS WHEN BROKEN. CONSISTENT WITH ALL CLIENTS."',
+            ],
+        },
+    ],
+    'seris': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'obelisk',
+            'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
+            'responses': [
+                'The stone remembers the falling-together. We remember the stone.',
+                'Ask the sphere nothing. It is an answer, not a listener.',
+                'All the worlds arrived at once, and only this square forgave them for it.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help'],
+            'responses': [
+                'Help is a direction. Yours is north, then onward.',
+                'We are poor at help and rich at witness. Choose your question accordingly.',
+                'We can tell you what a thing is. Where it is, you will have to walk.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Seris turns with a sound like a struck glass, regarding you with light instead of eyes.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Seris turns back toward the stone, the question already forgotten or already answered.',
+                'Seris dims by a shade, the way a held breath is let go.',
+                'The light within Seris settles, patient as a lamp left burning for someone.',
+            ],
+        },
+    ],
+    'veris': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'obelisk',
+            'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
+            'responses': [
+                'Seris says the stone remembers. I say the stone forgives. We are both guessing.',
+                'The rifts did not break the worlds. They introduced them. Rudely.',
+                'Stand near the obelisk at night. What you feel is not humming. It is counting.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help'],
+            'responses': [
+                'The bright ones sell, the loud one mends, the old one judges, the machine recites. We — attend.',
+                'You will not need our help until much later. We will still be here.',
+                'Ask us at the end. We are better at endings.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Veris inclines toward you by a degree, and the light within shifts to something like attention.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Veris regards the empty air with something that is almost, but not quite, disappointment.',
+                'Veris turns a slow degree back toward the obelisk and resumes attending.',
+                'Veris says, "Later, then," to no one at all, and means it.',
+            ],
+        },
+    ],
+    'vnd-9': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
+            'responses': [
+                'CURRENT INVENTORY: RESTORATIVES. ALL SALES FINAL. ALL CUSTOMERS VALUED.',
+                'STOCK LEVELS: SUFFICIENT. STOCK VARIETY: RESTORATIVES. STOCK OPINION: YOU LOOK LIKE YOU NEED ONE.',
+                'RECOMMENDED PURCHASE: THE DRAUGHT. ALTERNATIVE RECOMMENDATION: THE DRAUGHT. THIS UNIT STOCKS ONE PRODUCT AND ENORMOUS CONVICTION.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'thanks',
+            'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
+            'responses': [
+                'TRANSACTION COMPLETE. DO NOT DIE. RETURN SOON.',
+                'GRATITUDE LOGGED. GRATITUDE UNNECESSARY. GRATITUDE APPRECIATED REGARDLESS.',
+                'CUSTOMER DEPARTING IN GOOD CONDITION. THIS UNIT RECORDS THAT AS A SALE WELL MADE.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'VND-9\'s front panel flickers awake as you approach. "WELCOME, TRAVELER. HYDRATION IS SURVIVAL. SURVIVAL IS CUSTOMER RETENTION."',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'VND-9\'s panel dims by one increment. "CUSTOMER LOST. CAUSE: LEGS."',
+                'VND-9 hums to itself. "STANDING BY. STANDING IS THE ENTIRETY OF THE JOB."',
+                'VND-9 cycles its display through the full stock list for nobody at all.',
+            ],
+        },
+    ],
+    'mother-tansy': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
+            'responses': [
+                'Draughts for what ails you. And something ails everyone who walks this ring twice.',
+                "Draughts, love, and nothing else worth carrying. I don't hold with clutter.",
+                "Two coppers' worth of foresight beats a whole purse of regret. Take one before you walk out through the green gate.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'thanks',
+            'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
+            'responses': [
+                'Off you go. Try to need me less next time.',
+                'Go on, then. Mind the road and mind yourself.',
+                'Thank me by coming back needing less. It would be a first.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Mother Tansy beckons you over without getting up. "Come closer, love — everyone limps past this corner eventually."',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Mother Tansy tuts fondly at the empty street.',
+                'Mother Tansy shakes her head. "They never take enough," she says to her cart.',
+                'Mother Tansy goes back to her stock, unbothered. They all come back this way eventually.',
+            ],
+        },
+    ],
+    'maro-the-mender': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'repair',
+            'keywords': ['repair', 'mend', 'fix', 'broken', 'bench'],
+            'responses': [
+                "Set it on the bench and I'll have a look. Most things are less broken than their owners think.",
+                'I can mend it. Whether it stays mended depends on what you do to it next, which is your business.',
+                'Reedmere taught me to fix nets. A net or a boot buckle is the same argument with the same thread.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'shard',
+            'keywords': ['shard', 'light', 'green', 'travel', 'lamp'],
+            'responses': [
+                "It came for the crossing and stayed, same as I did. Stand near it long enough and it will take you elsewhere. Don't ask me how.",
+                "I talk to it sometimes. It never answers. That's most of the appeal.",
+                "People step out of that light three or four times a day. I've stopped looking up.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'where', 'directions'],
+            'responses': [
+                'Lost? The arch back to the Convergence is south, the way you came. Reedmere is north up the valley, then west at the approach. Everything else out here is weather and animals.',
+                "Help is cheap and I have plenty. Keep your boots dry, keep your gear whole, and don't argue with anything that has more legs than you.",
+                'Ask Essa if you need goods. Ask me if you need something held together. Ask the fog nothing; it has never once answered.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Maro looks up from his bench, takes in your boots first and the rest of you second, and nods.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Maro turns back to his bench without any sign of surprise.',
+                'Maro shakes his head slowly. "Always in a hurry, that lot," he tells the shard.',
+                'Maro sets down his awl, considers the empty space where you were standing, and picks it up again.',
+            ],
+        },
+    ],
+    'essa-the-trader': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['wares', 'buy', 'sell', 'browse', 'stock', 'trade', 'goods'],
+            'responses': [
+                "Draughts, a knife, boots, gloves. It isn't much of a blanket, but everything on it has kept someone alive.",
+                'Buy before you climb, not after. The stair sells nothing, and neither do the bears.',
+                "I'll take what you've outgrown, too, at a fair price. Fair, mind. Not generous.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'advice', 'welcome'],
+            'responses': [
+                "New, then. Boots first, love. Everything else in the Reach can wait; your feet can't.",
+                'The path south takes you back to the arch and the city. North it opens out — green and lovely and full of teeth.',
+                "Maro will mend what you break. I'll sell you what you didn't know to bring. Between the two of us you'll manage.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'danger',
+            'keywords': ['danger', 'dangerous', 'safe', 'beast', 'bear', 'lion', 'spider', 'careful'],
+            'responses': [
+                "Bears fish the shallows well north of here, and they don't share. The lions keep to the cliffs and consider the path theirs.",
+                "There's silk in the gully east of the bramble cut. Whatever spins it is not small. Please don't go and look.",
+                "Nothing crosses into this clearing. The shard sees to it, or the crossing does. Past the ford you're on your own.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Essa glances up from her blanket, prices you kindly at a glance, and smiles as though you passed.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Essa smooths the corner of her blanket and lets you go without comment.',
+                'Essa calls after the empty air: "Boots! At least look at the boots!"',
+                'Essa shares a look with Maro. Neither of them says anything; both of them mean it.',
+            ],
+        },
+    ],
+    'tavik-the-mender': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'repair',
+            'keywords': ['repair', 'mend', 'fix', 'broken', 'stitch'],
+            'responses': [
+                'Hand it here. Needle, awl, patience — in that order, and I have all three.',
+                "The wind takes the stitching out of everything up here. That isn't your fault. It is my living.",
+                "I can save it. I can't make it new. Nobody makes anything new; we only argue with the wearing-out.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'shard',
+            'keywords': ['shard', 'light', 'green', 'travel', 'wind'],
+            'responses': [
+                'It rides the wind — climbs, drops, climbs again. Somebody built the network it belongs to. Nobody built that.',
+                'Stand near it and you can go where you have already been. Efficient. Unsettling. Free.',
+                'Windhome sends its children up to watch it. Half of them stay for the travelers instead.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'where', 'directions'],
+            'responses': [
+                'The stair drops away south behind you, back to the vale. Windhome is north, then west off the grass. Everything between is grass and the things that live in grass.',
+                'Sona sells, I mend, the wind does the rest whether you asked it to or not.',
+                'Keep something to drink on you. The flats look kind. The flats are simply large.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Tavik glances up from his hide, needle still moving, and tips his chin at you.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                "Tavik doesn't look up. The needle keeps its rhythm.",
+                'Tavik snorts. "The wind takes them too," he says, to nobody in particular.',
+                'Tavik marks his place in the stitching, looks at the empty ground, and carries on.',
+            ],
+        },
+    ],
+    'sona-the-trader': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['wares', 'buy', 'sell', 'browse', 'stock', 'trade', 'goods', 'bow'],
+            'responses': [
+                'A bow, a vest, leggings, and draughts. Weighted down, all of it, or the wind would carry my whole living north.',
+                'The bow is the honest purchase. Everything on these flats sees you coming from a long way off.',
+                "I buy as well as sell. Bring me what the caves gave you — I'm curious what the caves are handing out these days.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'advice', 'language', 'languages'],
+            'responses': [
+                "You came up the stair, so you've done the hard part twice — once climbing it and once deciding to. Windhome is north and west if you want a roof.",
+                "People arrive beside that shard speaking languages I have never heard. I've learned three. I'm working on a fourth. Say something strange and I'll write it down.",
+                'One of you called their armor "kevlar" once. I still don\'t know what that is. I put it in the book anyway.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'danger',
+            'keywords': ['danger', 'dangerous', 'safe', 'beast', 'buffalo', 'grass', 'careful'],
+            'responses': [
+                'The buffalo will let you walk right up to them. That is not an invitation, and they are not slow.',
+                'Nothing out there hunts you. Several things will object to you. It comes to the same bruises.',
+                "This clearing is safe. I don't know why, and I've stopped asking — the light hangs here and nothing comes.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Sona looks up, takes in your gear with frank professional interest, and beckons you closer out of the wind.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Sona weights the corner of her goods down again and lets the moment pass.',
+                'Sona shrugs. "They always come back for the bow," she says.',
+                'Sona watches the empty ground for a breath, then writes something small in her book.',
+            ],
+        },
+    ],
+    'old-brammel': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'repair',
+            'keywords': ['repair', 'mend', 'fix', 'broken', 'bench'],
+            'responses': [
+                'Sit, sit. Put it on the bench. Everything that comes down this mountain comes down broken, the people included.',
+                "I mended for Lastlight forty years before I came down here. Stone, leather, iron, pride — I've had a go at all of them.",
+                "It will hold. It won't hold forever. Come back and see me; that's rather the arrangement.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'shard',
+            'keywords': ['shard', 'light', 'lamp', 'green', 'travel', 'fire'],
+            'responses': [
+                'The little lamp? Best company on the mountain. It warms itself at my fire, which it does not need, which is exactly why I like it.',
+                'Stand close and it will send you off to the Heart, or back down to the crossings. It has never once asked me for anything in return.',
+                'It arrived the same year I did. I have decided that means something. Nobody has argued with me yet.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'where', 'directions', 'mountain'],
+            'responses': [
+                "Lost? Then you're at the right fire. The flats are south behind you. The switchbacks start north and don't stop, and Lastlight sits east off the path once you're high enough.",
+                'Take the climb in pieces. The mountain is in no hurry, and neither should you be.',
+                "Ridda has the iron, I have the bench, the fire is free. The mountain has everything else and it doesn't sell.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Old Brammel looks up from the fire, delighted, as though you were a rumor he had been hoping to confirm.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Old Brammel chuckles. "Off they go," he tells the fire. "Off they always go."',
+                'Old Brammel settles back against the stone and lets the quiet come back.',
+                'Old Brammel looks at the little lamp. "Just you and me again," he says, entirely content.',
+            ],
+        },
+    ],
+    'ridda-the-trader': [
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'wares',
+            'keywords': ['wares', 'buy', 'sell', 'browse', 'stock', 'trade', 'goods', 'iron'],
+            'responses': [
+                'Mace, sword, shield, cap, and something to drink. Everything a person wishes they had bought before the first switchback.',
+                "The shield is the one you'll thank me for. Nobody has ever come back down and thanked me for the cap. They should.",
+                "I'll buy what you haul out of the deep places, too. Fair weight, fair price, and no questions I'd rather not have answered.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'help',
+            'keywords': ['help', 'lost', 'new', 'advice', 'climb'],
+            'responses': [
+                "Buy low, climb high. That's the whole of my advice and it cost me nothing to give.",
+                "Brammel mends, I sell, the fire is free, and the light does as it likes. That's Cragfoot.",
+                'You want warnings? Those are free as well. Ask me about the mountain.',
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_KEYWORD,
+            'note': 'danger',
+            'keywords': ['danger', 'dangerous', 'safe', 'beast', 'bear', 'lion', 'mountain', 'careful'],
+            'responses': [
+                'Brown bears hold the lower slopes and mountain lions hold everything above them. Neither of them negotiates.',
+                'There are ways into the mountain up there — the crag, the chittering hole, the crown. Things live in all three, and they were doing perfectly well before we arrived.',
+                "If a hunter off the Ridge tells you a ground is forbidden, it is forbidden. They lost people learning that so you wouldn't have to.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_GREETING,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                "Ridda looks you over once — gear, boots, the set of your shoulders — and decides you're worth talking to.",
+            ],
+        },
+        {
+            'entry_type': DialogueEntry.ENTRY_DEPARTED,
+            'note': '',
+            'keywords': [],
+            'responses': [
+                'Ridda pulls the oilcloth straight over her goods and thinks nothing of it.',
+                'Ridda snorts. "Come back when the mountain has explained it," she says.',
+                'Ridda glances at Brammel. Brammel is already talking to the light.',
+            ],
+        },
+    ],
+}
+
+
 class Command(BaseCommand):
     help = 'Seed The Convergence zone with the Infinity City starting area'
 
@@ -288,7 +1054,6 @@ class Command(BaseCommand):
         self._wire_exits()
         self._seed_convergence_npcs()
         self._seed_primordial_sphere()
-        self._seed_dialogue()
         self._seed_travel_nodes()
         self._seed_travel_messages()
         self._set_character_rooms()
@@ -309,6 +1074,11 @@ class Command(BaseCommand):
         self._seed_ridge_npcs()
         self._seed_ridge_spawns()
         self._seed_ridge_vendors()
+
+        # v23 brief 5: dialogue seeds LAST — _seed_npc_dialogue resolves NPC
+        # definitions by slug, and the Verdant/Ridge service NPCs are not
+        # defined until their zone stages have run. Fresh-database ordering.
+        self._seed_dialogue()
 
         self._sweep_all()
         self._print_report()
@@ -1619,468 +2389,16 @@ class Command(BaseCommand):
     # rest of the Convergence roster's maps are Brief 10 content.
     # ------------------------------------------------------------------
 
-    DIALOGUE_CONNECTIVES = {
-        DialogueConnective.POSITION_SECOND: [
-            '{name} also looks up and answers.',
-            '{name} glances over and adds their piece.',
-            "{name} doesn't wait to be asked.",
-        ],
-        DialogueConnective.POSITION_LATER: [
-            '{name} chimes in, not to be left out.',
-            '{name} adds a word from where they stand.',
-            'Last of all, {name} weighs in.',
-        ],
-    }
-
     def _seed_dialogue(self):
         self._seed_dialogue_connectives()
-        self._seed_npc_dialogue('aldric', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help', 'information', 'lost', 'new'],
-                'responses': [
-                    'Help. Hm. Everyone wants the whole world explained before lunch. Walk '
-                    'the ring road. Talk to who you meet. The paths are honest here, which '
-                    'is more than I can say for most places.',
-                    "You look sturdy enough to figure things out the hard way. But fine: "
-                    "the gate north of the Heart leads to the Verdant Reach. Green place. "
-                    "Things in it will kill you politely.",
-                    "Ask the machine on the eastern side if you want facts. Ask me if you "
-                    "want the truth. They overlap less than you'd hope.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'obelisk',
-                'keywords': ['obelisk', 'sphere', 'heart'],
-                'responses': [
-                    "The Obelisk was here before the city, and the city grew around it the "
-                    "way bark grows around a nail. The sphere inside it watches. Don't ask "
-                    "me what it watches for.",
-                    "Older than me, and I'm older than I look. It hums if you stand close. "
-                    "Some nights it hums back.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Aldric looks you over once, unhurried, and nods as if confirming a '
-                    'private guess.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Aldric snorts. "Youth," he mutters, to no one in particular.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('info-prime', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help', 'information', 'directions', 'where'],
-                'responses': [
-                    'QUERY ACKNOWLEDGED. The Convergence ring road connects all districts. '
-                    'The northern gate accesses the Verdant Reach, hazard rating: moderate. '
-                    'Further queries accepted.',
-                    'INFORMATION SERVICE ACTIVE. State a subject: the Obelisk. The '
-                    'districts. The Verdant Reach. This unit does not editorialize. The old '
-                    'man editorializes.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'network',
-                'keywords': ['obelisk', 'travel', 'network'],
-                'responses': [
-                    'SUBJECT: OBELISK NETWORK. Attune by standing near a node. Travel '
-                    'between revealed nodes is instantaneous and free of charge. This unit '
-                    'finds the pricing model inexplicable and correct.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Info Prime\'s lenses rotate toward you with a soft click. "NEW ENTITY '
-                    'LOGGED. WELCOME."',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Info Prime\'s lenses linger on the empty doorway. "QUERY ABANDONED. '
-                    'LOGGED."',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('morra', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'repair',
-                'keywords': ['repair', 'mend', 'fix', 'broken'],
-                'responses': [
-                    "Bring it here. If it's metal I can save it, if it's leather I can "
-                    "shame it into holding together another week.",
-                    "Repairs, aye. I fix what's broken. The price depends on how "
-                    "insulted the item is.",
-                    "Everything breaks. The trick is breaking slower than your gear. "
-                    "Hand it over.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'wares',
-                'keywords': ['weapon', 'armor', 'buy', 'sell', 'wares'],
-                'responses': [
-                    "The rack's what I've got: honest iron, no engraving, no "
-                    "nonsense. The castoff bin's free to anyone who needs it — no "
-                    "shame in starting somewhere.",
-                    "Buy what you can afford, sell me what you've outgrown. I'll "
-                    "give fair thirds; don't haggle, it bores me.",
-                    "If you're new, take the worn things — free. When you've earned "
-                    "better, the shortsword will be waiting.",
-                ],
-            },
-            {
-                # v19 brief 10 amendment 1 (issue #34): first response corrected
-                # to "gate north" — the Green Gate is north of the Heart.
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help', 'work', 'smith'],
-                'responses': [
-                    "Help is what the anvil's for. Yours is the gate north, if "
-                    "you're the adventuring kind — go bleed on something and bring "
-                    "me the pieces after.",
-                    "I smith, I mend, I mind my fire. Anything cleverer, ask the "
-                    "old man or the machine.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Morra looks up from the anvil, takes your measure like stock '
-                    'to be worked, and returns to her hammering.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Morra shakes her head at the empty doorway and strikes the '
-                    'next blow a little harder.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('pella', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help', 'welcome', 'new'],
-                'responses': [
-                    "Oh, a new face! Sit, look, touch anything — Ferwick pretends "
-                    "the stock is delicate but it's survived him, hasn't it.",
-                    "Welcome, dear. The city's kinder than it looks and meaner "
-                    "than it admits. Take a trinket, take a bag, take your time.",
-                    "Lost? Everyone is, at first. That's what the ring road is "
-                    "for — it always brings you back around.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'wares',
-                'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
-                'responses': [
-                    "The little things are free to the new — the band, the "
-                    "pendant. They're not much, but nothing's nothing, is it.",
-                    "Every piece on this table had a life before. Take one and "
-                    "give it another.",
-                    "Ferwick says I'd give the whole table away. Ferwick is right "
-                    "and I don't care.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'bag',
-                'keywords': ['bag', 'satchel', 'pouch', 'carry'],
-                'responses': [
-                    "You'll want the satchel, love — small, but it's carried "
-                    "worse than your future through this city.",
-                    "A body can't adventure with full hands. Take the patchwork "
-                    "one; it means well.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Pella brightens the moment she sees you, as if you were '
-                    'expected and slightly late.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Pella presses a hand to her chest. "Well I never," she says, '
-                    'delighted to be scandalized.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('ferwick', [
-            {
-                # v19 brief 10 amendment 1 (issue #34): second response corrected
-                # to "north of the gate" — the Green Gate is north of the Heart.
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help', 'welcome', 'new'],
-                'responses': [
-                    "Mind the table legs, mind the missus, and mind that the "
-                    "free things are for them as need them. You look like you "
-                    "qualify. No offense meant.",
-                    "Advice? Keep your gear mended and your opinions few. Both "
-                    "are cheaper here than anywhere north of the gate.",
-                    "New, are you. The city will explain itself if you let it. "
-                    "We're merely the friendliest part of the explanation.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'wares',
-                'keywords': ['trinket', 'ring', 'pendant', 'wares', 'buy'],
-                'responses': [
-                    "Everything Pella hasn't given away yet is for sale, and "
-                    "everything for sale she's about to give away. Choose "
-                    "quickly.",
-                    "The glass pendant's fogged, the band's tarnished, and both "
-                    "are free. Quality costs; kindness doesn't. House policy.",
-                    "I keep the ledger. The ledger says we lose money on charm. "
-                    "I've been outvoted.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'bag',
-                'keywords': ['bag', 'satchel', 'pouch', 'carry'],
-                'responses': [
-                    "The satchel's four bags' worth of survivors sewn together. "
-                    "Sentimental value nil, carrying value modest, price "
-                    "nothing.",
-                    "Take the bag. Pella will worry about your pockets "
-                    "otherwise, and then I have to hear about your pockets.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    "Ferwick gives you a shopkeeper's nod — cordial, appraising, "
-                    "and already calculating what you need.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Ferwick sighs at the doorway. "They never buy the good '
-                    'shelf," he informs the stock.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('repairbot-prime', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'repair',
-                'keywords': ['repair', 'fix', 'broken', 'mend'],
-                'responses': [
-                    'REPAIR SERVICE ACTIVE. PRESENT DAMAGED EQUIPMENT. THIS UNIT '
-                    'HAS MAINTAINED THE DISTRICT FOR THREE CENTURIES. YOUR BOOTS '
-                    'ARE NOT A CHALLENGE.',
-                    'DIAGNOSIS AVAILABLE ON PRESENTATION. PROGNOSIS: REPAIRABLE. '
-                    'EVERYTHING IS REPAIRABLE. SOME THINGS TWICE.',
-                    "STATE OF EQUIPMENT: YOUR CONCERN. RESTORATION OF EQUIPMENT: "
-                    "THIS UNIT'S FUNCTION. AN EFFICIENT ARRANGEMENT.",
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help'],
-                'responses': [
-                    'ASSISTANCE PARAMETERS: MECHANICAL. FOR NAVIGATION, CONSULT '
-                    'INFO PRIME. FOR OPINIONS, CONSULT THE OLD MAN. FOR REPAIRS, '
-                    'YOU HAVE ARRIVED.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    "Repairbot Prime's sensors sweep you once, head to boots. "
-                    '"EQUIPMENT LOGGED. WEAR PATTERNS: PREDICTABLE."',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_DEPARTED,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    "Repairbot Prime's servos settle. \"CLIENT DEPARTED "
-                    'MID-CONSULTATION. NOTED. NOT TAKEN PERSONALLY."',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('seris', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'obelisk',
-                'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
-                'responses': [
-                    'The stone remembers the falling-together. We remember the '
-                    'stone.',
-                    'Ask the sphere nothing. It is an answer, not a listener.',
-                    'All the worlds arrived at once, and only this square '
-                    'forgave them for it.',
-                ],
-            },
-            {
-                # v19 brief 10 amendment 1 (issue #34): first response corrected
-                # to "north" — the Green Gate is north of the Heart.
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help'],
-                'responses': [
-                    'Help is a direction. Yours is north, then onward.',
-                    'We are poor at help and rich at witness. Choose your '
-                    'question accordingly.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Seris turns with a sound like a struck glass, regarding you '
-                    'with light instead of eyes.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('veris', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'obelisk',
-                'keywords': ['obelisk', 'sphere', 'rift', 'convergence'],
-                'responses': [
-                    'Seris says the stone remembers. I say the stone forgives. '
-                    'We are both guessing.',
-                    'The rifts did not break the worlds. They introduced them. '
-                    'Rudely.',
-                    'Stand near the obelisk at night. What you feel is not '
-                    'humming. It is counting.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'help',
-                'keywords': ['help'],
-                'responses': [
-                    'The bright ones sell, the loud one mends, the old one '
-                    'judges, the machine recites. We — attend.',
-                    'You will not need our help until much later. We will '
-                    'still be here.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Veris inclines toward you by a degree, and the light '
-                    'within shifts to something like attention.',
-                ],
-            },
-        ])
-        # v20 brief 1 (#43): the two ring street carts.
-        self._seed_npc_dialogue('vnd-9', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'wares',
-                'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
-                'responses': [
-                    'CURRENT INVENTORY: RESTORATIVES. ALL SALES FINAL. ALL '
-                    'CUSTOMERS VALUED.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'thanks',
-                'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
-                'responses': [
-                    'TRANSACTION COMPLETE. DO NOT DIE. RETURN SOON.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'WELCOME, TRAVELER. HYDRATION IS SURVIVAL. SURVIVAL IS '
-                    'CUSTOMER RETENTION.',
-                ],
-            },
-        ])
-        self._seed_npc_dialogue('mother-tansy', [
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'wares',
-                'keywords': ['browse', 'wares', 'buy', 'stock', 'draught', 'draughts'],
-                'responses': [
-                    'Draughts for what ails you. And something ails everyone '
-                    'who walks this ring twice.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_KEYWORD,
-                'note': 'thanks',
-                'keywords': ['thanks', 'thank', 'farewell', 'goodbye', 'bye'],
-                'responses': [
-                    'Off you go. Try to need me less next time.',
-                ],
-            },
-            {
-                'entry_type': DialogueEntry.ENTRY_GREETING,
-                'note': '',
-                'keywords': [],
-                'responses': [
-                    'Come closer, love — everyone limps past this corner '
-                    'eventually.',
-                ],
-            },
-        ])
+        for npc_slug, entry_specs in NPC_DIALOGUE.items():
+            self._seed_npc_dialogue(npc_slug, entry_specs)
         self.stdout.write(
-            '  Dialogue seeded: connectives, Aldric, Info Prime, Morra, Pella, '
-            'Ferwick, Repairbot Prime, Seris, Veris, VND-9, Mother Tansy.'
+            f'  Dialogue seeded: connectives + {len(NPC_DIALOGUE)} NPC voices.'
         )
 
     def _seed_dialogue_connectives(self):
-        for position_class, templates in self.DIALOGUE_CONNECTIVES.items():
+        for position_class, templates in DIALOGUE_CONNECTIVES.items():
             for template in templates:
                 self._reconcile(
                     DialogueConnective,
@@ -2513,11 +2831,108 @@ class Command(BaseCommand):
         )
 
         self._verify_verdant()
+        self._verify_dialogue()
         self._verify_map_geometry()
 
         if self._failures:
             raise CommandError(f'{len(self._failures)} verification check(s) failed.')
         self.stdout.write(self.style.SUCCESS('All verification checks passed.'))
+
+    def _verify_dialogue(self):
+        """v23 brief 5 (#40 data half, #144): the dialogue corpus invariants,
+        enforced against persisted DB state on every reseed."""
+        SILENT_SLUGS = ('the-primordial-sphere', 'the-verdant-sphere',
+                        'the-verdant-obelisk', 'verdant-shard')
+        THE_SIX = ('maro-the-mender', 'essa-the-trader', 'tavik-the-mender',
+                   'sona-the-trader', 'old-brammel', 'ridda-the-trader')
+
+        voiced = set(
+            DialogueEntry.objects.values_list(
+                'npc_definition__slug', flat=True).distinct())
+        authored = set(NPC_DIALOGUE)
+        strays = sorted(voiced - authored)
+        unresolved = sorted(authored - voiced)
+        self._check(
+            'dialogue roster closure: DB voices == NPC_DIALOGUE'
+            + (f' (strays: {", ".join(strays)})' if strays else '')
+            + (f' (unresolved: {", ".join(unresolved)})' if unresolved else ''),
+            voiced == authored,
+        )
+
+        silent_rows = DialogueEntry.objects.filter(
+            npc_definition__slug__in=SILENT_SLUGS).count()
+        self._check(
+            f'silent-by-ruling roster has zero dialogue rows (found {silent_rows})',
+            silent_rows == 0,
+        )
+
+        thin = [
+            f"{e.npc_definition.slug}/{e.entry_type}:{e.note or '-'}"
+            f'({e.responses.count()})'
+            for e in DialogueEntry.objects.filter(
+                entry_type__in=[DialogueEntry.ENTRY_KEYWORD,
+                                DialogueEntry.ENTRY_DEPARTED],
+            ).select_related('npc_definition')
+            if e.responses.count() < 3
+        ]
+        self._check(
+            'pool floor: every keyword/departed entry has >= 3 responses'
+            + (f' (thin: {", ".join(thin)})' if thin else ''),
+            not thin,
+        )
+
+        bad_greetings = []
+        for slug in sorted(authored):
+            greets = list(DialogueEntry.objects.filter(
+                npc_definition__slug=slug,
+                entry_type=DialogueEntry.ENTRY_GREETING))
+            if len(greets) != 1 or greets[0].responses.count() != 1:
+                bad_greetings.append(slug)
+        self._check(
+            'greeting shape: exactly one greeting with exactly one response per voice'
+            + (f' (bad: {", ".join(bad_greetings)})' if bad_greetings else ''),
+            not bad_greetings,
+        )
+
+        incomplete = []
+        for slug in sorted(authored):
+            entries = DialogueEntry.objects.filter(npc_definition__slug=slug)
+            kw = entries.filter(entry_type=DialogueEntry.ENTRY_KEYWORD).count()
+            gr = entries.filter(entry_type=DialogueEntry.ENTRY_GREETING).count()
+            dp = entries.filter(entry_type=DialogueEntry.ENTRY_DEPARTED).count()
+            if kw < 2 or gr != 1 or dp != 1:
+                incomplete.append(f'{slug}(kw={kw},greet={gr},dep={dp})')
+        self._check(
+            'voice completeness: >= 2 keyword entries, one greeting, one departed per voice'
+            + (f' (incomplete: {", ".join(incomplete)})' if incomplete else ''),
+            not incomplete,
+        )
+
+        conn_counts = {
+            pc: DialogueConnective.objects.filter(position_class=pc).count()
+            for pc in (DialogueConnective.POSITION_SECOND,
+                       DialogueConnective.POSITION_LATER)
+        }
+        self._check(
+            'connective pools: >= 6 per position class '
+            f'(second={conn_counts[DialogueConnective.POSITION_SECOND]}, '
+            f'later={conn_counts[DialogueConnective.POSITION_LATER]})',
+            all(c >= 6 for c in conn_counts.values()),
+        )
+
+        uncovered = []
+        for slug in THE_SIX:
+            entries = DialogueEntry.objects.filter(npc_definition__slug=slug)
+            kw = entries.filter(entry_type=DialogueEntry.ENTRY_KEYWORD).count()
+            gr = entries.filter(entry_type=DialogueEntry.ENTRY_GREETING).count()
+            dp = entries.filter(entry_type=DialogueEntry.ENTRY_DEPARTED).count()
+            if kw < 3 or gr != 1 or dp != 1:
+                uncovered.append(f'{slug}(kw={kw},greet={gr},dep={dp})')
+        self._check(
+            'the six #144 services are covered (>= 3 keywords, greeting, departed)'
+            + (f' (uncovered: {", ".join(uncovered)})' if uncovered else ''),
+            not uncovered,
+        )
 
     def _verify_map_geometry(self):
         """v20 brief 1 (C2): the permanent map invariants, enforced against

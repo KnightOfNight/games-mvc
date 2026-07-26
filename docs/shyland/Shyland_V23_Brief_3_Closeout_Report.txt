@@ -1,0 +1,168 @@
+SHYLAND V23 BRIEF 3 — EFFECTS & DISPLAY — CLOSEOUT REPORT
+==========================================================
+Date: 2026-07-24
+Branch: version_23 (worktree)
+Issues: #133, #119, #141 — all three CLOSED (gated on Step 5, which
+passed in full). Filed: #145 (Step 4).
+
+PRE-FLIGHT
+----------
+- Tree clean, synced at 7cc2ba0; HEAD descends from 6f9021c as
+  required. (Staleness note: the brief calls 6f9021c "the verified
+  post-B2 tip" and baselines 306 tests — it was drafted before B1
+  landed. Actuals at start: tip 7cc2ba0 = post-B1, baseline suite
+  313/313 green, engine line refs shifted ~+13. Content matched
+  everywhere; recorded, not a contradiction.)
+- Deploy-time actions: B2's purge_orphaned_items production run
+  CONFIRMED DONE (2026-07-24: 87/87/0; post-deploy sweep 0/0/0; #137
+  field-complete). No Version 23 deploy-time actions were pending at
+  this brief's start.
+- SHYLAND_VERSION check: reads "23.0-DEV" — correct; version.py
+  untouched by this brief.
+- gh authenticated; DOCKER_HOST verified (target reachable).
+- Pre-start workflow review (standing practice): performed before
+  Step 0; findings ruled by the operator — see DEVIATIONS 1-2.
+
+WHAT SHIPPED
+------------
+#133 (Focus Tonic band overshoot; no-op ticks) — commit f85641b
+    Per the six-part ruling: ACUITY_FLOOR (0.1) / ACUITY_CEILING (1.9)
+    named constants in combat_utils, consumed at ALL SIX clamp sites
+    (acuity_damage_modifier; tick engine dot_acuity, hot_acuity, both
+    shift branches, Phase 2 drift — the tick engine imports them
+    inside process_effects, matching its function-scoped import
+    style). shift_acuity_high: band-edge stop at the drinker's own
+    acuity_band_high, arrival value stored EXACTLY (2-decimal) so the
+    in-band check (modifier 1.0 at equality) and the band gauge agree;
+    climb-and-sustain; directional invariant (at/above band = silent
+    no-op, never a pull-down). shift_acuity_low: announcement pattern
+    only, hard ACUITY_FLOOR boundary per ruling 6. Announcement
+    doctrine on both branches: change-only ticks; one-time terminal
+    lines "Your focus settles at its keenest." / "Your focus frays to
+    nothing."; silent holds. Seeded magnitudes/durations/prices
+    untouched (ruling 4).
+    VERIFIED-PRESENT (ruling's load-bearing fact): the Phase 2
+    has-shift drift exclusion — acuity_shift_types filter,
+    run_tick_engine.py lines 1148-1154 at implementation time
+    (brief's ~1136 pre-B1-drift). Untouched.
+
+#119 (combat border) — commit cd654aa
+    border-bottom-color: var(--combat-accent) deleted from
+    #side-stats.in-combat (game.html:210, byte-exact as ruled). Combat
+    state = background + name color only. --combat-accent survives
+    (connection indicator). Doctrine promoted to arch doc §4.15/§6.
+    Chart-as-license palette test unaffected and green. The parked
+    pane-not-reddening observation stays parked.
+
+#141 (level-up split; stats hint) — commit e107a1e
+    Level-up: one message becomes two reward messages (own envelopes),
+    *** prefix dropped, short spend form on line two, post-increment
+    (accumulated) count carried. Stats report: conditional syntax-hint
+    block deleted; "Unspent stat points: N" line intact; help row and
+    SPEND_USAGE unchanged (discoverability holds).
+
+STEP 4 FILING
+-------------
+#145 "hot_acuity / dot_acuity announce no-op effect ticks (doctrine
+from #133)" — filed, --assignee @me, no milestone, no bucket label.
+The filing produced no repo change (noted per the brief).
+
+TESTS
+-----
+New files:
+  tests/test_acuity_shifts.py — 6 tests (band-edge stop exact +
+    doctrine sequence, modifier neutrality at the stopped edge,
+    directional invariant both directions, wide-band per-Origin stop,
+    low-shift floor terminal + silence). Engine-harness style
+    (run_effects_engine from test_tick_expiry), driven at round
+    boundaries — process_effects Phase 1 ticks only when
+    tick_number % COMBAT_ROUND_TICKS == 0, a harness fact this brief's
+    tests now document.
+  tests/test_levelup_display.py — 2 tests (two-message level-up via
+    the gear-combat engine harness; stats hint absence with the count
+    line present).
+Constants-regression note (1d): no existing tests specifically cover
+dot_acuity / hot_acuity / Phase 2 drift behavior — recorded as the
+brief instructs; no new behavior tests written for branches this brief
+does not change (that is #145's territory).
+Test count: 313 at start -> 319 after Step 1 -> **321** after Step 3.
+Suite green at every gate via whole-app discovery.
+
+VERIFICATION (Step 5 — ALL PASSED)
+----------------------------------
+1. 321/321 OK in-container (python manage.py test apps.shyland -t /app).
+2. makemigrations --check: "No changes detected" — this brief
+   generated NO migrations (latest remains B1's 0036), as required.
+3. Clamp-literal greps: zero acuity hits outside the constant
+   definitions. ONE recorded false positive: combat_utils.py:481
+   `max(0.10, 1.0 - (0.20 * levels_over))` — xp_for_kill's outleveled
+   XP floor, unrelated to acuity, matches the literal pattern
+   coincidentally. Left untouched (converting it would be semantically
+   wrong). Recorded per the contradiction rule, not worked around.
+4. Invariant arithmetic: zero model changes, zero migrations, zero
+   seed changes; exactly one CSS declaration deleted; exactly one
+   message split into two; exactly one hint block deleted; exactly one
+   issue filed (#145); exactly two new terminal-line strings.
+
+DEPLOY (Step 7) — EXECUTED IN-SESSION
+-------------------------------------
+Operator authorized ("proceed with the brief" after the pre-start
+review). Command: `make build && make migrate` — the operator-ruled
+standing substitution for the brief's `make deploy` (see DEVIATIONS 1).
+Result: image rebuilt, all five containers recreated (all three games
+bounced), migrate correctly "No migrations to apply." Post-deploy
+checks: version 23.0-DEV, rails constants importable in the deployed
+image, border override absent from the deployed template, tick engine
+process running, /shyland/ HTTP 200.
+
+PENDING DEPLOY-TIME ACTIONS
+NONE — this brief created no deploy-time actions; B2's prior action is
+confirmed done (pre-flight item 2).
+
+ARCHITECTURE DOC (Step 8)
+-------------------------
+Updated IN PLACE — no new file, no version-stamp bump. Header hash
+moved to e107a1e; narrative gained the B3 entry; version line records
+Brief 3 applied third. Sections touched: 1 (continuation sentence),
+4.5 (rails constants), 4.9 (shift semantics, announcement doctrine,
+directional invariant, two-message level-up), 4.15 (border-4 combat
+precedence dead + borders doctrine), 6 (three new settled entries).
+
+DEVIATIONS / DISCREPANCIES
+--------------------------
+1. Step 7's `make deploy` does not exist in the Makefile — the
+   operator confirmed pre-start it was their own slip when briefing
+   the design chat (already corrected upstream). Executed the standing
+   `make build && make migrate` instead. No further design-chat action
+   needed.
+2. Brief drafted pre-B1 (see PRE-FLIGHT staleness note) — baselines
+   updated to actuals throughout; no contradiction.
+3. Grep-gate false positive recorded (VERIFICATION 3) — xp_for_kill's
+   XP floor literal; untouched by design.
+4. Step 1 test-harness fact discovered during implementation:
+   process_effects ticks components on round boundaries only
+   (tick_number % COMBAT_ROUND_TICKS == 0) — the brief's tests needed
+   boundary tick numbers (3, 6, 9...). Behavior, not a defect;
+   recorded for future effect-test authors.
+5. The tick engine's constants import lives inside process_effects
+   (function-scoped, matching the file's local style) rather than a
+   module-level import — the brief's "extend its existing import"
+   mapped to the import block actually in scope at the six sites.
+
+COMMITS (branch version_23)
+---------------------------
+f277a88  Step 0: brief self-commit
+f85641b  Step 1: #133 rails + band-edge stop + doctrine + tests
+cd654aa  Step 2: #119 border declaration deleted
+e107a1e  Step 3: #141 level-up split + hint removal + tests
+7366d09  Step 8: architecture doc (in place, header hash -> e107a1e)
+
+FINAL COMMIT: 7366d09 is the final implementation/doc commit; this
+closeout's own commit (followed by the Step 10 issues-report commit)
+is the branch tip.
+
+OPERATOR PLAYTEST — OPEN (post-deploy, human-only)
+--------------------------------------------------
+Focus Tonic climb/terminal-line/hold + no 1.9; no damage steroid at
+peak; border law in combat; two-line level-up; stats output without
+the hint. Per the brief's checklist.

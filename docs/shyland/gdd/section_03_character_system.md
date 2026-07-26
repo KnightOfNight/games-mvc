@@ -199,6 +199,8 @@ A stat bonus on any equipped item adds **flatly** to the stat, via one effective
 - +1 skill point (deferred — skill tree not yet implemented)
 - New abilities may unlock at certain level thresholds (deferred)
 
+**The announcement (v23, #141).** A level-up speaks in two plain reward lines and no decoration: the level and refilled bars first, the unspent points second. No `***` banner, no appended syntax hint telling the player how to spend — the points line states the fact and the command reference teaches the verb. Multiple levels from one kill each announce separately, in order, after the kill line.
+
 **Spending stat points (v22):** `spend <quantity|all> <stat>` allocates unspent points — quantity first (`spend 3 dex`; `all` spends every unspent point). Valid stats: `str`, `dex`, `end`, `int`, `wis`, `per`. Spending into a bar-feeding stat obeys **the bar law** (Section 4.4): the bar grows, the fill fraction holds — spend never refills anything (#109's bankable free heal is dead), and the mutation is one atomic database update. **Spend is blocked during combat** (#131 — the first generic in-combat refusal: `You can't do that while in combat.`). `stats` shows the full stat block with current XP, XP to next level, and unspent points.
 
 **At the content frontier (no higher zone yet published):** XP trickles in from any content. The Wastelands provides the best return. A secondary **Mastery track** activates past the frontier — Mastery points incrementally improve existing skills rather than unlocking new ones. This is progression without power creep.

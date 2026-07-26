@@ -1,0 +1,123 @@
+SHYLAND V23 BRIEF 5 AMENDMENT 1 — OUTPUT COLOR PASS — CLOSEOUT REPORT
+======================================================================
+Date: 2026-07-25
+Branch: version_23 (worktree)
+Issue: #152 — CLOSED (gated on §7, which passed in full).
+
+PRE-FLIGHT
+----------
+DOCKER_HOST set, target reachable. Tree clean, synced; tip recorded at
+d24d206. SHYLAND_VERSION reads "23.0-DEV" (untouched). Pending
+deploy-time actions: NONE (Brief 5's make seed ran and verified in
+session). Baseline suite: 347/347 OK — notably run against the
+container still carrying the operator's live experiment bits plus the
+committed tests, itself proof no existing test pinned the changed
+categories. makemigrations --check clean. STASH STATUS: 428bc16c
+("v23-color-experiment-2026-07-25") present in the stash list; the
+working tree did NOT carry it at pre-flight (stashed clean earlier the
+same day).
+
+STASH PATH (per §2)
+-------------------
+`git stash apply 428bc16c` — APPLIED CLEANLY (the tree sat at the exact
+commit the stash was cut from). Every EXPERIMENT comment marker was
+then replaced with the amendment's permanent issue-referenced comments,
+and the resulting diff verified line-for-line against §3–§5: all
+category names, CSS variables, and message texts byte-identical to the
+spec. The stash entry itself is UNTOUCHED — apply only, never
+drop/pop; the operator prunes his own stack.
+
+WHAT SHIPPED — final implementation commit f9a8625
+---------------------------------------------------
+NO MIGRATION. No model changes, no seed changes. (Stated explicitly.)
+
+§3 game.html: .msg-combat-miss-out (warn-color) / .msg-combat-miss-in
+   (success-color) added; legacy .msg-combat-miss retained at muted
+   with zero senders; .msg-system and .msg-room muted -> value-color;
+   .msg-echo untouched at muted. No other palette rule moved.
+§4 run_tick_engine.py: the player-miss send -> 'combat-miss-out', the
+   NPC-miss send -> 'combat-miss-in'; message text unchanged.
+§5 consumers.py: the copper-loot line "success" -> "reward" (#124
+   parity with item loot).
+
+TESTS
+-----
+New file tests/test_output_color_pass.py — 7 tests, SimpleTestCase (no
+DB): the four CSS rules, legacy-rule survival, zero legacy senders
+(quote-delimited match), exactly-once new senders both in
+run_tick_engine.py, copper-at-reward, combat-family styling coverage,
+and no-new-hex via test_b2_amendment4's own extract_color_literals +
+ALLOWED_COLORS (the strong form — the helper exists).
+Suite: 347 baseline -> **354/354 OK** in-container.
+No existing test modified (the authoring-time claim held).
+
+VERIFICATION (§7) — verbatim
+-----------------------------
+7.1 grep msg-combat-miss|msg-system|msg-room game.html:
+    156:  .msg-combat-miss     { color: var(--muted); }  /* legacy — zero senders */
+    157:  .msg-combat-miss-out { color: var(--warn-color); }    /* your miss */
+    158:  .msg-combat-miss-in  { color: var(--success-color); } /* their miss on you */
+    168:  .msg-system  { color: var(--value-color); }    /* system / ambient */
+    169:  .msg-room    { color: var(--value-color); }    /* ambient room events, narration */
+7.2 grep "'combat-miss'" apps/shyland --include=*.py: no output (exit 1).
+7.3 grep combat-miss-out|combat-miss-in (non-test): exactly two hits,
+    run_tick_engine.py:461 and :625.
+7.4 grep "You loot" consumers.py: three sites — :1665 copper at
+    "reward", :1739 and :1772 item lines unchanged at "reward".
+7.5 makemigrations --check: "No changes detected".
+7.6 Full suite: 354/354 OK.
+7.7 test_b2_amendment4: 2/2 OK — chart-as-license set equality green;
+    no hex literals changed anywhere in this amendment.
+
+DOCUMENTATION (§8)
+------------------
+Arch doc updated IN PLACE (commit 67e714d): header hash -> f9a8625;
+version line gains Brief 5 Amendment 1; §4.16 category table (the two
+new miss rows, the legacy row marked zero-senders, the reward row
+absorbing copper loot, the system/room row at value-color with the
+#147 rationale); the send-site paragraph and the v20 B2 stamped-family
+list updated; the ruled color doctrine stated plainly (gold speech,
+green went-your-way, yellow your whiff, reds damage, value-color the
+world, muted true chrome only); stamped/unstamped classes unchanged.
+Chart SVG: caption baseline + the four Used-for strings replaced
+byte-exact per the amendment's table (each old string verified to
+occur exactly once before replacement).
+**Shyland_Color_Chart.png IS STALE** — no renderer in the container
+(rsvg-convert, inkscape, cairosvg all absent; verified), and the
+amendment forbids installing tooling. Operator re-exports.
+
+DEPLOY (§10) — EXECUTED IN-SESSION
+-----------------------------------
+`make build && make migrate` exactly; migrate "No migrations to
+apply." Player-visible delta nil (production already ran these bits
+from the live experiment); the build re-synced the deployed image with
+git. Post-deploy sanity: 23.0-DEV, tick engine running, /shyland/
+HTTP 200.
+
+PENDING DEPLOY-TIME ACTIONS: none.
+
+DEVIATIONS / DISCREPANCIES
+--------------------------
+1. §6 test 6 (combat-family styling coverage): the naive source walk
+   false-positived on the Combat Knife's 'combat-knife' item slug in
+   seed_world.py. seed_world.py is excluded from that one test's walk
+   (it sends no messages; a positive-control assertion confirms the
+   walk still finds the real senders). Recorded here per the
+   Brief 4/5 hygiene pattern; no existing test was touched.
+2. None otherwise; no whitespace drift on the Step 0 self-commit.
+
+COMMITS (branch version_23)
+---------------------------
+e4629ff  Step 0: amendment self-commit
+f9a8625  §3-§6: implementation + tests (FINAL IMPLEMENTATION COMMIT)
+67e714d  §8: arch doc §4.16 + chart SVG
+
+This closeout's own commit (followed by the issues-report commit) is
+the branch tip.
+
+OPERATOR PLAYTEST — OPEN (§11)
+-------------------------------
+Yellow your-miss, green their-miss, loot-green copper+items, narration
+as content, presence/effect ticks as content, echo and map unknowns
+still muted. (Production behavior is identical to the experiment the
+operator already ruled in from play — §11 is a confirmation pass.)

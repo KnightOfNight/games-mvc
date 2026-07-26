@@ -5,6 +5,7 @@ import random
 from channels.db import database_sync_to_async
 from django.core.management.base import BaseCommand
 
+from apps.shyland import npc_voice
 from apps.shyland.envelope import envelope_ts
 
 logger = logging.getLogger('shyland.tick')
@@ -76,6 +77,7 @@ class Command(BaseCommand):
             effective_stats, get_npc_stats, roll_initiative, resolve_hit,
             calculate_damage, get_npc_health_description, apply_death_penalties,
             apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
+            release_session_npcs,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
 
@@ -108,6 +110,10 @@ class Command(BaseCommand):
             player, so the fight pane and combat-red state must clear."""
             session.is_active = False
             session.save(update_fields=['is_active'])
+            # v23 B1 (#25): stale close now releases NPCs like every
+            # other end path (deliberate membership alignment — this
+            # path previously left NPC rows on the inactive session).
+            release_session_npcs(session)
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
@@ -200,7 +206,9 @@ class Command(BaseCommand):
                 if session.characters.count() == 0:
                     session.is_active = False
                     session.save(update_fields=['is_active'])
-                    session.npcs.clear()
+                    # v23 B1 (#25): player-death disengagement — the
+                    # NPCs the faller was fighting reset to full.
+                    release_session_npcs(session)
             return broken, recall
 
         dying_chars = await get_expired_dying()
@@ -449,7 +457,8 @@ class Command(BaseCommand):
                         # the client palette colors these; the server never
                         # sends colors.
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"You miss {display}.", 'combat-miss', None))
+                            # v23 B5 amendment 1 (#152): your whiff is a warning, not chrome.
+                            messages.append((character.pk, f"You miss {display}.", 'combat-miss-out', None))
                             continue
 
                         if weapon_item:
@@ -553,9 +562,15 @@ class Command(BaseCommand):
                                     'longevity_max', 'longevity_current',
                                 ])
                                 pts = character.unspent_stat_points
+                                # v23 B3 (#141): two messages, each with its
+                                # own envelope; no *** prefix; short spend
+                                # hint; pts already includes prior unspent.
                                 messages.append((character.pk,
-                                    f"*** You have reached level {character.level}! "
-                                    f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}. "
+                                    f"You have reached level {character.level}! "
+                                    f"Your Vitality is now {new_vit_max} and your Longevity is now {new_lon_max}.",
+                                    'reward', None
+                                ))
+                                messages.append((character.pk,
                                     f"You have {pts} unspent stat point{'s' if pts != 1 else ''}. "
                                     f"Type 'spend' to allocate them.",
                                     'reward', None
@@ -570,6 +585,11 @@ class Command(BaseCommand):
                                 session.is_active = False
                                 session.focus_npc = None
                                 session.save(update_fields=['is_active', 'focus_npc'])
+                                # v23 B1 (#25): uniformity + membership
+                                # hygiene — every kill was already removed
+                                # and dead stragglers are filtered, so the
+                                # reset loop is a no-op here by design.
+                                release_session_npcs(session)
                                 # v22 B2 amendment 1 (#124): a good outcome
                                 # — success-color (the reward class).
                                 messages.append((character.pk, "Combat has ended.", 'reward', None))
@@ -601,7 +621,8 @@ class Command(BaseCommand):
                         attacker_ref = npc_display_name(npc, live_npcs, capitalize=True)
 
                         if hit_result == 'miss':
-                            messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss', None))
+                            # v23 B5 amendment 1 (#152): their whiff is good news.
+                            messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss-in', None))
                             continue
 
                         base_damage = _random.uniform(
@@ -931,8 +952,12 @@ class Command(BaseCommand):
             for npc in new_npcs:
                 await self.broadcast_to_room(
                     room_id,
-                    f"{npc_display(npc, capitalize=True, introduction=True)} "
-                    "snarls and moves to attack!",
+                    # v23 B4 (#40): pooled engagement line; the name keeps
+                    # its #79 first-presentation (indefinite) composition.
+                    npc_voice.pick(
+                        npc_voice.AGGRO_ENGAGE,
+                        name=npc_display(npc, capitalize=True, introduction=True),
+                    ),
                     'combat',
                     exclude_pks=dying_pks or None,
                 )
@@ -955,6 +980,7 @@ class Command(BaseCommand):
             COMBAT_ROUND_TICKS, ACUITY_DRIFT_RATE,
         )
         from apps.shyland.effect_utils import apply_stat_effect, _expiry_message_for_effect, _expiry_message_for_component
+        from apps.shyland.combat_utils import ACUITY_CEILING, ACUITY_FLOOR
 
         now = timezone.now()
         is_round_boundary = (tick_number % COMBAT_ROUND_TICKS == 0)
@@ -1052,7 +1078,7 @@ class Command(BaseCommand):
 
                 elif ctype == 'dot_acuity':
                     character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current - magnitude)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
                     status = await self._build_status_async(character)
@@ -1091,7 +1117,7 @@ class Command(BaseCommand):
                     diff = character.acuity_baseline - character.acuity_current
                     step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
                     character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current + step)), 1
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current + step)), 1
                     )
                     await database_sync_to_async(character.save)(update_fields=['acuity_current'])
                     status = await self._build_status_async(character)
@@ -1103,28 +1129,66 @@ class Command(BaseCommand):
                     )
 
                 elif ctype == 'shift_acuity_high':
-                    character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current + magnitude)), 1
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
-                        'system', status,
-                    )
+                    # v23 B3 (#133): band-edge stop — the tonic sharpens you
+                    # to your mind's own limit, never past it. Directional
+                    # invariant: the high shift never lowers acuity (at or
+                    # above band_high = silent no-op, not a pull-down).
+                    # Announcement doctrine (#133 ruling 3): change-only
+                    # ticks; one terminal line at boundary arrival; holding
+                    # is silent.
+                    old = character.acuity_current
+                    band_high = character.acuity_band_high
+                    if old >= band_high:
+                        new = old                # never lowers, never exceeds
+                    else:
+                        candidate = old + magnitude
+                        if candidate >= band_high:
+                            # Stored EXACTLY (bands are 2-decimal): the
+                            # in-band check and the band gauge must agree.
+                            new = band_high
+                        else:
+                            new = round(max(ACUITY_FLOOR, candidate), 1)
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == band_high:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your focus settles at its keenest.",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
+                                'system', status,
+                            )
 
                 elif ctype == 'shift_acuity_low':
-                    character.acuity_current = round(
-                        max(0.1, min(1.9, character.acuity_current - magnitude)), 1
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
-                        'system', status,
-                    )
+                    # v23 B3 (#133 ruling 6): announcement pattern only — no
+                    # band-edge stop; the boundary stays the hard floor
+                    # (dragging below band into fizzle territory is a hostile
+                    # effect's entire point). Only ever subtracts, so the
+                    # directional invariant holds by construction.
+                    old = character.acuity_current
+                    new = round(max(ACUITY_FLOOR, min(ACUITY_CEILING, old - magnitude)), 1)
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == ACUITY_FLOOR:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your focus frays to nothing.",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
+                                'system', status,
+                            )
 
         # ---- Phase 2: Passive Acuity drift (every tick) ----
         @database_sync_to_async
@@ -1164,7 +1228,7 @@ class Command(BaseCommand):
             else:
                 new_acuity = round(current - ACUITY_DRIFT_RATE, 2)
 
-            new_acuity = round(max(0.1, min(1.9, new_acuity)), 2)
+            new_acuity = round(max(ACUITY_FLOOR, min(ACUITY_CEILING, new_acuity)), 2)
             await save_acuity(character, new_acuity)
 
         # ---- Phase 3: Component expiry (every tick) ----
@@ -1378,18 +1442,26 @@ class Command(BaseCommand):
         from apps.shyland.combat_utils import npc_display
         npc_name = npc_display(row.npc_instance.definition, capitalize=True)
 
-        if row.position == 1:
-            connective = await self.draw_connective('second')
-            if connective:
-                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
-        elif row.position >= 2:
-            connective = await self.draw_connective('later')
-            if connective:
-                await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+        # v23 brief 5 (#147): connectives belong to the say-response path
+        # only — a narration greeting must not announce an answer to a
+        # question nobody asked.
+        if row.entry.entry_type in npc_voice.SPEECH_ENTRY_TYPES:
+            if row.position == 1:
+                connective = await self.draw_connective('second')
+                if connective:
+                    await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
+            elif row.position >= 2:
+                connective = await self.draw_connective('later')
+                if connective:
+                    await self.broadcast_to_room(row.room_id, connective.replace('{name}', npc_name), category='room')
 
-        # v22 brief 2 (DD §13): NPC speech matches player speech — bare
-        # 'Name: message' in say-color, no '[say] ' prefix.
-        await self.broadcast_to_room(row.room_id, f'{npc_name}: {response_text}', category='say')
+        # v22 brief 2 (DD §13) + v23 brief 5 (#147): speech is prefixed and
+        # say-colored ('Name: message'); greeting/departed narration goes
+        # out verbatim at category 'room'. One composer decides.
+        line, category = npc_voice.dialogue_line(
+            row.entry.entry_type, npc_name, response_text,
+        )
+        await self.broadcast_to_room(row.room_id, line, category=category)
 
         if row.is_final:
             asker_room_id = await self.get_character_current_room_id(row.character_id)
@@ -1398,7 +1470,11 @@ class Command(BaseCommand):
                     row.npc_instance_id, row.npc_instance.definition_id,
                 )
                 if departure_line:
-                    await self.broadcast_to_room(row.room_id, departure_line, category='room')
+                    from apps.shyland.models import DialogueEntry
+                    dep_line, dep_category = npc_voice.dialogue_line(
+                        DialogueEntry.ENTRY_DEPARTED, npc_name, departure_line,
+                    )
+                    await self.broadcast_to_room(row.room_id, dep_line, category=dep_category)
 
         await self.delete_pending_dialogue_response(row.pk)
 

@@ -1,0 +1,141 @@
+SHYLAND V23 BRIEF 1 — FLEE & DISENGAGEMENT — CLOSEOUT REPORT
+=============================================================
+Date: 2026-07-24
+Branch: version_23 (worktree)
+Issues: #143, #25 — both CLOSED (gated on Steps 1-2 verification, which
+passed in full). Ordering law honored: #143 landed first (22c082d),
+then #25 (64a0d6b).
+
+PRE-FLIGHT
+----------
+- Tree clean, synced with origin at 6f9021c.
+- Prior pending deploy-time actions: B2's purge_orphaned_items
+  production run CONFIRMED DONE (executed 2026-07-24: 87 found / 87
+  deleted / 0 remaining; post-deploy sweep 0/0/0; #137 field-complete).
+  No open deploy-time actions existed entering this brief.
+- version.py read SHYLAND_VERSION = "23.0-DEV" as required.
+- DOCKER_HOST set and target reachable; gh authenticated.
+- Pre-start workflow review (operator-requested): brief reviewed
+  against repo facts and standing rituals BEFORE Step 0; findings and
+  the operator's rulings are in DEVIATIONS below.
+
+WHAT SHIPPED
+------------
+#143 (flee mathematically impossible) — commit 22c082d
+    combat_utils.flee_contest_npc_side(npcs): session mean of
+    get_npc_stats()['per'] — both contest sides now read effective
+    stats (player DEX effective since v22 B5). The pre-v21 inline
+    base_per x scaling_factor x mk_tier formula is gone; grep gate
+    confirms no such product survives in consumers.py. No DB I/O at
+    call time (session NPCs arrive select_related); called bare in the
+    async body per the brief. d20 / cooldown / destination / messaging
+    untouched. Stale scaling_factor help text corrected — migration
+    **0036_alter_npcdefinition_scaling_factor** (AlterField, generated
+    in-container). Eyes-open ruled consequence stands: low-DEX near 0%
+    vs bosses, uncompensated.
+
+#25 (NPC reset on disengagement) — commit 64a0d6b
+    combat_utils.release_session_npcs(session): the single choke
+    point — full-vitality reset (never regeneration), all NPCs
+    uniformly, only on last-active-session exit (multiplayer guard:
+    other sessions is_active=True, ending session excluded by pk);
+    dead NPCs untouched; membership cleared last; NPC-effects
+    invariant documented in the docstring (satisfied by construction —
+    EffectInstance targets Characters only, procs are instant damage).
+    Four call sites, no per-path logic: consumer end_combat_session,
+    tick close_session, tick execute_death, tick all-NPCs-dead end.
+    All four inside database_sync_to_async-wrapped functions.
+
+STALE-CLOSE ALIGNMENT (deliberate, per the brief)
+-------------------------------------------------
+The tick engine's stale-session close_session previously left NPC
+membership rows on the inactive session; it now routes through
+release_session_npcs and clears them like every other end path.
+
+TESTS
+-----
+New file tests/test_flee_disengagement.py — 7 tests:
+  Step 1 (3): session-mean semantics vs an independent computation
+  over a mixed set (tiers/Mk/base_per/scaling_factor), single-NPC
+  identity, and the #143 table's L6 anchor (base_per 10 -> effective
+  PER 22; banker's rounding round(12.5)==12).
+  Step 2 (4): reset on last-session exit, multiplayer guard (shared
+  instance across two sessions; no snap while the second fight lives,
+  reset when it ends), dead-NPCs-untouched, full-health no-op.
+Test count: 306 at B2 close -> 309 after Step 1 -> **313** after
+Step 2 (it only grew, as required; +7, all from this brief — the
+deviation-2 pin edit changed an assertion, not the count).
+
+VERIFICATION
+------------
+Step 1: 309/309 OK in-container (whole-app discovery,
+  manage.py test apps.shyland -t /app); grep gate passed (zero
+  base_per x scaling_factor products in consumers.py);
+  makemigrations --check clean. (One pre-existing failure surfaced and
+  was resolved by operator ruling first — deviation 2.)
+Step 2: **313/313 OK** in-container; makemigrations --check clean.
+
+DEPLOY (Step 5) — EXECUTED
+--------------------------
+Operator-ruled substitution (see deviation 1): `make build && make
+migrate` from the worktree (production .env/ssl already present and
+re-verified: games.magrathea.com / Shygames / 443) — NOT `make prod`.
+All five containers recreated (all three games bounced); migration
+0036 applied OK; post-deploy checks: version 23.0-DEV, B1 helpers
+importable in the deployed image, tick engine process running,
+/shyland/ HTTP 200. No deploy-time data actions (none exist — but see
+deviation 3 on the brief's framing).
+
+PENDING DEPLOY-TIME ACTIONS: none. The operator playtest checklist
+(7 items: flee works, odds scale, chip-and-run dead on boss and
+normal, death-path reset, multiplayer guard with Sharon-Love, nothing
+else moved) is open, post-deploy, human-only.
+
+DEVIATIONS / RULINGS / DESIGN-CHAT FEEDBACK
+-------------------------------------------
+1. `make prod` (brief Step 5) NOT executed — operator ruling at the
+   pre-start review: make prod is human-only, command-line-only, never
+   run by Claude. Standing substitution: `make build && make migrate`.
+   Executed exactly that.
+2. Mid-brief blocker, operator-ruled: Step 1's first full suite run
+   was 308/309 — test_b2_amendment1's hard version pin
+   assertEqual(SHYLAND_VERSION, '22.0'), stale since the operator-
+   directed version-start bump to 23.0-DEV (latent: B2's 306/306
+   predated the bump; the bump commit never ran the suite). Not caused
+   by B1 changes. Operator ruled: update the pin to '23.0-DEV' as
+   in-brief test hygiene (commit 22c082d). The pin now moves with the
+   version rituals — version start sets N.0-DEV, closeout sets N.0.
+   NOTE FOR THE VERSION-START RITUAL: bumping SHYLAND_VERSION requires
+   moving this pin in the same commit, and the version-start bump
+   should run the suite.
+3. **DESIGN-CHAT FEEDBACK (operator-directed; carry this upstream):**
+   the brief declared "Pending deploy-time actions: NONE (code-only;
+   the deploy in Step 5 has no data actions)" while also mandating ONE
+   migration (0036). As drafted, Step 5 (`make prod`, which never runs
+   migrate) would have left 0036 unapplied on production. Harmless for
+   a help-text AlterField, wrong in general. Future briefs: any brief
+   that generates a migration must include `make migrate` in its
+   deploy step, and "no deploy-time data actions" should be stated as
+   "no data actions beyond migrate."
+4. Accepted micro-race (noted at review, per operator: note, don't
+   fix): the engine can load a session as active, the player flees and
+   the reset fires, and the engine's in-flight round then writes one
+   last damage value to the reset NPC. Self-correcting at the next
+   disengagement; invisible in practice; within the ruling's
+   simplicity mandate.
+5. The brief's Step 1 test-file listing included Step 2's reset tests
+   in one file; they were added in Step 2 (the brief's own "Step 2
+   adds to it" structure) so Step 1's suite run never imported a
+   not-yet-existing helper. Same file, same content, correct order.
+
+COMMITS (branch version_23)
+---------------------------
+2df1ed2  Step 0: brief self-commit
+22c082d  Step 1: #143 flee contest on effective PER + migration 0036
+         + tests + operator-ruled version-pin hygiene
+64a0d6b  Step 2: #25 release_session_npcs + four call sites + tests
+75754a2  Step 4: architecture doc (in place, header hash -> 64a0d6b)
+
+FINAL COMMIT: 75754a2 is the final implementation/doc commit; this
+closeout's own commit (followed by the issues-report commit) is the
+branch tip.

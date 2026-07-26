@@ -30,6 +30,9 @@ PRIMARY_STAT_KEYS = ('str', 'dex', 'end', 'int', 'wis', 'per')
 # climb (contests add; quantities like vitality multiply).
 NPC_CONTEST_BASE = 18        # matches a level-1 player's primary stat
 NPC_CONTEST_STEP = 2.5       # per level, matches player primary-stat growth
+
+ACUITY_FLOOR = 0.1     # the acuity meter's physical range — engine
+ACUITY_CEILING = 1.9   # absolutes, ruled #133 (v23); rails for everything
 NPC_TIER_OFFSET = {'normal': 0, 'elite': 2, 'boss': 2}   # blessed: 55% / 45% / 45% at-level hit
 MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
 
@@ -52,8 +55,8 @@ def npc_display(npc, capitalize=False, introduction=False):
     context — room occupant lines and aggro-engagement lines, exactly
     those two families. It uses indefinite_article ("A black bear is
     here."); a blank indefinite_article (proper nouns, bosses, unique
-    landmarks) falls back to the definite/bare composition, so "The
-    Silk Matron snarls and moves to attack!" is unchanged."""
+    landmarks) falls back to the definite/bare composition, so a boss's
+    AGGRO_ENGAGE line still opens "The Silk Matron ..." unchanged."""
     definition = getattr(npc, 'definition', npc)
     if definition.plural_phrase:
         text = definition.plural_phrase
@@ -241,7 +244,7 @@ def acuity_damage_modifier(character):
     Inside the Origin band: neutral. Above band_high: bonus by the distance
     beyond it (applied to focus target only, enforced by calculate_damage).
     Below band_low: penalty by the distance beyond it (always applies)."""
-    a = min(1.9, max(0.1, character.acuity_current))
+    a = min(ACUITY_CEILING, max(ACUITY_FLOOR, character.acuity_current))
     if a > character.acuity_band_high:
         return 1.0 + (a - character.acuity_band_high)
     if a < character.acuity_band_low:
@@ -317,6 +320,43 @@ def get_npc_stats(npc_instance):
         'int':      d.base_int + growth,
         'vitality': npc_instance.vitality_current,
     }
+
+
+def flee_contest_npc_side(npcs):
+    """v23 B1 (#143): the NPC side of the flee contest — the session
+    mean of effective PER from get_npc_stats(), the same effective-stats
+    read every other combat contest uses. Replaces a pre-v21 inline
+    formula that multiplied base_per by scaling_factor (which since the
+    v21 retune, #101, encodes within-band level, not a multiplier)."""
+    return sum(get_npc_stats(npc)['per'] for npc in npcs) / len(npcs)
+
+
+def release_session_npcs(session):
+    """v23 B1 (#25): session-end-without-death NPC reset.
+
+    Called at EVERY session-end site, after the session has been marked
+    inactive and saved. For each living NPC still in the session: if the
+    NPC participates in no other active combat session (the multiplayer
+    guard — a shared NpcInstance another player is still fighting is
+    live state and must not snap to full), reset it to full vitality.
+    All NPCs uniformly — no tier check. Full reset, not regeneration.
+
+    INVARIANT: any NPC-targeted lingering-effect state must be cleared
+    here as part of the reset. As of v23 no such state exists
+    (EffectInstance targets Characters only; player procs are instant
+    bonus damage) — a future NPC-effects system extends this function,
+    nowhere else.
+
+    Clears the session's NPC membership last.
+    """
+    npcs = list(session.npcs.filter(is_alive=True))
+    for npc in npcs:
+        if npc.combat_sessions.filter(is_active=True).exclude(pk=session.pk).exists():
+            continue
+        if npc.vitality_current != npc.vitality_max:
+            npc.vitality_current = npc.vitality_max
+            npc.save(update_fields=['vitality_current'])
+    session.npcs.clear()
 
 
 def get_npc_health_description(vitality_current, vitality_max):

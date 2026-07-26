@@ -198,7 +198,6 @@ class ItemInstanceAdmin(admin.ModelAdmin):
         ('Soulbind', {'fields': ('is_soulbound', 'soulbound_to')}),
         ('Identification', {'fields': ('is_identified', 'is_unidentifiable')}),
         ('Curse', {'fields': ('is_cursed', 'curse_identified', 'active_curse')}),
-        ('Flags', {'fields': ('is_artifact',)}),
     )
 
 

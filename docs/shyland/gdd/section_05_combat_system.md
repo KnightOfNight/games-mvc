@@ -137,15 +137,15 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 
 **Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). This means a Warden dispelling a curse and a Warden dispelling a combat debuff are mechanically the same operation. The coherence is intentional.
 
-### 5.7 Flee & Escape
+### 5.7 Flee, Escape & Disengagement
 
-`flee` command. Success roll: **player DEX + d20 vs. average PER of all NPCs in the session**.
+`flee` command. Success roll: **player DEX + d20 vs. the mean PER of all NPCs in the session**. **(v23, #143) Both sides of the contest read effective stats** — the player's DEX including equipped gear (since v22), and the NPCs' PER as the combat engine actually computes it. The pre-v23 NPC side used a stale pre-v21 formula that multiplied the authored base by the scaling factor and the Mk tier, contesting a phantom PER two to seven times the NPC's real value: against most authored content a d20 could not bridge the gap, and flee — the one sanctioned exit from a fight — was mathematically impossible. A contest is only honest when both sides are the same kind of number.
 
 **Flee direction:** On success, the character exits via the reverse of the direction they entered the room (the way they came in). If that exit is not available, a random adjacent exit is chosen. If no exits exist, flee fails automatically regardless of the roll (`"There is nowhere to run!"`).
 
 **Cooldown:** A failed flee attempt sets a cooldown of `FLEE_COOLDOWN_TICKS × COMBAT_ROUND_TICKS` seconds before another attempt is allowed. Cooldown is tracked per character per session. Successfully fleeing ends the session with no cooldown.
 
-**On success:** The combat session ends. NPCs remain in the room at their current Vitality (no reset). The player enters the destination room and the normal aggro check fires — if that room also has aggressive NPCs, a new combat begins.
+**On success:** The combat session ends (see Disengagement below). The player enters the destination room and the normal aggro check fires — if that room also has aggressive NPCs, a new combat begins.
 
 **Messages:**
 - Player (success): `"You have successfully fled from your enemies."`
@@ -154,6 +154,10 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 - Room (failure): `"{Name} tried to flee combat but could not slip away."`
 
 Boss encounters may apply additional flee penalties in future content.
+
+**Disengagement — walking away costs you the damage (v23, #25).** When a combat session ends *without* the NPC dying — by successful flee, by the session going stale, by every player leaving — the session's NPCs are **restored to full Vitality**. One choke point serves every end path, so the rule cannot be true on one exit and false on another. The guard is multiplayer-aware: an NPC is reset only when it leaves its *last* active session, so a second player still fighting it never sees it heal mid-swing.
+
+This is the deliberate end of chip-and-run — whittling a boss down across a dozen flee-and-return trips, healing between each, was never a fight so much as a war of attrition against a creature that could not heal. A boss is now a single sustained engagement or it is nothing. It also completes the pair with the flee fix above: the same version that made fleeing possible made fleeing cost something.
 
 ### 5.8 Group Combat
 
@@ -175,7 +179,7 @@ NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot t
 
 **Respawn mechanics:** When an NPC dies, the `NpcInstance` row is marked dead (`is_alive=False`) with a `respawn_at` timestamp set based on `NpcDefinition.respawn_minutes`. Each tick, the engine clears dead instances whose `respawn_at` has passed, then fills any gap between the current live count and the configured `count`, subject to a total cap of `count × 2` instances (live + dead combined). This cap prevents unbounded dead-instance accumulation while still allowing the respawn timer to control when replacements appear. **(v21, #17)** When an `is_aggressive` NPC (re)spawns into a room containing living player characters, it engages on the spawn tick — same behavior as a player walking in: engagement lines and combat start (joining any active session, as multi-NPC encounters support), with the standing article grammar and #81's room-context-before-ambush ordering. The check runs inside the respawn path only — zero new recurring per-tick queries (the #107 discipline).
 
-**Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep.
+**Corpses** are temporary loot containers in the room. Only the killing character may loot items from a corpse. Currency is visible to all via `examine` but only transferred to the killer. Corpses are deleted when fully looted; unlooted corpses are deleted after `CORPSE_DECAY_MINUTES` (10 minutes) by the decay sweep. **(v23, #137) Corpse contents die with the corpse** — unlooted items are deleted along with their container rather than being orphaned into a location-less limbo. An item instance is always in exactly one place: carried, on the floor, or in a corpse. Loot left to decay is gone, by design.
 
 **Currency drops** are rolled at death using the formula: `random.randint(currency_drop_min × mk_tier, currency_drop_max × mk_tier)`. Currency display respects zone aliases via `display_for_zone()`.
 
