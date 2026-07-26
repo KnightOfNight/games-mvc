@@ -9,6 +9,10 @@ DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
+# The production Docker daemon. Owned by deploy-prod, which pins it per
+# command — this value is never exported ambiently and nothing else uses it.
+PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
+
 GDD_MAJOR := 23
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
                 docs/shyland/gdd/_01_version_history.md \
@@ -28,7 +32,8 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
-        new-app push-certs seed gdd help require-local crosscheck-env hooks
+        new-app push-certs seed gdd help require-local crosscheck-env hooks \
+        deploy-dev deploy-prod
 
 # ---------------------------------------------------------------------------
 # Guards
@@ -130,6 +135,41 @@ logs:
 ## tick-logs: follow ticker container logs only
 tick-logs:
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) logs -f ticker
+
+# ---------------------------------------------------------------------------
+# Deployment
+#
+# These two targets are the only things in this Makefile permitted to set the
+# posture (.env) — declaring the target IS the deliberate act. Everything
+# else checks and stops.
+# ---------------------------------------------------------------------------
+
+## deploy-dev: deploy current source to the local dev stack (build + migrate)
+deploy-dev: require-local
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty." && exit 1)
+	cp .env.dev .env
+	python3 scripts/check_docker_host.py
+	$(MAKE) build
+	$(MAKE) migrate
+	@echo "deploy-dev complete — local dev stack refreshed."
+
+## deploy-prod: operator-authorized production deploy — flips posture, deploys, restores
+# Pins its own DOCKER_HOST; refuses to run if one is already in the
+# environment (nothing should be ambient anymore — a set DOCKER_HOST here
+# means stale state, and stale state gets investigated, not inherited).
+# If this fails partway, .env deliberately REMAINS in prod posture: a
+# half-finished production deploy needs a human, and the guards will block
+# all dev work until the posture is restored by hand (cp .env.dev .env).
+deploy-prod:
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). deploy-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
+	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty — deploy-prod needs it to restore the resting posture." && exit 1)
+	cp .env.prod .env
+	DOCKER_HOST=$(PROD_DOCKER_HOST) python3 scripts/check_docker_host.py
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) build
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) migrate
+	cp .env.dev .env
+	@echo "deploy-prod complete — production deployed, resting posture restored (.env == .env.dev)."
 
 # ---------------------------------------------------------------------------
 # Django management
@@ -251,6 +291,11 @@ help:
 	@echo "  nuke                   Remove containers, volumes, images (local daemon only)"
 	@echo "  logs                   Follow all container logs"
 	@echo "  tick-logs              Follow ticker container logs only"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  deploy-dev             Deploy current source to the local dev stack (build + migrate)"
+	@echo "  deploy-prod            Operator-authorized production deploy (flips posture,"
+	@echo "                         pre-flights, builds, migrates, restores dev posture)"
 	@echo ""
 	@echo "Django:"
 	@echo "  shell                  Django shell in the container"

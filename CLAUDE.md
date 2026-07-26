@@ -34,6 +34,8 @@ Rationale: the deployment target is production infrastructure. A brief that runs
 
 Worktrees are initialized automatically: the committed `post-checkout` hook (activated once per clone with `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` certs from the main checkout into a new worktree and sets its `.env` to **dev posture** — worktrees host design/implementation work, and a dev `.env` fails safe under `crosscheck-env` if an ambient `DOCKER_HOST` leaks in.
 
+The two deploy targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev` and `make deploy-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
+
 ---
 
 ## App Scope Boundaries
@@ -143,6 +145,13 @@ make stop           # stop all containers (data preserved)
 make restart        # stop + start
 make logs           # follow live logs from all containers
 make build          # rebuild Django image and recreate containers
+```
+
+**Deploy:**
+```
+make deploy-dev     # deploy current source to the local dev stack (build + migrate)
+make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips posture,
+                    # pre-flights, builds, migrates, restores dev posture
 ```
 
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
