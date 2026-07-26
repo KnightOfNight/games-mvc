@@ -1,1 +1,117 @@
 2026-07-26 — Session start: applying Shyland_V23.1_Brief_1_Bulk_Sell_Consumable_Guard.md on branch version_23_1 (implementation session).
+
+================================================================
+V23.1 BRIEF 1 CLOSEOUT — Bulk-Sell Consumable Guard (#150)
+================================================================
+Date: 2026-07-26
+Branch: version_23_1 (worktree; never merged by this session)
+Brief: docs/shyland/Shyland_V23.1_Brief_1_Bulk_Sell_Consumable_Guard.md
+       (verified verbatim at branch tip 13e8088 at Step 0; no drift)
+Pre-flight: check_docker_host.py exit 0 — local dev target, posture
+       coherent. Prior pending deploy-time actions: none outstanding
+       (v23 closed clean per the brief's own ledger).
+
+IMPLEMENTATION
+--------------
+1. Version constant: SHYLAND_VERSION "23.0" -> "23.1-DEV"
+   (django/src/apps/shyland/version.py), first code change.
+2. The guard (resolver choke point chosen): command_grammar.py —
+   Policy gains bulk_exclude_type / bulk_excluded_msg (sell sets
+   'consumable' + the authored refusal); Resolution gains
+   bulk_excluded; resolve() filters the match pool when the
+   quantifier is 'all' and no noun token is present — before the
+   ambiguity check, selection ordering, and all value math. Keyed
+   on noun-token absence only. All three accessors gain item_type()
+   (item: definition.item_type — safe in async context, carried
+   items are select_related('definition'); entry: the definition's
+   type; npc: ''). An all-consumables match returns error
+   'bulk_excluded' with the authored line, mapped warn (world-
+   declined) by the existing _refusal_category default.
+3. Output: consumers.py cmd_sell — when res.bulk_excluded, exactly
+   one authored warn note after the aggregated sale lines and
+   trailing remarks (and after the all-refused SELL_REFUSAL_NONE
+   line in that edge). v22 count-form aggregation untouched.
+   Both authored lines verbatim from the brief.
+4. NO MIGRATION CREATED — no model changes (as the brief states).
+5. PENDING DEPLOY-TIME ACTIONS: none (no seed changes).
+6. Tab completion untouched (noun pools unchanged).
+
+TESTS
+-----
+New suite: tests/test_bulk_sell_consumable_guard.py — 16 tests
+(9 resolver-level, 7 consumer-level end-to-end) covering: mixed
+inventory keeps consumables + exactly one warn skip note, all-
+consumables refusal with wallet unchanged, bypass forms
+(sell draught / 2 draught / all draught / all common draught),
+bare 'sell all' v22 teaching refusal verbatim, #138 bound zero-
+value junk regression, materials unaffected, equipped exclusion
+intact, loot-all unaffected (guard is sell policy only).
+
+Test counts — expected: v23 baseline 354 + net additions only.
+Actual: 370/370 PASS (354 + 16 new; zero removed, zero weakened).
+
+DEVIATIONS (standing conversion rule, reported per the brief):
+- test_command_grammar.py test_17_sell_all_common: the v20 table
+  case pinned pre-guard behavior (every unequipped common incl.
+  consumables). Converted to the guarded expectation with original
+  intent preserved as explicit assertions (rarity filter + equipped
+  exclusion still asserted; draughts now asserted excluded;
+  bulk_excluded asserted True).
+- test_b2_amendment1.py VersionLineTests: version pin '23.0' ->
+  '23.1-DEV' (the known pin-moves-with-rituals trap; closeout
+  ritual will move it to '23.1').
+
+VERIFICATION (dev stack, image rebuilt via make build)
+------------------------------------------------------
+Scripted Django-shell run against a throwaway character + vendor
+in the dev stack (cleaned up after itself); all four brief
+scenarios passed with authored wording and warn category verbatim:
+1. Mixed (3 draughts + 2 hides + 1 unequipped blade + 1 equipped
+   blade): 'sell all common' sold hides + blade (count-form lines),
+   kept all 3 draughts and the equipped item, one skip note [warn],
+   copper 0 -> 3.
+2. Draughts only: 'sell all common' -> authored refusal [warn],
+   zero sales, copper unchanged.
+3. 'sell all draught' -> all 3 draughts sold.
+4. Bare 'sell all' -> v22 teaching refusal verbatim.
+5. Full suite green: 370/370.
+help version line covered by the updated VersionLineTests pin
+(help output ends 'Version: 23.1-DEV').
+
+ISSUES
+------
+#150 closed 2026-07-26 (gated on verification passing) with the
+implementation summary comment.
+
+ARCHITECTURE DOC (last, gated — all steps above complete/passing)
+-----------------------------------------------------------------
+Shyland_Architecture_v23.md updated IN PLACE (point release — no
+new file): header hash moved f9a8625 -> 80b1c2a with the v23.1
+one-line summary and the Version 23.1 stamp block; §4.3 gains
+"The bulk-sell consumable guard (v23.1 brief 1, #150)" adjacent to
+the sell partition; §4.14 resolver bulk-form policy and the
+response-layers list gain the guard and the consumables-only
+refusal (both authored lines recorded).
+
+DEPLOY
+------
+Not run in this session; awaiting the operator. The session did
+not receive authorization at the permission layer for the
+production deploy target, so per standing rules the deploy is the
+operator's to run: exactly `make deploy-prod`. Env posture remains
+dev (resting state; no partial-failure state exists). No deploy-
+time data actions exist for this brief. Reminder: the deploy
+bounces all three games, including live Shyland WebSocket sessions.
+The operator playtest checklist in the brief is ready to run after
+deploy.
+
+COMMITS (each step boundary pushed to origin/version_23_1)
+----------------------------------------------------------
+4b630d7  Step 0 closeout stub (work-started signal)
+80b1c2a  Implementation + tests (370/370)
+54463d6  Architecture doc (stamp 23.1, hash moved)
+(+ this closeout report commit, and the issues report commit that
+ ends the session)
+
+FINAL IMPLEMENTATION COMMIT HASH: 54463d6
+================================================================
