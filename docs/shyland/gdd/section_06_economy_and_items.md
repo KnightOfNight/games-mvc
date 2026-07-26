@@ -346,7 +346,7 @@ Bags are equipment items that expand carry capacity. They occupy equipment slots
 The `inventory` command (v22 — the information standards of Section 9.1 applied) shows three sections:
 
 1. **Equipment — the paper-doll.** A `Slot / Name / Details` table showing **all 14 slot rows, always**, in anatomical order head→feet: Head, Neck, Shoulders, Back, Chest, Main hand, Off hand, Ranged, Hands, Ring, Ring, Waist, Legs, Feet. Sentence-case labels; empty slots render a muted `-` in Name and Details. Reading your gear is reading your body.
-1. **Inventory.** A `Slot / Name / Quantity / Details` table, flat alphabetical by name. The Slot cell names the item's equip slot when slotted (`Main hand`), muted `-` when slotless; identical stacks fold into the Quantity column.
+1. **Inventory.** A `Slot / Name / Quantity / Details` table, flat alphabetical by name. The Slot cell names the item's equip slot when slotted (`Main hand`), muted `-` when slotless; identical items fold into the Quantity column per the stacking rule below.
 1. **Wallet.** One key/value line, **byte-identical** to the `wallet` command's output — one shared renderer, by rule.
 
 Display rules:
@@ -356,6 +356,23 @@ Display rules:
 - Cursed items that have not been identified show no curse indicator.
 - Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name.
 - Carry count rides the section header: `Inventory (12/250)...`
+
+**Stacking (v23, #18) — by item type, display only.** Wear-free interchangeable items stack; anything carrying wear, rolled stats, or per-instance identity never does:
+
+| Item type | Stacks | Why |
+|---|---|---|
+| Consumable | **yes** | interchangeable; no durability, no rolled stats |
+| Material | **yes** | interchangeable by definition — hides are hides |
+| Readable | **yes** | interchangeable |
+| Key | **yes** | interchangeable |
+| Weapon | never | durability and rolled stats are per-instance |
+| Armor | never | as weapons |
+| Accessory | never | as weapons |
+| Bag | never | carry capacity is per-instance |
+
+Two items fold into one row only when they share **definition, Mk tier, rarity, and soulbound state**. Binding is in the key because the flag block would otherwise lie: a bound Healing Draught Mk 1 and an unbound one are not the same row, because one of them can be dropped and the other cannot.
+
+Stacking is a **display fold and nothing else.** The inventory remains a flat pool of distinct instances; every command still resolves against instances, quantities still mean "how many of these you have", and nothing about ownership, binding, or durability changes because two rows became one.
 
 ### 6.12 Vendors
 
@@ -405,8 +422,10 @@ Material gathering uses room-specific commands: `forage`, `mine`, `salvage`, `ha
 
 **The Convergence gearing-up story:** the hub clothes new players. Morra (smithy) vends weapons and armor and repairs anything; Pella and Ferwick (the gazebo) vend trinkets and bags and repair — one shared stock, two voices; Repairbot Prime repairs only. All vendors and repairers are `attackable=False` by rule (seed-verified, hard failure).
 
-- **The free starter kit:** eleven distinct authored definitions at `base_value=0` — exploit-proof by construction (sale value is 0, and worthless items are refused: "That's not worth anything to me."). The kit covers every equipment slot except OFF_HAND and RANGED — deliberate gaps; the first slots a player must *earn* (Morra's priced tier sells them). Kit gear wears normally (`takes_durability_loss=True`) and repairs for ~nothing via **pity-repair** lines in each repairer's voice — the durability loop is onboarding, and the first lessons are free.
+- **The free starter kit:** eleven distinct authored definitions at `base_value=0` — exploit-proof by construction (sale value is exactly 0; see the disposal rule below). The kit covers every equipment slot except OFF_HAND and RANGED — deliberate gaps; the first slots a player must *earn* (Morra's priced tier sells them). Kit gear wears normally (`takes_durability_loss=True`) and repairs for ~nothing via **pity-repair** lines in each repairer's voice — the durability loop is onboarding, and the first lessons are free.
 - **Priced tier:** a small aspiration shelf at Morra (shortsword, shield, sling, jerkin) priced for early hide-money; the full price-range spread is a future stocking pass.
+- **Zero-value disposal (v23, #138):** a vendor **accepts** a worthless item and pays exactly **0** — the sale price floors at zero, not at the old one-copper minimum, and the refusal that used to guard the exploit is gone because the arithmetic now guards it. This opens the only exit the bound starter kit ever had: kit pieces are soulbound the moment they are equipped and can never be dropped, so before v23 a player's first gear was stuck in the pack forever. The vendor says so in its own voice — taking out your trash is a service, and it is spoken like one.
+- **Artifacts are never sold (v23, #138):** a vendor refuses an Artifact at any value, and refuses it **generically**. Refusal speech never names or implies rarity, tier, or true name — **the no-leak rule** — because a refusal that said *why* would be a free identification oracle, and identification is earned (Section 6.8).
 - **Currency display rule:** every player-facing money amount — `list` prices, `buy`/`sell` amounts and refusals, repair quotes — renders through the shared tier formatter. Raw copper counts never reach the player; zone aliasing comes free.
 - **Multi-vendor rooms** resolve `list`/`buy`/`sell`/`repair` to a deterministic serving NPC (lowest pk); at the gazebo the non-serving spouse kibitzes after transactions.
 

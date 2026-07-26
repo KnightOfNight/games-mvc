@@ -61,6 +61,16 @@ No decimal rounding is applied anywhere in the derivation (the v18-era `round(x,
 - The Warden archetype has party-wide Acuity management tools
 - Rest and time naturally return Acuity toward a character's baseline (passive Acuity drift is implemented)
 
+**Acuity shift effects — the band edge is the wall (v23, #133).** A consumable or spell that shifts Acuity **upward** climbs toward the drinker's own `acuity_band_high` and **stops there, exactly** — the value is stored on the band edge to two decimals, so the in-band check and the stats-pane band gauge agree rather than disagreeing at the fourth decimal. A downward shift stops at `acuity_band_low` the same way. Three rules govern the family:
+
+- **Shifts are one-way.** A high shift never lowers Acuity and a low shift never raises it. A character already past their band who drinks a focus tonic is held, not dragged back to the edge.
+- **Effect ticks never announce no-ops.** A tick that changes nothing is silent. Arrival at the wall gets exactly one terminal line — `Your focus settles at its keenest.` at the top, `Your focus frays to nothing.` at the bottom — and holding there is silent thereafter.
+- **A running shift owns the value.** Passive drift toward baseline pauses while a shift effect is active and resumes when it expires.
+
+The consequence is deliberate and worth stating plainly: **the tonic family buys the top of your band, not the bonus above it.** At `a = band_high` the modifier is exactly 1.0 — a focus draught erases a deficit and guarantees you fight at full effectiveness for its duration; it can no longer be drunk to the `1.9` rail for a permanent hyper-focus multiplier (the pre-v23 over-band exploit). The bonus region above `band_high` remains real and remains reachable, just not by that family: the per-tick acuity effects (`hot_acuity` / `dot_acuity`) are not bound by the shift rules and can still carry a character past the band, and the designed world sources — eldritch damage, prolonged Pale Shore exposure — will do the same when that content ships. The line the ruling draws is between what the world does to you and what you can drink. The engine's hard rails at `0.1` and `1.9` stand as the absolute clamp (named constants at every clamp site), reached only by those world sources.
+
+**Still unruled:** whether Acuity drifts at all *during* combat (#142) — a question deferred to a features version.
+
 **Manipulation:** Players can actively shift their own Acuity intentionally. Pushing it high before a single-target duel, then managing the aftermath, is a valid play style. The system rewards players who understand their character's band and manage it actively.
 
 ### 4.3 Longevity

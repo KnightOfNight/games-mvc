@@ -1,7 +1,7 @@
 # Shyland — Game Design Document (Index)
-**Version 22.0 — Closed** — in lockstep with `Shyland_Architecture_v22.md`.
+**Version 23.0 — Closed** — in lockstep with `Shyland_Architecture_v23.md`.
 This directory is the authoritative source of the Shyland GDD, one file per
-top-level section. The monolithic `docs/shyland/Shyland_GDD_v22.md` is a
+top-level section. The monolithic `docs/shyland/Shyland_GDD_v23.md` is a
 **generated build artifact** produced by `make gdd` (banner + concatenation of
 the section files in build order); it exists for single-file grounding and for
 mirroring to the design project. **If the monolith and the section files ever

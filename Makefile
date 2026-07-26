@@ -15,7 +15,7 @@ DOCKER_COMPOSE  := docker compose
 COMPOSE_PROJECT := game-mvc
 PROJECT_DIR     := $(shell pwd)
 
-GDD_MAJOR := 22
+GDD_MAJOR := 23
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
                 docs/shyland/gdd/_01_version_history.md \
                 docs/shyland/gdd/_02_table_of_contents.md \
