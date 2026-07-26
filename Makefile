@@ -59,6 +59,15 @@ crosscheck-env:
 
 # ---------------------------------------------------------------------------
 # First-time setup
+#
+# There is no one-button bootstrap anymore, and there isn't going to be one.
+# These are real servers now, with real data, and the last thing anyone needs
+# is a make target cheerfully rebuilding production because somebody was in
+# the wrong terminal. Standing up a fleet is a deliberate, manual, eyes-open
+# procedure — wizard, certs, build, migrate, seed, superuser — typed one
+# command at a time by a human who read the output and can be blamed
+# afterward. The guards below will catch the common accidents. They will not
+# catch ambition.
 # ---------------------------------------------------------------------------
 
 ## setup: wizard + build + start (single command for a fresh install)

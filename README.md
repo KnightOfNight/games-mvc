@@ -182,6 +182,12 @@ The repo keeps one env file per deployment target alongside the active `.env` (a
 
 Switching posture is always a deliberate manual act: `cp .env.prod .env` (or `.env.dev`). Nothing ever copies an env file for you — except at worktree creation, where the `post-checkout` hook (activated by `make hooks`) initializes a new worktree with `.env.dev`, `.env.prod`, certs, and a dev-posture `.env`, since worktrees host development work by convention.
 
+### A note on bootstrapping
+
+There used to be targets that would stand up an entire environment while you fetched coffee. They're gone, and they're not coming back. This project runs real servers with real data now, and convenience is how databases die: one ambient environment variable, one stale `.env`, and your "quick local rebuild" becomes production archaeology.
+
+Bootstrapping a fresh fleet is a manual, deliberate procedure — wizard, certs, build, migrate, seed, superuser — executed one command at a time by a human who is reading the output and can be held responsible afterward. The guards will catch the common mistakes. They will not catch ambition.
+
 ---
 
 ## Adding a Game

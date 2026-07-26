@@ -22,9 +22,9 @@ Run the pre-flight check script and gate on its exit code:
 python3 scripts/check_docker_host.py
 ```
 
-- **Exit 0** — `DOCKER_HOST` is set and the target daemon is reachable. Proceed.
-- **Exit 1** — `DOCKER_HOST` is set but the target is unreachable. This is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a local Docker daemon. (A common cause is an unloaded SSH key — the operator may only need an `ssh-add` — but diagnosing and fixing connectivity is the operator's call, not yours.)
-- **Exit 2** — `DOCKER_HOST` is not set. Do NOT assume a local Docker installation is the intended target. Ask the operator whether to proceed against the local install or stop the brief, and wait for the answer before touching anything.
+- **Exit 0** — target identified (the script prints **PRODUCTION** or **local dev**), posture coherent, daemon reachable. Proceed — but confirm the printed target matches the session's intent: production is for ops sessions and operator-authorized deploys only; design/implementation sessions belong on local dev.
+- **Exit 1** — the target daemon is unreachable. This is a **hard blocker**: stop immediately, report the connectivity failure to the operator, and do no further work on the brief. Do not fall back to a different daemon. (For production, a common cause is an unloaded SSH key — the operator may only need an `ssh-add`; for local dev, the daemon may simply not be running. Diagnosing and fixing connectivity is the operator's call, not yours.)
+- **Exit 2** — posture incoherent: `.env` is missing or does not match the env file the target implies (`.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset). Stop and report to the operator. **Never copy or edit an env file to make the check pass** — switching posture is the operator's deliberate act.
 
 Rationale: the deployment target is production infrastructure. A brief that runs migrations, reseeds, or `docker` commands against the wrong daemon fails in the worst way — silently, against the wrong world.
 
