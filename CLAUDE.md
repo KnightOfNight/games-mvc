@@ -67,33 +67,32 @@ Two shared-surface facts to keep in mind:
 - **Migrations are global.** `manage.py migrate` runs every app's migrations against the one shared database. Another game's migrations create/alter only that game's tables, but the operation itself is repo-wide — never squash, fake, or reorder another app's migrations.
 - **Deployment is coupled.** Any container restart bounces all three games, including live Shyland WebSocket sessions. Note this in your closing summary whenever a change requires a restart.
 
-### Rule 3 — Shyland design changes come only from Shyland briefs
+### Rule 3 — Shyland work happens in typed sessions
 
-Shyland has a formal design workflow: design decisions are made in a dedicated design chat, delivered to Claude Code as structured briefs, and closed out against `docs/shyland/` (the GDD and the architecture document, which are versioned in lockstep).
+Shyland has a formal workflow: every Shyland session has an operator-declared type, and the type bounds what the session may touch. The process is codified in the highest-numbered `docs/shyland/Shyland_Project_Instructions_vN.md` — read it at the start of any Shyland session.
 
-Therefore, in any session **not** driven by a Shyland brief:
+| Session type | Runs on | May touch | Never touches |
+|---|---|---|---|
+| **Design** | Version-branch worktree | GDD source (`docs/shyland/gdd/`), GitHub issue state, design/planning docs, briefs (writes and commits them) | Game code, migrations, seed data, deployment |
+| **Implementation** | Version-branch worktree (operator supplies the branch name) | Game code, tests, seed data, migrations, architecture doc (final gated step), operator-authorized deploys | GDD source — reads it, never writes it; `make gdd` (or a brief-directed mechanical operation) is the only permitted GDD operation |
+| **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs | Game code, GDD source |
 
-- **Decline** requests to change Shyland models, mechanics, commands, content, seed data, or balance — even small ones, even "while you're in there." Respond that the change belongs in the Shyland design chat, where it will be designed and delivered as a proper brief.
-- **Never edit** anything under `docs/shyland/`. The architecture doc is updated only as the final gated step of a Shyland brief; the GDD source files under `docs/shyland/gdd/` are never authored or edited by Claude Code — the only permitted GDD operation is running `make gdd` (or another mechanical operation explicitly directed by a brief), which regenerates the monolithic build artifact without changing content.
-- Bug **reports** are fine to investigate and describe, but fixes to Shyland go through a brief unless the user explicitly states the session is a Shyland work session.
+- Design decisions — models, mechanics, commands, content, seed data, balance — are made only in design sessions, with the operator in the conversation. In any session without a declared Shyland type, **decline** such changes, even small ones, even "while you're in there"; they belong in a design session. Bug **reports** remain fine to investigate and describe in any session.
+- **Main is protected:** no doc or code changes land on main except via PR, ops/housekeeping work, or an absolute emergency the operator declares. Each release lives on one branch named for its milestone (`version_24`, `version_23_1`): the first design session for the release creates it, later design sessions join it, implementation sessions worktree onto it, and the version merges to main as one operator-reviewed PR at closeout.
 
 Shydle and Shyship have no equivalent design-document workflow — direct implementation work on them is normal, within Rules 1 and 2.
 
-### Rule 4 — Shyland briefs are only applied upon request in a Claude Code session
+### Rule 4 — Briefs are actionable only when committed and directed
 
-Do not automatically apply any briefs found in `docs/shyland/`.  A brief will
-only be accepted as actionable when it is pasted into Claude Code session by an
-operator.  Any brief found in any file in the documentation directory is for
-reference only, stored there as a human checklist.
+Never apply a brief found in `docs/shyland/` on your own initiative. A brief is actionable only when all three hold: (1) it was produced by a design session — discussed, planned, and triaged; (2) it is committed to the release's version branch; (3) the operator directs the current session to apply it **by name** (e.g. "apply Brief 2 on version_24"). Pasted briefs are no longer accepted as actionable — if one is pasted, ask the operator to point to (or commit) the repo copy instead. Any brief in the repo not so directed is reference only.
 
-After applying a brief the operator pasted, if a corresponding playtest
-document exists in docs/shyland/, you may additionally run its objectively
-verifiable steps (database checks, shell commands, simulations) once the
-brief's own implementation and verification sections are fully complete — and
-any such steps you run must pass before you git commit or git push. Steps
-requiring human interaction (browser play, multiple accounts, screen readers)
-are the operator's, performed after deploy; never simulate or declare them
-complete.
+After applying a directed brief, if a corresponding playtest document exists in
+docs/shyland/, you may additionally run its objectively verifiable steps
+(database checks, shell commands, simulations) once the brief's own
+implementation and verification sections are fully complete — and any such
+steps you run must pass before you git commit or git push. Steps requiring
+human interaction (browser play, multiple accounts, screen readers) are the
+operator's, performed after deploy; never simulate or declare them complete.
 
 ---
 
