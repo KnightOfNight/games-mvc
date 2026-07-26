@@ -28,6 +28,12 @@ python3 scripts/check_docker_host.py
 
 Rationale: the deployment target is production infrastructure. A brief that runs migrations, reseeds, or `docker` commands against the wrong daemon fails in the worst way — silently, against the wrong world.
 
+### The standing target rule
+
+**`DOCKER_HOST` set — any value — means production. Unset means the local dev daemon.** There is no third target; expanding this rule is an operator decision. The active `.env` must be a byte-for-byte copy of the matching target file — `.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset. The `crosscheck-env` Make guard enforces this automatically before every daemon-touching, state-changing target (`build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, `push-certs`); `require-local` blocks `nuke` outright when `DOCKER_HOST` is set. Both guards are check-only — they stop on mismatch and never copy or repair anything. Switching posture (`cp .env.prod .env` / `cp .env.dev .env`) is always a deliberate act, never something Claude does silently to make a guard pass.
+
+Worktrees are initialized automatically: the committed `post-checkout` hook (activated once per clone with `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` certs from the main checkout into a new worktree and sets its `.env` to **dev posture** — worktrees host design/implementation work, and a dev `.env` fails safe under `crosscheck-env` if an ambient `DOCKER_HOST` leaks in.
+
 ---
 
 ## App Scope Boundaries
@@ -127,6 +133,7 @@ make setup          # wizard + build + start (single command for fresh install)
 make init           # wizard only — writes .env
 make gen-certs      # self-signed TLS certs for local dev (requires make init first)
 make check-secrets  # validates .env and SSL certs (auto-runs before make start)
+make hooks          # activate committed git hooks (one-time per clone; auto-inits worktree env files)
 ```
 
 **Daily workflow:**
@@ -139,6 +146,8 @@ make build          # rebuild Django image and recreate containers
 ```
 
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
+
+> **Guards:** `build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, and `push-certs` all run `crosscheck-env` first, and `nuke` runs `require-local` (see the standing target rule in Session Pre-Flight). A guard failure means the posture is wrong — stop and resolve it deliberately; never copy an env file just to get past the guard.
 
 **Django:**
 ```
@@ -366,6 +375,9 @@ Required `.env` keys (template at `.env.example`; generate with `make init`):
 | `DJANGO_SECRET_KEY` | Django secret key | Auto-generated if blank |
 | `HOST_PORT` | SSL port (default: `40443`) | Prompted by wizard |
 | `DJANGO_SETTINGS_MODULE` | Settings module to use | Set to `game_mvc.settings.production` by wizard |
+| `POSTGRES_DATA_VOLUME` | Postgres data location: `pgdata` named volume (dev) or `/mnt/postgresqldb` EBS bind mount (prod) | Per-target env file |
+
+**Per-target env files:** `.env.prod` and `.env.dev` live alongside `.env` (all gitignored). The active `.env` is always a byte-for-byte copy of one of them — see the standing target rule in Session Pre-Flight. `crosscheck-env` blocks daemon-touching targets when they disagree.
 
 **SSL certs** — two files must exist in `ssl/` before `make start` will succeed:
 ```

@@ -80,7 +80,7 @@ hooks:
 # ---------------------------------------------------------------------------
 
 ## push-certs: upload local ssl/ certs into the Docker ssl volume (works with DOCKER_HOST)
-push-certs:
+push-certs: crosscheck-env
 	@test -n "$(TLS_CERT_NAME)" || (echo "Run 'make init' first to set TLS_CERT_NAME" && exit 1)
 	docker run -d --name ssl-tmp -v $(COMPOSE_PROJECT)_ssldata:/ssl alpine tail -f /dev/null
 	docker cp ssl/. ssl-tmp:/ssl/
@@ -127,7 +127,7 @@ tick-logs:
 # ---------------------------------------------------------------------------
 
 ## shell: Django shell inside the container
-shell:
+shell: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py shell
 
@@ -137,7 +137,7 @@ migrate: crosscheck-env
 	    exec django python manage.py migrate
 
 ## makemigrations: make migrations (APP=<name> optional) and sync generated files to local tree
-makemigrations:
+makemigrations: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py makemigrations $(APP)
 	@for app in $$(ls $(PROJECT_DIR)/django/src/apps/); do \
@@ -148,7 +148,7 @@ makemigrations:
 	@echo "  → migrations synced to local filesystem"
 
 ## createsuperuser: create a Django admin superuser
-createsuperuser:
+createsuperuser: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py createsuperuser
 
@@ -239,6 +239,7 @@ help:
 	@echo "  start                  Start all containers"
 	@echo "  stop                   Stop all containers"
 	@echo "  restart                stop + start"
+	@echo "  nuke                   Remove containers, volumes, images (local daemon only)"
 	@echo "  logs                   Follow all container logs"
 	@echo "  tick-logs              Follow ticker container logs only"
 	@echo ""
@@ -254,7 +255,16 @@ help:
 	@echo ""
 	@echo "SSL:"
 	@echo "  gen-certs              Generate self-signed test certs via OpenSSL"
+	@echo "  push-certs             Upload local ssl/ certs into the Docker ssl volume"
 	@echo "  check-secrets          Verify .env and cert files exist"
+	@echo ""
+	@echo "Guards (run automatically; check-only, never fix):"
+	@echo "  require-local          Block when DOCKER_HOST is set (nuke)"
+	@echo "  crosscheck-env         DOCKER_HOST set = production, .env must match .env.prod;"
+	@echo "                         unset = local dev, .env must match .env.dev"
+	@echo ""
+	@echo "Setup:"
+	@echo "  hooks                  Activate committed git hooks (one-time per clone)"
 	@echo ""
 	@echo "Docs:"
 	@echo "  gdd                    Rebuild the monolithic GDD from docs/shyland/gdd/"
