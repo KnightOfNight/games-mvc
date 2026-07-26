@@ -45,7 +45,10 @@ Prepared 2026-07-25 at branch `version_23` tip `f5406bb`.
 4. Final issues report; milestone "Version 23" closed.
 5. PR from `version_23` → main, squash-merged on the operator's word; local main synced; final production build from main.
 
-## Operator-side loose ends (non-blocking)
+## Request to the design chat: a new color-chart PNG
 
-- `Shyland_Color_Chart.png` re-export (SVG updated by B5 A1; no renderer in the container).
-- ~~Stash `428bc16c` (the color experiment)~~ — landed and pruned 2026-07-25; stash stack empty.
+`Shyland_Color_Chart.svg` (the design chat's artifact) was updated by B5 Amendment 1 — the caption baseline moved to "v23 B5 Amendment 1 (#152)" and four "Used for" strings changed (value-color gains narration + ambient; muted loses misses; warn-color gains your misses; loot/success-color gains their misses). **`Shyland_Color_Chart.png` is now stale and needs re-export from the updated SVG** — the implementation environment has no SVG renderer, so the chart's owner (the design chat) should produce the new PNG; the operator will commit it. The current SVG is on branch `version_23` at `docs/shyland/Shyland_Color_Chart.svg`.
+
+## Loose ends
+
+- None otherwise — stash pruned, stack empty, all playtests complete, no pending deploy-time actions.
