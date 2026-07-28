@@ -27,6 +27,12 @@
             "command": "jq -c '(.tool_input.command // \"\") as $c | if ($c | test(\"deploy-prod\")) then (if ($c | gsub(\"^[[:space:]]+|[[:space:]]+$\"; \"\")) == \"make deploy-prod\" then {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:\"make deploy-prod: operator one-time go-ahead required (Deployment Law)\"}} else {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"deploy-prod embedded in a larger command - hard-blocked (Deployment Law; injection incident 2026-07-27)\"}} end) else empty end'",
             "timeout": 10,
             "statusMessage": "deploy-prod guard"
+          },
+          {
+            "type": "command",
+            "command": "jq -c '(.tool_input.command // \"\") as $c | if ($c | test(\"push[[:space:]].*--delete|--delete-branch|push[[:space:]]+[^[:space:]]+[[:space:]]+:[^[:space:]]|DELETE.+refs/heads|refs/heads.+DELETE|branch[[:space:]]+(-[dD]([[:space:]]|$)|--delete)|worktree[[:space:]]+(remove|prune)\")) then {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:\"branch/worktree deletion requires the operator hard yes (standing rule: only on operator command; remote branches never)\"}} else empty end'",
+            "timeout": 10,
+            "statusMessage": "branch guard"
           }
         ]
       }
