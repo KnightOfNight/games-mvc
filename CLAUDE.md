@@ -83,7 +83,8 @@ Shyland has a formal workflow: every Shyland session has an operator-declared ty
 |---|---|---|---|
 | **Design** | Version-branch worktree | GDD source (`docs/shyland/gdd/`), GitHub issue state, design/planning docs, briefs (writes and commits them) | Game code, migrations, seed data, deployment |
 | **Implementation** | Version-branch worktree (operator supplies the branch name) | Game code, tests, seed data, migrations, architecture doc (final gated step), operator-authorized deploys | GDD source — reads it, never writes it; `make gdd` (or a brief-directed mechanical operation) is the only permitted GDD operation |
-| **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs | Game code, GDD source |
+| **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs | Game code, GDD source, deploys of any kind |
+| **Closeout** | Version worktree, then main checkout for the tail | Version bookkeeping only: doc stamps + changelog, the release's landed markers, `SHYLAND_VERSION` stamp whitelist, `make gdd`, version PR, operator-permitted merge, tail's one-time-go-ahead prod deploy | Game code beyond the whitelist, game design content, seed data, migrations |
 
 - Design decisions — models, mechanics, commands, content, seed data, balance — are made only in design sessions, with the operator in the conversation. In any session without a declared Shyland type, **decline** such changes, even small ones, even "while you're in there"; they belong in a design session. Bug **reports** remain fine to investigate and describe in any session.
 - **Main is protected:** no doc or code changes land on main except via PR, ops/housekeeping work, or an absolute emergency the operator declares. Each release lives on one branch named for its milestone (`version_24`, `version_23_1`): the first design session for the release creates it, later design sessions join it, implementation sessions worktree onto it, and the version merges to main as one operator-reviewed PR at closeout.
@@ -154,7 +155,7 @@ make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips post
                     # pre-flights, builds, migrates, restores dev posture
 ```
 
-> **Deployment law:** production runs `main` only — `make deploy-prod` is operator-run from the main checkout, after the release PR merges; never from a worktree, never with unmerged code, never invoked by a Claude session. `SHYLAND_VERSION` on main never carries a `-DEV` suffix.
+> **Deployment law:** production runs `main` only — `make deploy-prod` runs from the main checkout, after the release PR merges, only in a closeout session's tail on the operator's one-time in-conversation go-ahead (one exact occurrence, no future permission implied). Never from a worktree, never with unmerged code, never from any other session type. `SHYLAND_VERSION` on main never carries a `-DEV` suffix (CI-enforced on PRs).
 
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
 

@@ -1,0 +1,22 @@
+# Deployment Law guard (#158): main never contains a -DEV suffix in
+# SHYLAND_VERSION, on any commit — a version PR is unmergeable until the
+# closeout session stamps the release value. This check makes the invariant
+# visible on every PR to main, independent of the closeout ritual.
+name: main-guards
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  no-dev-suffix:
+    name: SHYLAND_VERSION carries no -DEV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version constant line
+        run: |
+          line=$(grep '^SHYLAND_VERSION' django/src/apps/shyland/version.py)
+          echo "constant: $line"
+          case "$line" in
+            *-DEV*) echo 'FAIL: main never carries a -DEV suffix (Deployment Law).'; exit 1 ;;
+            *) echo 'PASS' ;;
+          esac

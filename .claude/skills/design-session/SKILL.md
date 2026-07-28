@@ -22,7 +22,7 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 ## 3. Create or join the version branch
 
 - `git fetch origin`, then check `git ls-remote --heads origin <branch>`.
-- **Branch absent → this is the FIRST design session for the release:** create it from current `origin/main`, push with `-u`. The design-session version-start ritual is branch creation + push only — the `SHYLAND_VERSION → "N.M-DEV"` bump and the version-start `make deploy-dev` remain the FIRST IMPLEMENTATION brief's opening act (standing requirement; design sessions don't touch code, and production only ever runs main — Deployment Law).
+- **Branch absent → this is the FIRST design session for the release:** create it from current `origin/main`, push with `-u`. The design-session version-start ritual is branch creation + push only — the `SHYLAND_VERSION → "N.M-DEV"` bump and the version-start `make deploy-dev` remain the FIRST IMPLEMENTATION brief's opening act (standing requirement; design sessions don't touch code, and production only ever runs main — Deployment Law). Bootstrapping confers no special status: every design session is standalone apart from this setup — there is no "master design session" (operator ruling 2026-07-27).
 - **Branch present → join it:** you are a later session for this release; do not rebase or reset it.
 
 ## 4. Worktree
@@ -41,6 +41,7 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 - If any implementation brief for this release has closed since the last design session, verify it NOW from its committed closeout report plus the issues report: end-state invariants, deploy-time actions executed, drift reported as a discrepancy list. This is the release's post-implementation verification home — no closeout sits unverified past this point.
 - Sweep the GDD on this branch for "(vNN, pending implementation)" markers whose implementation has landed, and remove them (marker removal is design-session work; implementation sessions never touch GDD source).
 - If nothing has closed since the last session, state that explicitly and move on.
+- (Complementary, not duplicative: design sessions verify between buckets as work lands; the closeout session re-verifies the complete release at the end. Both run; neither substitutes for the other.)
 
 ## 7. Readiness report
 
