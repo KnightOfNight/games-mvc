@@ -38,6 +38,13 @@
       }
     ]
   },
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Deleting any git branch, local or remote (branch -d/-D/--delete, push --delete, push :refspec, --delete-branch, DELETE on refs/heads), or removing/pruning git worktrees — allow only when the operator explicitly commanded this exact deletion in the current conversation",
+      "Running the production deploy Make target — allow only the exact bare invocation and only when the operator gave a one-time go-ahead in the current conversation; anything embedded in a larger command is never cleared"
+    ]
+  },
   "model": "claude-fable-5",
   "effortLevel": "high",
   "skipAutoPermissionPrompt": true
