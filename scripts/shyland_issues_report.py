@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.14
 """Generate the Shyland GitHub issues report.
 
 Writes a timestamped markdown snapshot of all issues to docs/shyland/,
@@ -7,8 +7,9 @@ for consumption by the Shyland design chat.
 Read-only against GitHub (via the authenticated `gh` CLI) and against git.
 Creates exactly one file. Never deletes or modifies prior reports.
 
-Usage: python3 scripts/shyland_issues_report.py
-Requires: gh CLI, authenticated (`gh auth status`).
+Usage: python3.14 scripts/shyland_issues_report.py
+       (or direct execution via the shebang: scripts/shyland_issues_report.py)
+Requires: Python 3.14+; gh CLI, authenticated (`gh auth status`).
 """
 
 import json
@@ -16,6 +17,13 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+if sys.version_info < (3, 14):
+    sys.exit(
+        "FATAL: this script requires Python 3.14+; it was run with "
+        f"Python {sys.version_info.major}.{sys.version_info.minor} "
+        f"({sys.executable}). Try: python3.14 scripts/shyland_issues_report.py"
+    )
 
 ISSUE_FIELDS = (
     "number,title,state,author,labels,milestone,assignees,"

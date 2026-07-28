@@ -1,0 +1,66 @@
+2026-07-27 — session start: applying Shyland V23.2 Brief 1 (Issues_Report_Python_Guard) on branch version_23_2.
+
+================================================================================
+Shyland V23.2 Brief 1 — Issues-Report Python Version Guard (#155)
+Closeout Report — 2026-07-27 (implementation session, branch version_23_2)
+================================================================================
+
+SUMMARY
+- Brief applied exactly as written; no deviations from the ruling.
+- scripts/shyland_issues_report.py: shebang -> #!/usr/bin/env python3.14;
+  executable bit set (mode 100644 -> 100755, confirmed in the commit diff);
+  runtime version guard inserted after the import block, before ISSUE_FIELDS
+  and any annotated def, using 3.6+-safe syntax exactly as specified in the
+  brief; docstring Usage line -> python3.14 form (direct execution noted),
+  Requires line gains "Python 3.14+".
+- Version start (opening act, own commit): SHYLAND_VERSION "23.1" ->
+  "23.2-DEV" with the pin-test assertion in
+  django/src/apps/shyland/tests/test_b2_amendment1.py moved in the same
+  commit; version-start `make deploy-dev` run from the worktree
+  (build + migrate, "No migrations to apply", stack refreshed).
+
+MIGRATIONS
+- No model changes; no migration created (as the brief states).
+
+VERIFICATION (all passed)
+1. /usr/bin/python3 (3.9) -> exit 1, friendly guard message naming
+   "requires Python 3.14+" and the interpreter path; no traceback, no
+   TypeError.
+2. Bare python3 (resolves to 3.9.6 system interpreter) -> same result.
+3. Direct execution `scripts/shyland_issues_report.py` from the worktree
+   repo root -> report generated normally
+   (docs/shyland/Shyland_Issues_Report_20260728T011532Z.md, committed as a
+   normal report artifact in c68a600).
+4. Full in-container Django suite after the version-start deploy-dev:
+   370 tests, OK. Actual vs expected: 370/370 (v23.1 baseline 370; no
+   additions, no removals — the pin test moved, not added).
+
+ISSUES
+- #155 closed 2026-07-27 after all verification steps passed, with the
+  verification record as the closing comment.
+
+ARCHITECTURE DOC
+- Deliberate no-op, ruled by the design session in the brief: repo tooling
+  only, nothing architectural changed. The 23.2 stamp moves at closeout as
+  version bookkeeping (doc-only point release: stamp increments, hash does
+  not move). Recorded here as the ruled deviation from the usual
+  last-gated-step.
+
+DEPLOY
+- Dev only: version-start `make deploy-dev` (build + migrate). No further
+  deploy needed — post-bump commits touch nothing under django/src/.
+  Dev stack is running 23.2-DEV; operator playtest checklist (in the brief)
+  is ready against dev.
+- PENDING DEPLOY-TIME ACTIONS: none.
+- Production untouched, per Deployment Law — this release deploys to prod
+  only in the closeout session's tail. This brief ends: ready for closeout.
+
+COMMITS (branch version_23_2)
+- 030d13b  Step 0 closeout-report stub (work-started signal)
+- 25f8538  version start: SHYLAND_VERSION 23.1 -> 23.2-DEV (pin test moved)
+- f173f63  shebang + executable bit + runtime version guard + docstring
+- c68a600  verification step 3 report artifact
+  (Shyland_Issues_Report_20260728T011532Z.md)
+- Final implementation commit hash: c68a600. This completed closeout report
+  and the end-of-brief issues report follow it on the branch.
+================================================================================
