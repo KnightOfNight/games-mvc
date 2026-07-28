@@ -17,7 +17,7 @@ Every document authored this session — GDD section edits, briefs, planning doc
 
 ## 3. Issues report
 
-Invoke the issues-report agent (it verifies a clean tree, generates the report, and commits + pushes it on the **current branch** — the version branch for a design session). Do not spell out its steps; do not substitute manual gh queries.
+Invoke the issues-report agent (it verifies a clean tree, generates the report, and commits + pushes it on the **current branch** — the version branch for a design session). Do not spell out its steps; do not substitute manual gh queries. This committed report is the session's **formal end artifact**: the closeout session's early gate checks that the branch's latest content commit is an issues report.
 
 ## 4. Verify end-state from the committed report
 
