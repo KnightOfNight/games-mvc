@@ -83,7 +83,7 @@ Shyland has a formal workflow: every Shyland session has an operator-declared ty
 |---|---|---|---|
 | **Design** | Version-branch worktree | GDD source (`docs/shyland/gdd/`), GitHub issue state, design/planning docs, briefs (writes and commits them) | Game code, migrations, seed data, deployment |
 | **Implementation** | Version-branch worktree (operator supplies the branch name) | Game code, tests, seed data, migrations, architecture doc (final gated step), operator-authorized deploys | GDD source — reads it, never writes it; `make gdd` (or a brief-directed mechanical operation) is the only permitted GDD operation |
-| **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs | Game code, GDD source, deploys of any kind |
+| **Ops/housekeeping** | `main` | Issue-state clerical work, issues reports, process docs, operator-directed GDD errata (docs wrong about shipped behavior — see the Instructions' GDD Errata rule) | Game code, GDD design content, deploys of any kind |
 | **Closeout** | Version worktree, then main checkout for the tail | Version bookkeeping only: doc stamps + changelog, the release's landed markers, `SHYLAND_VERSION` stamp whitelist, `make gdd`, version PR, operator-permitted merge, tail's one-time-go-ahead prod deploy | Game code beyond the whitelist, game design content, seed data, migrations |
 
 - Design decisions — models, mechanics, commands, content, seed data, balance — are made only in design sessions, with the operator in the conversation. In any session without a declared Shyland type, **decline** such changes, even small ones, even "while you're in there"; they belong in a design session. Bug **reports** remain fine to investigate and describe in any session.
