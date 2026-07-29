@@ -414,7 +414,7 @@ def apply_npc_effects(npc_instance, target_character):
     Synchronous — call from within @database_sync_to_async.
     """
     from .models import NpcEffect
-    from .effect_utils import apply_effect_definition
+    from .effect_utils import apply_effect_definition, compose_standalone_sentence
 
     messages = []
     effects = NpcEffect.objects.filter(
@@ -424,13 +424,16 @@ def apply_npc_effects(npc_instance, target_character):
     for npc_effect in effects:
         if random.random() > npc_effect.effect_chance:
             continue
-        msgs = apply_effect_definition(
+        # v23.3 (#149): the effect layer returns clause pairs now; this
+        # path recomposes them via the standalone form so its returned
+        # strings keep the pre-clause-contract shape.
+        pairs = apply_effect_definition(
             definition=npc_effect.effect_definition,
             target=target_character,
             mk_tier=npc_instance.mk_tier,
             removed_by_label='npc_service',
         )
-        messages.extend(msgs)
+        messages.extend(compose_standalone_sentence(p) for p in pairs)
         messages.append(npc_effect.effect_definition.name)
 
     return messages

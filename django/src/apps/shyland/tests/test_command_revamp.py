@@ -594,18 +594,23 @@ class UseSequenceTests(TransactionTestCase):
         return char
 
     async def test_sequence_stops_at_full_with_the_loot_line(self):
+        # v23.3 (#149/#151): converted from the two-line per-item shape
+        # to the aggregate line — original intent preserved: the heal
+        # stops when the purpose is fulfilled (deficit 90 needs two 60s;
+        # the third draught never fires) and full health is the
+        # loot-colored note.
         char = await sync_to_async(self._setup)('usA')
         sent = []
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_use('3 healing draught')
-        texts = [m['text'] for m in outputs(sent)]
-        use_lines = [t for t in texts if t.startswith('You use a Healing Draught')]
-        # 10 → 70 → full at the second draught; the third never fires.
-        self.assertEqual(len(use_lines), 2)
-        full = [m for m in outputs(sent)
-                if m['text'] == 'You have been restored to full health.']
-        self.assertEqual(len(full), 1)
-        self.assertEqual(full[0]['category'], 'reward')
+        msgs = outputs(sent)
+        use_lines = [m for m in msgs if m['text'].startswith('You use')]
+        self.assertEqual(len(use_lines), 1)
+        self.assertEqual(
+            use_lines[0]['text'],
+            'You use Healing Draught Mk 1 ×2 and feel your body recover. '
+            '(+120 Vitality) You are restored to full health.')
+        self.assertEqual(use_lines[0]['category'], 'reward')
 
         def remaining():
             return ItemInstance.objects.filter(owner=char).count()

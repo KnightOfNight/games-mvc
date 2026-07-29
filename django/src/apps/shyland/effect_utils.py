@@ -6,7 +6,11 @@ from django.utils import timezone
 def apply_effect_definition(definition, target, mk_tier, removed_by_label='consumable'):
     """
     Apply an EffectDefinition to a target Character.
-    Returns a list of human-readable messages to send to the player.
+    Returns a list of (clause, annotation) pairs for the instant
+    components applied — v23.3 (#149): the effect layer speaks in
+    clauses; sentence composition belongs to the caller (see
+    compose_standalone_sentence / compose_use_sentence). Timed
+    components produce no pairs.
     Synchronous — call from within @database_sync_to_async.
     """
     from .models import EffectInstance, EffectComponentInstance
@@ -50,9 +54,9 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
         duration  = component.computed_duration(mk_tier)
 
         if component.is_instantaneous():
-            msg = _apply_instant_component(component, target, magnitude)
-            if msg:
-                messages.append(msg)
+            pair = _apply_instant_component(component, target, magnitude)
+            if pair is not None:
+                messages.append(pair)
         else:
             has_duration_components = True
             expires_at = timezone.now() + timedelta(seconds=duration)
@@ -77,14 +81,16 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
 
 
 def _apply_instant_component(component, target, magnitude):
-    """Apply an instantaneous component immediately. Returns a message string.
+    """Apply an instantaneous component immediately. Returns a
+    (clause, annotation) pair — v23.3 (#149) — or None for component
+    types with nothing to say.
 
     v21 brief 3 (#52): bar restores are single atomic UPDATEs (F() with a
     clamp), never object-arithmetic-then-save — the caller's cached
     character may be stale against the tick engine's per-round damage
     writes, and adding the magnitude to a stale read silently resurrects
-    persisted damage. The message prints the magnitude; the bars render
-    truth because every display path re-fetches after mutation.
+    persisted damage. The annotation prints the magnitude; the bars
+    render truth because every display path re-fetches after mutation.
     """
     from django.db.models import Case, DecimalField, F, Value, When
     from django.db.models.functions import Cast, Greatest, Least, Round
@@ -97,12 +103,12 @@ def _apply_instant_component(component, target, magnitude):
     if ctype == 'restore_vitality':
         row.update(vitality_current=Least(
             F('vitality_current') + magnitude, F('vitality_max')))
-        return f"You feel your body recover. (+{int(magnitude)} Vitality)"
+        return ("feel your body recover", f"(+{int(magnitude)} Vitality)")
 
     if ctype == 'restore_longevity':
         row.update(longevity_current=Least(
             F('longevity_current') + magnitude, F('longevity_max')))
-        return f"Your stamina is restored. (+{int(magnitude)} Longevity)"
+        return ("feel your stamina return", f"(+{int(magnitude)} Longevity)")
 
     if ctype == 'restore_acuity':
         # Same formula as before, expressed in SQL: move toward the
@@ -123,12 +129,40 @@ def _apply_instant_component(component, target, magnitude):
                  DecimalField(max_digits=8, decimal_places=4)),
             1))
         target.refresh_from_db(fields=['acuity_current'])
-        return f"Your mind steadies. (Acuity {target.acuity_current:.1f})"
+        return ("feel your mind steady",
+                f"(Acuity {target.acuity_current:.1f})")
 
     if ctype == 'durability_restore':
-        return "The repair kit fizzes but does nothing useful yet."
+        return ("watch the repair kit fizz to no useful effect", "")
 
-    return ""
+    return None
+
+
+def compose_standalone_sentence(pair):
+    """v23.3 (#149): the standalone form — the full sentence for callers
+    outside `use` (the NPC path): 'You {clause}.' with the annotation
+    appended after the period when present."""
+    clause, annotation = pair
+    sentence = f"You {clause}."
+    if annotation:
+        sentence += f" {annotation}"
+    return sentence
+
+
+def compose_use_sentence(subject, pairs):
+    """v23.3 (#149): the use-sentence form — one sentence, one envelope.
+    'You use {subject} and {clause1} and {clause2}. {ann1} {ann2}':
+    clauses joined with ' and ' in component order, single period,
+    non-empty annotations space-joined after it. An empty pair list is
+    the plain transactional sentence (timed-effect consumables)."""
+    if not pairs:
+        return f"You use {subject}."
+    clauses = " and ".join(clause for clause, _ in pairs)
+    sentence = f"You use {subject} and {clauses}."
+    annotations = " ".join(a for _, a in pairs if a)
+    if annotations:
+        sentence += f" {annotations}"
+    return sentence
 
 
 def apply_stat_effect(target, component_instance, reverse=False):

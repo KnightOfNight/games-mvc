@@ -23,6 +23,7 @@ from .combat_utils import (
 from .command_grammar import (
     RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
 )
+from .effect_utils import compose_use_sentence
 from .envelope import envelope_ts
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
@@ -1368,6 +1369,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output(res.message, self._refusal_category(res))
             return
 
+        # v23.3 (#151): instant-restore healing consumables take the
+        # aggregate path — never while dying (the revival sequence owns
+        # that path and swallows exactly one restorative).
+        if not was_dying and await self.use_items_aggregatable(res.items):
+            await self._use_aggregate(res)
+            return
+
         used = 0
         stopped_at_full = False
         for item in res.items:
@@ -1389,14 +1397,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     stopped_at_full = True
                     break
 
-            msgs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
             await self.consume_item(item)
             used += 1
 
-            # DD §6: the transactional sentence, then the effect line.
-            await self.output(f'You use {item_ref(item, indefinite=True)}.', 'success')
-            for msg in msgs:
-                await self.output(msg, 'system')
+            # v23.3 (#149): one sentence, one envelope — the
+            # transactional clause and the effect clauses merge; an
+            # empty pair list keeps the plain sentence (timed effects).
+            await self.output(
+                compose_use_sentence(item_ref(item, indefinite=True), pairs),
+                'success')
 
             room = await self.get_current_room()
             char_fresh = await self.get_character_fresh()
@@ -1427,6 +1437,127 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             room = await self.get_current_room()
             char_fresh = await self.get_character_fresh()
             await self.send_json(await self._status_payload(char_fresh, room))
+
+    @database_sync_to_async
+    def use_items_aggregatable(self, items):
+        """v23.3 (#151, ruling 3): qualification for the aggregate path —
+        every resolved item's effect has only instantaneous components,
+        at least one of them restore_vitality. Derived from the effect's
+        own components, never a separate flag (the #61 helper's law)."""
+        for item in items:
+            effect_def = item.definition.effect
+            if effect_def is None:
+                return False
+            components = list(effect_def.components.all())
+            if not components:
+                return False
+            if not all(c.is_instantaneous() for c in components):
+                return False
+            if not any(c.component_type == 'restore_vitality'
+                       for c in components):
+                return False
+        return True
+
+    async def _use_aggregate(self, res):
+        """v23.3 (#151): the aggregate path — deficit computed up front,
+        consumption planned before applying, one atomic vitality UPDATE,
+        one composed line, one status payload (rulings 3–5)."""
+        # DD §7 / #61: the entry gate, unchanged wording, fresh read.
+        gate_char = await self.get_character_fresh()
+        if gate_char.vitality_current >= gate_char.vitality_max:
+            await self.output('You are already at full health.', 'warn')
+            return
+        deficit = gate_char.vitality_max - gate_char.vitality_current
+
+        consumed, total, covered, extra_pairs = \
+            await self._apply_aggregate_heal(gate_char, res.items, deficit)
+
+        # Ruling 4: one item keeps the article form; otherwise
+        # comma-joined (definition, Mk) count-form groups in consumption
+        # order — the Amendment-5 composition, ×1 groups included.
+        if len(consumed) == 1:
+            subject = item_ref(consumed[0], indefinite=True)
+        else:
+            subject = ', '.join(
+                f'{name} ×{len(group)}'
+                for name, group in self._aggregate_by_name(consumed))
+
+        pairs = [('feel your body recover', f'(+{int(total)} Vitality)')]
+        pairs.extend(extra_pairs)
+        line = compose_use_sentence(subject, pairs)
+        if covered:
+            # Ruling 5: the full-heal fold — one line, reward, no
+            # second message.
+            await self.output(f'{line} You are restored to full health.',
+                              'reward')
+        else:
+            await self.output(line, 'success')
+
+        # Ruling 5: the shortfall warn fires only when the ask exceeded
+        # inventory AND the deficit went uncovered.
+        if res.requested and not covered:
+            await self.output(f'You only had {len(consumed)}.', 'warn')
+
+        room = await self.get_current_room()
+        char_fresh = await self.get_character_fresh()
+        await self.send_json(await self._status_payload(char_fresh, room))
+
+    @database_sync_to_async
+    def _apply_aggregate_heal(self, character, items, deficit):
+        """v23.3 (#151): plan consumption, then apply once.
+
+        Walks ``items`` in resolution order (use's policy selection is
+        'oldest' — oldest-first; never re-sorted here), accumulating each
+        item's restore_vitality magnitude and stopping at deficit
+        coverage, the requested count (``items`` arrives capped), or
+        exhaustion. The vitality write is ONE atomic clamped UPDATE for
+        the total (#52 law) regardless of count. Non-vitality instant
+        components (none in current seed data — never silently dropped)
+        apply via the effect machinery, their clause pairs returned for
+        the sentence; EffectInstance bookkeeping runs per consumed item
+        as the per-item path does. Consumed instances are deleted.
+        Returns (consumed, total, covered, extra_pairs)."""
+        from django.db.models import F
+        from django.db.models.functions import Least
+        from .effect_utils import _apply_instant_component
+        from .models import EffectInstance
+
+        consumed = []
+        total = 0.0
+        for item in items:
+            total += sum(
+                c.computed_magnitude(item.mk_tier)
+                for c in item.definition.effect.components.all()
+                if c.component_type == 'restore_vitality')
+            consumed.append(item)
+            if total >= deficit:
+                break
+
+        Character.objects.filter(pk=character.pk).update(
+            vitality_current=Least(
+                F('vitality_current') + total, F('vitality_max')))
+
+        extra_pairs = []
+        for item in consumed:
+            effect_def = item.definition.effect
+            instance = EffectInstance(
+                definition=effect_def, target=character,
+                mk_tier=item.mk_tier, is_active=True)
+            instance.save()
+            for component in effect_def.components.all():
+                if component.component_type == 'restore_vitality':
+                    continue
+                pair = _apply_instant_component(
+                    component, character,
+                    component.computed_magnitude(item.mk_tier))
+                if pair is not None:
+                    extra_pairs.append(pair)
+            instance.is_active = False
+            instance.removed_by = 'timeout'
+            instance.save(update_fields=['is_active', 'removed_by'])
+            item.delete()
+
+        return consumed, total, total >= deficit, extra_pairs
 
     def _format_identified_item_lines(self, item):
         defn = item.definition
