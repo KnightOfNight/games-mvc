@@ -2759,8 +2759,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         "You can't go home yet, you were just there. Give it a few minutes.",
         "The fog won't gather again so soon. Even homesickness has rules.",
     ]
-    # Cadence to the three authored beats, then completion at t=15.
-    HOME_CADENCE = (7.0, 5.0, 3.0)
+    # Cadence to the three authored beats, then completion at t=10.
+    HOME_CADENCE = (3.0, 4.0, 3.0)
 
     async def send_unknown_command(self):
         """The one unknown-command response — also the admin stealth

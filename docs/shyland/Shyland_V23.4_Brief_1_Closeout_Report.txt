@@ -1,0 +1,97 @@
+Session start 2026-07-29 — Shyland V23.4 Brief 1 — Home Timings — branch version_23_4
+
+SHYLAND V23.4 BRIEF 1 CLOSEOUT REPORT — HOME TIMINGS (#162)
+===========================================================
+
+Session: implementation, 2026-07-29, branch version_23_4 (worktree), local dev target
+(pre-flight PASS). Brief verified verbatim at branch tip (committed f8a133e by the
+design session); no process-assumption discrepancies against Instructions v27.
+
+VERSION-START RITUAL (first brief of the release)
+-------------------------------------------------
+- SHYLAND_VERSION "23.3" -> "23.4-DEV" in its own commit eb71e19; pin test moved with
+  it (test_b2_amendment1.py: assertEqual '23.4-DEV').
+- Version-start make deploy-dev run from the worktree (dev stack onto 23.4-DEV).
+
+IMPLEMENTATION
+--------------
+- models.py: Character.home_cooldown_seconds default 900 -> 300 (field type, help
+  text, home_last_completed untouched).
+- Migration 0038_alter_character_home_cooldown_seconds: generated AlterField
+  (make makemigrations APP=shyland), committed as generated.
+- Migration 0039_home_cooldown_reset_300: authored RunPython (0023 precedent) —
+  historical model via apps.get_model, single unconditional queryset .update()
+  setting all rows to 300 (admin overrides included, ruling 2), reverse =
+  RunPython.noop.
+- consumers.py: HOME_CADENCE (7.0, 5.0, 3.0) -> (3.0, 4.0, 3.0); comment updated
+  t=15 -> t=10. Beat structure, all three broken_by_violence checkpoints, all
+  authored lines/pools, gates, and the delayed-action registry untouched.
+- No wording changes anywhere (ruling 5). No seed changes. No GDD source edits
+  (make gdd not needed — no stamp moves in this brief).
+
+TESTS
+-----
+- New HomeTimingPinTests (SimpleTestCase) in tests/test_new_commands.py:
+  default pin (get_field('home_cooldown_seconds').default == 300) and cadence pin
+  (HOME_CADENCE == (3.0, 4.0, 3.0), sum == 10 — the intent assertion).
+- Existing explicit-value cooldown tests (900 et al.) left standing per brief §4.3 —
+  the per-player override capability is unchanged. Cadence-override tests
+  ((0,0,0)/(3600,0,0)) unaffected. No existing test pinned the old default or old
+  tuple — no conversions needed.
+
+VERIFICATION
+------------
+- Full in-container suite (path form, docker exec): 390 tests, 0 failures.
+  Baseline v23.3 closed at 388 -> net +2, exactly the two new pins.
+- make deploy-dev applied 0038 and 0039 against dev ("Applying shyland.0038... OK,
+  0039... OK").
+- Dev DB post-migrate: Character.objects.count() == 1;
+  Character.objects.exclude(home_cooldown_seconds=300).count() == 0.
+  Rows-updated actual: 1 of 1 — equal, as required.
+- git status: exactly the two new migration files under
+  django/src/apps/shyland/migrations/, both committed (e17162e). Tree clean at
+  every step boundary; pushed at every boundary.
+
+DEV DEPLOY
+----------
+- make deploy-dev from the worktree after implementation + verification (build +
+  migrate). Dev stack running 23.4-DEV with both migrations applied. Deploy bounces
+  all containers of the dev stack (all three games).
+- Operator playtest checklist (brief §7) is ready against the dev stack.
+
+ARCHITECTURE DOC (final gated step — gates passed)
+--------------------------------------------------
+- Shyland_Architecture_v23.md updated in place (point release, no new file):
+  header summary prepended (v23.4 brief 1), header hash moved c1e9f59 -> 11c14f7
+  (architectural point release — code and schema changed), Version 23.4 block added
+  with the -DEV-era GDD-lockstep note, home (#57) paragraph updated (10-second
+  countdown, beats t=0/~3/~7 arrival t=10, default 300, migrations 0038/0039 noted
+  alongside 0033). Commit 20096f2.
+
+ISSUES
+------
+- #162 closed (gated on verification passing) with implementation comment.
+
+DEVIATIONS
+----------
+- None.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+- None. (The migrations ride the closeout tail's make deploy-prod automatically —
+  expected per brief §0/§9.)
+
+COMMITS (this session, in order)
+--------------------------------
+- 008d663  Step 0 closeout stub (work-has-started signal)
+- eb71e19  version start: 23.3 -> 23.4-DEV + pin test
+- e17162e  code + migrations 0038/0039
+- 11c14f7  HomeTimingPinTests (390/390) — final implementation commit
+- 20096f2  architecture doc
+- (this commit) closeout report completed in place
+
+Final implementation commit hash: 11c14f7. Architecture doc hash of record: 11c14f7
+(header), committed at 20096f2.
+
+Session ends via the implementation-session-end ritual; the issues report is its
+formal end artifact.

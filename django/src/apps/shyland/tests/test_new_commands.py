@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import Group
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.shyland.consumers import SkylandConsumer
@@ -372,6 +372,19 @@ class HomeTests(TransactionTestCase):
         room_id, completed = await sync_to_async(state)()
         self.assertEqual(room_id, far_room.pk)
         self.assertIsNone(completed)
+
+
+class HomeTimingPinTests(SimpleTestCase):
+    """v23.4 brief 1 (#162): cooldown 15m -> 5m, countdown 15s -> 10s."""
+
+    def test_default_cooldown_is_300(self):
+        self.assertEqual(
+            Character._meta.get_field('home_cooldown_seconds').default, 300)
+
+    def test_cadence_totals_ten_seconds(self):
+        self.assertEqual(SkylandConsumer.HOME_CADENCE, (3.0, 4.0, 3.0))
+        # The intent behind the tuple: the whole countdown is 10 seconds.
+        self.assertEqual(sum(SkylandConsumer.HOME_CADENCE), 10)
 
 
 class LastTests(TransactionTestCase):

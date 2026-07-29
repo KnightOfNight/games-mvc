@@ -275,7 +275,7 @@ class Character(models.Model):
     # home_last_completed is set only when the traveler actually lands
     # at the Heart; interrupted countdowns never start the clock.
     home_cooldown_seconds = models.PositiveIntegerField(
-        default=900,
+        default=300,
         help_text='Per-player home cooldown override (seconds); edit here '
                   'in the admin to change one character.',
     )
