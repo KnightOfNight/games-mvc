@@ -170,4 +170,22 @@ deploys from main in the closeout session's tail.)
 NOTE FOR CLOSEOUT: a container restart accompanied each build/deploy
 of the dev stack only; production was never touched. The eventual
 prod deploy bounces all three games (standard note).
+
+OPERATOR PLAYTEST (brief §7) — attested 2026-07-29
+--------------------------------------------------
+Operator ran the checklist on the dev stack and attested the brief
+good ("playtest is good, so this brief is good"). Item 5 (mixed-Mk
+groups) is conditional and remains coverable at the operator's
+leisure: no Mk >1 items exist in seed/world data, so 10 Mk 2 Healing
+Draughts were created for character Harley Stone as a dev-stack
+playtest fixture (runtime ItemInstance rows only — no definitions, no
+seed change, production untouched); consumption is oldest-first, so
+the mixed line appears once the Mk 1 stack runs low. The mixed-Mk
+composition is also pinned by exact-string automated test.
+
+PLAYTEST FINDING FILED: #161 (label output, unmilestoned) — the use
+shortfall warn 'You only had N.' lacks context; operator-proposed
+self-describing wording recorded. Ruled bigger than `use` (the #132
+shortfall family); left for a design session to rule. No code change
+in this session.
 ================================================================
