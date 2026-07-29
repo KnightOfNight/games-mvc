@@ -106,7 +106,9 @@ class HealLostUpdateTests(TestCase):
         # Old code: min(stale 100 + 25, 100) = 100 — damage resurrected.
         # Atomic: persisted 40 + 25 = 65.
         self.assertEqual(self.char.vitality_current, 65)
-        self.assertIn('+25 Vitality', msgs[0])
+        # v23.3 (#149): the return is (clause, annotation) pairs now; the
+        # magnitude still prints in the annotation.
+        self.assertIn('+25 Vitality', msgs[0][1])
 
     def test_heal_still_clamps_to_max(self):
         stale = Character.objects.get(pk=self.char.pk)
@@ -135,7 +137,8 @@ class HealLostUpdateTests(TestCase):
             stale, mk_tier=1)
         self.char.refresh_from_db()
         self.assertAlmostEqual(self.char.acuity_current, 0.7, places=3)
-        self.assertIn('0.7', msgs[0])
+        # v23.3 (#149): pair contract — the value prints in the annotation.
+        self.assertIn('0.7', msgs[0][1])
 
     def test_acuity_restore_never_overshoots_baseline(self):
         stale = Character.objects.get(pk=self.char.pk)
