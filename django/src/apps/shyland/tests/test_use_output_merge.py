@@ -142,9 +142,12 @@ class AggregateMathTests(TransactionTestCase):
         self.assertEqual(await sync_to_async(remaining)(char), 0)
 
     async def test_resolver_order_is_preserved_not_resorted(self):
-        # A common Mk 2 outranks an uncommon Mk 1 in the resolver's
-        # lowest-value-first order; the line must keep that order, not
-        # re-sort by tier.
+        # use's resolver policy selects oldest-first ('oldest'); the
+        # aggregate path walks that order verbatim — the line must keep
+        # it, never re-sorting by tier or rarity. (Brief 1 described the
+        # order as lowest-value-first; the policy's actual selection is
+        # oldest — recorded as a closeout deviation note. The law under
+        # test is order preservation.)
         def setup():
             zone, room = make_world('agD')
             char = make_character('agD', room)
@@ -167,10 +170,11 @@ class AggregateMathTests(TransactionTestCase):
         consumer = make_stub_consumer(char, sent)
         await consumer.cmd_use('2 healing draught')
         msgs = outputs(sent)
-        # Mk1 heals 30, Mk2 heals 35; common Mk2 consumes first.
+        # The uncommon Mk 1 is older — it consumes first despite the
+        # common Mk 2 being "cheaper". Mk1 heals 30, Mk2 heals 35.
         self.assertEqual(
             msgs[0]['text'],
-            'You use Healing Draught Mk 2 ×1, Healing Draught Mk 1 ×1 '
+            'You use Healing Draught Mk 1 ×1, Healing Draught Mk 2 ×1 '
             'and feel your body recover. (+65 Vitality)')
 
 

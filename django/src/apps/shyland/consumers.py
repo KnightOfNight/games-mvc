@@ -1506,8 +1506,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def _apply_aggregate_heal(self, character, items, deficit):
         """v23.3 (#151): plan consumption, then apply once.
 
-        Walks ``items`` in resolution order (the resolver already sorts
-        lowest-value-first — never re-sorted here), accumulating each
+        Walks ``items`` in resolution order (use's policy selection is
+        'oldest' — oldest-first; never re-sorted here), accumulating each
         item's restore_vitality magnitude and stopping at deficit
         coverage, the requested count (``items`` arrives capped), or
         exhaustion. The vitality write is ONE atomic clamped UPDATE for
