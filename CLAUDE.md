@@ -327,6 +327,11 @@ Browser word game.
 
 ## Conventions and Rules
 
+### Shell commands (all sessions, all session types)
+
+- **Never use a heredoc.** They fail intermittently in this environment's shell and the retry ends up at a temp file anyway — skip the failed attempt: **always write multi-line content (commit messages, issue/PR bodies, comments) to a temporary file first** (e.g. via the Write tool to `/tmp/…`) and pass it with `-F` / `--body-file` / the command's file-input flag.
+- **Single-quote every grep/sed/awk pattern**, and never place backticks or `$( )` inside double-quoted shell arguments — command substitution inside a quoted pattern once executed an accidental production deploy (2026-07-27).
+
 ### Migrations
 
 - Always run `make makemigrations APP=<name>` not bare `makemigrations` — the enhanced target syncs generated files back to the local filesystem automatically (Django generates them inside the container's ephemeral filesystem; they would be lost on the next `make build` otherwise)
