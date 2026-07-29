@@ -1,3 +1,173 @@
 Session start 2026-07-28 — Shyland V23.3 Brief 1 (Use Output Merge) — branch version_23_3 — implementation session begun.
 
-[STUB — completed in place at session end]
+================================================================
+SHYLAND V23.3 BRIEF 1 — USE OUTPUT MERGE — CLOSEOUT REPORT
+================================================================
+Brief:   docs/shyland/Shyland_V23.3_Brief_1_Use_Output_Merge.md
+Branch:  version_23_3
+Issues:  #149 (founding), #151 (dependency)
+Date:    2026-07-28
+
+VERSION-START RITUAL (opening act)
+----------------------------------
+SHYLAND_VERSION 23.2 -> 23.3-DEV in its own commit (8ca8834), pin test
+moved with it (test_b2_amendment1.py asserts '23.3-DEV'), pushed, then
+version-start `make deploy-dev` run from the worktree — clean, no
+migrations to apply.
+
+IMPLEMENTATION
+--------------
+1. Effect-layer clause contract (effect_utils.py, brief §3.1):
+   _apply_instant_component returns (clause, annotation) pairs per the
+   ruled table (vitality 'feel your body recover' / '(+N Vitality)';
+   longevity 'feel your stamina return'; acuity 'feel your mind steady';
+   durability_restore 'watch the repair kit fizz to no useful effect'
+   with empty annotation; silent types return None).
+   apply_effect_definition returns the pair list (instant only; timed
+   components produce none; reapplication early-return unchanged).
+   The #52 atomic-update laws untouched. Two composition helpers added
+   in effect_utils.py: compose_standalone_sentence ('You {clause}.
+   {annotation}') and compose_use_sentence (clauses ' and '-joined,
+   single period, annotations space-joined; empty list -> plain
+   sentence).
+2. NPC path (combat_utils.apply_npc_effects, brief §3.2): recomposes
+   via the standalone form; returned strings pinned byte-identical for
+   the representative restore_vitality component (see DEVIATIONS 2).
+3. Single-use / per-item loop (cmd_use, brief §3.3): the two sends
+   (transactional 'success' line + per-message 'system' lines) replaced
+   by ONE compose_use_sentence send, category success. Timed-effect
+   consumables keep the plain sentence. 'Nothing happens.', the #61
+   gate, the revival sequence's own lines, and per-loop stop-at-full
+   for non-aggregatable items unchanged.
+4. Aggregate path (cmd_use, brief §3.4): use_items_aggregatable
+   (ruling-3 qualification derived from components, never a flag) +
+   _use_aggregate + _apply_aggregate_heal. Fresh-read #61 gate;
+   deficit; plan-then-apply walking res.items in resolution order
+   (never re-sorted); exactly ONE atomic clamped vitality UPDATE for
+   the total; non-vitality instant components applied via the effect
+   machinery with clauses joining the sentence (none exist in seed
+   data; not silently dropped); EffectInstance bookkeeping per consumed
+   item; consumed instances deleted; one composed line (article form
+   for a single item, comma-joined (definition, Mk) x-count groups in
+   consumption order otherwise; '+summed magnitude Vitality'
+   annotation); full-heal fold ' You are restored to full health.' at
+   category reward with no second message; shortfall warn 'You only had
+   N.' only when the ask exceeded inventory AND the deficit went
+   uncovered; exactly one status payload.
+5. Out of scope respected (brief §3.5): no resolver/grammar/completion/
+   state-gating changes, no other command's output touched, no seed
+   changes, no model changes, no migration, no GDD source edits.
+
+Files changed (django/src/apps/shyland/):
+   effect_utils.py, combat_utils.py, consumers.py,
+   tests/test_use_output_merge.py (new),
+   tests/test_command_revamp.py, tests/test_combat_state.py,
+   version.py + tests/test_b2_amendment1.py (version-start commit).
+
+TESTS (brief §4)
+----------------
+New suite tests/test_use_output_merge.py covers all ten required
+points: (1) merged single-use exact line, one envelope, no system
+line; (2) timed-effect plain sentence; (3) aggregate math — deficit-
+driven stop, request cap, inventory cap, resolution-order
+preservation; (4) count-form/mixed-Mk/count-of-1 line composition;
+(5) full-heal fold as one reward line; (6) shortfall warn firing
+matrix (fires uncovered, silent on deficit-driven stop and met
+request); (7) exactly one vitality UPDATE (CaptureQueriesContext on
+the unwrapped sync helper) and exactly one status payload; (8) #61
+gate unchanged; (9) dying path — one restorative, revival intact,
+merged swallow line; (10) NPC-path byte-identical pin. Existing
+conversions: see DEVIATIONS 3/4.
+
+VERIFICATION (brief §5)
+-----------------------
+Full in-container suite (path form, docker exec in the django
+container): python manage.py test apps/shyland/tests
+   RESULT: 388/388 OK (pre-brief baseline 370 — net +18, zero
+   failures), run 2026-07-28 after `make build`.
+No migration created: git status clean under
+django/src/apps/shyland/migrations/ (0 entries).
+Verification passed before the final implementation commit/push.
+
+DEV DEPLOY (brief §6)
+---------------------
+`make deploy-dev` run from the worktree after implementation and
+verification passed (DOMAIN sanity-checked: emma.private.magrathea.com,
+dev posture). Clean; no migrations to apply. Dev stack running the
+brief's build. Operator playtest checklist (brief §7) is ready against
+the dev stack.
+
+ARCHITECTURE DOC (brief §8, last, gated — gates passed)
+-------------------------------------------------------
+Shyland_Architecture_v23.md updated IN PLACE (point release): header
+blockquote prepends the v23.3 Brief 1 summary; header hash moved to
+c1e9f59 (architectural point release — code changed); Version 23.3
+block added after the 23.1/23.2 pattern with the -DEV-era note that
+GDD lockstep completes at the point-release closeout; §4.3 gains the
+use-output subsection (merged sentence + aggregate path + category
+rules) and a Changed-in-v23.3 note, with the v19 revival subsection
+carrying a supersession parenthetical; §4.4 gains the clause-contract
+paragraph (pairs, two composition forms, NPC-path preservation);
+§4.14 marks Amendment 5 superseded for `use` only (repair and loot
+remain per-line) and updates the use success-sentence example.
+
+DEVIATIONS
+----------
+1. Brief §3.4 step 3's parenthetical says the resolver "already orders
+   lowest-value-first" for use. The use policy's actual selection is
+   'oldest' (oldest-first) — command_grammar.Policy default; only
+   sell/drop use 'lowest'. The operative instruction (walk res.items
+   in resolution order, do not re-sort) was followed exactly, and §3.5
+   forbids resolver changes, so consumption order is oldest-first.
+   test_use_output_merge pins order preservation under that reality;
+   one code docstring states the actual order.
+2. Brief §3.2 says apply_npc_effects strings are byte-identical to
+   current behavior. True for restore_vitality (the representative
+   component §4.10 pins). The ruled clause table (authoritative data
+   table) re-authors the longevity/acuity/durability wordings, so
+   standalone recomposition of THOSE three differs from their
+   pre-change sentences ('Your stamina is restored.' -> 'You feel your
+   stamina return.', 'Your mind steadies.' -> 'You feel your mind
+   steady.', 'The repair kit fizzes but does nothing useful yet.' ->
+   'You watch the repair kit fizz to no useful effect.'). No NpcEffect
+   in seed data carries any instant restore component, so no live NPC
+   output changes; noted for the record under the table-over-prose
+   rule.
+3. Test conversion (contract change): test_combat_state.py's two
+   effect-return assertions (assertIn on msgs[0]) converted to the
+   pair contract (msgs[0][1]) — original intent (magnitude/value
+   prints) preserved as explicit assertions.
+4. Test conversion (ruled shape change): test_command_revamp.py
+   test_sequence_stops_at_full_with_the_loot_line converted from the
+   two-line per-item shape to the aggregate expectation — original
+   intent preserved (stop at purpose fulfilled: deficit 90 consumes
+   exactly 2 of 3 draughts; full health is the loot-colored note, now
+   the ruling-5 fold on the aggregate line).
+No other deviations. No data actions discovered; no migration needed
+(the §0 stop conditions never triggered).
+
+ISSUES
+------
+#149 closed (founding — merged use sentence shipped).
+#151 closed (dependency — instant-restore aggregation shipped).
+Both closures gated on verification passing (388/388).
+
+COMMITS (this session, chronological)
+-------------------------------------
+39f1147  Step 0 closeout stub (work-has-started signal)
+8ca8834  Version start: 23.3-DEV + pin test
+72b7f65  Implementation + tests (#149/#151)
+c1e9f59  Resolution-order pin + docstring correction — 388/388
+         (FINAL IMPLEMENTATION COMMIT — arch-doc header hash)
+29d91b5  Architecture doc update
+(closeout-report completion commit follows this file's final edit)
+
+PENDING DEPLOY-TIME ACTIONS: none
+(Expected per brief §0 — no seed changes, no data fixups, no
+migration. Production is untouched by this session; the release
+deploys from main in the closeout session's tail.)
+
+NOTE FOR CLOSEOUT: a container restart accompanied each build/deploy
+of the dev stack only; production was never touched. The eventual
+prod deploy bounces all three games (standard note).
+================================================================
