@@ -115,7 +115,7 @@ class VersionLineTests(TransactionTestCase):
         self.assertEqual(lines[-2], {})
         # The pin moves with the version rituals: version start sets
         # N.0-DEV, the closeout ritual sets the release stamp (N.0).
-        self.assertEqual(SHYLAND_VERSION, '23.2')
+        self.assertEqual(SHYLAND_VERSION, '23.3-DEV')
 
 
 class CategoryRetagTests(TransactionTestCase):
