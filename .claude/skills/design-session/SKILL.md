@@ -16,9 +16,9 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 
 ## 2. Identify the release
 
-- The operator names the release milestone — always `Version N.M` (a bare `Version N` milestone is a major's feature queue, never a release). If they haven't, ask — this is the one blocking question this skill is allowed.
+- The operator names the release milestone — always `Version N.M` (milestones are shipping releases only; a major's feature queue is its permanent `VN` label, never a milestone — #175). If they haven't, ask — this is the one blocking question this skill is allowed.
 - Branch name derives from the milestone, uniformly `version_N_M` (24.0 → `version_24_0`).
-- **First release of a new major (`N.0`)?** This session also does the major's big coherent pass: re-triage the `Version N` queue milestone against the major's theme (off-theme issues leave), rule the system whole (rulings on issues — version-independent), and rule the queue order. Later releases' design sessions are small: next ticket, its GDD text, its brief.
+- **First release of a new major (`N.0`)?** This session also does the major's big coherent pass: re-triage the major's `VN`-labeled queue against the theme (off-theme issues lose the label — to a capability label or none), rule the system whole (rulings on issues — version-independent), and rule the queue order. Later releases' design sessions are small: next ticket, its GDD text, its brief.
 
 ## 3. Create or join the version branch
 
@@ -46,7 +46,7 @@ Run this checklist **in order**. Report each step's outcome briefly; stop and re
 
 ## 7. Readiness report
 
-Summarize to the operator: branch (created or joined), worktree path, milestone issue set (open/triaged/bucketed counts), any drift found in step 5, and the session's proposed agenda.
+Summarize to the operator: branch (created or joined), worktree path, milestone issue set (open/triaged counts), any drift found in step 5, and the session's proposed agenda.
 
 ## Standing rules for the session body
 
