@@ -296,6 +296,7 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 |Type                |Category           |Description                                          |
 |--------------------|-------------------|-----------------------------------------------------|
 |`restore_vitality`  |Instantaneous      |Adds to `vitality_current`, clamped at max           |
+|`restore_vitality_percent`|Instantaneous|Restores an Mk-scaled fraction of `vitality_max`, with an authored flat-HP floor; clamped at max (v24.0, pending implementation)|
 |`restore_acuity`    |Instantaneous      |Nudges `acuity_current` toward baseline              |
 |`restore_longevity` |Instantaneous      |Adds to `longevity_current`, clamped at max          |
 |`dot_vitality`      |Duration, ticking  |Vitality damage per combat round                     |
@@ -330,6 +331,18 @@ This means single-component effects always produce one message. Multi-component 
 #### Application Context
 
 The same `EffectDefinition` can be applied from different sources. The Mk tier at application time determines magnitude and duration — a Mk 1 healing potion restores less than a Mk 3 healing potion of the same definition. Source context does not otherwise change behavior.
+
+#### Percentage Healing — the Draught Law (v24.0, pending implementation)
+
+Healing consumables restore a **percentage of the drinker's `vitality_max`**, never a flat amount:
+
+> **heal = (15% + 5% × Mk) of `vitality_max`, minimum 25 HP**
+
+Mk 1 restores 20% — five drinks from zero to full, at every level. The percentage is of **max, never of deficit** (deficit-proportional healing collapses into an ever-slower tail as the bar fills).
+
+The Mk axis buys **rounds, not raw HP**: a higher-Mk draught heals a larger fraction of the bar per combat round, at the standard `base_value × mk_tier` price premium. The premium purchases action economy — fewer combat rounds spent drinking — and per-copper healing efficiency deliberately does not improve with tier. The flat 25 HP floor keeps the item at least as strong as its pre-v24 numbers for fresh characters; it goes dead by roughly level 4 and never matters again.
+
+Rationale (ruled 2026-07-30, #139): any flat-number heal fails *within* a Mk band, not just across bands — `vitality_max` spans roughly 6× inside a single band — so only a percentage law serves every level equally, and it can never diverge from the vitality formula again. The full-vitality refusal (#61), single-message aggregate use with consume-only-what's-needed (#151), and oldest-first consumption (#168) are unchanged by this law.
 
 ### 6.10 Bags and Carry Capacity
 
