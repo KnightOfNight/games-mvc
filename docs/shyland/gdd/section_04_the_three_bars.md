@@ -13,7 +13,7 @@ This is one of Shyland's most distinctive systems. All characters have three res
 - Physical resistance degrades at low Vitality
 - Reaching 0 Vitality triggers the Dying state
 
-**Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. Formula (v24.0, pending implementation): `ceil(vitality_max / VITALITY_REGEN_SECS)` per tick — regeneration proportional to the bar's **maximum**, never the deficit. At the constant of 120 seconds, a full refill from zero takes 120 seconds **at every level** — refill time is level-independent by law. (The pre-v24 formula was deficit-proportional: exponential decay with a 1-point-per-second tail, growing slower as the bar grew — about 5.6 minutes at a 718-cap character.) Regen is silent — no message is sent; players observe recovery through the status bar.
+**Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. Formula: `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` per tick, minimum 1 point per tick when any healing is due. At the default constant of 120 seconds, a character at zero Vitality reaches full in at most 120 seconds; a character missing one point heals in a single tick. Regen is silent — no message is sent; players observe recovery through the status bar.
 
 **Machinekind note:** Machinekind characters cannot be healed by magic. However, passive regeneration applies to Machinekind via nanomachine self-repair — the narrative framing differs, the mechanic is identical.
 
