@@ -444,3 +444,34 @@ Material gathering uses room-specific commands: `forage`, `mine`, `salvage`, `ha
 
 -----
 
+### 6.15 The Healing Economy — the Income Law & Loot-in-Kind (v24.2, pending implementation)
+
+The healing economy is one ledger with three legs — draught cost (the Draught Law, 6.9), income (this section), and time (out-of-combat regen, Section 4) — balanced together by rule.
+
+**The Income Law (k = 2).** Expected income from a kill ≈ **2 × the expected draught cost of that kill**, calibrated per kill at solo cost for the on-level even-split reference build. Ruled provisionally 2026-07-30 and **kept on the data** (2026-08-01): the #180 fight-cost survey plus a full faucet audit confirmed the constant against measured per-fight costs. k degrades gracefully as fights stack — drops pay linearly while grouped fights compound superlinearly, so multi-aggro rooms run leaner than their parts: the signposted ×3 rooms (Lion's Watch, Bear's Throne) sit at k ≈ 0.8–1.0, deliberately break-even prestige fights rather than profit centers.
+
+**Faucets are lore-constrained.** Blanket copper on aggressive mobs is rejected — beasts and insects don't carry coins (6.12 stands: only higher sentient species carry money). The audit found bosses (k ≈ 2.3–11.8) and villagers (k ≈ 2.4–27) **already satisfy the law; their copper is unchanged** (a boss jackpot bump stays available as pure feel, never need). The entire structural deficit was the aggressive grind population — every animal and insect paid ~0.7 cp/kill against solo costs of ~7.2 (normal) / ~26.2 (elite) — and the same fix retires villager-killing's run as the game's mathematically optimal income. Grind mobs pay instead in **loot-in-kind**: healing draughts and materials on their loot tables.
+
+**Loot-in-kind accounting.** A looted draught counts as **15 cp** of income (avoided purchase; `base_value` 15 — the vendor price standard — sale 5). Sensitivity floor: valued at sale instead, the tables still clear break-even — a player who never needs healing profits on materials alone.
+
+**The design shape: draughts-in-kind cover roughly the consumption rate; materials are the profit.** In-kind supply deliberately runs below total consumption, so the vendor sink stays alive — some draughts are always bought.
+
+**The enrichment tables** (per-tier tables replace the old tier-shared pair; all drop entries stay Mk 1 in the Mk 1 band; this table is authoritative over prose):
+
+| Table | Applies to | Draught | Materials | E[income]/kill | k solo |
+|---|---|---|---|---|---|
+| Trivial (`animal-drops`, unchanged) | the seven trivial passives | none | hide 0.35 | ~1.4 | harmless |
+| Enriched normal (animal + insect variants) | all combat normals, incl. the Verdant boss adds | 0.35 | common material 0.5 | ~7.3 | ~1.6–2.0 |
+| Elite (animal + insect variants) | all 12 elites, incl. the delve adds | guaranteed (1.0) | elite material guaranteed (1.0) + common material 0.5 | ~29 | ~2.2 (1.6 room-blended) |
+
+- **The trivial carve-out:** the river otter, black bear, young mountain lion, plains deer, plains rabbit, prairie dog, and mountain squirrel keep the draught-free table — a 1-minute-respawn rabbit farm must never become a faucet.
+- **Common materials rebased:** Animal Hide and Insect Carapace both to base 12 (sell 4). Global — the trivial table drifts 0.7 → 1.4 cp/kill and boss side-drops rise by the same hair, both harmless.
+- **Elite materials:** two new material definitions (one animal, one insect), base 36 (sell 12), guaranteed on every elite kill — the premium the tier's triple-cost fights earn.
+- **Insects yield draughts** (sanctioned lore call): the delve economy requires it — the elite roster is nearly all insects. The lore cover: devoured travelers' effects among the remains.
+
+**Mk invariance.** Draughts-per-fight is level-stable (the Draught Law heals a fraction of the pool) and material value scales base × Mk, so the tables' ratios survive into Mk 2 zones — later balance passes inherit a shape, not stale constants.
+
+Aggregate sanity check (a 20-normal / 6-elite / 1-boss session): income ≈ 460 cp against ~18 draughts consumed (270 cp) — k ≈ 1.7, with loot-in-kind supplying ~13 of the 18 and the rest purchased. Deficit gone, sink alive.
+
+-----
+
