@@ -143,9 +143,9 @@ commit before the end ritual's issues report.
 
 OPERATOR PLAYTEST DISPOSITION (#170)
 ------------------------------------
-This brief has no playtestable surface (the dev stack differs from 24.0
-only by the version string; checklist: `help` output shows 24.1-DEV).
-Disposition: PENDING — awaiting the operator's in-conversation statement
-(expected per brief §7: "No playtests for this brief"). This line is
-updated verbatim-style when the operator states it; the session does not
-end until then.
+Operator reports playtest successful (2026-08-01, in-conversation:
+"the playtest is complete; i checked the help text"). The operator chose
+to run the brief's full checklist — `help` output on the dev stack shows
+24.1-DEV — rather than take the brief's expected "No playtests for this
+brief" shortcut, deliberately exercising the whole playtest ritual to
+continue vetting the process. Disposition is TERMINAL.
