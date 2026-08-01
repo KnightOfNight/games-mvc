@@ -1075,6 +1075,10 @@ class Command(BaseCommand):
         self._seed_ridge_spawns()
         self._seed_ridge_vendors()
 
+        # v24.2 (#164/#181): runs after both NPC stages so every former
+        # insect-drops user has already been re-pointed to a per-tier table.
+        self._retire_insect_drops()
+
         # v23 brief 5: dialogue seeds LAST — _seed_npc_dialogue resolves NPC
         # definitions by slug, and the Verdant/Ridge service NPCs are not
         # defined until their zone stages have run. Fresh-database ordering.
@@ -3247,7 +3251,9 @@ class Command(BaseCommand):
         self._check('6 minion spawns gated on their bosses', gated_ok)
 
         table_entry_counts = {
-            'animal-drops': 1, 'insect-drops': 1,
+            'animal-drops': 1,
+            'combat-animal-drops': 2, 'combat-insect-drops': 2,
+            'elite-animal-drops': 3, 'elite-insect-drops': 3,
             'reedmere-gear': 4, 'windhome-gear': 4,
             'matron-loot': 7, 'whistler-loot': 9, 'dronemother-loot': 13,
             'ridge-gear': 4, 'ridge-hunter-gear': 5,
@@ -3257,7 +3263,57 @@ class Command(BaseCommand):
             LootTableEntry.objects.filter(loot_table__slug=slug).count() == n
             for slug, n in table_entry_counts.items()
         )
-        self._check('12 Verdant loot tables with expected entry counts', tables_ok)
+        self._check('15 Verdant loot tables with expected entry counts', tables_ok)
+
+        # v24.2 (#164/#181): the healing-economy income table.
+        carveout = {
+            'river-otter', 'black-bear', 'young-mountain-lion', 'plains-deer',
+            'plains-rabbit', 'prairie-dog', 'mountain-squirrel',
+        }
+        animal_users = set(NpcDefinition.objects.filter(
+            loot_table__slug='animal-drops',
+        ).values_list('slug', flat=True))
+        self._check(
+            'animal-drops carve-out is exactly the seven trivial passives',
+            animal_users == carveout,
+        )
+
+        repoint_counts = {
+            'combat-animal-drops': 1, 'combat-insect-drops': 9,
+            'elite-animal-drops': 6, 'elite-insect-drops': 6,
+        }
+        repoint_ok = all(
+            NpcDefinition.objects.filter(loot_table__slug=slug).count() == n
+            for slug, n in repoint_counts.items()
+        )
+        self._check('Per-tier loot tables have 1/9/6/6 NPC users', repoint_ok)
+
+        insect_drops_gone = (
+            not LootTable.objects.filter(slug='insect-drops').exists()
+            and not NpcDefinition.objects.filter(
+                loot_table__slug='insect-drops',
+            ).exists()
+        )
+        self._check('insect-drops loot table retired (no table, no users)',
+                    insect_drops_gone)
+
+        income_values = {
+            'animal-hide': ('material', 12),
+            'insect-carapace': ('material', 12),
+            'pristine-animal-pelt': ('material', 36),
+            'hardened-insect-chitin': ('material', 36),
+            'healing-draught': ('consumable', 15),
+        }
+        values_ok = all(
+            ItemDefinition.objects.filter(
+                slug=slug, item_type=item_type, base_value=value,
+            ).exists()
+            for slug, (item_type, value) in income_values.items()
+        )
+        self._check(
+            'Income-table item values (commons 12, elites 36, draught 15)',
+            values_ok,
+        )
 
         group_counts = {
             'matron-loot': ('weapon', 6),
@@ -3988,6 +4044,9 @@ class Command(BaseCommand):
                 'item_type': 'consumable',
                 'genre_tag': 'fantasy',
                 'valid_slots': [],
+                # v24.2 (#164): the seed owns the draught's value — 15 cp,
+                # the Essa/Sona/Ridda vendor price standard (sale 5 cp).
+                'base_value': 15,
                 'scaling_base': 0.0,
                 'scaling_factor': 0.0,
                 'takes_durability_loss': False,
@@ -4034,7 +4093,7 @@ class Command(BaseCommand):
                 'item_type': 'material',
                 'genre_tag': 'fantasy',
                 'valid_slots': [],
-                'base_value': 6,
+                'base_value': 12,
                 'scaling_base': 0.0,
                 'scaling_factor': 0.0,
                 'takes_durability_loss': False,
@@ -4049,7 +4108,7 @@ class Command(BaseCommand):
                 'item_type': 'material',
                 'genre_tag': 'fantasy',
                 'valid_slots': [],
-                'base_value': 8,
+                'base_value': 12,
                 'scaling_base': 0.0,
                 'scaling_factor': 0.0,
                 'takes_durability_loss': False,
@@ -4057,6 +4116,38 @@ class Command(BaseCommand):
                 'primary_stats': [],
                 'secondary_stat_pool': [],
                 'description': 'A plate of chitin, dark and glossy. Traders buy them by the stack.',
+            },
+            # v24.2 (#181): elite-tier materials — guaranteed drops on the
+            # elite loot tables, the income table's big-ticket line.
+            {
+                'slug': 'pristine-animal-pelt',
+                'name': 'Pristine Animal Pelt',
+                'item_type': 'material',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'base_value': 36,
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': 'A flawless pelt from a beast in its prime — thick, unscarred, heavy in the hand. Traders pay well.',
+            },
+            {
+                'slug': 'hardened-insect-chitin',
+                'name': 'Hardened Insect Chitin',
+                'item_type': 'material',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                'base_value': 36,
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'description': 'A slab of chitin dense enough to turn a knife. Traders and tinkerers alike pay for these.',
             },
             # v19 brief 10: the freebie newbie kit — Common, Mk 1, base_value 0,
             # takes_durability_loss True, no secondary stat pool. Each anchors
@@ -4599,8 +4690,14 @@ class Command(BaseCommand):
             'leather-belt': 35,
             'leather-leggings': 45,
             'leather-boots': 40,
-            'animal-hide': 6,
-            'insect-carapace': 8,
+            # v24.2 (#164/#181): loot-in-kind income table — commons rebased
+            # to 12 (sale 4 cp), elite materials at 36 (sale 12 cp), and the
+            # draught's value seed-owned at 15 (sale 5 cp).
+            'animal-hide': 12,
+            'insect-carapace': 12,
+            'pristine-animal-pelt': 36,
+            'hardened-insect-chitin': 36,
+            'healing-draught': 15,
             # v19 brief 10: the freebie newbie kit — exchange-safe by
             # construction (base_value 0 sells and repairs for nothing).
             'worn-cudgel': 0,
@@ -6449,11 +6546,31 @@ class Command(BaseCommand):
         # (table slug, table name, entries); each entry is
         # (item slug, drop_chance, rarity_weights, guaranteed_group).
         tables = [
+            # v24.2 (#164/#181): animal-drops survives for exactly the seven
+            # trivial passives (the ruled carve-out — no rabbit-farm draught
+            # faucet); insect-drops is retired (see _retire_insect_drops).
+            # The per-tier tables below pay grind kills in kind: draughts
+            # and materials, independent rolls, no new copper faucets.
             ('animal-drops', 'Animal Drops', [
                 ('animal-hide', 0.35, {'common': 100}, ''),
             ]),
-            ('insect-drops', 'Insect Drops', [
-                ('insect-carapace', 0.35, {'common': 100}, ''),
+            ('combat-animal-drops', 'Combat Animal Drops', [
+                ('healing-draught', 0.35, {'common': 100}, ''),
+                ('animal-hide', 0.5, {'common': 100}, ''),
+            ]),
+            ('combat-insect-drops', 'Combat Insect Drops', [
+                ('healing-draught', 0.35, {'common': 100}, ''),
+                ('insect-carapace', 0.5, {'common': 100}, ''),
+            ]),
+            ('elite-animal-drops', 'Elite Animal Drops', [
+                ('healing-draught', 1.0, {'common': 100}, ''),
+                ('pristine-animal-pelt', 1.0, {'common': 100}, ''),
+                ('animal-hide', 0.5, {'common': 100}, ''),
+            ]),
+            ('elite-insect-drops', 'Elite Insect Drops', [
+                ('healing-draught', 1.0, {'common': 100}, ''),
+                ('hardened-insect-chitin', 1.0, {'common': 100}, ''),
+                ('insect-carapace', 0.5, {'common': 100}, ''),
             ]),
             ('reedmere-gear', 'Reedmere Gear', [
                 ('combat-knife', 0.12, villager_weights, ''),
@@ -6497,6 +6614,21 @@ class Command(BaseCommand):
                 )
         self.stdout.write(f'Verdant Reach: {len(tables)} loot tables seeded.')
 
+    def _retire_insect_drops(self):
+        # v24.2 (#164/#181): insect-drops is retired — its seed block is
+        # gone and every former user takes a per-tier table. Explicit
+        # enforce-exact deletion; the single entry goes by CASCADE
+        # (NpcDefinition.loot_table is SET_NULL, and by this point in the
+        # run no NPC references the table). Expected: 2 rows on the first
+        # run against an existing database, 0 thereafter.
+        stale = LootTable.objects.filter(slug='insect-drops')
+        for table in stale:
+            for entry in table.entries.all():
+                self._report[LootTableEntry.__name__]['deleted'].append(str(entry))
+            self._report[LootTable.__name__]['deleted'].append(str(table))
+        deleted, _ = stale.delete()
+        self.stdout.write(f'insect-drops loot table retired ({deleted} rows deleted).')
+
     def _seed_verdant_npcs(self):
         # Each entry: (slug, name, combat_tier, is_aggressive,
         #              (VIT, STR, DEX, END, INT, WIS, PER), scaling_factor,
@@ -6517,7 +6649,7 @@ class Command(BaseCommand):
              'Lean and tawny, all shoulder and patience, moving over the rock '
              'like it weighs nothing and owes nothing.', {}),
             ('wild-boar', 'wild boar', 'elite', False,
-             (55, 12, 7, 12, 2, 2, 6), 3.0, 'sp-wild-boar', 'animal-drops', (0, 0), 1,
+             (55, 12, 7, 12, 2, 2, 6), 3.0, 'sp-wild-boar', 'elite-animal-drops', (0, 0), 1,
              'Bristled, tusked, and built like a barrel full of grudges. It does '
              'not startle. It commits.', {}),
             ('plains-deer', 'plains deer', 'normal', False,
@@ -6533,7 +6665,7 @@ class Command(BaseCommand):
              'It stands bolt upright on its mound, whistling civic outrage at '
              'your existence to the entire town.', {}),
             ('buffalo', 'buffalo', 'elite', False,
-             (90, 16, 6, 16, 2, 2, 8), 5.0, 'sp-buffalo', 'animal-drops', (0, 0), 1,
+             (90, 16, 6, 16, 2, 2, 8), 5.0, 'sp-buffalo', 'elite-animal-drops', (0, 0), 1,
              'A hill that eats grass. It regards you with one enormous, '
              'incurious eye and continues chewing.', {}),
             # Villagers — passive
@@ -6591,27 +6723,27 @@ class Command(BaseCommand):
              {'attackable': False, 'article': 'a', 'is_fixture': True}),
             # Cave insects — aggressive
             ('cave-spider', 'cave spider', 'normal', True,
-             (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'insect-drops', (0, 0), 1,
+             (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'combat-insect-drops', (0, 0), 1,
              'A spider the size of a dog, pale from the dark, moving in bursts '
              'of terrible fluency between long, considered stillnesses.', {}),
             ('cave-centipede', 'cave centipede', 'normal', True,
-             (32, 9, 10, 8, 2, 2, 8), 3.0, 'vale-centipede', 'insect-drops', (0, 0), 1,
+             (32, 9, 10, 8, 2, 2, 8), 3.0, 'vale-centipede', 'combat-insect-drops', (0, 0), 1,
              'As long as your leg and faster than your eye, a river of hooked '
              'legs under a glossy segmented back.', {}),
             ('cave-beetle', 'cave beetle', 'normal', True,
-             (40, 10, 8, 11, 2, 2, 7), 3.0, 'vale-beetle', 'insect-drops', (0, 0), 1,
+             (40, 10, 8, 11, 2, 2, 7), 3.0, 'vale-beetle', 'combat-insect-drops', (0, 0), 1,
              'A beetle broad as a shield, chitin dark as oiled iron. Its wing '
              'cases sit slightly open, ready, always ready.', {}),
             ('giant-cave-spider', 'giant cave spider', 'normal', True,
-             (55, 11, 14, 9, 2, 2, 11), 4.0, 'flats-spider', 'insect-drops', (0, 0), 1,
+             (55, 11, 14, 9, 2, 2, 11), 4.0, 'flats-spider', 'combat-insect-drops', (0, 0), 1,
              'Bigger than the ones in the valley stories, and the valley '
              'stories were already lies people told to feel safer.', {}),
             ('giant-cave-centipede', 'giant cave centipede', 'normal', True,
-             (65, 13, 12, 11, 2, 2, 10), 5.0, 'flats-centipede', 'insect-drops', (0, 0), 1,
+             (65, 13, 12, 11, 2, 2, 10), 5.0, 'flats-centipede', 'combat-insect-drops', (0, 0), 1,
              'A horror of length and hunger, thick as a rolled tent, its front '
              'legs modified into things with only one purpose.', {}),
             ('giant-cave-beetle', 'giant cave beetle', 'normal', True,
-             (75, 14, 10, 14, 2, 2, 9), 5.0, 'flats-beetle', 'insect-drops', (0, 0), 1,
+             (75, 14, 10, 14, 2, 2, 9), 5.0, 'flats-beetle', 'combat-insect-drops', (0, 0), 1,
              'The size of a cart. When the wings open, the sound arrives in '
              'your chest before your ears.', {}),
             # Bosses — aggressive
@@ -6654,17 +6786,17 @@ class Command(BaseCommand):
               'a hollow packed with the shining things she hoarded.'}),
             # Boss minions — aggressive, spawn-gated on their boss
             ('matrons-brood', "Matron's brood", 'normal', True,
-             (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'insect-drops', (0, 0), 3,
+             (25, 7, 11, 6, 2, 2, 9), 2.0, 'vale-spider', 'combat-insect-drops', (0, 0), 3,
              "A spider of the Matron's brood, quick and pale, never straying "
              'far from the silk she spun it in.',
              {'plural_phrase': "one of the Matron's brood"}),
             ('whistlers-young', "Whistler's young", 'normal', True,
-             (50, 13, 12, 11, 2, 2, 10), 4.0, 'flats-centipede', 'insect-drops', (0, 0), 3,
+             (50, 13, 12, 11, 2, 2, 10), 4.0, 'flats-centipede', 'combat-insect-drops', (0, 0), 3,
              "Young only by the Whistler's measure — already longer than your "
              'arm, already sure of what it is.',
              {'plural_phrase': "one of the Whistler's young"}),
             ('dronemothers-swarm', "Dronemother's swarm", 'normal', True,
-             (60, 14, 10, 14, 2, 2, 9), 4.0, 'flats-beetle', 'insect-drops', (0, 0), 3,
+             (60, 14, 10, 14, 2, 2, 9), 4.0, 'flats-beetle', 'combat-insect-drops', (0, 0), 3,
              'A soldier of the swarm, wings half-open, holding the line its '
              "mother's hum assigns it.",
              {'plural_phrase': "one of the Dronemother's swarm"}),
@@ -6908,7 +7040,7 @@ class Command(BaseCommand):
         npcs = [
             # Surface creatures — passive except the two territorial variants
             ('mountain-goat', 'mountain goat', 'normal', False,
-             (70, 13, 12, 14, 2, 2, 10), 6.0, None, 'animal-drops', (0, 0), 1,
+             (70, 13, 12, 14, 2, 2, 10), 6.0, None, 'combat-animal-drops', (0, 0), 1,
              'Shag-coated and slab-shouldered, standing on a slope that should '
              'be impossible, chewing, unimpressed by your entire species.', {}),
             ('mountain-squirrel', 'mountain squirrel', 'normal', False,
@@ -6916,20 +7048,20 @@ class Command(BaseCommand):
              'Small, loud, and incandescent with territorial fury. It has '
              'already thrown something at you.', {}),
             ('brown-bear', 'brown bear', 'elite', False,
-             (130, 18, 8, 17, 3, 3, 8), 7.0, None, 'animal-drops', (0, 0), 1,
+             (130, 18, 8, 17, 3, 3, 8), 7.0, None, 'elite-animal-drops', (0, 0), 1,
              'A brown bear of the high Ridge — bigger than the valley kind, '
              'and less philosophical about company.', {}),
             ('mountain-lion', 'mountain lion', 'elite', False,
-             (120, 15, 17, 13, 3, 3, 14), 8.0, None, 'animal-drops', (0, 0), 1,
+             (120, 15, 17, 13, 3, 3, 14), 8.0, None, 'elite-animal-drops', (0, 0), 1,
              'A high-country lion, long as a bench and fluid as poured shadow. '
              'On the path, there is a truce. You are not always on the path.', {}),
             ('prowling-mountain-lion', 'prowling mountain lion', 'elite', True,
-             (110, 17, 19, 14, 3, 3, 15), 9.0, None, 'animal-drops', (0, 0), 1,
+             (110, 17, 19, 14, 3, 3, 15), 9.0, None, 'elite-animal-drops', (0, 0), 1,
              'A lion of the forbidden places, and it is not watching you — it '
              'is already closing. The villagers told you. They always tell '
              'you.', {}),
             ('territorial-brown-bear', 'territorial brown bear', 'elite', True,
-             (120, 21, 9, 19, 3, 3, 9), 9.0, None, 'animal-drops', (0, 0), 1,
+             (120, 21, 9, 19, 3, 3, 9), 9.0, None, 'elite-animal-drops', (0, 0), 1,
              'A bear at the scale where the word stops being descriptive. This '
              'ground is claimed, and you are the paperwork.', {}),
             # Villagers — passive
@@ -6982,15 +7114,15 @@ class Command(BaseCommand):
               'genre_tag': 'cosmic', 'indefinite_article': ''}),
             # Cave insects — aggressive
             ('elder-cave-spider', 'elder cave spider', 'elite', True,
-             (95, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'insect-drops', (0, 0), 1,
+             (95, 15, 18, 12, 3, 3, 14), 7.0, 'ridge-spider', 'elite-insect-drops', (0, 0), 1,
              'A spider grown old in the dark under the mountain, pale as deep '
              'silk and patient as geology.', {'indefinite_article': 'an'}),
             ('elder-cave-centipede', 'elder cave centipede', 'elite', True,
-             (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 1,
+             (100, 17, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'elite-insect-drops', (0, 0), 1,
              'Length beyond reason, armored in segments the size of shields, '
              'older than the villages above it.', {'indefinite_article': 'an'}),
             ('elder-cave-beetle', 'elder cave beetle', 'elite', True,
-             (110, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 1,
+             (110, 18, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'elite-insect-drops', (0, 0), 1,
              'A beetle at the scale of livestock, chitin black-green, wings '
              'that open with a sound like a door to somewhere worse.', {'indefinite_article': 'an'}),
             # Bosses — aggressive
@@ -7033,17 +7165,17 @@ class Command(BaseCommand):
             # targets 25/26/28) and drop to 2 spawns — the ladder-wide
             # "boss + 2 adds" pattern. Elite tier and boss gating kept.
             ('weavers-brood', "Weaver's brood", 'elite', True,
-             (65, 13, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'insect-drops', (0, 0), 3,
+             (65, 13, 18, 12, 3, 3, 14), 6.0, 'ridge-spider', 'elite-insect-drops', (0, 0), 3,
              "A spider of the Weaver's brood, pale and quick, spun into the "
              'world for exactly this purpose.',
              {'plural_phrase': "one of the Weaver's brood"}),
             ('kings-skitterlings', "King's skitterlings", 'elite', True,
-             (60, 8, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'insect-drops', (0, 0), 3,
+             (60, 8, 16, 14, 3, 3, 12), 8.0, 'ridge-centipede', 'elite-insect-drops', (0, 0), 3,
              "A skitterling of the King's court, already terrible, keeping "
              'the rhythm its sovereign conducts.',
              {'plural_phrase': "one of the King's skitterlings"}),
             ('devourers-drones', "Devourer's drones", 'elite', True,
-             (70, 8, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'insect-drops', (0, 0), 3,
+             (70, 8, 13, 18, 3, 3, 11), 9.0, 'ridge-beetle', 'elite-insect-drops', (0, 0), 3,
              "A drone of the Devourer's chord, wings tuned to its mother's "
              "note, holding the hoard's perimeter.",
              {'plural_phrase': "one of the Devourer's drones"}),
