@@ -1,6 +1,19 @@
+import math
 from datetime import timedelta
 
 from django.utils import timezone
+
+
+def percent_heal_amount(fraction, vitality_max):
+    """The Draught Law (v24.0, #139): a percentage heal restores
+    ceil(fraction × vitality_max), never less than
+    VITALITY_PERCENT_HEAL_FLOOR. The fraction is of MAX, never of
+    deficit. math.ceil, never bare round() — banker's rounding is the
+    #105 lesson. One shared home for the arithmetic; the instant-apply
+    branch and the consumers use-path aggregate both call this."""
+    from .models import VITALITY_PERCENT_HEAL_FLOOR
+    return max(VITALITY_PERCENT_HEAL_FLOOR,
+               math.ceil(fraction * vitality_max))
 
 
 def apply_effect_definition(definition, target, mk_tier, removed_by_label='consumable'):
@@ -104,6 +117,17 @@ def _apply_instant_component(component, target, magnitude):
         row.update(vitality_current=Least(
             F('vitality_current') + magnitude, F('vitality_max')))
         return ("feel your body recover", f"(+{int(magnitude)} Vitality)")
+
+    if ctype == 'restore_vitality_percent':
+        # The Draught Law (v24.0, #139): magnitude arrives as the
+        # FRACTION of vitality_max (computed_magnitude = 0.15 + 0.05×Mk).
+        # vitality_max is safe to read from the caller's character — only
+        # equip/level paths move it; the tick engine's per-round writes
+        # touch vitality_current, which stays inside the atomic UPDATE.
+        heal = percent_heal_amount(magnitude, target.vitality_max)
+        row.update(vitality_current=Least(
+            F('vitality_current') + heal, F('vitality_max')))
+        return ("feel your body recover", f"(+{heal} Vitality)")
 
     if ctype == 'restore_longevity':
         row.update(longevity_current=Least(

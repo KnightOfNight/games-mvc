@@ -1442,8 +1442,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def use_items_aggregatable(self, items):
         """v23.3 (#151, ruling 3): qualification for the aggregate path —
         every resolved item's effect has only instantaneous components,
-        at least one of them restore_vitality. Derived from the effect's
-        own components, never a separate flag (the #61 helper's law)."""
+        at least one of them a vitality restore (flat or the v24.0
+        percent law). Derived from the effect's own components, never a
+        separate flag (the #61 helper's law)."""
         for item in items:
             effect_def = item.definition.effect
             if effect_def is None:
@@ -1453,7 +1454,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 return False
             if not all(c.is_instantaneous() for c in components):
                 return False
-            if not any(c.component_type == 'restore_vitality'
+            if not any(c.component_type in ('restore_vitality',
+                                            'restore_vitality_percent')
                        for c in components):
                 return False
         return True
@@ -1519,16 +1521,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         Returns (consumed, total, covered, extra_pairs)."""
         from django.db.models import F
         from django.db.models.functions import Least
-        from .effect_utils import _apply_instant_component
+        from .effect_utils import _apply_instant_component, percent_heal_amount
         from .models import EffectInstance
 
         consumed = []
         total = 0.0
         for item in items:
-            total += sum(
-                c.computed_magnitude(item.mk_tier)
-                for c in item.definition.effect.components.all()
-                if c.component_type == 'restore_vitality')
+            for c in item.definition.effect.components.all():
+                if c.component_type == 'restore_vitality':
+                    total += c.computed_magnitude(item.mk_tier)
+                elif c.component_type == 'restore_vitality_percent':
+                    # The Draught Law (v24.0, #139): per-item heal from
+                    # THAT item's Mk and the DRINKER's vitality_max;
+                    # computed_magnitude yields the fraction of max.
+                    total += percent_heal_amount(
+                        c.computed_magnitude(item.mk_tier),
+                        character.vitality_max)
             consumed.append(item)
             if total >= deficit:
                 break
@@ -1545,7 +1553,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 mk_tier=item.mk_tier, is_active=True)
             instance.save()
             for component in effect_def.components.all():
-                if component.component_type == 'restore_vitality':
+                if component.component_type in ('restore_vitality',
+                                                'restore_vitality_percent'):
                     continue
                 pair = _apply_instant_component(
                     component, character,
@@ -3165,7 +3174,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         """v22 brief 2 (DD §7): heal detection for the stop-at-full rule —
         derived from the effect's own components, never a separate flag."""
         return effect_def.components.filter(
-            component_type__in=('restore_vitality', 'hot_vitality'),
+            component_type__in=('restore_vitality',
+                                'restore_vitality_percent', 'hot_vitality'),
         ).exists()
 
     async def send_report_lines(self, lines):
