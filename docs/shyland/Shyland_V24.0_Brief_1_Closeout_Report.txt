@@ -1,0 +1,137 @@
+Session start: 2026-07-31 — Brief: Shyland_V24.0_Brief_1_Draught_Law.md — Branch: version_24_0
+
+SHYLAND V24.0 BRIEF 1 CLOSEOUT REPORT — THE DRAUGHT LAW (#139)
+==============================================================
+
+Session: implementation, 2026-07-31, branch version_24_0 (worktree), local dev target
+(pre-flight PASS: DOCKER_HOST unset, .env == .env.dev, daemon lima-rancher-desktop).
+Brief verified verbatim at branch tip (born committed 4199017 by the design session);
+no process-assumption discrepancies against Instructions v30.
+
+VERSION-START RITUAL (first brief of the release)
+-------------------------------------------------
+- SHYLAND_VERSION "23.4" -> "24.0-DEV" in its own commit 75678ef; pin test moved with
+  it (test_b2_amendment1.py: assertEqual '24.0-DEV').
+- Version-start make deploy-dev run from the worktree (dev stack onto 24.0-DEV).
+
+IMPLEMENTATION
+--------------
+- models.py: 'restore_vitality_percent' added to COMPONENT_TYPE_CHOICES beside
+  restore_vitality (label "Restore Vitality (percent of max)");
+  VITALITY_PERCENT_HEAL_FLOOR = 25 added beside the regen constants.
+- Migration 0040_alter_effectcomponent_component_type: generated AlterField
+  (make makemigrations APP=shyland), choices-only, DB no-op — exactly the one
+  migration the brief expected. Committed as generated; applied on dev.
+- effect_utils.py: percent_heal_amount(fraction, vitality_max) — the law's single
+  arithmetic home: max(VITALITY_PERCENT_HEAL_FLOOR, math.ceil(fraction *
+  vitality_max)). New _apply_instant_component sibling branch for
+  restore_vitality_percent: computed_magnitude yields the fraction
+  (0.15 + 0.05 x Mk); heal via the helper; same atomic clamped UPDATE as the flat
+  branch (#52 law — vitality_max safely read from the caller's character, only
+  vitality_current is tick-contested); standard clause pair with the computed heal.
+- consumers.py, all use-path sites recognize the percent type:
+  - use_items_aggregatable: eligibility accepts restore_vitality OR
+    restore_vitality_percent.
+  - _apply_aggregate_heal: per-item heal computed by the law from THAT item's Mk
+    and the DRINKER's vitality_max (imports percent_heal_amount); mixed-Mk
+    oldest-first accumulation otherwise unchanged; the extra-pairs skip covers
+    both vitality-restore types.
+  - effect_restores_vitality: component_type__in gains 'restore_vitality_percent'.
+- seed_world.py _seed_effects(): the draught's order-0 component converted in place
+  to restore_vitality_percent / magnitude_base 0.15 / magnitude_scaling 0.05
+  (durations stay 0.0). Focus Tonic and every other effect untouched.
+- The old restore_vitality type remains in the vocabulary (additive-only law).
+- No GDD source edits (the §6.9 pending-implementation marker is the closeout's).
+
+TESTS
+-----
+- New tests/test_draught_law.py: law arithmetic (718 -> 144; floor 100 -> 25;
+  Mk 2 -> 25% = 180; floor disengagement at 125/126; ceil-vs-round pin at 502;
+  floor constant pin), single-use paths (large bar +144, floor +25, Mk 2 +180),
+  #61 refusal unchanged, #151 aggregate consume-only-what's-needed with the law's
+  magnitudes (3 asked, 2 consumed, one merged x2 line, +288), clamp at max with
+  the full-heal fold.
+- No existing test pinned the seeded draught's flat values — all prior heal tests
+  build their own flat restore_vitality fixtures, which remain a valid type.
+  Zero test-intent changes; zero conversions needed.
+
+VERIFICATION
+------------
+- Full in-container suite (path form, docker exec): 402 tests, 0 failures.
+  Baseline v23.4 closed at 390 -> net +12, exactly the new law tests.
+- Brief Step 7 checks against the dev DB (after deploy + seed), all PASS:
+  1. Draught EffectComponent row reads restore_vitality_percent / 0.15 / 0.05.
+  2. Scratch character vitality_max=718, damaged, one Mk 1 draught heals exactly
+     144 (ceil(0.20 x 718)); message '(+144 Vitality)'.
+  3. Fresh-scale (max 100) heals exactly 25 (floor engaged), not 20.
+  4. 'use 3 healing draughts' at deficit 200 consumes exactly 2, one merged
+     message 'Healing Draught Mk 1 x2 ... (+288 Vitality) You are restored to
+     full health.' (#151 shape unchanged).
+  5. Full-vitality drink attempt -> 'You are already at full health.' (warn),
+     nothing consumed (#61 wording unchanged).
+  Scratch character deleted after the checks (dev DB left clean).
+
+DEV DEPLOY AND DATA ACTION
+--------------------------
+- make deploy-dev from the worktree after implementation + tests (code first),
+  then make seed against the dev stack (data second) — the brief's mandatory
+  ordering. All seed verification checks passed.
+- Seed reconcile actual vs expected: 0 deletions, 1 updated row (the draught's
+  order-0 component) — equal, as required; confirmed by the Step 7 row check.
+- Deploy bounces all containers of the dev stack (all three games).
+- Operator playtest checklist (brief Step 10) is ready against the dev stack.
+
+ARCHITECTURE DOC (final gated step — gates passed)
+--------------------------------------------------
+- N.0 release: Shyland_Architecture_v24.md CREATED (git rm of
+  Shyland_Architecture_v23.md in the same commit); all v23 content carried
+  forward byte-identically (verified by diff: exactly the 10 intended edit
+  regions differ), then: header hash moved 11c14f7 -> 9e3fb77 with the v24.0
+  brief 1 lineage summary prepended; Version 24.0 in-development block added
+  (release stamp 24.0 is the closeout session's); §4.1 constants + EffectComponent
+  choices note (migration 0040); §4.3 aggregate eligibility and per-item law math;
+  §4.4 the Draught Law paragraph (helper location, floor, ceil rule, atomic
+  update); §4.8 seed conversion note; §6 the percentage-healing design decision.
+  Commit 72a333c.
+
+ISSUES
+------
+- #139 closed (gated on verification passing) with implementation comment.
+
+DEVIATIONS
+----------
+- None from the ruled design. One brief-text discrepancy observed and accepted:
+  the brief says "base_value stays 15" — the seeded ItemDefinition.base_value is
+  actually 12 (pre-existing; the 15 is the Essa/Sona/Ridda VendorEntry price
+  standard). The operative rule — price scaling and vendor stock/prices untouched
+  — is satisfied: this brief changed nothing price-related.
+
+PENDING DEPLOY-TIME ACTIONS (production — closeout tail only)
+-------------------------------------------------------------
+- make seed on production after the release deploys (Deployment Law step 6
+  window): converts the live draught EffectComponent to the percent law.
+  Expected deletions 0; expected updated rows 1. Dev-side execution: DONE this
+  session (2026-07-31, actuals matched). This block stays open until the
+  production execution; every subsequent V24.0 brief/amendment pre-flights
+  whether the dev-side action ran.
+
+COMMITS (this session, in order)
+--------------------------------
+- 720726b  Step 0 closeout stub (work-has-started signal)
+- 75678ef  version start: 23.4 -> 24.0-DEV + pin test
+- f79dba2  Steps 2-3a: component type + floor constant + migration 0040
+- 2acd986  Steps 3-4: law helper, instant-apply branch, use-path sites
+- d7c3da9  Step 5: seed conversion (0.15/0.05)
+- 9e3fb77  Step 6: test_draught_law.py (402/402) — final implementation commit
+- 72a333c  Step 9: architecture doc v24 created, v23 removed
+- (this commit) closeout report completed in place
+
+Final implementation commit hash: 9e3fb77. Architecture doc hash of record:
+9e3fb77 (header), committed at 72a333c.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+- Operator reports playtest successful ("playtest confirmed", in-conversation,
+  2026-07-31) — terminal disposition. Session ends via the
+  implementation-session-end ritual; the issues report is its formal end
+  artifact.

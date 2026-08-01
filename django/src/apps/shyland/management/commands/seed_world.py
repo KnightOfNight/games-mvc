@@ -3563,11 +3563,13 @@ class Command(BaseCommand):
             'name': 'Healing Draught',
             'description': 'Restores Vitality immediately.',
         })
+        # The Draught Law (v24.0, #139): percent-of-max healing —
+        # magnitude is the FRACTION of vitality_max (0.15 + 0.05×Mk).
         self._reconcile(EffectComponent, {'definition': healing_draught, 'order': 0}, {
-            'component_type': 'restore_vitality',
+            'component_type': 'restore_vitality_percent',
             'target_stat': '',
-            'magnitude_base': 20.0,
-            'magnitude_scaling': 5.0,
+            'magnitude_base': 0.15,
+            'magnitude_scaling': 0.05,
             'duration_base': 0.0,
             'duration_scaling': 0.0,
         })
