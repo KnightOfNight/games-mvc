@@ -296,7 +296,7 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 |Type                |Category           |Description                                          |
 |--------------------|-------------------|-----------------------------------------------------|
 |`restore_vitality`  |Instantaneous      |Adds to `vitality_current`, clamped at max           |
-|`restore_vitality_percent`|Instantaneous|Restores an Mk-scaled fraction of `vitality_max`, with an authored flat-HP floor; clamped at max (v24.0, pending implementation)|
+|`restore_vitality_percent`|Instantaneous|Restores an Mk-scaled fraction of `vitality_max`, with an authored flat-HP floor; clamped at max|
 |`restore_acuity`    |Instantaneous      |Nudges `acuity_current` toward baseline              |
 |`restore_longevity` |Instantaneous      |Adds to `longevity_current`, clamped at max          |
 |`dot_vitality`      |Duration, ticking  |Vitality damage per combat round                     |
@@ -332,7 +332,7 @@ This means single-component effects always produce one message. Multi-component 
 
 The same `EffectDefinition` can be applied from different sources. The Mk tier at application time determines magnitude and duration — a Mk 1 healing potion restores less than a Mk 3 healing potion of the same definition. Source context does not otherwise change behavior.
 
-#### Percentage Healing — the Draught Law (v24.0, pending implementation)
+#### Percentage Healing — the Draught Law
 
 Healing consumables restore a **percentage of the drinker's `vitality_max`**, never a flat amount:
 

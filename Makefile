@@ -13,7 +13,7 @@ PROJECT_DIR     := $(shell pwd)
 # command — this value is never exported ambiently and nothing else uses it.
 PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 
-GDD_MAJOR := 23
+GDD_MAJOR := 24
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
                 docs/shyland/gdd/_01_version_history.md \
                 docs/shyland/gdd/_02_table_of_contents.md \
