@@ -1341,23 +1341,28 @@ class Command(BaseCommand):
         for character in regen_candidates:
             changed_fields = []
 
+            # v24.3 (#165): the proportional regen law — rate = bar_max /
+            # CONSTANT, so a full refill from zero takes the constant's
+            # number of seconds at every level.
             if character.vitality_current < character.vitality_max:
-                heal = math.ceil(
-                    (character.vitality_max - character.vitality_current) / VITALITY_REGEN_SECS
-                )
+                heal = math.ceil(character.vitality_max / VITALITY_REGEN_SECS)
                 character.vitality_current = min(
                     character.vitality_current + heal, character.vitality_max
                 )
                 changed_fields.append('vitality_current')
 
             if character.longevity_current < character.longevity_max:
-                heal = math.ceil(
-                    (character.longevity_max - character.longevity_current) / LONGEVITY_REGEN_SECS
-                )
-                character.longevity_current = min(
-                    character.longevity_current + heal, character.longevity_max
-                )
-                changed_fields.append('longevity_current')
+                # Interval form: longevity_max is far below its constant, so
+                # the per-tick ceil would always be 1 (the ceil trap). One
+                # point every ceil(CONSTANT / max) ticks instead; an engine
+                # restart resetting tick_number at worst delays one point by
+                # up to one interval — accepted, no persistent state.
+                interval = math.ceil(LONGEVITY_REGEN_SECS / character.longevity_max)
+                if tick_number % interval == 0:
+                    character.longevity_current = min(
+                        character.longevity_current + 1, character.longevity_max
+                    )
+                    changed_fields.append('longevity_current')
 
             if changed_fields:
                 await save_regen(character, changed_fields)
