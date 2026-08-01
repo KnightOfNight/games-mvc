@@ -13,7 +13,7 @@ This is one of Shyland's most distinctive systems. All characters have three res
 - Physical resistance degrades at low Vitality
 - Reaching 0 Vitality triggers the Dying state
 
-**Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. Formula: `ceil((vitality_max - vitality_current) / VITALITY_REGEN_SECS)` per tick, minimum 1 point per tick when any healing is due. At the default constant of 120 seconds, a character at zero Vitality reaches full in at most 120 seconds; a character missing one point heals in a single tick. Regen is silent — no message is sent; players observe recovery through the status bar.
+**Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. **The regen law (v24.3, pending implementation — #165): proportional to maximum.** The rate is `vitality_max / VITALITY_REGEN_SECS` points per second, applied per tick as `ceil(vitality_max / VITALITY_REGEN_SECS)` and clamped at max. At the constant of 120 seconds, a full refill from zero takes exactly **120 seconds at every level** — the deeper the pool, the faster the points return; refill time never grows with vitality growth, so time remains a real substitute for draught money at any level. Regen is silent — no message is sent; players observe recovery through the status bar.
 
 **Machinekind note:** Machinekind characters cannot be healed by magic. However, passive regeneration applies to Machinekind via nanomachine self-repair — the narrative framing differs, the mechanic is identical.
 
@@ -84,7 +84,7 @@ The consequence is deliberate and worth stating plainly: **the tonic family buys
 - Controls the window of long-lasting buffs and debuffs
 - At low Longevity: sustained spells collapse early, long fights become increasingly punishing
 
-**Recovery:** Longevity recovers passively out of combat using the same formula as Vitality but with a much slower time constant (`LONGEVITY_REGEN_SECS = 3600`): `ceil((longevity_max - longevity_current) / LONGEVITY_REGEN_SECS)` per tick, minimum 1 point per tick when any healing is due. At 3600 seconds, full Longevity recovery from zero takes at most one hour — 30× slower than Vitality. Warden abilities can accelerate this. It is the hardest bar to restore and the one players are most likely to mismanage over a long dungeon run.
+**Recovery (v24.3, pending implementation — #165):** Longevity recovers passively out of combat under the same proportional-to-max law as Vitality, at its own much slower constant (`LONGEVITY_REGEN_SECS = 3600`): full recovery from zero takes about **one hour at every level**. Because a Longevity bar is far smaller than its constant, the vitality-style per-tick ceil would degenerate to a flat 1 point per second — so Longevity uses the **interval form**: one point every `ceil(LONGEVITY_REGEN_SECS / longevity_max)` seconds (about 14 s per point at a 274 bar, ~64 minutes from zero). Warden abilities can accelerate this. It is the hardest bar to restore and the one players are most likely to mismanage over a long dungeon run.
 
 **Design intent:** Longevity is the dungeon stamina resource. A player might enter a dungeon with full Vitality and Acuity but low Longevity from previous fights, and feel it immediately in their sustained performance. It rewards planning and discourages endless grinding without rest.
 
