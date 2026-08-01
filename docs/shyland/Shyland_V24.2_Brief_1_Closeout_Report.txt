@@ -1,1 +1,133 @@
 Session start 2026-08-01 — Shyland_V24.2_Brief_1_Healing_Economy_Income_Table.md — branch version_24_2 (implementation session; stub, completed in place at session end).
+
+================================================================================
+V24.2 BRIEF 1 CLOSEOUT REPORT — Healing-Economy Income Table (Loot-in-Kind)
+================================================================================
+
+Brief:   Shyland_V24.2_Brief_1_Healing_Economy_Income_Table.md (at branch tip,
+         verbatim, born committed d0a83e3; no drift)
+Branch:  version_24_2
+Session: implementation, 2026-08-01
+Founding ticket: #164 (closed). Dependency shipped: #181 (closed).
+
+PRE-FLIGHT
+----------
+- check_docker_host.py: exit 0, target local dev, posture coherent (.env == .env.dev).
+- Prior pending deploy-time actions: none outstanding (per brief §1 — V24.0's
+  production seed executed in its closeout tail; V24.1 had zero deploy-time actions).
+- Brief process assumptions diffed against Instructions v30: no discrepancies.
+
+WHAT WAS DONE (commits in order, each pushed at its step boundary)
+------------------------------------------------------------------
+e565bda  Step 0: this report's stub (work-has-started signal).
+9075297  Version start: SHYLAND_VERSION 24.1 -> 24.2-DEV, pin test moved in the
+         same commit (test_b2_amendment1.py); followed by the version-start
+         make deploy-dev.
+17baab0  THE IMPLEMENTATION COMMIT (all seed changes, seed_world.py only):
+         - §3a: animal-hide 6 -> 12, insect-carapace 8 -> 12 (both sites each:
+           authored item dict + base_values back-fill dict).
+         - §3b: healing-draught base_value now seed-owned at 15 (authored dict
+           + base_values entry; the base_values entry also lifts it out of the
+           consumable-default-12 back-fill pass). Vendor prices untouched.
+         - §3c: two new elite materials, mirroring the hide/carapace dict shape:
+           pristine-animal-pelt (36), hardened-insect-chitin (36); both in
+           base_values at 36.
+         - §4a: four new tables in _seed_verdant_loot_tables — combat-animal-drops,
+           combat-insect-drops (draught 0.35 + common material 0.5),
+           elite-animal-drops, elite-insect-drops (draught 1.0 + elite material
+           1.0 + common material 0.5); all entries Mk 1–1, guaranteed_group=''
+           (independent rolls), rarity {'common': 100}.
+         - §4b: animal-drops untouched; post-re-pointing users are exactly the
+           seven trivial passives (the ruled carve-out).
+         - §4c: insect-drops seed block removed + explicit deletion added:
+           _retire_insect_drops(), called in handle() after BOTH NPC stages so
+           every former user is already re-pointed when the delete runs
+           (NpcDefinition.loot_table is SET_NULL; the entry goes by CASCADE);
+           deletions are also recorded into the reconciliation report.
+         - §4d: 22 NpcDefinition re-points exactly per the brief's table
+           (1 combat-animal / 9 combat-insect / 6 elite-animal / 6 elite-insect).
+         - §5: self-checks — table_entry_counts -insect-drops +4 new tables,
+           label '12 Verdant loot tables...' -> '15 Verdant loot tables...';
+           four new checks: carve-out set equality, 1/9/6/6 re-point counts,
+           insect-drops gone (no table, no users), income item values
+           (commons 12, elites 36 as materials, draught 15 as consumable).
+8bf4889  §10 architecture doc (last, gated step — all gates passed first):
+         Shyland_Architecture_v24.md updated in place; Version 24.2 header
+         block entry added; header hash moved to 17baab0 (architectural point
+         release — seed logic and self-checks under django/src/ changed).
+
+No model changes, no migrations, no runtime code changes, no vendor stock/price
+changes, no copper changes — per the brief's standing constraints. The loot roll
+path (item_utils) is unmodified.
+
+VERIFICATION (§6 — all passed before any issue was closed)
+----------------------------------------------------------
+1. Full in-container suite (path form): 402/402 OK.
+2. make seed on the dev stack (run AFTER make deploy-dev per §7's code-first
+   ordering): "All verification checks passed", including the five new/updated
+   §5 checks. Deletions: ACTUAL 2 rows vs EXPECTED 2 rows (the insect-drops
+   LootTable + its single LootTableEntry by CASCADE) — exact match, reported by
+   the retire step and mirrored in the reconciliation report.
+   A second make seed proved idempotence: retire step deleted 0 rows and the
+   reconciliation report showed "no differences" for every seed-owned model.
+3. Functional loot rolls (in-container shell, N=2,000 per table):
+   - combat-animal-drops: draught 0.355, hide 0.497
+   - combat-insect-drops: draught 0.328, carapace 0.486
+   - elite-animal-drops: draught 1.0, pelt 1.0 (0 per-roll violations), hide 0.478
+   - elite-insect-drops: draught 1.0, chitin 1.0 (0 per-roll violations), carapace 0.490
+   - animal-drops: hide 0.331, draughts seen: 0 in 2,000
+   All within the brief's ±5-point binomial tolerance; elite guarantees exact.
+4. Economy spot-check, computed from the seeded rows (draught at value, materials
+   at sale price): combat normal 7.25 cp, elite 29.00 cp, trivial passive 1.40 cp
+   — exactly the brief's authoritative expectations.
+5. Sale prices via get_sale_price (Common Mk 1 instances): hide 4, carapace 4,
+   pelt 12, chitin 12, draught 5. All as specified.
+
+SEED CHANGE ACCOUNTING (§7 — actual vs expected)
+------------------------------------------------
+Expected: 2 rows deleted; 4 LootTable + 10 LootTableEntry + 2 ItemDefinition
+created; 22 NpcDefinition + 3 ItemDefinition value rows updated.
+Actual:   deletions 2 (printed by the retire step: "2 rows deleted") — exact.
+          Creations/updates verified by end-state: the five §5 self-checks pass
+          (4 new tables with 2/2/3/3 entries = 10 entries; both new material
+          definitions present at 36; 1/9/6/6 = 22 NPCs on the new tables; hide,
+          carapace, and draught at their new values = 3 value updates), and the
+          second seed run reconciled with zero differences on every model.
+DEVIATION (recording, not silence): the first seed run's full reconciliation
+report was pipe-filtered in the session terminal, so the created/updated line
+items of that run were not captured verbatim; the accounting above is verified
+from the printed deletion line, the passing self-checks, and the idempotent
+second run's zero-difference report, which together pin the same counts.
+
+DEV DEPLOY AND DATA ACTION (§7)
+-------------------------------
+make deploy-dev run from the worktree (build + migrate; no migrations to apply),
+THEN make seed against the dev stack — code first, data second, as directed.
+Dev stack is running the 24.2-DEV build with the reseeded world; operator
+playtest checklist (§8) targets it.
+
+ISSUE CLOSES (§11 — gated on §6, which passed)
+----------------------------------------------
+#164 closed with implementation comment (what shipped, where, verification
+headline, Income Law arithmetic). #181 closed with implementation comment.
+Both were milestone "Version 24.2", labels V24 / healing-economy / triaged.
+
+PENDING DEPLOY-TIME ACTIONS (production — closeout tail only)
+-------------------------------------------------------------
+- make seed on production after the V24.2 release deploys (Deployment Law
+  step 6 window). Expected deletions: 2 rows (the insect-drops table + its
+  entry). DEV-SIDE EXECUTION: DONE 2026-08-01 in this session (actual 2 rows,
+  exact match; idempotence-proven by a second run). This block stays open
+  until the production execution; any subsequent V24.2 brief/amendment
+  pre-flights whether the dev-side action ran (it did).
+
+FINAL COMMIT HASHES
+-------------------
+Implementation commit (architecture hash cites this): 17baab0
+Architecture doc commit: 8bf4889
+Version constant: 24.2-DEV (this is the release's first brief; the closeout
+session stamps 24.2).
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+(recorded at session end below)
