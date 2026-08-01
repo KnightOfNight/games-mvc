@@ -1,0 +1,151 @@
+2026-07-31 — Implementation session START — Brief: Shyland_V24.1_Brief_1_Fight_Cost_Survey.md — Branch: version_24_1
+
+================================================================
+SHYLAND V24.1 BRIEF 1 CLOSEOUT REPORT — Fight-Cost Survey (#180)
+================================================================
+
+Session: implementation, 2026-07-31, worktree ../games-mvc-version_24_1
+Brief verified verbatim at branch tip ec9053d (committed by the V24.1
+design session in 7ac7227); no drift.
+
+WHAT WAS DONE
+-------------
+1. Step 0: closeout stub committed and pushed (65b1731) — work-has-started
+   signal.
+2. Opening act (version start, own commit 2b64eea): SHYLAND_VERSION
+   "24.0" -> "24.1-DEV" in django/src/apps/shyland/version.py; pin test
+   moved in the same commit (tests/test_b2_amendment1.py line 118 asserts
+   '24.1-DEV'). Version-start `make deploy-dev` run from the worktree;
+   dev stack confirmed running 24.1-DEV. No further django/src/ changes
+   were made after this commit (verified — gate 1 below).
+3. Harness built and committed (ead50f5):
+   scripts/shyland_fight_cost_survey.py. Drives the shipped combat code
+   in-container (real combat_utils / item_utils / effect_utils functions;
+   tick-engine call sequence replicated with line citations in the
+   docstring). No persistent DB writes (all ORM objects in-memory, never
+   saved). Fixed RNG seed 180; N = 10,000 trials per cell. Invocation
+   (recorded per brief §3): docker cp into the container, then
+   `docker exec -w /app game-mvc-django python /tmp/shyland_fight_cost_survey.py
+   --out /tmp/survey_official --commit ead50f5`.
+4. Validation (§4.5.4) ran before the headline runs — PASS. Three
+   normal-tier matchups (black-bear L5, giant-cave-beetle L5,
+   mountain-goat L10) reproduce #89's printed hit%/TTK exactly (within
+   its 1-decimal rounding); MC vs the #89 EV model under current
+   constants agrees within tolerance (hit ±0.25 pt, TTK ±2%, tolerance
+   ±1 pt / ±5%). The brief's three named matchups (buffalo L5,
+   brown-bear L10, whistler-below L6) mismatch #89 exactly per the
+   documented v21 B3 (#101) retune — see DEVIATIONS 1.
+5. Official run at commit ead50f5: 555 rows written; two consecutive
+   full runs produced byte-identical aggregates (seed reproducibility).
+6. Report + dataset committed (d0c6720):
+   docs/shyland/Shyland_V24.1_Fight_Cost_Survey.md
+   docs/shyland/Shyland_V24.1_Fight_Cost_Survey_Dataset.csv
+7. #180 closed with completion comment (gated on gates 1-7 passing),
+   pointing at report and dataset paths.
+
+VERIFICATION (brief §6) — ALL GATES PASS
+----------------------------------------
+1. git diff 2b64eea..HEAD -- django/src/  =>  empty (zero changes).
+   Files changed since opening act: the two survey docs + the harness
+   script only.
+2. Full in-container suite (path form, docker exec):
+   python manage.py test apps/shyland/tests => Ran 402 tests ... OK
+   (402/402 actual = 401 pre-existing + the moved pin test — matches
+   the brief's expected count exactly).
+3. Dev DB row counts on all 32 shyland tables captured before and after
+   the full harness run: IDENTICAL (diff empty; includes NpcInstance 230,
+   ItemInstance 31, Character 1 — no drift anywhere).
+4. Dataset row-count invariant: 65 encounters (41 solo + 6 boss-groups +
+   18 multi-aggro compositions) × |{at-level, 5, 10}| × 3 scenarios.
+   Level cells = 65×3 − 10 dedup (at-level ∈ {5,10}: 4 solo L5, 1 solo
+   L10, 1 boss L10, 4 multi-aggro L5) = 185; × 3 = 555 rows expected;
+   555 rows actual.
+5. Draught Law spot checks in harness output (asserted, run aborts on
+   mismatch): fraction at Mk 1 = 0.20; heal at vitality_max 718 = 144;
+   heal at vitality_max 100 = 25 (floor) — matching the #139 test values.
+6. Harness validation table present in report §1.6 and summary.json;
+   within tolerance (see 4 above).
+7. Every #89 encounter appears in the findings (identical 41-NPC
+   membership); reconciliation accounts for all 62 NpcDefinitions at the
+   tip: 41 attackable combat + 21 non-attackable + 0 attackable
+   placeholders (#89's four placeholder NPCs are now attackable=False).
+8. #180 closed with completion comment after gates 1-7 passed.
+
+DEVIATIONS AND RECORDED INTERPRETATIONS (none silent)
+-----------------------------------------------------
+1. THIRD MOVER: the brief's context lists two changes since #89 (gear
+   wiring #100, Draught Law #139). The survey found a third that
+   dominates: the v21 B3 retune (#101) — tier offsets 0/+3/+6 -> 0/+2/+2,
+   blessed targets 55/40/25 -> 55/45/45, boss HP re-authored (e.g. King
+   650->220), delve escorts ×3 -> ×2 — landed AFTER #89, in v21, in
+   response to it. Handled via the validation gate's sanctioned path
+   ("code changed since v21 -> document which change") and attributed
+   throughout the report (flip-list chain #89 -> flat-25 -> bare ->
+   headline).
+2. Population drift reported, not absorbed (§1.5 of the report): delve
+   boss adds are ×2 (not #89's ×3); the four placeholder-stat NPCs are
+   now non-attackable (#89 G7 adopted); solo population membership
+   otherwise identical to #89's 41.
+3. Headline armor loadout covers 7 of the 8 Option-C slots: OFF_HAND is
+   excluded because the Broadsword is two-handed and the shipped equip
+   rules displace both hands (consumers.py:1231-1236). Loadout TAV 11.
+4. Verdict scale: #89's thresholds verbatim; blessed at-level targets are
+   the code's current 55/45/45 (#101) since the 55/40/25 targets #89
+   quoted no longer exist; at-level hit% drift is recorded (G5 style)
+   but never demotes a verdict — matching #89's own practice
+   (mountain-lion carried −5% and stayed OK).
+5. "Expected instance stats": deterministic values at the exact
+   distribution mean (E[round(uniform)] computed analytically; Uncommon
+   damage midpoint 16.0875 matches #89's 16.09); the Uncommon weapon's
+   single secondary slot is sampled uniformly per trial (Monte Carlo
+   marginalization over the only non-degenerate choice). Both weapon
+   scenarios carry the weapon's rolled stats — a real instance always
+   has them under the gear wiring; the stat-less-weapon configuration
+   exists only inside the validation runs to reproduce #89's model.
+6. Death-unhealed probability uses the RUNNING loss maximum (death the
+   moment cumulative unhealed loss reaches the pool); potions-to-win is
+   computed from mean HP loss (#89's expected-value convention).
+7. Mid-fight gated-add respawn (timers 1-10 min) is outside the #89
+   encounter model, as it was in #89. No at-level fight's mean duration
+   approaches the 20-round floor (max 14.9); the off-level L5 columns
+   vs delve bosses (100+ round grinds) understate true cost and are
+   flagged in the report. L5-vs-Devourer cells carry unwinnable-trial
+   fractions (0.744-1.0, d20 saturation), recorded in the dataset.
+8. whistler-below's #89 at-level validation TTK (16.7) is derived from
+   #89's own §4 figures (260 HP ÷ 15.6 dmg/round); its §2 TTK column is
+   L5/L10, not at-level.
+
+STANDING REQUIREMENTS (brief §7)
+--------------------------------
+- Version constant: bumped to 24.1-DEV as the opening act (2b64eea).
+  The closeout session stamps 24.1.
+- Dev deploy: the version-start `make deploy-dev` was this brief's
+  in-session dev deploy; no later django/src/ change exists to redeploy.
+- PENDING DEPLOY-TIME ACTIONS: None. This brief creates no
+  production-side data actions.
+- Architecture doc: untouched by this brief (design ruling recorded in
+  the brief: a research brief records nothing architectural; the 24.1
+  stamp move is closeout bookkeeping, hash does not move).
+- GDD: untouched (no GDD text ships with 24.1).
+- Push cadence: committed and pushed at every step boundary
+  (65b1731, 2b64eea, ead50f5, d0c6720); branch only; no merges.
+
+DEFECTS / ISSUES FILED
+----------------------
+None. No code defects were observed; nothing contradicted the shipped
+code's documented behavior.
+
+FINAL COMMIT
+------------
+Final implementation commit: d0c6720 (report + dataset). This closeout
+report's completion commit follows it as the session's last content
+commit before the end ritual's issues report.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+Operator reports playtest successful (2026-08-01, in-conversation:
+"the playtest is complete; i checked the help text"). The operator chose
+to run the brief's full checklist — `help` output on the dev stack shows
+24.1-DEV — rather than take the brief's expected "No playtests for this
+brief" shortcut, deliberately exercising the whole playtest ritual to
+continue vetting the process. Disposition is TERMINAL.
