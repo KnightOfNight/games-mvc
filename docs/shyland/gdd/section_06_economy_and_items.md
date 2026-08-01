@@ -444,7 +444,7 @@ Material gathering uses room-specific commands: `forage`, `mine`, `salvage`, `ha
 
 -----
 
-### 6.15 The Healing Economy — the Income Law & Loot-in-Kind (v24.2, pending implementation)
+### 6.15 The Healing Economy — the Income Law & Loot-in-Kind
 
 The healing economy is one ledger with three legs — draught cost (the Draught Law, 6.9), income (this section), and time (out-of-combat regen, Section 4) — balanced together by rule.
 
