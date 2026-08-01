@@ -131,7 +131,7 @@ Final implementation commit hash: 9e3fb77. Architecture doc hash of record:
 
 OPERATOR PLAYTEST DISPOSITION (#170)
 ------------------------------------
-- PENDING — awaiting the operator's explicit in-conversation disposition
-  (recorded here verbatim-style before the session ends via the
+- Operator reports playtest successful ("playtest confirmed", in-conversation,
+  2026-07-31) — terminal disposition. Session ends via the
   implementation-session-end ritual; the issues report is its formal end
-  artifact).
+  artifact.
