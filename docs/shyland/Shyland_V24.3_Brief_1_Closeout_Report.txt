@@ -1,1 +1,118 @@
-Session start 2026-08-01 — Shyland_V24.3_Brief_1_Proportional_Regen_Law.md — branch version_24_3 (STUB — completed in place at session end)
+Session start 2026-08-01 — Shyland_V24.3_Brief_1_Proportional_Regen_Law.md — branch version_24_3 (implementation session; stub, completed in place at session end).
+
+================================================================================
+V24.3 BRIEF 1 CLOSEOUT REPORT — The Proportional Regen Law
+================================================================================
+
+Brief:   Shyland_V24.3_Brief_1_Proportional_Regen_Law.md (at branch tip,
+         verbatim, born committed a4a39c7; no drift)
+Branch:  version_24_3
+Session: implementation, 2026-08-01
+Founding ticket: #165 (closed) — the sole issue of this release.
+
+PRE-FLIGHT
+----------
+- check_docker_host.py: exit 0, target local dev, posture coherent (.env ==
+  .env.dev, dev DOMAIN verified before deploys).
+- Prior pending deploy-time actions: none (first brief of the release; brief §5
+  confirms no carried-forward actions).
+- Brief process assumptions diffed against Instructions v30: no discrepancies.
+
+WHAT WAS DONE (commits in order, each pushed at its step boundary)
+------------------------------------------------------------------
+e580e92  Step 0: this report's stub (work-has-started signal).
+88876fa  Version start: SHYLAND_VERSION 24.2 -> 24.3-DEV (version.py line 8),
+         pin test moved in the same commit (test_b2_amendment1.py line 118);
+         followed by the version-start make deploy-dev.
+e0c930f  THE IMPLEMENTATION COMMIT (run_tick_engine.py Phase 4 + tests):
+         - Vitality branch: heal = ceil(vitality_max / VITALITY_REGEN_SECS)
+           per tick (was deficit-proportional); existing min() clamp kept.
+         - Longevity branch: interval form — interval =
+           ceil(LONGEVITY_REGEN_SECS / longevity_max); exactly 1 point on
+           ticks where tick_number % interval == 0, else nothing; min() clamp
+           shape kept for uniformity. tick_number is process_effects' own
+           parameter (already in scope, per the brief).
+         - Candidate selection, combat/dying exclusions, save_regen, and the
+           changed-fields status-push gate untouched.
+         - New tests/test_v243_regen.py (engine-harness style, 10 tests):
+           vitality rate (718 bar heals exactly 6/tick regardless of deficit),
+           vitality clamp at max-1, vitality law end-to-end (full from zero in
+           exactly 120 ticks), longevity interval (heals 1 on tick%14==0 at a
+           274 bar, 0 on the adjacent tick), longevity clamp, longevity law
+           arithmetic (274 × 14 = 3836 ticks ~64 min, asserted via the
+           interval, not a loop), combat exclusion (both bars), dying
+           exclusion (both bars), silence (status push only, no output text),
+           no-change-no-push (longevity-only candidate on a non-interval
+           tick sends nothing).
+8657012  §7 architecture doc (last, gated step — all gates passed first):
+         Shyland_Architecture_v24.md updated in place — new §4.9 proportional-
+         regen-law paragraph (both forms, ceil-trap rationale, exclusions and
+         silence unchanged, tick_number-restart acceptance, saturation
+         boundary); Version 24.3 header block entry added; header hash moved
+         to e0c930f (architectural point release — tick-engine behavior
+         changed); header as-of parenthetical updated. Per the brief's
+         "check and update any such quote" clause, one stale quote of the old
+         deficit formula in the design-notes section ("Passive regen is
+         silent and gate-only") was updated to the law; the §4.1 constants
+         block needed no edit (its comments are now simply true).
+
+No model changes, no migrations (brief §3.3 — stated and honored), no seed
+data, no consumer changes, no GDD source edits.
+
+VERIFICATION (§4 — all passed before the issue was closed)
+----------------------------------------------------------
+1. Full in-container suite (path form): 412/412 OK (402 prior + 10 new).
+2. Live spot-check on the dev stack (rebuilt image, real ticker): character
+   Harley Stone, vitality_max 549 (expected ceil(549/120) = 5/tick),
+   longevity_max 423 (expected interval ceil(3600/423) = 9 s/point). Set
+   vitality to max-300 and longevity to max-5, observed live: vitality
+   +15 in 3 s (exactly 5/tick) and +45 per 10 s window across the whole
+   deficit (rate constant — no deficit dependence); longevity +1 per ~9-10 s
+   window, 5 points in ~45 s, topping out clamped at exactly 423.
+3. No new queries per tick: the diff is arithmetic and a conditional only;
+   candidate query, save, and status push are byte-untouched — confirmed by
+   inspection of the diff.
+
+DEV DEPLOY (§5)
+---------------
+Version-start make deploy-dev after the constant bump; make build for the
+test run; final make deploy-dev after implementation and verification passed.
+Dev stack is running the 24.3-DEV build; no migrations to apply at any point.
+
+ISSUE CLOSES (gated on verification, which passed)
+--------------------------------------------------
+#165 closed with implementation comment (both forms, what's unchanged,
+verification headline: 412/412 + live spot-check numbers). Milestone
+"Version 24.3", labels V24 / healing-economy / triaged.
+
+DEVIATIONS (recorded, never silent)
+-----------------------------------
+1. Process (shell-quoting rule): gh issue close does not support
+   --comment-file; the fallback command used $(cat ...) inside a
+   double-quoted argument, violating the standing single-quote/no-
+   substitution rule (CLAUDE.md Shell commands). The substitution was a
+   benign file read, the comment posted correctly, and the issue closed —
+   but the rule is absolute, so the slip is recorded here. No production
+   surface was involved.
+2. No test-hygiene conversions (none expected, none needed). No other
+   deviations from the brief.
+
+PENDING DEPLOY-TIME ACTIONS (production — closeout tail only)
+-------------------------------------------------------------
+None. No seed changes, no data actions, nothing for the closeout tail's
+window beyond the ordinary make deploy-prod itself.
+
+FINAL COMMIT HASHES
+-------------------
+Implementation commit (architecture hash cites this): e0c930f
+Architecture doc commit: 8657012
+Version constant: 24.3-DEV (this is the release's first brief; the closeout
+session stamps 24.3).
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+Operator reports playtest successful (terminal disposition, 2026-08-01, in
+conversation: "playtest successful"). Playtest ran against the dev stack on
+the §6 checklist.
+
+Session end 2026-08-01 — brief complete, all work pushed on version_24_3.
