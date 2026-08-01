@@ -130,4 +130,10 @@ session stamps 24.2).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-(recorded at session end below)
+Operator reports playtest successful (terminal disposition, 2026-08-01, in
+conversation: "playtest complete and confirmed"). Playtest ran against the dev
+stack on the full §8 checklist as expanded in-session (elite guarantee pair
+observed on the territorial brown bear with the 50% hide side-roll landing —
+verified on spec against the brief's §4a table).
+
+Session end 2026-08-01 — brief complete, all work pushed on version_24_2.
