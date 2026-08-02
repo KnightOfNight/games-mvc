@@ -1644,7 +1644,7 @@ Vendor inventory is configured via the **`VendorEntry`** model. Each row links a
 - **Repair is paid per attempt; failure is harmless** — copper spent, item unchanged, retry immediately. Success always restores 100% durability; items are never destroyed by repair. Cost per attempt = value × missing durability × 50%. Success chance = 20% + (current durability × 75%) — honoring the very-difficult-at-zero rule.
 - **Commands (v22 grammar — Section 9.1 is authoritative):** `list` (vendor stock), `buy [<N>] <item>` (numeric quantity only; `all` refused), `sell [<N>|all] <item>` and `sell all <rarity> [<item>]` (bare `sell all` is refused with wording that teaches the noun form), `repair <item>`, and `repair all` — which **loops**: passes over what is still damaged until everything is repaired, funds run out, or 5 passes (#75), each mend line printing as it lands. Bare `buy`/`sell`/`repair` prompt for a target (the v18 bare-repair convenience retired to the standard prompt). Commands route automatically: buy/sell/list to the living vendor in the room, repair to the living repairer — killed service NPCs are out of business until they respawn. The noun-less `sell all <rarity>` excludes the consumable type by default (v23.1, #150) — consumables sell only when named (`sell all draught`); a skipped stack is announced with one note line, and a bulk sell matching only consumables is a world-declined refusal.
 - **The vendor list (v22, #123/#58):** a `Slot / Name / Details / Price` table — Details shows rarity only (entries are definitions, not instances — no durability, no binding flag); two groups, **free first** (Price reads a muted `free`), then priced, alphabetical within groups; every price through the tier formatter.
-- **Transactional aggregation (v22; `use` joined v23.3 by #151):** buy/sell/drop/pickup with N > 1 answer with **one count-form line per item definition** — `You buy Healing Draught Mk 1 ×100 for 9 silver.` (no article, total money) — a transaction is one act however many items it moves. `use` of instant-restore healing consumables is likewise one computed act: the deficit measured up front, only the items the heal needs consumed (oldest-first), one merged line (`You use Healing Draught Mk 1 ×3 and feel your body recover. (+75 Vitality)`), one status update — the v22 per-line ruling is superseded for `use` alone; timed-effect consumables keep the per-item sequence. `repair` and `loot` stay **per-line**: each iteration is its own news (a mend's chance outcome, a find's identity). The count form is the deliberately plural-free first iteration; natural-English pluralization is a filed future subsystem (#126).
+- **Transactional aggregation (v22; `use` joined v23.3 by #151):** buy/sell/drop/pickup with N > 1 answer with **one count-form line per item definition** — `You buy Healing Draught Mk 1 ×100 for 9 silver.` (no article, total money) — a transaction is one act however many items it moves. `use` of instant-restore healing consumables is likewise one computed act: the deficit measured up front, only the items the heal needs consumed (oldest-first), one merged line (`You use Healing Draught Mk 1 ×3 and feel your body recover. (+75 Vitality)`), one status update — the v22 per-line ruling is superseded for `use` alone; timed-effect consumables keep the per-item sequence. `repair` and `loot` stay **per-line**: each iteration is its own news (a mend's chance outcome, a find's identity). The count form is the deliberately plural-free first iteration; natural-English pluralization is a filed future subsystem (#126). `heal` (v24.4, #166, pending implementation) rides the same computed-transaction machinery with the count driven by the deficit instead of a player-supplied N — one merged sentence in the count form, mixed-Mk groups joined per the standing sentence form (Section 9.1).
 - **Materials** are an item type (`material`) — no slots, stats, or durability; pure vendor-sellables (Animal Hide, Insect Carapace, and their future kin). Animals drop no copper — only higher sentient species carry money.
 
 **Combat QoL (v18 → retired v22):** the v18-era targetless `attack`/`kill` auto-target under aggro was **removed in v22** as a fossil — aggressive NPCs engage the player themselves on entry and on their spawn tick (v21, #17), so the bare form no longer had a job; `attack` now requires a target and bare invocation gets the standard prompt (Section 9.1).
@@ -1842,16 +1842,17 @@ This subsection is the authoritative command reference, absorbed from the v22 B2
 
 Cell notation: footnote numbers listed left-to-right in argument order; listed = admitted; requiredness per footnote text; `|` = alternatives.
 
-| Type | Command | Arguments | New in v22 |
+| Type | Command | Arguments | Added |
 |---|---|---|---|
 | action | attack (kill, k) | 5 \| 6 · 10 | |
 | | buy | 11 4 · 10 | |
-| | cancel | 12 | YES |
+| | cancel | 12 | v22 |
 | | drop | 11 4 · 10 · 16 | |
 | | equip (eq) | 4 · 10 | |
 | | examine (ex) | 4 \| 5 \| 6 · 10 | |
 | | flee | 2 | |
-| | home | 2 | YES |
+| | heal | 2 | v24.4 |
+| | home | 2 | v22 |
 | | loot | 3 \| 5 · 10 | |
 | | pickup (p) | 7 4 · 10 · 13 | |
 | | quit | 2 | |
@@ -1859,13 +1860,13 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | say | 9 · 10 | |
 | | sell | 7 4 · 10 · 13 · 17 · 19 | |
 | | spend | 7 14 · 10 · 15 | |
-| | sudo | 9 · 18 | YES |
+| | sudo | 9 · 18 | v22 |
 | | travel | 8 | |
 | | unequip (uneq) | 4 · 10 | |
 | | use | 11 4 · 10 | |
 | information | help (?) | 2 | |
 | | inventory (inv) | 2 | |
-| | last | 2 · 18 | YES |
+| | last | 2 · 18 | v22 |
 | | list | 2 | |
 | | look (l) | 2 | |
 | | stats | 2 | |
@@ -1878,7 +1879,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | up (u) | 2 | |
 | | west (w) | 2 | |
 | settings | brief | 1 | |
-| | echo | 1 | YES |
+| | echo | 1 | v22 |
 | | timestamps | 1 | |
 
 #### Footnotes (stable numbering; never renumbered)
@@ -1903,7 +1904,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 18. admin-gated with stealth: requires membership in the `admins.shyland` Django auth Group, checked live per attempt. For non-members the command does not exist — absent from help, absent from tab completion, and attempts return the standard unknown-command response.
 19. the consumable item type is excluded from this command's noun-less bulk form (`all <rarity>` with no noun): matching consumables are skipped, and the skip is announced with one note line teaching the named form. A noun-less bulk sell whose matches are *all* consumables is refused (warn-color). Named-noun forms (`sell all draught`, `sell 5 draught`) reach consumables normally. (v23.1, #150)
 
-**Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`, consumables excluded from the noun-less `sell all <rarity>` bulk form (footnote 19; v23.1). A dispatch guard wraps every command: no input, however malformed, can drop the connection.
+**Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`, consumables excluded from the noun-less `sell all <rarity>` bulk form (footnote 19; v23.1). A dispatch guard wraps every command: no input, however malformed, can drop the connection. `heal` (v24.4, #166, pending implementation) is the bare-verb shortcut for deficit-driven draught consumption (see Partial Fulfillment); it takes no arguments and is a **reserved built-in verb** — the future alias system (#125) may never shadow it. Tab completion completes the verb; there is no noun pool.
 
 #### The Three-Layer Response Doctrine (v22)
 
@@ -1917,8 +1918,8 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 
 #### The State-Gating Matrix (v22)
 
-- **In combat — allowed:** attack, flee, use, examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip, unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
-- **While dying — allowed:** use (self-rescue heal — deliberate design), cancel, say, sudo, quit, information, settings. Everything else refused (warn).
+- **In combat — allowed:** attack, flee, use, heal (v24.4), examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip, unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
+- **While dying — allowed:** use, heal (v24.4) (self-rescue heal — deliberate design), cancel, say, sudo, quit, information, settings. Everything else refused (warn).
 - **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
 - `cancel` is allowed in every state — the escape hatch is never locked.
 
@@ -1935,14 +1936,14 @@ Pool miss = warn. Same-segment ambiguity: **nearest wins** (self before room bef
 Do the possible part and report warmly; fail (warn) only when nothing is possible. Stop when purpose is fulfilled. Specifics:
 
 - Sell/drop/use/pickup shortfalls do the possible part with the warm note preceding the result; any pickup at capacity fails outright (warn); partial `pickup all` takes oldest-on-floor first.
-- **Heal sequences (#61, #65; reruled by #151):** `use N` on an instant-restore healing consumable is **one computed transaction** — the deficit is measured up front, exactly the items the heal needs are consumed (capped by N and inventory, oldest-first in resolution order), and the heal lands as one act: one line, one status update. A heal that reaches full folds `You are restored to full health.` into the end of that line, the whole line reward-color; any heal attempted at full still fails (warn); the shortfall warn (`You only had N.`) keeps its own line, firing only when the request exceeded inventory and the deficit wasn't covered. While dying, `use` consumes exactly one restorative — the v19 revival sequence, never over-drunk. Timed-effect consumables keep the per-item sequence.
+- **Heal sequences (#61, #65; reruled by #151):** `use N` on an instant-restore healing consumable is **one computed transaction** — the deficit is measured up front, exactly the items the heal needs are consumed (capped by N and inventory, oldest-first in resolution order), and the heal lands as one act: one line, one status update. A heal that reaches full folds `You are restored to full health.` into the end of that line, the whole line reward-color; any heal attempted at full still fails (warn); the shortfall warn (`You only had N.`) keeps its own line, firing only when the request exceeded inventory and the deficit wasn't covered. While dying, `use` consumes exactly one restorative — the v19 revival sequence, never over-drunk. Timed-effect consumables keep the per-item sequence. **`heal` (v24.4, #166, pending implementation):** the bare-verb form of the same computed transaction, with the count driven by the deficit itself — "use as many healing draughts as needed." The vitality deficit is measured once; the minimum draughts that cover it are consumed (or all remaining, if short), oldest-first regardless of Mk (#168), each item's heal computed from its own Mk under the Draught Law (Section 6.9); one merged count-form line, one status update. At full vitality: the standing heal-at-full refusal (warn). No draughts carried: world-declined warn. Supply exhausted short of full: the shortfall reports in the warn voice (#132). While dying, `heal` behaves exactly as `use`: one restorative, the revival sequence, never over-drunk.
 - **`repair all` (#75):** passes over what is still damaged until everything is repaired, funds run out, or 5 passes; each mend line prints as it lands.
 
 #### Success Sentences and Aggregation
 
 The transactional commands answer with one plain past-tense sentence, item names verbatim with rarity words rarity-colored, articles via the NPC-article machinery: `You buy the Iron Mace Mk 1 for 9 coppers.` · `You sell the Leather Gloves Mk 1 for 3 coppers.` · `You drop the Battle Axe Mk 1.` · `You pick up the Healing Draught Mk 1.` (loot-color) · `You equip the Iron Mace Mk 1.` / swap-aware `You equip the Battle Axe Mk 1, replacing the Iron Mace Mk 1.` (the slot is the paper-doll's job, not the sentence's) · `You unequip the Iron Mace Mk 1.` · `You use a Healing Draught Mk 1 and feel your body recover. (+25 Vitality)` — the effect clause merged into the sentence, one envelope, success-color (v23.3, #149; timed-effect consumables have no apply-time effect message and keep the plain sentence; multiple instant components join their clauses in order) · repair's line stands · `You spend 3 points on Dexterity.` + the new value · `You stop heading home.` (cancel, named per action).
 
-**Multi-item output splits by nature:** buy, sell, drop, and pickup **aggregate** — a transaction is one act, so N > 1 emits one count-form line per item definition (`You sell Healing Draught Mk 1 ×100 for 4 silver 50 coppers.` — no article, total money; mixed sweeps emit one line per definition in floor order, singles staying singular; warm shortfall notes precede). **use joined the aggregates in v23.3 (#151)** for instant-restore healing consumables: one computed transaction, one merged sentence in the count form — mixed-Mk consumption joins its definition groups with commas into the single sentence (`You use Healing Draught Mk 1 ×2, Healing Draught Mk 2 ×1 and feel your body recover. (+85 Vitality)`), a count of 1 keeping the indefinite-article form. **repair and loot stay per-line** — each iteration is its own news. (#126 files the future natural-English pluralization; the count form is never wrong in the meantime.)
+**Multi-item output splits by nature:** buy, sell, drop, and pickup **aggregate** — a transaction is one act, so N > 1 emits one count-form line per item definition (`You sell Healing Draught Mk 1 ×100 for 4 silver 50 coppers.` — no article, total money; mixed sweeps emit one line per definition in floor order, singles staying singular; warm shortfall notes precede). **use joined the aggregates in v23.3 (#151)** for instant-restore healing consumables: one computed transaction, one merged sentence in the count form — mixed-Mk consumption joins its definition groups with commas into the single sentence (`You use Healing Draught Mk 1 ×2, Healing Draught Mk 2 ×1 and feel your body recover. (+85 Vitality)`), a count of 1 keeping the indefinite-article form. `heal` (v24.4, #166, pending implementation) rides the same computed-transaction machinery with the count driven by the deficit instead of a player-supplied N — one merged sentence in the count form, mixed-Mk groups joined per the standing sentence form. **repair and loot stay per-line** — each iteration is its own news. (#126 files the future natural-English pluralization; the count form is never wrong in the meantime.)
 
 #### Corpses and Loot (v22 form)
 
