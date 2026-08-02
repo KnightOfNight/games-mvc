@@ -1947,7 +1947,7 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 
 #### The State-Gating Matrix (v22)
 
-- **In combat — allowed:** attack, flee, use, heal (v24.4), examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip, unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
+- **In combat — allowed:** attack, flee, use, heal (v24.4), examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip (targeted forms only — bare `equip` is an information rendering and is allowed, per footnote 21; v24.7, pending implementation — #195), unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
 - **While dying — allowed:** use, heal (v24.4) (self-rescue heal — deliberate design), cancel, say, sudo, quit, information, settings. Everything else refused (warn).
 - **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
 - `cancel` is allowed in every state — the escape hatch is never locked.
