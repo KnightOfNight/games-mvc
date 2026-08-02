@@ -273,7 +273,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'drop': 'drop',
         'equip': 'equip', 'eq': 'equip',
         'examine': 'examine', 'ex': 'examine',
-        'loot': 'loot',
         'pickup': 'pickup', 'p': 'pickup',
         'repair': 'repair',
         'say': 'say',
@@ -1005,7 +1004,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('flee', 'flee', 'Escape from combat.'),
             ('heal', 'heal', 'Drink healing draughts until your vitality is full.'),
             ('home', 'home', 'Return home after a short delay.'),
-            ('loot', 'loot all | <NPC>', 'Loot a corpse, or every corpse here.'),
+            ('loot', 'loot [all] | <NPC>', 'Loot every corpse here, or one named corpse.'),
             ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
             ('quit', 'quit', 'Leave the game.'),
             ('repair', 'repair all | <item>', 'Have a repairer fix your gear.'),
@@ -1832,9 +1831,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.output("You don't see that here.", 'warn')
 
     async def cmd_loot(self, args):
-        # v22 brief 2 (DD §1): 'loot all | <NPC>' — a room sweep, or one
+        # v22 brief 2 (DD §1): 'loot [all] | <NPC>' — a room sweep, or one
         # corpse named by its NPC. The v20 item-noun forms are retired
-        # with the chart; bare loot prompts via the central fn-10 gate.
+        # with the chart. v24.5 (#189): the target is optional — bare loot
+        # IS the all sweep, verbatim (out of PROMPT_VERBS; fn 20). Loot is
+        # the first and only such verb — NOT a precedent for sell (#150).
         room = await self.get_current_room()
         character = await self.get_character(self.scope['user'])
         corpses = await self.get_corpses_in_room(room)
@@ -1843,7 +1844,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.output("There is nothing to loot here.", "warn")
             return
 
-        if args.strip().lower() == 'all':
+        if args.strip().lower() in ('', 'all'):
             lootable = [c for c in corpses if c.killed_by_id == character.pk]
             if not lootable:
                 await self.output("That is not your kill; you may not loot it.", "warn")
