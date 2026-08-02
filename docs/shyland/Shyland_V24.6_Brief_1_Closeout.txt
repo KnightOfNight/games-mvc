@@ -1,0 +1,82 @@
+2026-08-02 — Implementation session started: Shyland V24.6 Brief 1 — Combat Weapon Slots: The Composite Strike — branch version_24_6
+
+CLOSEOUT REPORT
+===============
+
+Release: Version 24.6 (milestone Version 24.6), branch version_24_6
+Brief: Shyland_V24.6_Brief_1_Combat_Weapon_Slots.md (at branch tip, verbatim — committed b773291 by the design session)
+Founding ticket: #177 (closed). Dependency: #178 (closed, no code change — ruling confirmed as built).
+
+What shipped
+------------
+The composite strike: every equipped, non-broken weapon contributes to one strike
+per round. New in combat_utils.py: PRIMARY_WEAPON_SLOT_PRIORITY = ('MAIN_HAND',
+'RANGED', 'OFF_HAND'), SECONDARY_WEAPON_SLOT_FACTOR = {'OFF_HAND': 0.5, 'RANGED':
+0.5}, SECONDARY_WEAPON_FACTOR_DEFAULT = 0.5 (named tunable constants — Phase 3
+retunes by constants edit), and composite_weapon_term(weapons, eff_str, eff_dex):
+per weapon, factor x (own midpoint±spread roll + own governing effective stat
+[DEX if is_ranged else STR]) x own durability (1.0 - get_durability_penalty);
+primary = first occupied slot in priority order at factor 1.0; unknown slots take
+the 0.5 default, never a crash; no priority slot occupied = no primary, all
+secondary. Tick engine player-attack path: equipped_weapons[0] retired — the
+existing weapon filter feeds the helper, the term goes through the unchanged
+calculate_damage as base_damage with stat_bonus=0 and durability_mod=1.0 (acuity
+and graze/crit multiplier apply once, to the composite); armed/unarmed branches
+on any-equipped-weapon at both the damage and flavor sites; unarmed else branch
+byte-identical. One hit roll, one output line. Procs, lifesteal, gear crit,
+equip resolver, and NPC-side combat untouched. No model changes, no migrations,
+no seed-data changes, no client changes.
+
+Commits (all pushed to origin/version_24_6)
+-------------------------------------------
+6353ee7  Step 0: closeout report stub (work-has-started signal)
+1dea501  Version start: SHYLAND_VERSION 24.5 -> 24.6-DEV (pin test same commit) + make deploy-dev
+e798d78  Steps 2-3: composite_weapon_term + tick-engine integration  <- the implementation commit (arch-doc hash)
+c154fb6  Steps 4-5: tests
+412e728  Step 7: architecture doc (SS4.5, SS4.9, header stamp 24.6, hash -> e798d78)
+Final implementation commit: 412e728 (this report's completion commit follows it).
+
+Verification
+------------
+Full suite in-container, path form (python manage.py test apps/shyland/tests via
+docker exec): 455/455 passing — 441 pre-existing + 14 new in
+tests/test_v24_6_brief1.py (11 helper unit tests incl. constants pin, primary
+selection, composite math STR/DEX, per-weapon rolls and durability, broken-primary
+fall-through, two-hander+ranged, unknown-slot default, empty list; 3 engine-harness
+tests: composite wiring end-to-end, broken primary -> ranged full strength,
+unarmed path unchanged at zero weapons).
+
+Deviations
+----------
+None. The brief's test-hygiene sweep found ZERO existing tests pinning
+single-weapon damage output — no conversions were needed (existing hit-line
+tests are shape-only regexes; the one weapon-equipping test is a TAV test).
+
+Deploys
+-------
+Version-start make deploy-dev (after 1dea501) and Step 8 make deploy-dev (after
+412e728) both completed against the local dev stack; migrate ran, no migrations
+to apply. Dev stack is running the brief's build — operator playtest checklist
+(brief section 4) is ready against dev. Reminder from the brief: the Pulse
+Pistol has no world acquisition path — obtain test weapons via admin/sudo or the
+stock-playtest-items skill.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None. This brief has no seed reruns, no data actions, no migrations.
+
+Issues
+------
+#177 closed with closing comment (implementation reference e798d78).
+#178 closed with closing comment (ruling confirmed as built, no code change).
+
+Operator playtest disposition
+-----------------------------
+Operator reports playtest successful ("playtest fully confirmed", 2026-08-02,
+dev stack). Playtest findings recorded during the session, all display/UX —
+no bugs against the brief's spec, no rule changes: #176 gained live playtest
+evidence (paper-doll consumed hands), #194 filed (weapon handed-ness invisible
+in item display), #195 filed (bare `equip` should show equipment via shared
+`inv` composition; V24 label, untriaged by direction). Test weapons for the
+checklist (rare Mk 1 Pulse Pistol #771, rare Mk 1 Battle Axe #839) were
+generated on dev for character Harley Stone via generate_item_instance.

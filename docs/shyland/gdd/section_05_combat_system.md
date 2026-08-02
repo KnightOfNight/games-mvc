@@ -60,16 +60,28 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    identity. Vitality keeps its multiplicative scaling — pools are quantities, not
    contests. `scaling_factor` encodes the NPC's within-band level (1–10).
 
-2. Damage calculation:
-   base_damage    = weapon damage roll (random within midpoint ± spread)
-                    If no weapon is equipped, base_damage = 0 (only stat_bonus applies)
-   stat_bonus     = relevant EFFECTIVE stat value (STR melee / DEX ranged / INT spells)
+2. Damage calculation (v24.6 — the composite strike, #177:
+   EVERY equipped, non-broken weapon contributes to one strike per round):
+   primary weapon = the occupant of the highest-priority weapon slot, priority
+                    MAIN_HAND → RANGED → OFF_HAND. Predictable and player-
+                    controllable; a bow-only or off-hand-only loadout fights at
+                    full strength. (This also retires the old equipped_weapons[0]
+                    accident — which weapon attacked used to fall out of queryset
+                    ordering.)
+   per equipped, non-broken weapon w:
+     damage_roll_w = weapon damage roll (random within w's midpoint ± spread)
+     stat_w        = w's own governing EFFECTIVE stat (STR melee / DEX ranged;
+                     INT spells remains the design target when spells ship)
+     dur_w         = performance multiplier from w's durability table
+     factor_w      = 1.0 for the primary; the slot factor otherwise —
+                     OFF_HAND 0.5, RANGED 0.5 (first-pass values; the Phase 3
+                     balance pass retunes them)
    acuity_mod     = band-relative deviation modifier (Section 4.2): 1.0 inside the
                     Origin band; 1.0 + distance above band_high (focus target only);
-                    1.0 − distance below band_low (all targets).
-   durability_mod = performance multiplier from weapon's durability table (1.0 = no penalty;
-                    1.0 if no weapon equipped)
-   raw_damage     = (base_damage + stat_bonus) × acuity_mod × durability_mod
+                    1.0 − distance below band_low (all targets). Applied once, to
+                    the composite.
+   raw_damage     = ( Σ_w factor_w × (damage_roll_w + stat_w) × dur_w ) × acuity_mod
+   Unarmed (no weapon equipped): unchanged — see the unarmed paragraph below.
 
 3. Hit multiplier applied:
    final_damage = raw_damage × hit_multiplier (0.5 graze / 1.0 hit / 1.5 critical), minimum 1

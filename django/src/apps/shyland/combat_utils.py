@@ -26,6 +26,15 @@ PROC_FACTOR_STATS = ('bleed_factor', 'stun_factor', 'poison_factor')
 
 PRIMARY_STAT_KEYS = ('str', 'dex', 'end', 'int', 'wis', 'per')
 
+# v24.6 (#177/#178): the composite strike — every equipped, non-broken
+# weapon contributes to one strike per round. The primary (first occupied
+# slot in priority order) contributes at 1.0; the others at their slot
+# factor. Phase 3 (Mk 2 balance) retunes these values — keep them a
+# constants edit.
+PRIMARY_WEAPON_SLOT_PRIORITY = ('MAIN_HAND', 'RANGED', 'OFF_HAND')
+SECONDARY_WEAPON_SLOT_FACTOR = {'OFF_HAND': 0.5, 'RANGED': 0.5}
+SECONDARY_WEAPON_FACTOR_DEFAULT = 0.5   # a slot in neither constant never crashes the tick engine
+
 # v19 brief 7: NPC contest stats scale additively on the same curve players
 # climb (contests add; quantities like vitality multiply).
 NPC_CONTEST_BASE = 18        # matches a level-1 player's primary stat
@@ -291,6 +300,45 @@ def calculate_damage(base_damage, stat_bonus, acuity_mod, durability_mod, hit_re
     hit_multipliers = {'graze': 0.5, 'hit': 1.0, 'critical': 1.5}
     final = raw * hit_multipliers.get(hit_result, 1.0)
     return max(1.0, final)
+
+
+def composite_weapon_term(weapons, eff_str, eff_dex):
+    """v24.6 (#177/#178): the composite strike's weapon term.
+
+    Sum over the passed weapons (the round's equipped, non-broken set) of
+    factor × (damage roll + governing effective stat) × durability, where
+    the primary — the occupant of the first occupied slot in
+    PRIMARY_WEAPON_SLOT_PRIORITY order — carries factor 1.0 and every
+    other weapon its SECONDARY_WEAPON_SLOT_FACTOR (default
+    SECONDARY_WEAPON_FACTOR_DEFAULT for a slot in neither constant). The
+    governing stat is DEX for ranged weapons, STR otherwise. Rolling
+    stays in here so tests can patch randomness. The caller feeds the
+    returned term through calculate_damage as base_damage with
+    stat_bonus=0 and durability_mod=1.0 — acuity and the graze/crit
+    multiplier apply once, to the composite.
+    """
+    from .item_utils import get_durability_penalty
+
+    primary = None
+    for slot in PRIMARY_WEAPON_SLOT_PRIORITY:
+        primary = next((w for w in weapons if w.equipped_slot == slot), None)
+        if primary is not None:
+            break
+
+    total = 0.0
+    for w in weapons:
+        spread = w.damage_spread or 0
+        roll = random.uniform(w.damage_midpoint - spread,
+                              w.damage_midpoint + spread)
+        stat = eff_dex if w.definition.is_ranged else eff_str
+        dur = 1.0 - get_durability_penalty(w)
+        if w is primary:
+            factor = 1.0
+        else:
+            factor = SECONDARY_WEAPON_SLOT_FACTOR.get(
+                w.equipped_slot, SECONDARY_WEAPON_FACTOR_DEFAULT)
+        total += factor * (roll + stat) * dur
+    return total
 
 
 def npc_level(npc_instance):
