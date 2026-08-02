@@ -113,6 +113,7 @@ PENDING DEPLOY-TIME ACTIONS (for the closeout tail)
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — awaiting operator playtest against the dev stack (checklist in brief
-§7). This line is completed in place before session end; the session cannot
-end without an explicit disposition (#170).
+Operator reports playtest successful (2026-08-02, in-conversation: "playtest
+confirmed" — brief §7 checklist against the dev stack; sample instances for
+the playtest were generated in-session for the operator's character, six
+unbound Mk 1 instances across common/rare/legendary). Terminal disposition.
