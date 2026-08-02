@@ -23,7 +23,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | flee | 2 | |
 | | heal | 2 | v24.4 |
 | | home | 2 | v22 |
-| | loot | 3 \| 5 · 10 | |
+| | loot | 3 \| 5 · 20 | |
 | | pickup (p) | 7 4 · 10 · 13 | |
 | | quit | 2 | |
 | | repair | 3 \| 4 · 10 | |
@@ -73,6 +73,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 17. "all" requires the target argument for this command: bare `<verb> all` is refused (warn-color) with wording that teaches the noun form.
 18. admin-gated with stealth: requires membership in the `admins.shyland` Django auth Group, checked live per attempt. For non-members the command does not exist — absent from help, absent from tab completion, and attempts return the standard unknown-command response.
 19. the consumable item type is excluded from this command's noun-less bulk form (`all <rarity>` with no noun): matching consumables are skipped, and the skip is announced with one note line teaching the named form. A noun-less bulk sell whose matches are *all* consumables is refused (warn-color). Named-noun forms (`sell all draught`, `sell 5 draught`) reach consumables normally. (v23.1, #150)
+20. the target is optional: bare invocation behaves exactly as the literal `all` — verbatim, in every case. Loot is the first (and so far only) verb whose bare form performs the `all` sweep; deliberately **not** a precedent for `sell` (#150's refusal of the bare bulk form stands — loot is kill-gated and value-safe, sell is destructive of inventory). (v24.5, #189, pending implementation)
 
 **Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`, consumables excluded from the noun-less `sell all <rarity>` bulk form (footnote 19; v23.1). A dispatch guard wraps every command: no input, however malformed, can drop the connection. `heal` is the bare-verb shortcut for deficit-driven draught consumption (see Partial Fulfillment); it takes no arguments and is a **reserved built-in verb** — the future alias system (#125) may never shadow it. Tab completion completes the verb; there is no noun pool.
 
@@ -117,7 +118,7 @@ The transactional commands answer with one plain past-tense sentence, item names
 
 #### Corpses and Loot (v22 form)
 
-`loot` is `all | <NPC>`: `loot all` sweeps every corpse in the room (per-item lines, then the summary); `loot <NPC>` loots that NPC's corpse, with `N.noun` disambiguating among same-name corpses. Bare `loot` prompts (footnote 10 — the v18 most-recent-corpse convenience and the v20 item-noun/union forms are retired). Only the killing character may loot items; currency is always transferred on first loot of a corpse; a corpse that never had loot to give answers `The <npc> carried nothing worth taking.`
+`loot` is `[all] | <NPC>`: `loot all` — or bare `loot`, its exact equivalent (v24.5, #189, pending implementation) — sweeps every corpse in the room (per-item lines, then the summary); `loot <NPC>` loots that NPC's corpse, with `N.noun` disambiguating among same-name corpses. The target is optional, defaulting to the sweep (footnote 20 — the v18 most-recent-corpse convenience and the v20 item-noun/union forms remain retired; the bare form is the room sweep, never a single-corpse guess). Only the killing character may loot items; currency is always transferred on first loot of a corpse; a corpse that never had loot to give answers `The <npc> carried nothing worth taking.`
 
 #### Information Output Standards
 
