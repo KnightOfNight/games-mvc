@@ -14,7 +14,8 @@
       "Bash(date *)"
     ],
     "ask": [
-      "Bash(make deploy-prod)"
+      "Bash(make deploy-prod)",
+      "Bash(make seed-prod)"
     ]
   },
   "hooks": {
@@ -30,6 +31,12 @@
           },
           {
             "type": "command",
+            "command": "jq -c '(.tool_input.command // \"\") as $c | if ($c | test(\"seed-prod\")) then (if ($c | gsub(\"^[[:space:]]+|[[:space:]]+$\"; \"\")) == \"make seed-prod\" then {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:\"make seed-prod: operator confirmation required (Deployment Law, #187)\"}} else {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"seed-prod embedded in a larger command - hard-blocked (Deployment Law, #187)\"}} end) else empty end'",
+            "timeout": 10,
+            "statusMessage": "seed-prod guard"
+          },
+          {
+            "type": "command",
             "command": "jq -c '(.tool_input.command // \"\") as $c | if ($c | test(\"push[[:space:]].*--delete|--delete-branch|push[[:space:]]+[^[:space:]]+[[:space:]]+:[^[:space:]]|DELETE.+refs/heads|refs/heads.+DELETE|branch[[:space:]]+(-[dD]([[:space:]]|$)|--delete)|worktree[[:space:]]+(remove|prune)\")) then {hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:\"branch/worktree deletion requires the operator hard yes (standing rule: only on operator command; remote branches never)\"}} else empty end'",
             "timeout": 10,
             "statusMessage": "branch guard"
@@ -42,7 +49,8 @@
     "soft_deny": [
       "$defaults",
       "Deleting any git branch, local or remote (branch -d/-D/--delete, push --delete, push :refspec, --delete-branch, DELETE on refs/heads), or removing/pruning git worktrees — allow only when the operator explicitly commanded this exact deletion in the current conversation",
-      "Running the production deploy Make target — allow only the exact bare invocation and only when the operator gave a one-time go-ahead in the current conversation; anything embedded in a larger command is never cleared"
+      "Running the production deploy Make target — allow only the exact bare invocation and only when the operator gave a one-time go-ahead in the current conversation; anything embedded in a larger command is never cleared",
+      "Running the production seed Make target — allow only the exact bare invocation and only when the operator confirmed it in the current conversation; anything embedded in a larger command is never cleared"
     ]
   },
   "model": "claude-fable-5",

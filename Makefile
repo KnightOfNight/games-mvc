@@ -139,9 +139,9 @@ tick-logs:
 # ---------------------------------------------------------------------------
 # Deployment
 #
-# These two targets are the only things in this Makefile permitted to set the
-# posture (.env) — declaring the target IS the deliberate act. Everything
-# else checks and stops.
+# The targets in this section are the only things in this Makefile permitted
+# to set the posture (.env) — declaring the target IS the deliberate act.
+# Everything else checks and stops.
 # ---------------------------------------------------------------------------
 
 ## deploy-dev: deploy current source to the local dev stack (build + migrate)
@@ -170,6 +170,22 @@ deploy-prod:
 	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) migrate
 	cp .env.dev .env
 	@echo "deploy-prod complete — production deployed, resting posture restored (.env == .env.dev)."
+
+## seed-prod: operator-authorized production seed — flips posture, seeds, restores
+# Same contract as the production deploy target: pins its own DOCKER_HOST,
+# refuses an ambient one, and if it fails partway .env deliberately REMAINS
+# in prod posture for a human. Exists so closeout tails have a sanctioned
+# path for deploy-time data actions (#187 — the V24.2 hiccup: no such path
+# existed after the deploy target restored resting posture).
+seed-prod:
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). seed-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
+	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty — seed-prod needs it to restore the resting posture." && exit 1)
+	cp .env.prod .env
+	DOCKER_HOST=$(PROD_DOCKER_HOST) python3 scripts/check_docker_host.py
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) seed
+	cp .env.dev .env
+	@echo "seed-prod complete — production reseeded, resting posture restored (.env == .env.dev)."
 
 # ---------------------------------------------------------------------------
 # Django management

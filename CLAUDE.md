@@ -34,7 +34,7 @@ Rationale: the deployment target is production infrastructure. A brief that runs
 
 Worktrees are initialized automatically: the committed `post-checkout` hook (activated once per clone with `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` certs from the main checkout into a new worktree and sets its `.env` to **dev posture** — worktrees host design/implementation work, and a dev `.env` fails safe under `crosscheck-env` if an ambient `DOCKER_HOST` leaks in.
 
-The two deploy targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev` and `make deploy-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
+The Makefile's Deployment-section targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev`, `make deploy-prod`, and `make seed-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
 
 ---
 
@@ -153,6 +153,9 @@ make build          # rebuild Django image and recreate containers
 make deploy-dev     # deploy current source to the local dev stack (build + migrate)
 make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips posture,
                     # pre-flights, builds, migrates, restores dev posture
+make seed-prod      # OPERATOR-AUTHORIZED ONLY: production seed — same contract as
+                    # deploy-prod (flips posture, pre-flights, seeds, restores);
+                    # the sanctioned path for closeout-tail data actions (#187)
 ```
 
 > **Deployment law:** production runs `main` only — `make deploy-prod` runs from the main checkout, after the release PR merges, only in a closeout session's tail on the operator's one-time in-conversation go-ahead (one exact occurrence, no future permission implied). Never from a worktree, never with unmerged code, never from any other session type. `SHYLAND_VERSION` on main never carries a `-DEV` suffix (CI-enforced on PRs).
