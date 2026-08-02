@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from apps.shyland import combat_utils
 from apps.shyland.combat_utils import (
-    ARMOR_MITIGATION_K, ARMOR_SLOT_WEIGHTS, apply_armor_mitigation,
+    ARMOR_MITIGATION_K, apply_armor_mitigation,
     bar_rescale_updates, effective_stats, gear_stat_bonus, resolve_hit,
     roll_gear_bonus_damage, summed_gear_stat, total_armor_value,
 )
@@ -34,12 +34,14 @@ from .test_command_revamp import (
 )
 
 
-def make_gear_def(prefix, name, item_type='material', slot=None):
+def make_gear_def(prefix, name, item_type='material', slot=None,
+                  armor_base=0.0):
     return ItemDefinition.objects.create(
         name=name, slug=f'{prefix}-{name.lower().replace(" ", "-")}',
         item_type=item_type, genre_tag='fantasy',
         valid_slots=[slot] if slot else [],
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
+        armor_base=armor_base,
     )
 
 
@@ -137,9 +139,10 @@ class CarryCapacityTests(TransactionTestCase):
 class ArmorCurveTests(SimpleTestCase):
 
     def test_constants(self):
+        # v24.9 (#129): the slot-weight table is deleted — its pinned
+        # full-set-13 / chest-3 intent now lives in the seed-data
+        # assertions (AuthoredArmorBaseSeedTests).
         self.assertEqual(ARMOR_MITIGATION_K, 48)
-        self.assertEqual(sum(ARMOR_SLOT_WEIGHTS.values()), 13)
-        self.assertEqual(ARMOR_SLOT_WEIGHTS['CHEST'], 3)
 
     def test_naked_unchanged(self):
         self.assertEqual(apply_armor_mitigation(28, 0), 28)
@@ -163,9 +166,10 @@ class TotalArmorValueTests(TestCase):
 
     def _full_set(self, prefix, char):
         items = {}
-        for slot, _ in self.FULL_SET:
+        for slot, base in self.FULL_SET:
             defn = make_gear_def(prefix, f'{prefix} {slot} piece',
-                                 item_type='armor', slot=slot)
+                                 item_type='armor', slot=slot,
+                                 armor_base=base)
             items[slot] = equip_gear(defn, char, slot, mk=1)
         return items
 
@@ -186,15 +190,16 @@ class TotalArmorValueTests(TestCase):
     def test_zero_durability_drops_out_and_resist_joins_from_any_type(self):
         zone, room = make_world('tvC')
         char = make_character('tvC', room)
-        helm_def = make_gear_def('tvC', 'Helm', item_type='armor', slot='HEAD')
+        helm_def = make_gear_def('tvC', 'Helm', item_type='armor', slot='HEAD',
+                                 armor_base=2.0)
         helm = equip_gear(helm_def, char, 'HEAD',
                           secondary=[{'stat': 'physical_resist', 'value': 4}])
         sword_def = make_gear_def('tvC', 'Sword', item_type='weapon',
                                   slot='MAIN_HAND')
         equip_gear(sword_def, char, 'MAIN_HAND',
                    secondary=[{'stat': 'physical_resist', 'value': 2}])
-        # helm slot weight 2 + helm resist 4 + weapon resist 2 = 8 (weapon
-        # slot carries no armor weight).
+        # helm authored base 2 + helm resist 4 + weapon resist 2 = 8 (the
+        # weapon authors no base).
         self.assertEqual(total_armor_value(char), 8)
         helm.durability_current = 0.0
         helm.save()
@@ -204,6 +209,90 @@ class TotalArmorValueTests(TestCase):
         zone, room = make_world('tvD')
         char = make_character('tvD', room)
         self.assertEqual(total_armor_value(char), 0)
+
+
+class ArmorBaseTavTests(TestCase):
+    """v24.9 (#129): the authored-base doctrine — TAV adds armor_base ×
+    mk_tier for every equipped, non-broken item, no slot or type gate."""
+
+    def test_no_slot_gate_non_armor_base_contributes(self):
+        zone, room = make_world('abA')
+        char = make_character('abA', room)
+        defn = make_gear_def('abA', 'Spiked Ring', item_type='accessory',
+                             slot='RING', armor_base=2.0)
+        equip_gear(defn, char, 'RING', mk=1)
+        self.assertEqual(total_armor_value(char), 2)
+
+    def test_default_zero_base_contributes_nothing(self):
+        zone, room = make_world('abB')
+        char = make_character('abB', room)
+        defn = make_gear_def('abB', 'Plain Shirt', item_type='armor',
+                             slot='CHEST')
+        equip_gear(defn, char, 'CHEST', mk=1)
+        self.assertEqual(total_armor_value(char), 0)
+
+    def test_mk2_scales_the_base(self):
+        zone, room = make_world('abC')
+        char = make_character('abC', room)
+        defn = make_gear_def('abC', 'Stout Vest', item_type='armor',
+                             slot='CHEST', armor_base=3.0)
+        equip_gear(defn, char, 'CHEST', mk=2)
+        self.assertEqual(total_armor_value(char), 6)
+
+    def test_broken_piece_contributes_no_base(self):
+        zone, room = make_world('abD')
+        char = make_character('abD', room)
+        defn = make_gear_def('abD', 'Stout Vest', item_type='armor',
+                             slot='CHEST', armor_base=3.0)
+        equip_gear(defn, char, 'CHEST', mk=1, broken=True, durability=0.0)
+        self.assertEqual(total_armor_value(char), 0)
+
+
+class AuthoredArmorBaseSeedTests(TestCase):
+    """v24.9 (#129): the 18 seeded armor definitions author exactly the
+    ruled armor_base values (each item's retired slot weight); every
+    other definition keeps the model default 0. The retired table's
+    pinned intent, preserved: one full set (one piece per armor slot,
+    Common Mk 1) still totals 13 base, and chest pieces author 3."""
+
+    SEEDED_BASES = {
+        'leather-vest': 3.0, 'ballistic-jacket': 3.0, 'leather-cap': 2.0,
+        'leather-shoulders': 1.0, 'leather-gloves': 1.0, 'leather-belt': 1.0,
+        'leather-leggings': 2.0, 'leather-boots': 1.0, 'wooden-shield': 2.0,
+        'patched-cap': 2.0, 'threadbare-vest': 3.0, 'mended-leggings': 2.0,
+        'scuffed-boots': 1.0, 'frayed-gloves': 1.0,
+        'moth-eaten-shoulder-wrap': 1.0, 'rope-belt': 1.0,
+        'oak-round-shield': 2.0, 'quilted-jerkin': 3.0,
+    }
+    # One item per armor-carrying slot (the leather set + wooden shield).
+    FULL_SET_SLUGS = ('leather-vest', 'leather-cap', 'leather-shoulders',
+                      'leather-gloves', 'leather-belt', 'leather-leggings',
+                      'leather-boots', 'wooden-shield')
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('seed_world', stdout=io.StringIO())
+
+    def test_18_armor_definitions_author_the_ruled_values(self):
+        for slug, base in self.SEEDED_BASES.items():
+            defn = ItemDefinition.objects.get(slug=slug)
+            self.assertEqual(defn.armor_base, base, slug)
+
+    def test_every_other_definition_authors_zero(self):
+        others = ItemDefinition.objects.exclude(
+            slug__in=self.SEEDED_BASES)
+        self.assertTrue(others.exists())
+        self.assertFalse(others.exclude(armor_base=0.0).exists())
+
+    def test_full_set_totals_13_base_and_chest_authors_3(self):
+        total = sum(
+            ItemDefinition.objects.get(slug=slug).armor_base
+            for slug in self.FULL_SET_SLUGS)
+        self.assertEqual(total, 13.0)
+        for slug in ('leather-vest', 'ballistic-jacket', 'threadbare-vest',
+                     'quilted-jerkin'):
+            self.assertEqual(
+                ItemDefinition.objects.get(slug=slug).armor_base, 3.0, slug)
 
 
 # ----------------------------------------------------------------------

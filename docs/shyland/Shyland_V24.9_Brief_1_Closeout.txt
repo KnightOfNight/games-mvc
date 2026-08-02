@@ -1,0 +1,111 @@
+2026-08-02 — Implementation session started: Shyland V24.9 Brief 1 — Authored Armor Base (Shyland_V24.9_Brief_1_Authored_Armor_Base.md), branch version_24_9.
+
+=== CLOSEOUT REPORT ===
+
+Session type: Implementation. Worktree of version_24_9; pre-flight passed (local dev,
+posture coherent). Brief verified verbatim at branch tip (committed by its design
+session, 2026-08-02). Step 0 stub pushed at bb0fd18.
+
+--- Work performed, in order (one commit per step boundary, all pushed) ---
+
+1. Version start (§2): SHYLAND_VERSION 24.8 -> "24.9-DEV", pin test assertion moved
+   in the same commit (ffe98ee), followed by the version-start make deploy-dev.
+2. Model + migration (§3): ItemDefinition.armor_base (FloatField, default 0.0,
+   brief-verbatim help text); migration 0041_itemdefinition_armor_base generated
+   via make makemigrations APP=shyland, synced, applied, committed (de4e51d).
+3. Seed data (§4): 'armor_base' authored on exactly the 18 armor definitions in
+   _seed_items, values per the brief's table (chest 3.0; head/legs/off-hand 2.0;
+   shoulders/hands/waist/feet 1.0). No other definition gained the key. In-place
+   _reconcile enforce-exact update (019dc7b).
+4. Code rewire (§5): ARMOR_SLOT_WEIGHTS dict + Option C comment deleted from
+   combat_utils.py, replaced with the v24.9 (#129) authored-base note;
+   ARMOR_MITIGATION_K = 48 untouched. TAV branch replaced with the ungated
+   `tav += item.definition.armor_base * item.mk_tier` inside the existing
+   non-broken guard; physical_resist summation and int(round(tav)) untouched;
+   docstring updated. consumers.py: ARMOR_SLOT_WEIGHTS import removed; examine
+   confession gate is now defn.armor_base > 0 (type-blind), multi-slot branch
+   deleted outright, single form always: `Armor: {base:g} per Mk` with
+   `(worn: n)` / `(worn: 0 — broken)` verbatim (a26b386). The stats Armor row
+   and tick engine read total_armor_value and inherited the rewire unmodified
+   (verified, not changed).
+5. Tests (§6): conversions + new coverage (c9d1aa1), detail under Deviations.
+6. Deploy + data action (§8): make deploy-dev (code first), then make seed
+   against the dev stack (data second); §7.4 re-verified after the seed.
+7. Architecture doc (§10, gated step, gate passed): Shyland_Architecture_v24.md
+   updated in place — stamp 24.9, header hash MOVED to c9d1aa1 (architectural
+   point release: schema field + TAV rewire), Version 24.9 block added per the
+   v24.8 pattern, ItemDefinition schema listing gains armor_base, the armor-
+   mitigation passage and examine-confession bullet rewritten to the authored-
+   base doctrine (52ef064).
+
+--- Verification (§7) — all gates passed ---
+
+1. Full in-container suite: python manage.py test apps/shyland/tests
+   (directory-path form via docker exec) — 486 tests, OK (24.8 baseline 477;
+   +9: 4 ArmorBaseTavTests, 3 AuthoredArmorBaseSeedTests, 2 new examine
+   confession tests).
+2. grep -rn 'ARMOR_SLOT_WEIGHTS' django/src/ -> zero hits.
+3. Equivalence invariants asserted (not eyeballed) by the suite:
+   test_full_common_mk1_set_is_13 (base TAV 13), test_full_set_blocks_21_percent
+   (`Armor: 13 (blocks 21%)`), test_naked_armor_zero_no_parenthetical
+   (`Armor: 0`).
+4. Post-reseed DB checks on dev: all 18 armor ItemDefinition rows carry exactly
+   the §4 values (PASS); every other definition reads armor_base = 0.0 (PASS);
+   ItemDefinition row count 52, unchanged by the reseed; a second seed run
+   reported "ItemDefinition: no differences".
+
+--- Deletion count ---
+
+Actual 0 vs expected 0. In-place definition update through _reconcile; the
+second seed run's reconciliation report confirmed zero deletions.
+
+--- Deviations / notes ---
+
+- §6 test conversion (ruled conversion per the test-hygiene rule, not silent):
+  the deleted table's literal pins — sum(ARMOR_SLOT_WEIGHTS.values()) == 13 and
+  ARMOR_SLOT_WEIGHTS['CHEST'] == 3 in test_gear_combat.ArmorCurveTests — became
+  seed-data assertions in the new AuthoredArmorBaseSeedTests (runs seed_world,
+  asserts each of the 18 slugs -> its ruled armor_base, every other definition
+  0.0, one-item-per-slot full set totals 13 from DB values, all four chest
+  pieces author 3.0). Test helpers converted on the same intent-preserving
+  basis: make_gear_def gained an armor_base parameter (default 0.0);
+  TotalArmorValueTests._full_set and test_b5_amendment1.full_common_mk1_set now
+  author the retired weights explicitly, so every downstream TAV/mitigation/
+  stats/incoming-line assertion is numerically unchanged.
+- Brief naming drift (report-and-accept): §5/§5c name the TAV function
+  `calculate_tav`; the repo function is `total_armor_value` (combat_utils.py).
+  The brief's quoted before-code matched total_armor_value verbatim, so intent
+  was unambiguous; the rewire landed there.
+- `make makemigrations` initially reported no changes because the container
+  image predated the model edit (source baked at build time); resolved with
+  make build first, per standing rules. No process impact.
+
+--- Version constant ---
+
+First brief of the release: SHYLAND_VERSION bumped to "24.9-DEV" as the opening
+act (ffe98ee). The closeout session stamps 24.9.
+
+--- Issue state ---
+
+#129 closed (gated on the suite passing) with an implementation comment,
+2026-08-02.
+
+--- PENDING DEPLOY-TIME ACTIONS (open until the closeout tail) ---
+
+- Production seed (make seed-prod, bare, on its own operator confirmation) in
+  the Version 24.9 closeout tail's deploy window, AFTER make deploy-prod — code
+  first, data second. Populates armor_base on the 18 production armor
+  definitions per the brief's §4 table. Expected deletion count: 0.
+  Dev-side execution of the same action: DONE this session (make seed after
+  make deploy-dev, §7.4 re-verified).
+
+--- Final commit hash ---
+
+Final implementation (code) commit: c9d1aa1 — the architecture-doc header hash.
+Architecture-doc commit: 52ef064. (This closeout-report completion commit
+follows and is the branch tip at session end.)
+
+--- Operator playtest disposition ---
+
+Operator reports playtest successful (2026-08-02, in-conversation, against the
+dev stack per the brief's §9 checklist). Terminal disposition.

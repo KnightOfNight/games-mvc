@@ -436,6 +436,14 @@ class ItemDefinition(models.Model):
     damage_spread = models.FloatField(null=True, blank=True)
     is_ranged = models.BooleanField(default=False)
 
+    armor_base = models.FloatField(
+        default=0.0,
+        help_text='Authored base armor per Mk tier (#129): TAV adds armor_base '
+                  'x mk_tier for every equipped, non-broken instance. 0 = '
+                  'authors no protection. Rarity-blind; rolled physical_resist '
+                  'is bonus on top.',
+    )
+
     valid_slots = models.JSONField(default=list)
     is_two_handed = models.BooleanField(default=False)
 

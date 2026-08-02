@@ -23,17 +23,20 @@ from .test_gear_combat import (
     equip_gear, make_combat_world, make_gear_def, run_engine_round,
 )
 
-# The eight armor-carrying slots (importing TotalArmorValueTests here
-# would re-register its tests in this module's namespace).
-FULL_SET_SLOTS = ('CHEST', 'HEAD', 'LEGS', 'OFF_HAND',
-                  'SHOULDERS', 'HANDS', 'WAIST', 'FEET')
+# The eight armor-carrying slots with their v24.9 (#129) authored bases —
+# the retired slot weights, now authored per definition (importing
+# TotalArmorValueTests here would re-register its tests in this module's
+# namespace).
+FULL_SET_SLOTS = (('CHEST', 3.0), ('HEAD', 2.0), ('LEGS', 2.0),
+                  ('OFF_HAND', 2.0), ('SHOULDERS', 1.0), ('HANDS', 1.0),
+                  ('WAIST', 1.0), ('FEET', 1.0))
 
 
 def full_common_mk1_set(prefix, char):
     items = {}
-    for slot in FULL_SET_SLOTS:
+    for slot, base in FULL_SET_SLOTS:
         defn = make_gear_def(prefix, f'{prefix} {slot} piece',
-                             item_type='armor', slot=slot)
+                             item_type='armor', slot=slot, armor_base=base)
         items[slot] = equip_gear(defn, char, slot, mk=1)
     return items
 
@@ -93,7 +96,8 @@ class ExamineArmorLineTests(TransactionTestCase):
         zone, room = make_world('exA')
         char = make_character('exA', room)
         defn = make_gear_def('exA', 'Leather Chestpiece',
-                             item_type='armor', slot='CHEST')
+                             item_type='armor', slot='CHEST',
+                             armor_base=3.0)
         item = ItemInstance.objects.create(
             definition=defn, owner=char, mk_tier=1, rarity='common',
             is_identified=True)
@@ -106,7 +110,8 @@ class ExamineArmorLineTests(TransactionTestCase):
         zone, room = make_world('exB')
         char = make_character('exB', room)
         defn = make_gear_def('exB', 'Leather Chestpiece',
-                             item_type='armor', slot='CHEST')
+                             item_type='armor', slot='CHEST',
+                             armor_base=3.0)
         item = equip_gear(defn, char, 'CHEST', mk=1)
         consumer = make_stub_consumer(char, [])
         lines = consumer._format_identified_item_lines(item)
@@ -116,7 +121,8 @@ class ExamineArmorLineTests(TransactionTestCase):
         zone, room = make_world('exC')
         char = make_character('exC', room)
         defn = make_gear_def('exC', 'Leather Chestpiece',
-                             item_type='armor', slot='CHEST')
+                             item_type='armor', slot='CHEST',
+                             armor_base=3.0)
         item = equip_gear(defn, char, 'CHEST', mk=1, broken=True,
                           durability=0.0)
         consumer = make_stub_consumer(char, [])
@@ -136,11 +142,35 @@ class ExamineArmorLineTests(TransactionTestCase):
         zone, room = make_world('exE')
         char = make_character('exE', room)
         defn = make_gear_def('exE', 'Sturdy Helm', item_type='armor',
-                             slot='HEAD')
+                             slot='HEAD', armor_base=2.0)
         item = equip_gear(defn, char, 'HEAD', mk=2)
         consumer = make_stub_consumer(char, [])
         lines = consumer._format_identified_item_lines(item)
         self.assertIn('  Armor:      2 per Mk (worn: 4)', lines)
+
+    def test_zero_base_armor_item_shows_no_line(self):
+        # v24.9 (#129): the display gate is the authored base, not the
+        # item type — an armor-type item authoring 0 confesses nothing.
+        zone, room = make_world('exF')
+        char = make_character('exF', room)
+        defn = make_gear_def('exF', 'Ceremonial Sash', item_type='armor',
+                             slot='WAIST')
+        item = equip_gear(defn, char, 'WAIST', mk=1)
+        consumer = make_stub_consumer(char, [])
+        lines = consumer._format_identified_item_lines(item)
+        self.assertFalse([l for l in lines if 'Armor:' in l])
+
+    def test_non_armor_item_with_base_shows_the_line(self):
+        # v24.9 (#129): no type gate — any definition authoring
+        # protection confesses it.
+        zone, room = make_world('exG')
+        char = make_character('exG', room)
+        defn = make_gear_def('exG', 'Warding Ring', item_type='accessory',
+                             slot='RING', armor_base=1.0)
+        item = equip_gear(defn, char, 'RING', mk=1)
+        consumer = make_stub_consumer(char, [])
+        lines = consumer._format_identified_item_lines(item)
+        self.assertIn('  Armor:      1 per Mk (worn: 1)', lines)
 
 
 class IncomingLineTests(TransactionTestCase):

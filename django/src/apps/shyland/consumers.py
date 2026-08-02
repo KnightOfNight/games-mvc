@@ -16,7 +16,7 @@ from django.utils import timezone
 from . import currency
 from . import npc_voice
 from .combat_utils import (
-    ARMOR_SLOT_WEIGHTS, bar_rescale_updates, effective_stats,
+    bar_rescale_updates, effective_stats,
     flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
     release_session_npcs,
 )
@@ -1725,27 +1725,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             hands = 'Two-handed' if defn.is_two_handed else 'One-handed'
             lines.append(f'  Hands:      {hands}')
 
-        # v22 B5 amendment 1: armor confesses its contribution — the slot
-        # weight per Mk, plus the worn piece's actual slot-weight-side TAV
-        # share (0 — broken in the non-functional band). physical_resist
-        # stays on its own stat lines; it is not folded in here.
-        armor_slots = [s for s in (defn.valid_slots or [])
-                       if s in ARMOR_SLOT_WEIGHTS] if defn.item_type == 'armor' else []
-        if armor_slots:
-            weights = [ARMOR_SLOT_WEIGHTS[s] for s in armor_slots]
-            if len(set(weights)) == 1:
-                weight_str = f'{weights[0]} per Mk'
-            else:
-                weight_str = ' / '.join(
-                    f'{ARMOR_SLOT_WEIGHTS[s]} ({format_slot_name(s)})'
-                    for s in armor_slots) + ' per Mk'
-            armor_str = f'  Armor:      {weight_str}'
+        # v24.9 (#129): any item authoring protection confesses it — the
+        # authored armor_base per Mk (per-item, slot-independent — no type
+        # gate), plus the worn piece's actual base-side TAV share (0 —
+        # broken in the non-functional band). physical_resist stays on its
+        # own stat lines; it is not folded in here.
+        if defn.armor_base > 0:
+            armor_str = f'  Armor:      {defn.armor_base:g} per Mk'
             if item.is_equipped:
                 if item.is_broken or item.durability_current == 0:
                     armor_str += ' (worn: 0 — broken)'
                 else:
-                    worn = ARMOR_SLOT_WEIGHTS.get(item.equipped_slot, 0) * item.mk_tier
-                    armor_str += f' (worn: {worn})'
+                    worn = defn.armor_base * item.mk_tier
+                    armor_str += f' (worn: {worn:g})'
             lines.append(armor_str)
 
         if defn.takes_durability_loss:

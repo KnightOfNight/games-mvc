@@ -7,15 +7,11 @@ CRIT_BASE = 0.05           # critical chance floor on any successful hit
 CRIT_PER_DEX_ADVANTAGE = 0.01
 CRIT_CAP = 0.25
 
-# v22 B5 (#100): the Option C armor table — slot weight × Mk tier over worn
-# armor pieces, summed with rolled physical_resist, is the character's TAV.
-# Derived weights, not authored per-item bases; this table retires gracefully
-# if authored armor fields ever ship (#129). Only these eight slots carry
-# armor per the knob survey. Full set = 13 per Mk tier.
-ARMOR_SLOT_WEIGHTS = {
-    'CHEST': 3, 'HEAD': 2, 'LEGS': 2, 'OFF_HAND': 2,
-    'SHOULDERS': 1, 'HANDS': 1, 'WAIST': 1, 'FEET': 1,
-}
+# v24.9 (#129): the authored-base doctrine — each ItemDefinition authors its
+# own base armor in the armor_base field; TAV adds armor_base × mk_tier for
+# every equipped, non-broken instance (no slot or type gate), with rolled
+# physical_resist as bonus strictly on top. The v22 Option C slot-weight
+# table is retired; the field is the only armor authority.
 ARMOR_MITIGATION_K = 48    # mitigation fraction = TAV / (TAV + K)
 
 # v22 B5 (#68/#100): proc factors — the rolled value V does double duty:
@@ -151,10 +147,11 @@ def summed_gear_stat(equipped_items, stat_name):
 
 
 def total_armor_value(character, equipped_items=None):
-    """v22 B5 (#100): TAV = Σ(slot weight × mk_tier over worn armor pieces
-    in the Option C table) + Σ(rolled physical_resist over ALL equipped
-    items, any type). Broken / zero-durability items contribute nothing
-    (the non-functional band)."""
+    """v24.9 (#129): TAV = Σ(armor_base × mk_tier over ALL equipped,
+    non-broken items — the authored per-definition base, no slot or type
+    gate) + Σ(rolled physical_resist over ALL equipped items, any type).
+    Broken / zero-durability items contribute nothing (the non-functional
+    band)."""
     if equipped_items is None:
         equipped_items = list(
             character.inventory.filter(is_equipped=True).select_related('definition'))
@@ -162,9 +159,7 @@ def total_armor_value(character, equipped_items=None):
     for item in equipped_items:
         if item.is_broken or item.durability_current == 0:
             continue
-        if (item.definition.item_type == 'armor'
-                and item.equipped_slot in ARMOR_SLOT_WEIGHTS):
-            tav += ARMOR_SLOT_WEIGHTS[item.equipped_slot] * item.mk_tier
+        tav += item.definition.armor_base * item.mk_tier
         for stat, value in _iter_rolled_entries(item):
             if stat == 'physical_resist':
                 tav += value

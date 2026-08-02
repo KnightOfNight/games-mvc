@@ -234,16 +234,16 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 **Gear is combat-live (v22, #100).** Equipped item stats apply to combat and every other gameplay read via the effective-stat function (Section 3.4); armor mitigates incoming damage (below); proc-family secondaries fire on landed hits (Section 6.4). The guiding scope law: fix what exists so it works the way a reasonable player assumes it does; build nothing for absent future systems; leave no landmines for them either.
 
-**Armor — Option C (v22).** No schema change: armor's base protection is **derived** from slot and Mk tier, with rolled `physical_resist` as bonus on top.
+**Armor — authored per-item base (#129).** Armor protection follows the pair doctrine shared with #127's proc floor: **an authored guarantee plus a roll above it** — the definition authors the protection the designer promises; the drop-time roll adds variance strictly on top. Each ItemDefinition carries an authored `armor_base` (default 0); rolled `physical_resist` is the bonus.
 
-- **Total Armor Value (TAV)** = Σ(slot weight × Mk tier over worn armor pieces) + Σ(rolled `physical_resist` over ALL equipped items, any type).
-- **Slot weights** (the authored table; only these eight slots carry armor): CHEST 3, HEAD 2, LEGS 2, OFF_HAND 2 (shields), SHOULDERS 1, HANDS 1, WAIST 1, FEET 1. A full set = 13 per Mk tier.
+- **Total Armor Value (TAV)** = Σ(`armor_base` × Mk tier over equipped, non-broken items) + Σ(rolled `physical_resist` over ALL equipped items, any type).
+- The field exists on every definition and is summed with **no slot gate** — any equipped item may author protection. Today only armor items carry a nonzero base, and the seeded values preserve the retired slot-weight scheme exactly (chest pieces 3; head pieces, leg pieces, and shields 2; shoulder, hand, waist, and foot pieces 1 — a full Common Mk 1 set totals 13). v24.9 changes structure, not balance: same-slot differentiation (a Ballistic Jacket authoring more than a Leather Vest) is a Phase 3 (Mk 2 balance) retune.
 - **Mitigation** applies to NPC→player damage only (players mitigate; NPCs never do): each incoming hit is reduced by the fraction `TAV / (TAV + K)`, K = 48 — a full Common Mk 1 set blocks ~21%. Deterministic per hit; no roll.
 - **Floors in both directions:** when TAV > 0, the reduction is at least 1 (armor never does nothing), and no hit is ever reduced below 1 damage (the existing minimum-damage clamp survives beneath it).
-- **Even Common armor works** — rarity means "better at armoring," never "allowed to armor."
+- **Even Common armor works** — rarity means "better at armoring," never "allowed to armor." The authored base is rarity-blind; rarity keeps acting through secondary slots.
 - A **broken** piece (0% durability) contributes nothing to TAV — the non-functional band with teeth.
-- **Visibility:** the `stats` sheet carries the Armor row (`Armor: 13 (blocks 21%)`, percentage derived live from the curve; naked reads `Armor: 0`, nothing hidden), and an armor item's `examine` confesses its contribution (`Armor: 3 per Mk`, appending `(worn: 3)` when equipped and `(worn: 0 — broken)` when broken). Per-hit damage receipts were tried and removed — the permanent surfaces carry the visibility; incoming hit lines state only the number that moved the bar.
-- The derived table retires gracefully if authored per-item armor bases ever ship (#129).
+- **Visibility:** unchanged shapes, sourced from the authored field — the `stats` sheet carries the Armor row (`Armor: 13 (blocks 21%)`, percentage derived live from the curve; naked reads `Armor: 0`, nothing hidden), and an item with an authored base confesses it on `examine` (`Armor: 3 per Mk`, appending `(worn: 3)` when equipped and `(worn: 0 — broken)` when broken). Per-hit damage receipts were tried and removed — the permanent surfaces carry the visibility; incoming hit lines state only the number that moved the bar.
+- *History:* Option C (v22) derived base protection from a hardcoded slot-weight table (CHEST 3, HEAD 2, LEGS 2, OFF_HAND 2, SHOULDERS 1, HANDS 1, WAIST 1, FEET 1); it retires into the authored field here, as its own text promised.
 
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
