@@ -247,7 +247,7 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
-**Handed-ness is disclosed everywhere the expectation forms (v24.7, pending implementation — #194).** One vocabulary — `One-handed` / `Two-handed` — at three player-facing surfaces, display only, zero mechanics changes:
+**Handed-ness is disclosed everywhere the expectation forms (v24.7 — #194).** One vocabulary — `One-handed` / `Two-handed` — at three player-facing surfaces, display only, zero mechanics changes:
 
 - Every weapon's `examine` carries a `Hands:` row beside Type/Genre/Damage. Both values always shown — the vocabulary is discoverable, not warning-only.
 - Listing tables' Slot cell appends the word for two-handers — `Ranged (two-handed)` (Section 6.11).
