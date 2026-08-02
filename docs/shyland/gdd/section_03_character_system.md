@@ -247,6 +247,14 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
+**Handed-ness is disclosed everywhere the expectation forms (v24.7, pending implementation — #194).** One vocabulary — `One-handed` / `Two-handed` — at three player-facing surfaces, display only, zero mechanics changes:
+
+- Every weapon's `examine` carries a `Hands:` row beside Type/Genre/Damage. Both values always shown — the vocabulary is discoverable, not warning-only.
+- Listing tables' Slot cell appends the word for two-handers — `Ranged (two-handed)` (Section 6.11).
+- An equip refusal whose displacement involves hands claimed by (or needed for) a two-hander explains itself, naming the two-handed item: `You'd have to unequip the Battle Axe first — the Hunting Bow needs both hands.` Plain same-slot swaps and the both-rings wording keep their standing lines.
+
+The paper-doll's half of the disclosure — consumed hand slots naming their consumer — is Section 6.11.
+
 **The Ranged slot is "at the ready" (v24.6 — #178).** A ranged weapon in RANGED is holstered/slung and ready. Equipping into RANGED is legal alongside anything, including two-handed weapons — the hand-claiming rule never touches the RANGED slot itself, so a Battle Axe plus a Pulse Pistol is a coherent loadout, not a conflict (behavior confirmed correct as built). In combat, the ranged weapon fires every round as part of the composite strike (Section 5.4): the 3-second round is abstract enough for a shot woven between swings. A two-handed ranged weapon still claims both hands per the handedness rule above.
 
 **Equip exchange rule (general, all slots).** When equipping an item, count the currently equipped items that must come off to make room:

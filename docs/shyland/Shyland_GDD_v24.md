@@ -898,6 +898,14 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
+**Handed-ness is disclosed everywhere the expectation forms (v24.7, pending implementation — #194).** One vocabulary — `One-handed` / `Two-handed` — at three player-facing surfaces, display only, zero mechanics changes:
+
+- Every weapon's `examine` carries a `Hands:` row beside Type/Genre/Damage. Both values always shown — the vocabulary is discoverable, not warning-only.
+- Listing tables' Slot cell appends the word for two-handers — `Ranged (two-handed)` (Section 6.11).
+- An equip refusal whose displacement involves hands claimed by (or needed for) a two-hander explains itself, naming the two-handed item: `You'd have to unequip the Battle Axe first — the Hunting Bow needs both hands.` Plain same-slot swaps and the both-rings wording keep their standing lines.
+
+The paper-doll's half of the disclosure — consumed hand slots naming their consumer — is Section 6.11.
+
 **The Ranged slot is "at the ready" (v24.6 — #178).** A ranged weapon in RANGED is holstered/slung and ready. Equipping into RANGED is legal alongside anything, including two-handed weapons — the hand-claiming rule never touches the RANGED slot itself, so a Battle Axe plus a Pulse Pistol is a coherent loadout, not a conflict (behavior confirmed correct as built). In combat, the ranged weapon fires every round as part of the composite strike (Section 5.4): the 3-second round is abstract enough for a shot woven between swings. A two-handed ranged weapon still claims both hands per the handedness rule above.
 
 **Equip exchange rule (general, all slots).** When equipping an item, count the currently equipped items that must come off to make room:
@@ -1616,8 +1624,8 @@ Bags are equipment items that expand carry capacity. They occupy equipment slots
 
 The `inventory` command (v22 — the information standards of Section 9.1 applied) shows three sections:
 
-1. **Equipment — the paper-doll.** A `Slot / Name / Details` table showing **all 14 slot rows, always**, in anatomical order head→feet: Head, Neck, Shoulders, Back, Chest, Main hand, Off hand, Ranged, Hands, Ring, Ring, Waist, Legs, Feet. Sentence-case labels; empty slots render a muted `-` in Name and Details. Reading your gear is reading your body.
-1. **Inventory.** A `Slot / Name / Quantity / Details` table, flat alphabetical by name. The Slot cell names the item's equip slot when slotted (`Main hand`), muted `-` when slotless; identical items fold into the Quantity column per the stacking rule below.
+1. **Equipment — the paper-doll.** A `Slot / Name / Details` table showing **all 14 slot rows, always**, in anatomical order head→feet: Head, Neck, Shoulders, Back, Chest, Main hand, Off hand, Ranged, Hands, Ring, Ring, Waist, Legs, Feet. Sentence-case labels; empty slots render a muted `-` in Name and Details. Reading your gear is reading your body. **Consumed hand slots name their consumer (v24.7, pending implementation — #176):** a hand slot claimed by a two-handed item equipped in another slot is not free and never renders as free — the row shows the consuming item's name-with-tier, muted, in Name, and a muted `(two-handed)` in Details. The true fact — *that weapon holds this hand* — is stated in words; the muted styling only distinguishes these informational rows from the item's home row (normal rendering, details, flags), which remains visibly its real location. A two-handed weapon in RANGED consumes both hand rows; one in a hand slot consumes the other. **The paper-doll is one shared composition** (v24.7, pending implementation — #195): `inv` and bare `equip` render it through the same helper and can never drift (Section 9.1, footnote 21).
+1. **Inventory.** A `Slot / Name / Quantity / Details` table, flat alphabetical by name. The Slot cell names the item's equip slot when slotted (`Main hand`), appending the word for two-handed weapons — `Ranged (two-handed)` (v24.7, pending implementation — #194) — and muted `-` when slotless; identical items fold into the Quantity column per the stacking rule below.
 1. **Wallet.** One key/value line, **byte-identical** to the `wallet` command's output — one shared renderer, by rule.
 
 Display rules:
@@ -1867,7 +1875,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | buy | 11 4 · 10 | |
 | | cancel | 12 | v22 |
 | | drop | 11 4 · 10 · 16 | |
-| | equip (eq) | 4 · 10 | |
+| | equip (eq) | 4 · 21 | |
 | | examine (ex) | 4 \| 5 \| 6 · 10 | |
 | | flee | 2 | |
 | | heal | 2 | v24.4 |
@@ -1923,6 +1931,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 18. admin-gated with stealth: requires membership in the `admins.shyland` Django auth Group, checked live per attempt. For non-members the command does not exist — absent from help, absent from tab completion, and attempts return the standard unknown-command response.
 19. the consumable item type is excluded from this command's noun-less bulk form (`all <rarity>` with no noun): matching consumables are skipped, and the skip is announced with one note line teaching the named form. A noun-less bulk sell whose matches are *all* consumables is refused (warn-color). Named-noun forms (`sell all draught`, `sell 5 draught`) reach consumables normally. (v23.1, #150)
 20. the target is optional: bare invocation behaves exactly as the literal `all` — verbatim, in every case. Loot is the first (and so far only) verb whose bare form performs the `all` sweep; deliberately **not** a precedent for `sell` (#150's refusal of the bare bulk form stands — loot is kill-gated and value-safe, sell is destructive of inventory).
+21. the target is optional: bare invocation is an **information rendering** — it reports instead of acting. For `equip`, the bare form renders the Equipment paper-doll — the identical composition `inv` shows, through one shared helper so the two can never drift (Section 6.11) — and nothing else: no inventory table, no carry count, no wallet line. Report category (unstamped, never varies). Distinct from footnote 20: a bare information form performs no action and sets no precedent for bare bulk actions. (v24.7, pending implementation — #195)
 
 **Grammar notes:** `N.noun` ordinal selection (e.g. `attack 2.lion`) survives as input-only CLI shorthand across all noun-matching arguments; the game never speaks ordinals except the duplicate-only display ordinals of §5.9 (#64). Argument order is as listed — `spend` is `spend <quantity> <stat>`, flipping the pre-v22 order. `attack`'s chart cell admits `<player>` for the PvP future; until PvP mechanics exist the shipped pool is living NPCs only (recorded implementation judgment). One resolver serves every noun-taking command (v20): ordered token-prefix matching on the player-visible name-with-tier, plural fallbacks, rarity as a closed-vocabulary instance filter (noun optional with a rarity word — `sell all common`), cross-definition ambiguity refuse-lists, rarity-aware protective selection (`sell`/`drop` lowest-first, `equip` highest-first), equipped items always excluded from `sell`/`drop`, consumables excluded from the noun-less `sell all <rarity>` bulk form (footnote 19; v23.1). A dispatch guard wraps every command: no input, however malformed, can drop the connection. `heal` is the bare-verb shortcut for deficit-driven draught consumption (see Partial Fulfillment); it takes no arguments and is a **reserved built-in verb** — the future alias system (#125) may never shadow it. Tab completion completes the verb; there is no noun pool.
 
@@ -2040,7 +2049,7 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 |------------------|-------------------------|
 |`quests`          |Show active quest journal|
 
-*(The formerly planned `equipment`/`eq` command is superseded: `eq` is `equip`'s alias in the v22 chart, and the Equipment paper-doll in `inv` shows all 14 slots always — an equipped-only view no longer earns its own verb.)*
+*(The formerly planned `equipment`/`eq` command is superseded twice over: `eq` is `equip`'s alias in the v22 chart, and as of v24.7 bare `equip` renders the Equipment paper-doll itself (Section 9.1, footnote 21) — the equipped-only view lives on the verb that manages it, not on a verb of its own.)*
 
 #### Travel
 
