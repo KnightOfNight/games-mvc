@@ -905,9 +905,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         tables — the sentence-case label of the item's equip slot when
         slotted, muted '-' when slotless. v24.7 brief 1 (#194, GDD
         §6.11): two-handed weapons append the word — 'Ranged
-        (two-handed)' — inherited by every caller."""
+        (two-handed)' — inherited by every caller. v24.8 brief 1 (#197,
+        GDD §6.11): all valid slots render, joined with '/', in authored
+        valid_slots order — 'Main hand/Off hand' — with the two-handed
+        word appended once after the full joined label."""
         if defn.valid_slots:
-            label = format_slot_name(defn.valid_slots[0])
+            label = '/'.join(format_slot_name(s) for s in defn.valid_slots)
             if defn.item_type == 'weapon' and defn.is_two_handed:
                 return f'{label} (two-handed)'
             return label
