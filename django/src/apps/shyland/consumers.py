@@ -21,7 +21,8 @@ from .combat_utils import (
     release_session_npcs,
 )
 from .command_grammar import (
-    RARITY_RANK, complete as grammar_complete, entry_display_name, resolve,
+    RARITY_RANK, Resolution, complete as grammar_complete,
+    entry_display_name, oldest_first, resolve,
 )
 from .effect_utils import compose_use_sentence
 from .envelope import envelope_ts
@@ -201,6 +202,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'kill': ('cmd_attack', True), 'attack': ('cmd_attack', True),
         'k': ('cmd_attack', True),
         'flee': ('cmd_flee', False),
+        # v24.4 brief 1 (#166): bare verb — args ignored (DD §9.1 fn 2).
+        'heal': ('cmd_heal', False),
         'travel': ('cmd_travel', True),
         'brief': ('cmd_brief', True),
         'echo': ('cmd_echo', True),
@@ -250,12 +253,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     }
     COMBAT_MOVE_REFUSAL = "You can't just walk away from a fight — flee!"
 
-    # While dying: use (self-rescue), say, cancel, sudo, quit, all
-    # information, and all settings proceed; everything else refuses
+    # While dying: use and heal (self-rescue), say, cancel, sudo, quit,
+    # all information, and all settings proceed; everything else refuses
     # (warn). Admin verbs pass the gate so the stealth response stays
     # byte-identical for non-members.
     DYING_ALLOWED = {
-        'use', 'say', 'quit', 'cancel', 'sudo',
+        'use', 'heal', 'say', 'quit', 'cancel', 'sudo',
         'help', '?', 'inventory', 'inv', 'last', 'list', 'look', 'l',
         'stats', 'wallet', 'who',
         'brief', 'echo', 'timestamps',
@@ -1000,6 +1003,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('equip (eq)', 'equip <item>', 'Equip an item from your inventory.'),
             ('examine (ex)', 'examine <item> | <NPC> | <player>', 'Take a close look at something.'),
             ('flee', 'flee', 'Escape from combat.'),
+            ('heal', 'heal', 'Drink healing draughts until your vitality is full.'),
             ('home', 'home', 'Return home after a short delay.'),
             ('loot', 'loot all | <NPC>', 'Loot a corpse, or every corpse here.'),
             ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
@@ -1376,6 +1380,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self._use_aggregate(res)
             return
 
+        await self._use_per_item(res, was_dying)
+
+    async def _use_per_item(self, res, was_dying):
+        # The per-item use path — sequences, timed effects, the dying
+        # revival. Extracted from cmd_use for v24.4 brief 1 (#166):
+        # heal's dying single-consume runs this same sequence.
+        char = self.character
         used = 0
         stopped_at_full = False
         for item in res.items:
@@ -1438,36 +1449,56 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             char_fresh = await self.get_character_fresh()
             await self.send_json(await self._status_payload(char_fresh, room))
 
+    @staticmethod
+    def _item_aggregatable(item):
+        """v23.3 (#151, ruling 3): the per-item aggregate test — the
+        item's effect has only instantaneous components, at least one of
+        them a vitality restore (flat or the v24.0 percent law). Derived
+        from the effect's own components, never a separate flag (the #61
+        helper's law). Also heal's qualifying test (v24.4, #166) —
+        mechanical, never a name match."""
+        effect_def = item.definition.effect
+        if effect_def is None:
+            return False
+        components = list(effect_def.components.all())
+        if not components:
+            return False
+        if not all(c.is_instantaneous() for c in components):
+            return False
+        return any(c.component_type in ('restore_vitality',
+                                        'restore_vitality_percent')
+                   for c in components)
+
     @database_sync_to_async
     def use_items_aggregatable(self, items):
         """v23.3 (#151, ruling 3): qualification for the aggregate path —
-        every resolved item's effect has only instantaneous components,
-        at least one of them a vitality restore (flat or the v24.0
-        percent law). Derived from the effect's own components, never a
-        separate flag (the #61 helper's law)."""
-        for item in items:
-            effect_def = item.definition.effect
-            if effect_def is None:
-                return False
-            components = list(effect_def.components.all())
-            if not components:
-                return False
-            if not all(c.is_instantaneous() for c in components):
-                return False
-            if not any(c.component_type in ('restore_vitality',
-                                            'restore_vitality_percent')
-                       for c in components):
-                return False
-        return True
+        every resolved item passes the per-item test."""
+        return all(self._item_aggregatable(item) for item in items)
+
+    @database_sync_to_async
+    def heal_qualifying_items(self, consumables):
+        """v24.4 brief 1 (#166, §1.4): heal's qualifying pool — the
+        carried consumables passing the per-item aggregate test, in the
+        machinery's oldest-first order (#168, never re-sorted)."""
+        return oldest_first(
+            [item for item in consumables if self._item_aggregatable(item)])
+
+    async def _at_full_gate(self):
+        """DD §7 / #61: the at-full refusal — fresh read, unchanged
+        wording; shared between use's aggregate path and heal (v24.4).
+        Returns the fresh character, or None after refusing."""
+        gate_char = await self.get_character_fresh()
+        if gate_char.vitality_current >= gate_char.vitality_max:
+            await self.output('You are already at full health.', 'warn')
+            return None
+        return gate_char
 
     async def _use_aggregate(self, res):
         """v23.3 (#151): the aggregate path — deficit computed up front,
         consumption planned before applying, one atomic vitality UPDATE,
         one composed line, one status payload (rulings 3–5)."""
-        # DD §7 / #61: the entry gate, unchanged wording, fresh read.
-        gate_char = await self.get_character_fresh()
-        if gate_char.vitality_current >= gate_char.vitality_max:
-            await self.output('You are already at full health.', 'warn')
+        gate_char = await self._at_full_gate()
+        if gate_char is None:
             return
         deficit = gate_char.vitality_max - gate_char.vitality_current
 
@@ -1567,6 +1598,44 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             item.delete()
 
         return consumed, total, total >= deficit, extra_pairs
+
+    async def cmd_heal(self):
+        # v24.4 brief 1 (#166): bare verb — "use as many healing
+        # draughts as needed." A thin front door: the #151 aggregate
+        # path supplies the deficit math, consumption, merged sentence,
+        # full-heal fold, shortfall warn, and status payload; the
+        # per-item path owns the dying revival. Composes no sentences
+        # of its own.
+        consumables = await self.get_carried_consumables(self.character)
+        pool = await self.heal_qualifying_items(consumables)
+
+        if self._character_is_dying:
+            # §1.5: exactly as `use` — one restorative through the
+            # per-item revival path; the aggregate path stays
+            # dying-forbidden.
+            if not pool:
+                await self.output('You have no healing draughts.', 'warn')
+                return
+            await self._use_per_item(
+                Resolution(ok=True, items=[pool[0]]), was_dying=True)
+            return
+
+        if not pool:
+            # Gate order: the at-full refusal beats the empty-pool warn
+            # — at full, heal's purpose is already fulfilled and the
+            # inventory is irrelevant. (With a pool, _use_aggregate's
+            # own entry gate fires the same shared refusal first.)
+            if await self._at_full_gate() is None:
+                return
+            await self.output('You have no healing draughts.', 'warn')
+            return
+
+        # The whole qualifying pool, uncapped, oldest-first (#168);
+        # `requested` set so the standing shortfall warn fires when the
+        # deficit goes uncovered (#132).
+        await self._use_aggregate(
+            Resolution(ok=True, items=pool, mode='count',
+                       requested=len(pool)))
 
     def _format_identified_item_lines(self, item):
         defn = item.definition

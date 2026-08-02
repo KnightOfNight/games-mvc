@@ -186,6 +186,13 @@ class _NpcAccessor:
 _ACCESSORS = {'item': _ItemAccessor, 'entry': _EntryAccessor, 'npc': _NpcAccessor}
 
 
+def oldest_first(items):
+    """The 'oldest' selection order — use's policy (#168) — for callers
+    building a resolution-shaped request without a noun (v24.4 heal,
+    #166). The one age key, never re-implemented at the call site."""
+    return sorted(items, key=_ItemAccessor.age)
+
+
 # ----------------------------------------------------------------------
 # Per-verb policy
 # ----------------------------------------------------------------------
