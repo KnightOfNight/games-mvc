@@ -94,7 +94,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    byte-identical (the quiet-line law). Crits compose: "for a critical 14 (+7) damage!"
    Lifesteal (always-on, no roll) heals the attacker by the summed rolled values after
    the hit lands, clamped to vitality_max via the atomic bar update — no output line.
-   Floored proc entries (Section 6.4) (v24.10, pending implementation) roll X..Y
+   Floored proc entries (Section 6.4) roll X..Y
    instead of 1..⌈V⌉; pool composition and the one-parenthetical rendering are
    unchanged.
 
@@ -125,7 +125,7 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |Holy     |Clerical abilities                      |Extra damage vs. undead/demonic                         |
 |Shadow   |Shade abilities, dark magic             |Reduces target's defense temporarily                    |
 
-**v22 status note:** damage types are **not modeled** in v22 — all damage is untyped, and the proc-family stat names (bleed, stun, poison, flame, electric) are flavor vocabulary only: they add damage, they carry no status effects and no elemental mechanics. The table above remains the design target for the future typed-damage system; when it ships, `magic_resist` and `radiation_resist` (deliberately inert in v22) gain their consumers. Flame joined the family with the proc floor (#127) (v24.10, pending implementation).
+**v22 status note:** damage types are **not modeled** in v22 — all damage is untyped, and the proc-family stat names (bleed, stun, poison, flame, electric) are flavor vocabulary only: they add damage, they carry no status effects and no elemental mechanics. The table above remains the design target for the future typed-damage system; when it ships, `magic_resist` and `radiation_resist` (deliberately inert in v22) gain their consumers. Flame joined the family with the proc floor (#127).
 
 ### 5.6 Status Effects
 
