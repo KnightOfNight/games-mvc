@@ -1,3 +1,130 @@
 2026-08-01 — Implementation session started: Shyland_V24.4_Brief_1_Heal_Command.md on branch version_24_4.
 
-[STUB — completed in place at session end.]
+================================================================================
+Shyland V24.4 Brief 1 — The `heal` Command (#166) — Closeout Report
+================================================================================
+
+Session date:      2026-08-01
+Brief:             Shyland_V24.4_Brief_1_Heal_Command.md (at branch tip, verbatim)
+Branch:            version_24_4 (worktree; dev posture verified at pre-flight)
+Founding ticket:   #166 (closed with implementation comment, gated on verification)
+
+--------------------------------------------------------------------------------
+Steps executed (all committed and pushed at step boundaries)
+--------------------------------------------------------------------------------
+
+Step 0  Closeout stub pushed (work-has-started signal)              0620a2c
+Step 1  SHYLAND_VERSION 24.3 -> 24.4-DEV, pin test moved same
+        commit; version-start `make deploy-dev` run                 28ff0f0
+Step 2  Registration: COMMAND_TABLE 'heal': ('cmd_heal', False);
+        DYING_ALLOWED + 'heal'; no COMBAT_BLOCKED / PROMPT_VERBS /
+        GRAMMAR_VERBS entries; connect-time verb list and verb
+        completion verified to derive from COMMAND_TABLE (no
+        further wiring)                                             e0a841b
+Step 3  cmd_heal: thin front door per brief §1 — qualifying pool
+        via the per-item aggregate test (mechanical, never a name
+        match), oldest-first via the machinery's own age key,
+        at-full-beats-empty gate order, delegation to
+        _use_aggregate (whole pool, uncapped, requested set),
+        dying single-consume via the per-item revival path         e0a841b, 0dd36ca
+Step 4  Help row between flee and home                              e0a841b
+Step 5  Migrations / seed / models: NONE (per brief).
+        *** NO PENDING DEPLOY-TIME ACTIONS for this brief ***
+        Nothing runs at prod-deploy time beyond the deploy itself.
+Step 6  Test suite tests/test_v244_heal.py — 18 tests               78a71fc
+Step 7  `make deploy-dev` after implementation + verification
+        passed; dev stack serves the branch build
+Step 8  Architecture doc (last, gated — gate satisfied):
+        Shyland_Architecture_v24.md updated in place — new
+        Version 24.4 banner block, line-3 summary clause, header
+        hash moved to 0dd36ca (architectural point release —
+        consumer code changed), stamp 24.4, §4.3 heal subsection    c70b967
+Step 9  This report, completed in place.
+
+Final implementation commit (header-hash referent):  0dd36ca
+Architecture-doc commit:                             c70b967
+
+--------------------------------------------------------------------------------
+Implementation shape (within the brief's stated mechanics latitude)
+--------------------------------------------------------------------------------
+
+Reuse-not-duplication was implemented via four small extractions, all
+anticipated or permitted by the brief ("extract a helper from cmd_use if
+needed rather than copying the sequence"):
+
+- _use_per_item          the cmd_use per-item loop, extracted verbatim;
+                         cmd_use delegates to it, heal's dying path runs
+                         exactly one oldest qualifying item through it.
+- _item_aggregatable     the v23.3 per-item qualification extracted from
+                         use_items_aggregatable (which is now all() over
+                         it); heal_qualifying_items filters through it.
+- _at_full_gate          the #61 at-full refusal (fresh read, unchanged
+                         wording), shared by _use_aggregate and cmd_heal —
+                         no refusal string duplicated.
+- oldest_first           command_grammar.py gains this public helper —
+                         the 'oldest' selection policy's age key exposed
+                         for callers building a resolution-shaped request
+                         without a noun. (See deviations.)
+
+cmd_heal composes no sentences of its own. The only new player-facing
+string is `You have no healing draughts.` (authored by the brief),
+emitted from exactly one site.
+
+--------------------------------------------------------------------------------
+Deviations
+--------------------------------------------------------------------------------
+
+1. command_grammar.py was modified (the brief's step list named only
+   consumers.py for code changes): the `oldest_first` helper was added so
+   heal orders its pool with the resolution machinery's own age key
+   rather than a re-implementation at the call site — the brief's §1.3
+   "use's existing 'oldest' resolution policy, never re-sorted" honored
+   literally. Within the shyland app; no behavior of resolve() changed.
+
+2. Existing-test sweep (brief step 6): the grep sweep of the test tree
+   for verb-inventory / help-row / gating-set enumerations found NO tests
+   requiring update — no literal-pin-to-pool conversions were needed.
+   The only existing test touched was the pin test, moved by Step 1 as
+   the brief directs.
+
+No other deviations. The brief and GDD (at 083c043) never disagreed.
+
+--------------------------------------------------------------------------------
+Tests
+--------------------------------------------------------------------------------
+
+Invocation (in-container): python manage.py test apps/shyland/tests
+Pre-brief count:   412 (V24.3 closeout record)
+Post-brief count:  430 — OK, zero failures/errors (strict increase: +18)
+
+Output-table row -> test map (verification item 2):
+  Row 1  AtFullTests.test_at_full_with_draughts_refuses
+         AtFullTests.test_at_full_with_no_draughts_still_refuses  (gate order)
+  Row 2  NoDraughtsTests.test_no_qualifying_draughts_warns
+         NoDraughtsTests.test_no_qualifying_draughts_is_mechanical_not_a_name_match
+  Row 3  CoverTests.test_exact_cover_consumes_the_minimum
+  Row 4  ShortfallTests.test_shortfall_consumes_all_and_warns
+  Row 5  DyingTests.test_dying_consumes_one_and_revives
+  Row 6  DyingTests.test_dying_with_no_draughts_warns
+
+Additional coverage: registration + absences (RegistrationTests, 5),
+never-a-name-match qualification both directions (QualifyingPoolTests),
+oldest-first mixed-Mk per-item Draught Law (OldestFirstTests), combat
+passage (CombatTests), args ignored (ArgsIgnoredTests), help render
+(HelpTests).
+
+Verification section (brief §3): all five items pass —
+  1. Full suite green in-container, count strictly increased (412 -> 430).
+  2. Row -> test map above.
+  3. grep 'heal' consumers.py: the registration points present; no
+     duplicated refusal/sentence strings introduced.
+  4. Pin test asserts 24.4-DEV.
+  5. `make deploy-dev` completed; dev stack serves the branch build.
+
+--------------------------------------------------------------------------------
+Operator playtest disposition (#170)
+--------------------------------------------------------------------------------
+
+PENDING — awaiting the operator's playtest against the dev stack (brief §4
+checklist). This line is updated verbatim-style when the operator gives
+the disposition; the session cannot end without it.
