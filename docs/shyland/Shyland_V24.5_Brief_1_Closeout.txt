@@ -1,1 +1,73 @@
 Session start 2026-08-01 — Shyland_V24.5_Brief_1_Bare_Loot_Sweep.md — branch version_24_5 (implementation session).
+
+WHAT SHIPPED
+- Version start (first brief of V24.5): SHYLAND_VERSION 24.4 -> 24.5-DEV, pin test
+  moved in the same commit (a6dba9a); version-start make deploy-dev run.
+- Bare `loot` behaves exactly like `loot all` (#189): `loot` removed from
+  PROMPT_VERBS (the fn-10 required-target set); cmd_loot's sweep branch now
+  triggers on args.strip().lower() in ('', 'all'). Every downstream behavior
+  inherited verbatim: the no-corpse warn "There is nothing to loot here.", the
+  killed_by_id kill gate and "That is not your kill; you may not loot it.",
+  copper transfer on first loot, per-line sweep output plus summary, the
+  corpse-noun and N.<NPC> single-corpse forms, "carried nothing worth taking."
+- GRAMMAR_VERBS and COMBAT_BLOCKED untouched — argument completion unchanged;
+  bare loot in combat hits the authored "Your hands are too busy with the
+  fight!" exactly as `loot all` does.
+- Help row: ('loot', 'loot [all] | <NPC>', 'Loot every corpse here, or one
+  named corpse.') — matches the GDD §9.1 row.
+- Completion-pool rule verified: no completion code keys off PROMPT_VERBS
+  (grep: its only references are the fn-10 gate in _dispatch and the table
+  itself; pools build from GRAMMAR_VERBS / COMMAND_TABLE). Pools unchanged.
+- First and only bare-sweep verb — deliberately NOT a precedent for sell;
+  #150 stands (noted in code comment, arch doc, and the #189 close comment).
+- Runtime code only: consumers.py. No models, no migrations, no seed data,
+  no new dependencies.
+
+TESTS
+- New: django/src/apps/shyland/tests/test_v245_bare_loot.py (11 tests):
+  table deltas (loot out of PROMPT_VERBS, still in GRAMMAR_VERBS and
+  COMBAT_BLOCKED with the authored line, full PROMPT_VERBS set equality —
+  no other verb left), bare-vs-all output comparison on identical rebuilt
+  fixtures (sweep lines + summary byte-identical), kill-gate refusal,
+  empty-room warn, unchanged `loot all` and `loot <NPC>` forms, in-combat
+  refusal of bare loot, help row.
+- Full in-container suite (path form, docker exec): 441/441 passing
+  (430 before this brief, +11 new). The fn-10 prompt "What do you want to
+  loot?" is unreachable for loot: the only emitting site is the central
+  gate, which no longer contains loot; asserted in the bare tests.
+- Test-hygiene clause: brief-verified claim confirmed — no existing test
+  asserted the literal "What do you want to loot?"; no conversions needed.
+
+DEVIATIONS
+- None.
+
+MIGRATIONS / DATA
+- None (stated per brief §4). No PENDING DEPLOY-TIME ACTIONS.
+
+DEPLOY
+- make deploy-dev run from the worktree after implementation and
+  verification passed (build + migrate; no migrations to apply). Dev stack
+  runs the brief build; operator playtest checklist (brief §8) targets dev.
+
+COMMITS (branch version_24_5, all pushed)
+- cd62e2d  Step 0 closeout stub (work-has-started signal)
+- a6dba9a  version start: SHYLAND_VERSION 24.5-DEV + pin test
+- f5a4b57  implementation + tests (the arch-doc hash commit)
+- ce05c63  architecture doc: 24.5 stamp, hash -> f5a4b57, §4.14 updates
+- final commit hash: the commit adding this completed report (see git log).
+
+ISSUES
+- #189 closed (gated on verification passing), with implementation summary
+  comment. Founding and only ticket of Version 24.5 (scope law).
+
+ARCHITECTURE DOC
+- Shyland_Architecture_v24.md updated in place (gated last step): header
+  stamp 24.5, hash annotation moved to f5a4b57 (architectural point
+  release — the dispatch table's required-target set changed), v24.5
+  version block added, §4.14 chart paragraph (PROMPT_VERBS delta, fn 20)
+  and resolver paragraph (loot [all] | <NPC>) updated. Doc-wide grep found
+  no other bare-loot-prompts claims.
+
+OPERATOR PLAYTEST DISPOSITION
+- PENDING — recorded at session end via the implementation-session-end
+  ritual.
