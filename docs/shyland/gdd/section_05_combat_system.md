@@ -60,7 +60,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    identity. Vitality keeps its multiplicative scaling — pools are quantities, not
    contests. `scaling_factor` encodes the NPC's within-band level (1–10).
 
-2. Damage calculation (v24.6, pending implementation — the composite strike, #177:
+2. Damage calculation (v24.6 — the composite strike, #177:
    EVERY equipped, non-broken weapon contributes to one strike per round):
    primary weapon = the occupant of the highest-priority weapon slot, priority
                     MAIN_HAND → RANGED → OFF_HAND. Predictable and player-

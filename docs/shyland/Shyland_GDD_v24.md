@@ -4,7 +4,7 @@
 
 # Shyland — Game Design Document
 
-**Version 24.5 — Closed**
+**Version 24.6 — Closed**
 
 -----
 
@@ -82,6 +82,7 @@
 | **v24.3** | **Point release — Closed** | **RELEASE — the proportional regen law (#165).** One founding ticket, one brief, per the release scope law. Out-of-combat passive regen becomes **proportional to maximum** — the time leg of the healing-economy ledger (§6.15): a full refill from zero takes the constant's number of seconds at every level, forever. Vitality: `ceil(vitality_max / VITALITY_REGEN_SECS)` points per tick (constant 120 — zero-to-full in exactly 120 s, rate constant across the whole deficit, replacing the old deficit-proportional form); Longevity: the **interval form** — exactly one point on ticks where `tick_number % ceil(LONGEVITY_REGEN_SECS / longevity_max) == 0` (constant 3600 — about one hour from zero; a sub-constant bar makes the vitality-style per-tick ceil a flat 1 point/second, the ceil trap the interval form escapes). Combat/dying exclusions, regen silence (status push only, no output text), and the changed-fields push gate all unchanged. Runtime code only — Phase 4 of the tick engine plus the version constant; no models, no migrations, no seed data, no consumer changes. GDD §4.1/§4.3 markers swept at closeout (text landed with the design session, GDD-first law). 412/412 tests (+10, `tests/test_v243_regen.py`); live dev spot-check confirmed the law's arithmetic (5/tick at a 549 vitality bar; 1 point per ~9 s at a 423 longevity bar, clamped exactly at max). Architecture doc stamped 24.3 in place, hash moved to `e0c930f` (architectural point release — tick-engine behavior changed). No pending deploy-time actions. |
 | **v24.4** | **Point release — Closed** | **RELEASE — the `heal` command (#166).** One founding ticket, one brief, per the release scope law. The bare-verb front door over the v23.3 aggregate machinery (#151) — "use as many healing draughts as needed": the vitality deficit measured once, the minimum draughts that cover it consumed oldest-first regardless of Mk (#168, via the new `command_grammar.oldest_first` helper — the resolution machinery's own age key, never re-sorted), each item's heal computed from its own Mk under the Draught Law (§6.9); one merged count-form line, one status update. The qualifying pool is mechanical — the per-item aggregate test (extracted as `_item_aggregatable`), never a name match; gate order: the shared #61 at-full refusal (`_at_full_gate`) beats the empty-pool warn `You have no healing draughts.`; supply exhausted short of full reports in the warn voice (#132); while dying, exactly one restorative through the v19 revival path (the `cmd_use` per-item loop extracted as `_use_per_item`). Registered `('cmd_heal', False)` — arguments discarded, in `DYING_ALLOWED`, usable in combat, help row between `flee` and `home`; a **reserved built-in verb** the future alias system (#125) may never shadow. `cmd_heal` composes no sentences of its own. Runtime code only — `consumers.py` plus `command_grammar.oldest_first`; no models, no migrations, no seed data. GDD §6.12/§9.1 markers swept at closeout (text landed with the design session, GDD-first law). 430/430 tests (+18, `tests/test_v244_heal.py`, all six output-table rows pinned); operator playtest successful against the dev stack. Architecture doc stamped 24.4 in place, hash moved to `0dd36ca` (architectural point release — consumer code changed). No pending deploy-time actions. |
 | **v24.5** | **Point release — Closed** | **RELEASE — bare `loot` becomes the `all` sweep (#189).** One founding ticket, one brief, per the release scope law. The target becomes optional, defaulting to the kill-gated room sweep: `loot` leaves `PROMPT_VERBS` (the fn-10 required-target set; §9.1 fn 20), empty arguments take `cmd_loot`'s sweep branch, and every downstream behavior is inherited verbatim — the no-corpse warn, the `killed_by_id` kill gate, copper transfer on first loot, per-line sweep output plus summary, the corpse-noun and `N.<NPC>` single-corpse forms. `GRAMMAR_VERBS` and `COMBAT_BLOCKED` untouched — argument completion unchanged; bare loot in combat hits the authored refusal exactly as `loot all` does. Help row `loot [all] \| <NPC>`. The first and only verb whose bare form performs the `all` sweep — deliberately **not** a precedent for `sell` (#150 stands: loot is kill-gated and value-safe, sell is destructive of inventory). Runtime code only — `consumers.py`; no models, no migrations, no seed data. GDD §9.1 markers swept at closeout (text landed with the design session, GDD-first law). 441/441 tests (+11, `tests/test_v245_bare_loot.py`); operator playtest successful against the dev stack. Architecture doc stamped 24.5 in place, hash moved to `f5a4b57` (architectural point release — the dispatch table's required-target set changed). No pending deploy-time actions. |
+| **v24.6** | **Point release — Closed** | **RELEASE — the composite strike (#177 founding ticket, #178 dependency — the Ranged slot "at the ready").** One founding ticket, one brief, per the release scope law. Phase 2 (itemization) of the V24 new-zone-prep major opens: combat stops ignoring weapon slots — **every equipped, non-broken weapon contributes to one strike per round.** `composite_weapon_term(weapons, eff_str, eff_dex)` in `combat_utils.py`: per weapon, factor × (its own midpoint ± spread roll + its own governing EFFECTIVE stat — DEX if `is_ranged` else STR) × its own durability multiplier; the primary is the occupant of the first occupied slot in `PRIMARY_WEAPON_SLOT_PRIORITY` (`MAIN_HAND → RANGED → OFF_HAND`) at factor 1.0, every other weapon its `SECONDARY_WEAPON_SLOT_FACTOR` (OFF_HAND 0.5, RANGED 0.5; a slot in neither constant takes the 0.5 default, never a crash) — named tunable constants, the Phase 3 balance pass retunes by constants edit. The tick engine's player-attack path retires the `equipped_weapons[0]` accident: the composite term feeds the unchanged `calculate_damage` as `base_damage` (stat_bonus 0, durability_mod 1.0) so the acuity modifier and the graze/crit multiplier apply once, to the composite; one hit roll, one output line; armed-vs-unarmed branches on any-equipped-weapon with the unarmed branch byte-identical. Procs, lifesteal, gear crit (never slot-factored), the equip resolver, and NPC-side combat untouched. The Ranged slot ruled **"at the ready"** (#178): holstered/slung and ready, legal alongside anything including two-handers — equip behavior confirmed correct as built, no code change; participation in the composite is the ruling made real. Runtime code only — `combat_utils.py` + `run_tick_engine.py`; no models, no migrations, no seed data. GDD §3.6/§5.4/§6.4 markers swept at closeout (text landed with the design session, GDD-first law). 455/455 tests (+14, `tests/test_v24_6_brief1.py`); operator playtest successful against the dev stack (playtest yield, all display/UX: #194 filed — handed-ness invisible in item display, #195 filed — bare `equip` paper-doll via shared `inv` composition, #176 gained live evidence). Architecture doc stamped 24.6 in place, hash moved to `e798d78` (architectural point release — the player-attack weapon-selection path changed). No pending deploy-time actions. |
 
 -----
 
@@ -897,6 +898,8 @@ Genre mixing in equipment is explicitly supported. A character can carry a plasm
 
 **Handedness.** Weapons are one-handed or two-handed (`ItemDefinition.is_two_handed`). A two-handed item occupies the character's hands regardless of which slot it sits in — a two-handed bow in RANGED still claims both hands. **All bows are two-handed for now.**
 
+**The Ranged slot is "at the ready" (v24.6 — #178).** A ranged weapon in RANGED is holstered/slung and ready. Equipping into RANGED is legal alongside anything, including two-handed weapons — the hand-claiming rule never touches the RANGED slot itself, so a Battle Axe plus a Pulse Pistol is a coherent loadout, not a conflict (behavior confirmed correct as built). In combat, the ranged weapon fires every round as part of the composite strike (Section 5.4): the 3-second round is abstract enough for a shot woven between swings. A two-handed ranged weapon still claims both hands per the handedness rule above.
+
 **Equip exchange rule (general, all slots).** When equipping an item, count the currently equipped items that must come off to make room:
 
 - **Zero** — the item equips into a free valid slot.
@@ -1095,16 +1098,28 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    identity. Vitality keeps its multiplicative scaling — pools are quantities, not
    contests. `scaling_factor` encodes the NPC's within-band level (1–10).
 
-2. Damage calculation:
-   base_damage    = weapon damage roll (random within midpoint ± spread)
-                    If no weapon is equipped, base_damage = 0 (only stat_bonus applies)
-   stat_bonus     = relevant EFFECTIVE stat value (STR melee / DEX ranged / INT spells)
+2. Damage calculation (v24.6 — the composite strike, #177:
+   EVERY equipped, non-broken weapon contributes to one strike per round):
+   primary weapon = the occupant of the highest-priority weapon slot, priority
+                    MAIN_HAND → RANGED → OFF_HAND. Predictable and player-
+                    controllable; a bow-only or off-hand-only loadout fights at
+                    full strength. (This also retires the old equipped_weapons[0]
+                    accident — which weapon attacked used to fall out of queryset
+                    ordering.)
+   per equipped, non-broken weapon w:
+     damage_roll_w = weapon damage roll (random within w's midpoint ± spread)
+     stat_w        = w's own governing EFFECTIVE stat (STR melee / DEX ranged;
+                     INT spells remains the design target when spells ship)
+     dur_w         = performance multiplier from w's durability table
+     factor_w      = 1.0 for the primary; the slot factor otherwise —
+                     OFF_HAND 0.5, RANGED 0.5 (first-pass values; the Phase 3
+                     balance pass retunes them)
    acuity_mod     = band-relative deviation modifier (Section 4.2): 1.0 inside the
                     Origin band; 1.0 + distance above band_high (focus target only);
-                    1.0 − distance below band_low (all targets).
-   durability_mod = performance multiplier from weapon's durability table (1.0 = no penalty;
-                    1.0 if no weapon equipped)
-   raw_damage     = (base_damage + stat_bonus) × acuity_mod × durability_mod
+                    1.0 − distance below band_low (all targets). Applied once, to
+                    the composite.
+   raw_damage     = ( Σ_w factor_w × (damage_roll_w + stat_w) × dur_w ) × acuity_mod
+   Unarmed (no weapon equipped): unchanged — see the unarmed paragraph below.
 
 3. Hit multiplier applied:
    final_damage = raw_damage × hit_multiplier (0.5 graze / 1.0 hit / 1.5 critical), minimum 1
@@ -1391,6 +1406,8 @@ Weapon damage is stored as a midpoint and a spread:
 - **Spread** — a fixed width defining the range of the damage die. This is an identity property of the weapon type, not affected by rarity. A high-variance weapon (greatsword, shotgun) has a wide spread; a low-variance weapon (rapier, laser pistol) has a narrow one.
 
 Every attack rolls within `midpoint ± spread`. Rarity makes weapons hit harder on average; spread defines how swingy they are regardless of rarity.
+
+Under the composite strike (v24.6 — Section 5.4, #177), every equipped, non-broken weapon rolls its own midpoint ± spread each round: the primary weapon contributes at full weight, every other weapon at its slot factor.
 
 ### 6.5 Durability
 

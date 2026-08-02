@@ -151,7 +151,7 @@ Weapon damage is stored as a midpoint and a spread:
 
 Every attack rolls within `midpoint ± spread`. Rarity makes weapons hit harder on average; spread defines how swingy they are regardless of rarity.
 
-Under the composite strike (v24.6, pending implementation — Section 5.4, #177), every equipped, non-broken weapon rolls its own midpoint ± spread each round: the primary weapon contributes at full weight, every other weapon at its slot factor.
+Under the composite strike (v24.6 — Section 5.4, #177), every equipped, non-broken weapon rolls its own midpoint ± spread each round: the primary weapon contributes at full weight, every other weapon at its slot factor.
 
 ### 6.5 Durability
 
