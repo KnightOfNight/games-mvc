@@ -1142,7 +1142,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    types are not modeled in v22; proc names are flavor)
 ```
 
-**Unarmed combat:** A character with no weapon equipped can still attack. `base_damage` is 0 — there is no weapon damage roll — but `stat_bonus` and `acuity_mod` still apply, making unarmed attacks weaker but functional. This is intentional design, not a fallback. Attack flavor text for unarmed combat is drawn from the attacker's `UnarmedMessagePool` (configured on the `Archetype` model, falling back to the default pool). NPCs without a weapon also resolve unarmed attacks the same way, drawing from their `NpcDefinition.unarmed_message_pool`.
+**Unarmed combat:** A character with no weapon equipped can still attack. `base_damage` is a small flat roll — uniform between 1 and 3, no weapon involved — and `stat_bonus` and `acuity_mod` still apply, making unarmed attacks weaker but functional. This is intentional design, not a fallback. Attack flavor text for unarmed combat is drawn from the attacker's `UnarmedMessagePool` (configured on the `Archetype` model, falling back to the default pool). NPCs without a weapon also resolve unarmed attacks the same way, drawing from their `NpcDefinition.unarmed_message_pool`.
 
 All numbers are visible in the combat log. Verbose mode exposes the full calculation chain.
 
