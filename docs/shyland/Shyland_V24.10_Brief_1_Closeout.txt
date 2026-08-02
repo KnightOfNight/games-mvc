@@ -1,3 +1,118 @@
 Session start: 2026-08-02 — Brief: Shyland_V24.10_Brief_1_Proc_Floor.md — Branch: version_24_10
 
-[STUB — implementation session in progress; completed in place at session end]
+V24.10 BRIEF 1 CLOSEOUT REPORT — The Proc Floor (#127)
+=======================================================
+
+SUMMARY
+-------
+Floored proc composition implemented per the brief's binding design rules (verified
+against rulings (a)-(j) on #127 and GDD 239159a). The floor is authored, deterministic,
+rarity-blind: X = floor_base + (floor_factor × mk_tier), snapshotted as an int 'floor'
+key on the instance's rolled primary entry at drop time. Proc success on a floored
+entry pays randint(X, X + ceil(V)); unfloored entries keep the shipped
+randint(1, ceil(V)) expression byte-identical (two paths, selected by key presence).
+Proc chance is untouched — min(0.50, V × 0.05), reads V only, both paths.
+flame_factor joined PROC_FACTOR_STATS as its fourth member (flavor name only).
+Examine renders the promise parenthetical "(between X and Y damage)" on floored
+entries only, via the new shared list-blind helper SkylandConsumer._item_stat_line.
+
+COMMITS (all pushed to origin/version_24_10)
+--------------------------------------------
+0afc0f1  Step 0: closeout report stub (work-has-started signal)
+3493221  Version start: SHYLAND_VERSION 24.9 -> 24.10-DEV (pin test same commit),
+         followed by the version-start make deploy-dev
+657d97a  Code: item_utils.py floor snapshot; combat_utils.py flame_factor +
+         floored payout path; consumers.py _item_stat_line + examine wiring
+30781ba  Seed: Flame Projector + Dart Caster; floor_invariant_violations checker
+         wired into _verify (fails reseed by name)
+81d0430  Tests: tests/test_v24_10_brief1.py (20 tests, 6 brief areas)
+ea90ac9  Architecture doc: stamp 24.10, hash moved to 81d0430 (architectural change)
+
+FINAL IMPLEMENTATION COMMIT HASH: ea90ac9
+(this closeout report's own commit follows it on the branch)
+
+NO-MIGRATION STATEMENT
+----------------------
+No model class changes were made and no migration was created. The floor pair
+(floor_base/floor_factor on definition stat specs) and the snapshot (floor on
+instance rolled entries) are optional JSON keys on the existing JSONFields
+(ItemDefinition.primary_stats / ItemInstance.rolled_primary_stats), exactly as
+the brief specified (§3.1).
+
+VERIFICATION
+------------
+- Full in-container suite, path form (docker exec django python manage.py test
+  apps/shyland/tests): 506 tests, OK (was 486 entering the brief; +20 new).
+  No existing test tripped — zero test-hygiene (pool-conversion) deviations.
+- §4.1 floor math: floor == floor_base + floor_factor × mk_tier, int, identical
+  across all five rarities at fixed Mk (Mk 1/2/5); V still varies with rarity
+  spread; unfloored entries carry no floor key; generation ignores floor keys
+  on secondary entries. PASS.
+- §4.2 combat range: floored success asserted called with randint(12, 17) for
+  V=4.2/X=12 (the ruled example); unfloored asserted randint(1, ceil(V))
+  untouched; seeded repeated-draw bounds check [5,7] inclusive, both ends
+  reached; chance-cap behavior identical with and without floor. PASS.
+- §4.3 byte-identity: unfloored stat lines byte-identical (unit-asserted, plus
+  the untouched 486 pre-existing tests all green). PASS.
+- §4.4 examine parenthetical: "  Flame Factor: 4.2 (between 12 and 17 damage)"
+  exact; exactly one parenthetical in the full examine render; secondaries
+  never carry it. PASS.
+- §4.5 seed: both definitions field-for-field per the brief table (table
+  authoritative); floored-definition set is exactly {dart-caster,
+  flame-projector}; reseed adds and deletes nothing; checker unit-rejects a
+  corrupted spec (floor on secondary; floor on non-proc primary). PASS.
+- §4.6 PROC_FACTOR_STATS == ('bleed_factor', 'stun_factor', 'poison_factor',
+  'flame_factor') exactly. PASS.
+- §5.6 dev deploy + data action, code first data second: make deploy-dev, then
+  make seed against the dev stack. All seed verification checks passed
+  including the new "Proc floors sit only on primary proc-family stats
+  (found 0 violations)". §4.5 DB assertions re-verified against the live dev
+  DB in-container (definitions match the table; floored set exactly the two;
+  proc family the four; 54 ItemDefinitions). PASS.
+
+DELETION COUNT: actual 0 vs expected 0 (additive-only seed; reconciliation
+report shows "no differences" across all 20 seed-owned models on re-run).
+
+ISSUES
+------
+- #127 closed 2026-08-02, gated on all verification above passing (closing
+  comment records the implementation summary).
+- #201 filed (mid-build discovery, thin): Flame Projector / Dart Caster ship at
+  the model-default base_value 1 — the brief table and the #127 rulings are
+  silent on pricing, and authoring values is a design (balance) decision this
+  session may not make. Labeled V24, assigned. Needs a design ruling.
+
+DEVIATIONS
+----------
+1. Commit order: the ritual's Step 0 stub push (0afc0f1) preceded the brief §1
+   "first commit" version-constant bump (3493221). The instructions' Step 0
+   defines the work-has-started signal as coming first; report-and-accept,
+   no material effect.
+2. Brief §4.5's "definitions count grows by exactly 2" is encoded as stable
+   invariants per the verification-arithmetic doctrine (invariants, not
+   absolute counts): the set of floor-carrying definitions is exactly the
+   brief's two additions, and a reseed adds and deletes nothing.
+3. combat_utils.roll_gear_bonus_damage now iterates the raw rolled-entry dicts
+   directly (mirroring _iter_rolled_entries' guards) instead of the
+   (stat, value) tuple iterator, because the payout path needs the floor key.
+   _iter_rolled_entries itself is untouched and keeps its three other callers.
+   The unfloored randint(1, ceil(V)) expression is byte-identical as required.
+4. No base_value authored for the two new weapons (see #201 above) — the brief
+   table is authoritative and lists none; they ship at the model default (1).
+
+TEST-HYGIENE DEVIATIONS: none (no literal-pinning test tripped; no pool
+conversions performed).
+
+PENDING DEPLOY-TIME ACTIONS (for the closeout tail)
+---------------------------------------------------
+- Production seed (make seed-prod, bare, on its own operator confirmation, in
+  the closeout tail's deploy window): materializes Flame Projector and Dart
+  Caster definitions in production. Expected deletion count: 0. Dev-side
+  execution of the same action completed in-session (§5.6, 2026-08-02). This
+  block stays open until the production execution at release deploy.
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+PENDING — awaiting operator playtest against the dev stack (checklist in brief
+§7). This line is completed in place before session end; the session cannot
+end without an explicit disposition (#170).
