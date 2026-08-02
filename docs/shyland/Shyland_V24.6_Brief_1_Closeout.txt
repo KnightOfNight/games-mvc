@@ -72,5 +72,11 @@ Issues
 
 Operator playtest disposition
 -----------------------------
-OPEN — awaiting the operator's disposition (recorded here before the session
-ends; the implementation-session-end ritual gates on this line).
+Operator reports playtest successful ("playtest fully confirmed", 2026-08-02,
+dev stack). Playtest findings recorded during the session, all display/UX —
+no bugs against the brief's spec, no rule changes: #176 gained live playtest
+evidence (paper-doll consumed hands), #194 filed (weapon handed-ness invisible
+in item display), #195 filed (bare `equip` should show equipment via shared
+`inv` composition; V24 label, untriaged by direction). Test weapons for the
+checklist (rare Mk 1 Pulse Pistol #771, rare Mk 1 Battle Axe #839) were
+generated on dev for character Harley Stone via generate_item_instance.
