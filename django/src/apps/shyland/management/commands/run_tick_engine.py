@@ -398,9 +398,9 @@ class Command(BaseCommand):
                     get_npc_health_description, apply_npc_effects, xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
                     npc_display, npc_display_name, roll_gear_bonus_damage,
-                    summed_gear_stat, total_armor_value,
+                    summed_gear_stat, total_armor_value, composite_weapon_term,
                 )
-                from apps.shyland.item_utils import get_durability_penalty, create_corpse
+                from apps.shyland.item_utils import create_corpse
 
                 _now = _tz.now()
                 messages = []
@@ -445,7 +445,6 @@ class Command(BaseCommand):
                             i for i in equipped_all
                             if i.definition.item_type == 'weapon' and not i.is_broken
                         ]
-                        weapon_item = equipped_weapons[0] if equipped_weapons else None
 
                         npc_stats = get_npc_stats(npc)
                         # v22 B5 (#100): effective DEX to hit; gear
@@ -461,15 +460,16 @@ class Command(BaseCommand):
                             messages.append((character.pk, f"You miss {display}.", 'combat-miss-out', None))
                             continue
 
-                        if weapon_item:
-                            defn = weapon_item.definition
-                            spread = weapon_item.damage_spread or 0
-                            base_damage = _random.uniform(
-                                weapon_item.damage_midpoint - spread,
-                                weapon_item.damage_midpoint + spread,
-                            )
-                            stat_bonus = eff['str'] if not defn.is_ranged else eff['dex']
-                            dur_mod = 1.0 - get_durability_penalty(weapon_item)
+                        if equipped_weapons:
+                            # v24.6 (#177/#178): the composite strike —
+                            # every equipped, non-broken weapon contributes
+                            # per its slot factor. Per-weapon stat and
+                            # durability live inside the term; acuity and
+                            # the hit multiplier apply once, downstream.
+                            base_damage = composite_weapon_term(
+                                equipped_weapons, eff['str'], eff['dex'])
+                            stat_bonus = 0
+                            dur_mod = 1.0
                         else:
                             base_damage = _random.uniform(1, 3)
                             stat_bonus = eff['str']
@@ -511,7 +511,7 @@ class Command(BaseCommand):
                         # parens, total dealt = base + bonus.
                         dmg_txt = (f"{damage_int} (+{gear_bonus})"
                                    if gear_bonus > 0 else f"{damage_int}")
-                        if weapon_item:
+                        if equipped_weapons:
                             if hit_result == 'critical':
                                 flavor = f"You land a critical hit on {display}"
                             else:
