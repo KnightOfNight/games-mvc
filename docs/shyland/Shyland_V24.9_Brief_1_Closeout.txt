@@ -107,5 +107,5 @@ follows and is the branch tip at session end.)
 
 --- Operator playtest disposition ---
 
-OPEN — awaiting operator disposition (checklist in the brief's §9, dev stack
-deployed and seeded, ready for playtest).
+Operator reports playtest successful (2026-08-02, in-conversation, against the
+dev stack per the brief's §9 checklist). Terminal disposition.
