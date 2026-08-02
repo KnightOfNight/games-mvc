@@ -125,6 +125,8 @@ Verification section (brief §3): all five items pass —
 Operator playtest disposition (#170)
 --------------------------------------------------------------------------------
 
-PENDING — awaiting the operator's playtest against the dev stack (brief §4
-checklist). This line is updated verbatim-style when the operator gives
-the disposition; the session cannot end without it.
+Operator reports playtest successful (2026-08-01, in-conversation:
+"playtest confirmed") — terminal disposition. Playtest ran against the
+dev stack per the brief §4 checklist; one in-session dev-data assist was
+provided for it (Harley Stone's draughts reduced 34 -> 1 by ORM delete,
+dev DB only, no repo change).
