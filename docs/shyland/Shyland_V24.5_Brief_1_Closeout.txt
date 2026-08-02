@@ -54,7 +54,9 @@ COMMITS (branch version_24_5, all pushed)
 - a6dba9a  version start: SHYLAND_VERSION 24.5-DEV + pin test
 - f5a4b57  implementation + tests (the arch-doc hash commit)
 - ce05c63  architecture doc: 24.5 stamp, hash -> f5a4b57, §4.14 updates
-- final commit hash: the commit adding this completed report (see git log).
+- 1b36b0d  closeout report completed in place
+- final commit hash: the commit recording the playtest disposition below,
+  at the branch tip immediately after 1b36b0d.
 
 ISSUES
 - #189 closed (gated on verification passing), with implementation summary
@@ -69,5 +71,8 @@ ARCHITECTURE DOC
   no other bare-loot-prompts claims.
 
 OPERATOR PLAYTEST DISPOSITION
-- PENDING — recorded at session end via the implementation-session-end
-  ritual.
+- Operator reports playtest successful (2026-08-02, in-conversation,
+  recorded via the implementation-session-end ritual). TERMINAL.
+
+Session end 2026-08-02 — brief complete, no deviations, 441/441, dev stack
+running the brief build.
