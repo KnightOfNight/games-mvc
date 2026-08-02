@@ -1,1 +1,103 @@
 Session start 2026-08-02 — Shyland V24.8 Brief 1 (Dual_Slot_Cell) — branch version_24_8 — implementation session begun.
+
+================================================================
+Shyland V24.8 Brief 1 — Dual-Slot Cell — Closeout Report
+================================================================
+Date: 2026-08-02
+Brief: docs/shyland/Shyland_V24.8_Brief_1_Dual_Slot_Cell.md (committed 42018d2)
+Branch: version_24_8
+Founding ticket: #197 (no dependencies) — CLOSED, gated on verification passing
+Session type: implementation
+
+--- Pre-flight ---
+check_docker_host.py: exit 0, target local dev, posture OK (.env == .env.dev),
+daemon lima-rancher-desktop. Worktree ../games-mvc-version_24_8 clean and synced
+with origin at session start. Brief verified verbatim at branch tip (no drift).
+No PENDING DEPLOY-TIME ACTIONS carried from prior V24.8 briefs (this is the
+release's first and only brief; the brief itself declares none).
+
+--- Step 0 ---
+Closeout stub committed and pushed: 45a0a14.
+
+--- Version constant (opening act, first brief of the release) ---
+SHYLAND_VERSION "24.7" -> "24.8-DEV" in django/src/apps/shyland/version.py;
+pin test moved in the same commit (test_b2_amendment1.py:118 -> '24.8-DEV').
+Commit b5db5bc, pushed. Version-start make deploy-dev run from the worktree:
+completed, no migrations to apply.
+
+--- Implementation ---
+django/src/apps/shyland/consumers.py, _slot_cell (~line 903), exactly as ruled
+(#197 / GDD §6.11): all valid slots render, joined with '/', each through
+format_slot_name, in authored valid_slots order; the two-handed word appends
+once, after the full joined label; the slotless branch ([('-', 'muted')])
+untouched. Docstring records the v24.8 (#197) rule alongside the v22 (#123)
+and v24.7 (#194) history. No other call sites changed — both callers
+(cmd_inventory's inventory table, cmd_list's entry_row) inherit.
+
+Display composition only. Zero mechanics changes. Runtime code only —
+consumers.py. No models, no migrations, no seed data.
+
+Implementation commit: cda352a, pushed.
+
+--- Verification ---
+New test file django/src/apps/shyland/tests/test_v24_8_brief1.py covering the
+brief's items 1-5:
+  1. Dual-slot in inv: Combat Knife (unequipped, definition mirroring seed's
+     ['MAIN_HAND', 'OFF_HAND']) -> Slot cell 'Main hand/Off hand'.
+  2. Dual-slot in vendor list: same definition via VendorEntry -> 'Main
+     hand/Off hand'.
+  3. Single-slot unchanged: one-hander 'Main hand'; RANGED two-hander
+     'Ranged (two-handed)'.
+  4. Slotless unchanged: material renders the muted '-' cell.
+  5. Synthetic dual-slot two-hander (test-constructed only, NOT added to
+     seed): 'Main hand/Off hand (two-handed)'. Plus an authored-order test
+     (['OFF_HAND', 'MAIN_HAND'] -> 'Off hand/Main hand').
+  6. Version pin: '24.8-DEV' asserted in test_b2_amendment1.py (moved by the
+     opening act).
+
+Full suite in-container (docker exec game-mvc-django python manage.py test
+apps/shyland/tests): 477/477 OK (473 -> 477, the four new test methods).
+
+Test hygiene: no existing test literal-pinned a Combat Knife Slot cell as
+'Main hand' (checked: the only Combat Knife reference in tests is a comment in
+test_output_color_pass.py; SlotCellTests in test_v24_7_brief1.py pins
+single-slot definitions only, all still byte-identical). No conversions
+needed — no deviation.
+
+--- Deploy ---
+make deploy-dev from the worktree after implementation and verification
+passed: completed, "No migrations to apply" (none permitted — no model
+changes). No PENDING DEPLOY-TIME ACTIONS — no seed changes, no data actions.
+
+--- Architecture doc (last, gated — gate satisfied) ---
+docs/shyland/Shyland_Architecture_v24.md updated in place (commit 35c3800):
+  - §4.3 handed-ness disclosure paragraph: the _slot_cell sentence updated to
+    the ruled composition (all slots joined with '/'; two-handed word once,
+    after the full joined label).
+  - Header: stamp -> 24.8; hash -> cda352a (architectural point release —
+    display composition changed; the v24.7 precedent); v24.8 clause prepended
+    to the as-of-commit parenthetical.
+  - Version 24.8 block added to the header's version history, v24.7 pattern.
+
+--- Issues ---
+#197 closed (completed) with implementation comment, gated on the 477/477
+suite pass: https://github.com/KnightOfNight/games-mvc/issues/197
+
+--- Deviations ---
+None. The brief was implemented exactly as written; no test-hygiene
+conversions were required.
+
+--- Commits (this session, in order) ---
+  45a0a14  Step 0 closeout stub
+  b5db5bc  SHYLAND_VERSION 24.7 -> 24.8-DEV + pin test
+  cda352a  _slot_cell dual-slot composition + tests (477/477)
+  35c3800  architecture doc (§4.3, stamp 24.8, hash cda352a)
+Final commit hash: recorded below with the playtest disposition.
+
+--- Operator playtest disposition ---
+OPEN — awaiting the operator's in-conversation disposition (recorded here
+verbatim-style when given; the implementation-session-end ritual gates on it).
+
+Final commit hash: recorded alongside the disposition when the report is
+finalized.
+================================================================
