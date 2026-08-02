@@ -55,6 +55,31 @@ ARMOR_DUR = [
     {'min': 0,  'max': 0,   'penalty': 1.0},
 ]
 
+
+def floor_invariant_violations(definitions):
+    """v24.10 (#127): the primary-only proc-floor invariant. The authored
+    floor pair (floor_base/floor_factor) is legal only on a primary-stat
+    entry whose stat is in the proc family; any floor key on a
+    secondary-pool entry, or on a non-proc primary stat, is a seed defect.
+    definitions is an iterable of (slug, primary_stats,
+    secondary_stat_pool) triples; returns violation descriptions
+    (empty = invariant holds)."""
+    from apps.shyland.combat_utils import PROC_FACTOR_STATS
+    violations = []
+    for slug, primary, secondary in definitions:
+        for entry in secondary or []:
+            if 'floor_base' in entry or 'floor_factor' in entry:
+                violations.append(
+                    f"{slug}: secondary-pool entry "
+                    f"'{entry.get('stat')}' carries a floor key")
+        for entry in primary or []:
+            if (('floor_base' in entry or 'floor_factor' in entry)
+                    and entry.get('stat') not in PROC_FACTOR_STATS):
+                violations.append(
+                    f"{slug}: floor pair on non-proc primary stat "
+                    f"'{entry.get('stat')}'")
+    return violations
+
 KEEP_OFF_GRASS = 'The park lawn stretches away. A small sign reads: Please keep off the grass.'
 
 DIRECTIONS = ('north', 'south', 'east', 'west', 'up', 'down')
@@ -2834,6 +2859,21 @@ class Command(BaseCommand):
             not colliding,
         )
 
+        # v24.10 (#127): law — proc floors are authorable only on
+        # primary-stat entries in the proc family. A floor key on any
+        # secondary-pool entry, or on a non-proc primary stat, fails the
+        # seed by name.
+        floor_violations = floor_invariant_violations(
+            ItemDefinition.objects.values_list(
+                'slug', 'primary_stats', 'secondary_stat_pool'))
+        for line in floor_violations:
+            self.stdout.write(self.style.ERROR(f'    proc floor: {line}'))
+        self._check(
+            f'Proc floors sit only on primary proc-family stats '
+            f'(found {len(floor_violations)} violations)',
+            not floor_violations,
+        )
+
         self._verify_verdant()
         self._verify_dialogue()
         self._verify_map_geometry()
@@ -3854,6 +3894,67 @@ class Command(BaseCommand):
                     {'stat': 'bleed_factor', 'base': 0.5, 'factor': 0.2},
                 ],
                 'description': 'A shortbow of laminated yew. Quiet, patient, accurate.',
+            },
+            # v24.10 (#127): the proc-floor pair — weapons whose identity IS
+            # the proc. The floored primary carries the authored promise
+            # (floor_base/floor_factor → drop-time X); the hot V curve
+            # (2.0/1.0) is deliberate and on record on #127 — the 0.5/0.2
+            # guideline governs rider procs, not identity procs.
+            {
+                'slug': 'flame-projector',
+                'name': 'Flame Projector',
+                'item_type': 'weapon',
+                'genre_tag': 'wasteland',
+                'valid_slots': ['RANGED'],
+                'is_two_handed': True,
+                'scaling_base': 5.0,
+                'scaling_factor': 2.0,
+                'damage_spread': 3.0,
+                'is_ranged': True,
+                'takes_durability_loss': True,
+                'durability_table': RANGED_DUR,
+                'primary_stats': [
+                    {'stat': 'per', 'base': 2.0, 'factor': 0.8},
+                    {'stat': 'flame_factor', 'base': 2.0, 'factor': 1.0,
+                     'floor_base': 8.0, 'floor_factor': 4.0},
+                ],
+                'secondary_stat_pool': [
+                    {'stat': 'per', 'base': 1.0, 'factor': 0.4},
+                    {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
+                ],
+                'description': (
+                    'A salvaged fuel tank, a hand pump, and a nozzle black '
+                    'with scorch. It coughs once when primed — then the air '
+                    'in front of it catches fire.'
+                ),
+            },
+            {
+                'slug': 'dart-caster',
+                'name': 'Dart Caster',
+                'item_type': 'weapon',
+                'genre_tag': 'fantasy',
+                'valid_slots': ['RANGED', 'MAIN_HAND'],
+                'is_two_handed': False,
+                'scaling_base': 4.0,
+                'scaling_factor': 1.8,
+                'damage_spread': 2.0,
+                'is_ranged': True,
+                'takes_durability_loss': True,
+                'durability_table': RANGED_DUR,
+                'primary_stats': [
+                    {'stat': 'dex', 'base': 2.0, 'factor': 0.8},
+                    {'stat': 'poison_factor', 'base': 2.0, 'factor': 1.0,
+                     'floor_base': 5.0, 'floor_factor': 3.0},
+                ],
+                'secondary_stat_pool': [
+                    {'stat': 'dex', 'base': 1.0, 'factor': 0.4},
+                    {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
+                ],
+                'description': (
+                    "A hunter's blowpipe of polished reedwood, darts nested "
+                    'in a wrist quiver. Quiet as a held breath, and the '
+                    'sting outlasts the sound.'
+                ),
             },
             # Armor
             {

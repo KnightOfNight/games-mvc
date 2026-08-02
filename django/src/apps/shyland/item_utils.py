@@ -98,10 +98,18 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
     Artifact instances must not be passed through this function — create them manually.
     Pass gift=True when an admin is deliberately giving an item — soulbinds immediately.
     """
-    rolled_primary = [
-        {'stat': s['stat'], 'value': _roll_stat(s['base'], s['factor'], mk_tier, rarity)}
-        for s in definition.primary_stats
-    ]
+    # v24.10 (#127): the proc floor — a primary entry carrying the authored
+    # floor_base/floor_factor pair snapshots X = floor_base + floor_factor ×
+    # mk_tier onto the instance as 'floor'. Deterministic and rarity-blind:
+    # rarity buys ceiling (the rolled V), never floor. Secondary-pool entries
+    # never receive floors (seed invariant); generation ignores floor keys
+    # there rather than silently honoring a defect.
+    rolled_primary = []
+    for s in definition.primary_stats:
+        entry = {'stat': s['stat'], 'value': _roll_stat(s['base'], s['factor'], mk_tier, rarity)}
+        if 'floor_base' in s and 'floor_factor' in s:
+            entry['floor'] = int(s['floor_base'] + (s['floor_factor'] * mk_tier))
+        rolled_primary.append(entry)
 
     pool = definition.secondary_stat_pool
     slots = RARITY_SECONDARY_SLOTS.get(rarity, 0)

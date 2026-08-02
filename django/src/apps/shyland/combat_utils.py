@@ -18,7 +18,7 @@ ARMOR_MITIGATION_K = 48    # mitigation fraction = TAV / (TAV + K)
 # chance = V × PROC_CHANCE_PER_POINT (capped), size = randint(1, ceil(V)).
 PROC_CHANCE_PER_POINT = 0.05
 PROC_CHANCE_CAP = 0.50
-PROC_FACTOR_STATS = ('bleed_factor', 'stun_factor', 'poison_factor')
+PROC_FACTOR_STATS = ('bleed_factor', 'stun_factor', 'poison_factor', 'flame_factor')
 
 PRIMARY_STAT_KEYS = ('str', 'dex', 'end', 'int', 'wis', 'per')
 
@@ -181,16 +181,30 @@ def roll_gear_bonus_damage(equipped_items):
     """v22 B5 (#68/#100): the gear-bonus damage pool for one landed player
     hit (hit or critical — never graze/miss). Each equipped item rolls each
     of its proc-factor stats independently: chance = V × PROC_CHANCE_PER_POINT
-    capped at PROC_CHANCE_CAP; success adds randint(1, ceil(V)). Flat
+    capped at PROC_CHANCE_CAP; success adds randint(1, ceil(V)) — or
+    randint(X, X+ceil(V)) when the entry carries a drop-time floor X
+    (v24.10, #127). Flat
     electric_damage_bonus values join the pool on every landed hit. The
     caller renders a nonzero pool as the hit line's parenthetical."""
     pool = 0.0
     for item in equipped_items:
-        for stat, value in _iter_rolled_entries(item):
+        for entry in (item.rolled_primary_stats or []) + (item.rolled_secondary_stats or []):
+            stat = entry.get('stat')
+            value = entry.get('value')
+            if stat is None or value is None:
+                continue
             if stat in PROC_FACTOR_STATS:
                 if value > 0 and random.random() < min(
                         PROC_CHANCE_CAP, value * PROC_CHANCE_PER_POINT):
-                    pool += random.randint(1, math.ceil(value))
+                    # v24.10 (#127): the proc floor — an entry carrying the
+                    # drop-time 'floor' snapshot X pays randint(X, X+⌈V⌉);
+                    # chance is untouched (V only). Key absence keeps the
+                    # shipped 1..⌈V⌉ path byte-identical.
+                    floor = entry.get('floor')
+                    if floor is not None:
+                        pool += random.randint(floor, floor + math.ceil(value))
+                    else:
+                        pool += random.randint(1, math.ceil(value))
             elif stat == 'electric_damage_bonus':
                 pool += value
     return int(round(pool))

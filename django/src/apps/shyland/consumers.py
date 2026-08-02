@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import random
 import re
 import uuid
@@ -1701,6 +1702,20 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
         await self.output('You have no healing draughts.', 'warn')
 
+    @staticmethod
+    def _item_stat_line(entry):
+        """v24.10 (#127): one renderer for a rolled stat entry, whichever
+        list it lives in. Floored proc entries append the promise
+        parenthetical — (between X and Y damage), Y = X + ⌈V⌉ from the
+        drop-time snapshot; entries without a floor render byte-identical
+        to before (secondaries never carry one, by seed invariant)."""
+        label = STAT_LABELS.get(entry['stat'], entry['stat'].replace('_', ' ').title())
+        line = f'  {label}: {entry["value"]}'
+        if 'floor' in entry:
+            x = entry['floor']
+            line += f' (between {x} and {x + math.ceil(entry["value"])} damage)'
+        return line
+
     def _format_identified_item_lines(self, item):
         defn = item.definition
         lines = []
@@ -1752,15 +1767,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if item.rolled_primary_stats:
             lines.append('')
             for entry in item.rolled_primary_stats:
-                label = STAT_LABELS.get(entry['stat'], entry['stat'].replace('_', ' ').title())
-                lines.append(f'  {label}: {entry["value"]}')
+                lines.append(self._item_stat_line(entry))
 
         if item.rolled_secondary_stats:
             if not item.rolled_primary_stats:
                 lines.append('')
             for entry in item.rolled_secondary_stats:
-                label = STAT_LABELS.get(entry['stat'], entry['stat'].replace('_', ' ').title())
-                lines.append(f'  {label}: {entry["value"]}')
+                lines.append(self._item_stat_line(entry))
 
         if item.is_equipped:
             lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
