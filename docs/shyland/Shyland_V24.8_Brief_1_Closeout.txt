@@ -95,9 +95,10 @@ conversions were required.
 Final commit hash: recorded below with the playtest disposition.
 
 --- Operator playtest disposition ---
-OPEN — awaiting the operator's in-conversation disposition (recorded here
-verbatim-style when given; the implementation-session-end ritual gates on it).
+Operator reports playtest successful (2026-08-02, in-conversation: "playtest
+confirmed" — brief §6 checklist against the dev stack). TERMINAL.
 
-Final commit hash: recorded alongside the disposition when the report is
-finalized.
+Final commit hash: 49e0672 (branch tip at report completion; implementation
+commit cda352a, architecture doc 35c3800). This disposition record and the
+end ritual's issues report follow it as the session's closing commits.
 ================================================================
