@@ -137,3 +137,27 @@ observed on the territorial brown bear with the 50% hide side-roll landing —
 verified on spec against the brief's §4a table).
 
 Session end 2026-08-01 — brief complete, all work pushed on version_24_2.
+
+ADDENDUM 2026-08-01 (ops session, post-closeout): PRODUCTION EXECUTION — BLOCK CLOSED
+-------------------------------------------------------------------------------------
+The pending deploy-time action (make seed on production) was executed MANUALLY BY
+THE OPERATOR during the V24.2 closeout tail window, after the closeout session was
+unable to run it (posture-guard box: the prod deploy target restores dev resting
+posture before exiting, and no sanctioned self-contained prod-seed path exists —
+the session correctly refused to flip posture itself; permission layers denied the
+alternatives even with in-conversation confirmation).
+
+Operator execution record (terminal transcript reviewed by this ops session):
+- Invocation: DOCKER_HOST=<prod daemon> make seed, from the main checkout at 18:44,
+  with crosscheck-env reporting "PRODUCTION posture OK (.env == .env.prod)".
+- Retire step: "insect-drops loot table retired (2 rows deleted)" — ACTUAL 2 vs
+  EXPECTED 2, exact match.
+- Reconciliation: 4 LootTables + 10 LootTableEntries + 2 ItemDefinitions created;
+  22 NpcDefinition loot_table retargets; 3 base_value updates (draught 15, hide 12,
+  carapace 12); Insect Drops table + entry deleted — matching the brief's §7
+  accounting exactly.
+- "All verification checks passed." Posture verified restored to dev resting after.
+
+The PENDING DEPLOY-TIME ACTIONS block above is CLOSED. Production runs the V24.2
+world data. Process follow-up (sanctioned prod-seed path for closeout tails) is
+tracked separately.
