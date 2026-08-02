@@ -84,12 +84,13 @@ class TableTests(SimpleTestCase):
 
     def test_no_other_verb_left_prompt_verbs(self):
         # Footnote 10 untouched for every other command: the v22 set
-        # minus exactly loot.
+        # minus exactly loot — and, since v24.7 brief 1 (#195, fn 21),
+        # minus equip/eq, whose bare form became a valid information
+        # rendering. Original intent preserved: nothing else has left.
         self.assertEqual(SkylandConsumer.PROMPT_VERBS, {
             'attack': 'attack', 'kill': 'attack', 'k': 'attack',
             'buy': 'buy',
             'drop': 'drop',
-            'equip': 'equip', 'eq': 'equip',
             'examine': 'examine', 'ex': 'examine',
             'pickup': 'pickup', 'p': 'pickup',
             'repair': 'repair',

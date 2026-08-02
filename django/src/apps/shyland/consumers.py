@@ -132,6 +132,23 @@ def _join_owned_names(items, conj):
     return ', '.join(names[:-1]) + f', {conj} {names[-1]}'
 
 
+def _hands_conflict_clause(incoming, displaced):
+    """v24.7 brief 1 (#194, GDD §3.6): when an equip refusal's
+    displacement involves hands claimed by (or needed for) a two-hander,
+    the refusal explains itself. Returns the terminal clause naming the
+    two-handed item creating the conflict — the incoming item if it is
+    two-handed, else the equipped two-hander in the displacement set —
+    or None when no two-hander is involved."""
+    if incoming.definition.is_two_handed:
+        culprit = incoming
+    else:
+        culprit = next(
+            (i for i in displaced if i.definition.is_two_handed), None)
+    if culprit is None:
+        return None
+    return f' — {item_ref(culprit)} needs both hands.'
+
+
 _DIALOGUE_WORD_RE = re.compile(r"[a-zA-Z']+")
 
 
@@ -271,7 +288,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'attack': 'attack', 'kill': 'attack', 'k': 'attack',
         'buy': 'buy',
         'drop': 'drop',
-        'equip': 'equip', 'eq': 'equip',
+        # v24.7 brief 1 (#195, DD §9.1 fn 21): equip left this table —
+        # its bare form is a valid information rendering now.
         'examine': 'examine', 'ex': 'examine',
         'pickup': 'pickup', 'p': 'pickup',
         'repair': 'repair',
@@ -514,7 +532,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'You let the fog fall away and turn back to the world.', 'warn')
         # v22 brief 2 (DD §5): the combat gate, applied centrally — one
         # lookup, one query, warn-color refusals in voice.
-        if verb in DIRECTIONS or verb in self.COMBAT_BLOCKED:
+        # v24.7 brief 1 (#195, DD §9.1 fn 21): the gate follows the act,
+        # not the verb — bare equip is an information rendering and
+        # passes; targeted equip keeps the standing refusal.
+        bare_equip = verb in ('equip', 'eq') and not args.strip()
+        if (verb in DIRECTIONS or verb in self.COMBAT_BLOCKED) and not bare_equip:
             session = await self.get_active_combat_session(self.character)
             if session:
                 refusal = (self.COMBAT_MOVE_REFUSAL if verb in DIRECTIONS
@@ -881,10 +903,60 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def _slot_cell(defn):
         """v22 brief 2 amendment 1 (#123): the Slot cell for listing
         tables — the sentence-case label of the item's equip slot when
-        slotted, muted '-' when slotless."""
+        slotted, muted '-' when slotless. v24.7 brief 1 (#194, GDD
+        §6.11): two-handed weapons append the word — 'Ranged
+        (two-handed)' — inherited by every caller."""
         if defn.valid_slots:
-            return format_slot_name(defn.valid_slots[0])
+            label = format_slot_name(defn.valid_slots[0])
+            if defn.item_type == 'weapon' and defn.is_two_handed:
+                return f'{label} (two-handed)'
+            return label
         return [('-', 'muted')]
+
+    def _equipment_doll_lines(self, equipped):
+        """v22 brief 2 (DD §9): Equipment paper-doll — every slot always
+        shown, anatomical order, sentence-case labels, muted '-' for
+        empties. Header punctuation law: ellipsis = structure below.
+        v24.7 brief 1 (#195, GDD §6.11): THE shared composition — `inv`
+        and bare `equip` both render through this helper, byte-identical.
+        v24.7 brief 1 (#176): a hand row with no direct occupant while a
+        two-handed item is equipped in any other slot is a consumed row,
+        never a free one — the consumer's name-with-tier and
+        '(two-handed)', both muted; the item's home row stays its real
+        location with normal rendering."""
+        lines = [{'k': 'Equipment...'}]
+        by_slot = {}
+        for item in equipped:
+            by_slot.setdefault(item.equipped_slot, []).append(item)
+        # Hand-claiming invariant: at most one two-handed item is ever
+        # equipped, whatever slot it occupies (GDD §3.6).
+        two_hander = next(
+            (i for i in equipped if i.definition.is_two_handed), None)
+        doll_rows = []
+        for slot in SLOT_ORDER:
+            occupants = by_slot.get(slot, [])
+            for i in range(SLOT_CAPACITY.get(slot, 1)):
+                label = format_slot_name(slot)
+                if i < len(occupants):
+                    item = occupants[i]
+                    doll_rows.append([
+                        label,
+                        get_display_name_with_tier(item),
+                        self._details_cell(item),
+                    ])
+                elif (slot in ('MAIN_HAND', 'OFF_HAND')
+                        and two_hander is not None):
+                    doll_rows.append([
+                        label,
+                        [(get_display_name_with_tier(two_hander), 'muted')],
+                        [('(two-handed)', 'muted')],
+                    ])
+                else:
+                    doll_rows.append([
+                        label, [('-', 'muted')], [('-', 'muted')],
+                    ])
+        lines += self._table_lines(['Slot', 'Name', 'Details'], doll_rows)
+        return lines
 
     async def cmd_inventory(self):
         items = await self.get_inventory()
@@ -900,30 +972,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         max_carry = effective_stats(char, equipped)['str'] * 10 + bag_bonus
         current_carry = len(unequipped)
 
-        # v22 brief 2 (DD §9): Equipment paper-doll — every slot always
-        # shown, anatomical order, sentence-case labels, muted '-' for
-        # empties. Header punctuation law: ellipsis = structure below.
-        lines = [{'k': 'Equipment...'}]
-        by_slot = {}
-        for item in equipped:
-            by_slot.setdefault(item.equipped_slot, []).append(item)
-        doll_rows = []
-        for slot in SLOT_ORDER:
-            occupants = by_slot.get(slot, [])
-            for i in range(SLOT_CAPACITY.get(slot, 1)):
-                label = format_slot_name(slot)
-                if i < len(occupants):
-                    item = occupants[i]
-                    doll_rows.append([
-                        label,
-                        get_display_name_with_tier(item),
-                        self._details_cell(item),
-                    ])
-                else:
-                    doll_rows.append([
-                        label, [('-', 'muted')], [('-', 'muted')],
-                    ])
-        lines += self._table_lines(['Slot', 'Name', 'Details'], doll_rows)
+        lines = self._equipment_doll_lines(equipped)
 
         # Inventory table: Quantity after Name, Slot empty unless slotted
         # (unequipped items never are), flat alphabetical by name.
@@ -999,7 +1048,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('buy', 'buy [<quantity>] <item>', 'Buy from a vendor in the room.'),
             ('cancel', 'cancel [<command>]', 'Stop an in-progress command.'),
             ('drop', 'drop [<quantity>] <item>', 'Drop an item on the ground.'),
-            ('equip (eq)', 'equip <item>', 'Equip an item from your inventory.'),
+            ('equip (eq)', 'equip [<item>]', 'Equip an item from your inventory.'),
             ('examine (ex)', 'examine <item> | <NPC> | <player>', 'Take a close look at something.'),
             ('flee', 'flee', 'Escape from combat.'),
             ('heal', 'heal', 'Drink healing draughts until your vitality is full.'),
@@ -1208,6 +1257,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_equip(self, args):
         char = self.character
+        # v24.7 brief 1 (#195, DD §9.1 fn 21): the bare form is an
+        # information rendering — the shared paper-doll and nothing
+        # else (no inventory table, no carry count, no wallet line).
+        if not args.strip():
+            equipped_items = await self.get_equipped_items(char)
+            await self.send_report_lines(
+                self._equipment_doll_lines(equipped_items))
+            return
         unequipped_items = await self.get_carried_unequipped_items(char)
         # Candidate scope (#22): carried equippables only.
         equippables = [i for i in unequipped_items if i.definition.valid_slots]
@@ -1268,10 +1325,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if min_size >= 2:
             _, displaced = minimal[0]
-            await self.output(
-                f"You'd have to unequip {_join_owned_names(displaced, 'and')} first.",
-                'warn',
-            )
+            msg = f"You'd have to unequip {_join_owned_names(displaced, 'and')} first."
+            # v24.7 brief 1 (#194): a hands conflict names its two-hander.
+            clause = _hands_conflict_clause(item, displaced)
+            if clause is not None:
+                msg = msg[:-1] + clause
+            await self.output(msg, 'warn')
             return
 
         # Exactly one item must come off. If different candidate slots would
@@ -1290,6 +1349,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 )
             else:
                 msg = f"You'd have to unequip {_join_owned_names(distinct, 'or')} first."
+                # v24.7 brief 1 (#194): a hands conflict names its two-hander.
+                clause = _hands_conflict_clause(item, distinct)
+                if clause is not None:
+                    msg = msg[:-1] + clause
             await self.output(msg, 'warn')
             return
 
@@ -1652,6 +1715,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             dmg_lo = int(item.damage_midpoint - item.damage_spread)
             dmg_hi = int(item.damage_midpoint + item.damage_spread)
             lines.append(f'  Damage:     {dmg_lo} – {dmg_hi}')
+
+        # v24.7 brief 1 (#194, GDD §3.6): every weapon confesses its
+        # handed-ness — both values always render, never warning-only.
+        if defn.item_type == 'weapon':
+            hands = 'Two-handed' if defn.is_two_handed else 'One-handed'
+            lines.append(f'  Hands:      {hands}')
 
         # v22 B5 amendment 1: armor confesses its contribution — the slot
         # weight per Mk, plus the worn piece's actual slot-weight-side TAV
