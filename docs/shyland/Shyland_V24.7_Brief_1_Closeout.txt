@@ -1,0 +1,114 @@
+Session start 2026-08-02 — Shyland_V24.7_Brief_1_Equipment_Display.md — branch version_24_7
+
+================================================================================
+SHYLAND V24.7 BRIEF 1 — EQUIPMENT DISPLAY — CLOSEOUT REPORT
+================================================================================
+
+Session type:   Implementation
+Branch:         version_24_7 (worktree ../games-mvc-version_24_7)
+Brief:          Shyland_V24.7_Brief_1_Equipment_Display.md (verified verbatim at
+                branch tip 049c44d at session start; no drift)
+Issues:         #195 (founding — bare equip), #176 (consumed hand slots),
+                #194 (handed-ness disclosure) — all three CLOSED, gated on
+                verification passing
+Pre-flight:     check_docker_host.py exit 0 — local dev, posture coherent
+Instructions:   v31 read; no process discrepancies between brief and standing
+                rituals
+
+--------------------------------------------------------------------------------
+COMMITS (in order)
+--------------------------------------------------------------------------------
+5b6161c  Step 0: closeout report stub (work-has-started signal)
+538399e  Version start: SHYLAND_VERSION 24.6 -> 24.7-DEV, pin test moved in the
+         same commit (test_b2_amendment1.py); version-start make deploy-dev run
+48ff406  Implementation: consumers.py — _equipment_doll_lines extracted from
+         cmd_inventory (one composition, two callers); bare equip renders the
+         paper-doll only via send_report_lines; consumed hand rows (#176:
+         muted consumer name-with-tier + muted "(two-handed)"; RANGED
+         two-hander consumes both hand rows); examine Hands: row for every
+         weapon (#194); _slot_cell "(two-handed)" word (#194);
+         _hands_conflict_clause refusal suffix (#194); equip/eq removed from
+         PROMPT_VERBS; combat gate scoped to targeted invocations (#195
+         addendum); help usage row "equip [<item>]". Also carries the
+         PROMPT_VERBS pin conversion in tests/test_v245_bare_loot.py (see
+         DEVIATIONS 2 and 3).
+ba9ccd7  Verification: tests/test_v24_7_brief1.py — 18 new tests covering all
+         eight brief verification points; suite 455 -> 473
+4154883  Architecture doc: §4.3 equipment-display subsection, §4.14
+         chart/PROMPT_VERBS/state-gating updates, header hash -> 48ff406,
+         Version 24.7 block (stamp 24.7, hash moved — architectural point
+         release)
+
+Final implementation commit hash: 4154883 (architecture doc; last content
+commit of the brief body). The architectural change itself is 48ff406, which
+is the hash recorded in the architecture doc header.
+
+--------------------------------------------------------------------------------
+VERIFICATION
+--------------------------------------------------------------------------------
+Full in-container suite (the only working form):
+  docker exec game-mvc-django python manage.py test apps/shyland/tests
+  Result: 473 tests, OK (455 before this brief, 18 added, 0 failures)
+
+Brief verification points 1–8, all covered in tests/test_v24_7_brief1.py
+(point 8 — the version pin — lives in test_b2_amendment1.py, moved in 538399e):
+  1. Bare equip = paper-doll only (header + 14 rows; no Inventory (, no
+     Wallet:)                                              PASS
+  2. Bare equip byte-identical to inv's paper-doll block (shared-composition
+     guarantee, raw report-lines prefix equality)          PASS
+  3. Consumed rows: MAIN_HAND two-hander -> OFF_HAND consumed; RANGED
+     two-hander -> both hand rows consumed; no two-hander -> muted '-'  PASS
+  4. Examine Hands: row — Two-handed / One-handed / absent on armor; placed
+     after Damage: (after Genre: when no damage row)       PASS
+  5. _slot_cell: "Ranged (two-handed)" / "Main hand (two-handed)"; one-handers
+     and non-weapons unchanged; slotless muted '-'         PASS
+  6. Hands-conflict refusal carries "— the <item> needs both hands." clause;
+     both-rings refusal byte-identical to standing wording PASS
+  7. In combat: bare equip (and eq) renders the paper-doll; targeted equip
+     refused with the standing authored line               PASS
+  8. Version pin asserts 24.7-DEV                          PASS
+
+Dev deploys: version-start make deploy-dev (after 538399e) and the standing
+post-verification make deploy-dev (after ba9ccd7) — both completed, no
+migrations to apply. Dev stack is running the brief's build.
+
+Deploy-time data actions: NONE (no migrations, no seed changes — no PENDING
+DEPLOY-TIME ACTIONS block, per the brief).
+
+--------------------------------------------------------------------------------
+DEVIATIONS
+--------------------------------------------------------------------------------
+1. Help usage string: the brief's §2 literally writes `equip [item]`; the
+   shipped row is `equip [<item>]`. Rationale: help usage strings are
+   compiled in BASH notation (<> required, [] optional — v22 DD §11, arch doc
+   §4.14), and the existing optional-target precedent is `travel
+   [<destination>]`. The brief's own governing clause ("where this brief and
+   the GDD disagree, the GDD wins") points at the chart cell `4 · 21` +
+   fn 21, which specify optionality, not literal rendering; `equip [<item>]`
+   is the house-notation rendering of that cell.
+2. Test-hygiene conversion (the brief's standing rule): the full-dict
+   PROMPT_VERBS pin in tests/test_v245_bare_loot.py
+   (test_no_other_verb_left_prompt_verbs) converted — equip/eq removed from
+   the expected dict, comment updated; original intent ("nothing else has
+   left the set") preserved as the still-exact dict equality. Explicit
+   equip/eq-absent assertions live in test_v24_7_brief1.py TableTests. No
+   other literal pins required conversion (the combat-refusal loop test
+   dispatches targeted equip and passes unchanged; no test pinned the empty
+   hand rows or the equip usage string).
+3. Commit-message inaccuracy (recording, not code): ba9ccd7's message says it
+   carries the PROMPT_VERBS pin conversion; that conversion actually landed
+   in 48ff406 (its second changed file). Content is correct and pushed;
+   only the message attribution is off by one commit.
+
+--------------------------------------------------------------------------------
+OPERATOR PLAYTEST DISPOSITION
+--------------------------------------------------------------------------------
+Operator reports playtest successful (2026-08-02, in-conversation: "playtest
+confirmed" — brief §6 checklist against the dev stack). TERMINAL.
+
+Post-brief note: playtest discussion surfaced #197 (dual-slot weapons' Slot
+cell hides either-hand flexibility — operator direction "Main hand/Off hand"),
+filed thin with the V24 label, untriaged, operator-directed. No impact on this
+brief's scope; no code changed after 4154883.
+
+================================================================================
