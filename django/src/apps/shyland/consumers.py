@@ -1608,34 +1608,33 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # of its own.
         consumables = await self.get_carried_consumables(self.character)
         pool = await self.heal_qualifying_items(consumables)
+        was_dying = self._character_is_dying
 
-        if self._character_is_dying:
+        if pool and was_dying:
             # §1.5: exactly as `use` — one restorative through the
             # per-item revival path; the aggregate path stays
             # dying-forbidden.
-            if not pool:
-                await self.output('You have no healing draughts.', 'warn')
-                return
             await self._use_per_item(
                 Resolution(ok=True, items=[pool[0]]), was_dying=True)
             return
 
-        if not pool:
-            # Gate order: the at-full refusal beats the empty-pool warn
-            # — at full, heal's purpose is already fulfilled and the
-            # inventory is irrelevant. (With a pool, _use_aggregate's
-            # own entry gate fires the same shared refusal first.)
-            if await self._at_full_gate() is None:
-                return
-            await self.output('You have no healing draughts.', 'warn')
+        if pool:
+            # The whole qualifying pool, uncapped, oldest-first (#168);
+            # `requested` set so the standing shortfall warn fires when
+            # the deficit goes uncovered (#132). _use_aggregate's entry
+            # gate fires the shared at-full refusal first.
+            await self._use_aggregate(
+                Resolution(ok=True, items=pool, mode='count',
+                           requested=len(pool)))
             return
 
-        # The whole qualifying pool, uncapped, oldest-first (#168);
-        # `requested` set so the standing shortfall warn fires when the
-        # deficit goes uncovered (#132).
-        await self._use_aggregate(
-            Resolution(ok=True, items=pool, mode='count',
-                       requested=len(pool)))
+        # Empty pool. Gate order: the at-full refusal beats the
+        # empty-pool warn — at full, heal's purpose is already
+        # fulfilled and the inventory is irrelevant. (Dying is never
+        # at full; the gate is not consulted.)
+        if not was_dying and await self._at_full_gate() is None:
+            return
+        await self.output('You have no healing draughts.', 'warn')
 
     def _format_identified_item_lines(self, item):
         defn = item.definition
