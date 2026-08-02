@@ -103,8 +103,12 @@ DEVIATIONS
 --------------------------------------------------------------------------------
 OPERATOR PLAYTEST DISPOSITION
 --------------------------------------------------------------------------------
-OPEN — awaiting operator disposition (checklist in the brief §6, targeting the
-dev stack, which is running this build). This line is completed in place
-before the implementation-session-end ritual.
+Operator reports playtest successful (2026-08-02, in-conversation: "playtest
+confirmed" — brief §6 checklist against the dev stack). TERMINAL.
+
+Post-brief note: playtest discussion surfaced #197 (dual-slot weapons' Slot
+cell hides either-hand flexibility — operator direction "Main hand/Off hand"),
+filed thin with the V24 label, untriaged, operator-directed. No impact on this
+brief's scope; no code changed after 4154883.
 
 ================================================================================
