@@ -23,7 +23,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Localization**                       |Deferred. English only in v1.                                                                                                      |
 |**The Robotic Helper NPC**             |Partially designed. Unique, unreliable, mobile vendor. Full design TBD.                                                            |
 |**Courier Bag / Hip Slot**             |Bags that occupy a hip slot instead of BACK, trading carry capacity for weapon slot access. Planned but not yet designed in detail.|
-|**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — fields and display logic are in place; trigger mechanism not yet implemented.|
+|**Item Identification Trigger**        |NPC sage service, Warden ability, and identification scrolls — scope narrowed (v24.11, #80): the service concerns curses and deeper properties, not basic nature (basic nature is knowledge-by-holding). Trigger mechanism not yet implemented.|
 |**Loot System**                        |Loot table models (`LootTable`, `LootTableEntry`) and `loot` command implemented. Corpse decay sweep and NPC respawn implemented in tick engine. Full NPC AI deferred.|
 |**Super User Item Gifting (in-game)**  |Admin gifting flow via in-game command not yet implemented. Django admin gifting works.                                            |
 |**Per-Combat-Tier NPC Behavior**       |`NpcDefinition.combat_tier` field exists (Normal/Elite/Champion/Boss/World Boss). No differentiated AI or balance behavior yet.    |
