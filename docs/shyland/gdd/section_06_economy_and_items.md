@@ -228,7 +228,7 @@ Some items carry a hidden curse. The curse is not visible in the item's descript
 - `curse_identified` — whether the player has had it identified before equipping
 - Curse status is never revealed to the player until equipped or identified. The inventory command never shows curse indicators on unidentified items.
 
-### 6.8 Item Identification *(v24.11, pending implementation — #80)*
+### 6.8 Item Identification
 
 Items in Shyland have an identified state that controls what information is visible to the player. **Knowledge is a property of holding:** a single boolean on the item instance (`is_identified`), no per-character tracking. This system veils dropped items, hides cursed items' deeper properties, and keeps one-of-a-kind Artifacts' true nature a permanent secret.
 
@@ -370,7 +370,7 @@ The `inventory` command (v22 — the information standards of Section 9.1 applie
 Display rules:
 
 - **Details** reads `90%, Uncommon, Bound` — durability + rarity + binding, no brackets. The durability number is colored by the **mechanical durability band** (derived from the band table in 6.5, never its own thresholds: no penalty → value-color, penalty bands → say-color, broken → error-color); rarity words are always rarity-colored in information output; the binding flag reads `Bound | Unbound`.
-- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead. Unidentified items show no Details suffix at all — no durability, no carry bonus (v24.11, pending implementation — #80).
+- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead. Unidentified items show no Details suffix at all — no durability, no carry bonus.
 - Cursed items that have not been identified show no curse indicator.
 - Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name.
 - Carry count rides the section header: `Inventory (12/250)...`
