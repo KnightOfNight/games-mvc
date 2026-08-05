@@ -1,1 +1,105 @@
 Session start: 2026-08-05 — Shyland_V24.11_Brief_1_Knowledge_By_Holding.md — branch version_24_11
+
+V24.11 BRIEF 1 CLOSEOUT REPORT — Knowledge by Holding (#80)
+===========================================================
+
+SUMMARY
+-------
+Identification is now a property of holding, per the #80 ruling of record
+(2026-08-04) and the brief's six binding design rules. Pickup identifies and
+drop re-veils at the ownership-transfer choke points only: transfer_to_character
+and do_loot_item gained the identify-on-take flip, mirroring transfer_to_room's
+existing re-veil; all three carry the is_unidentifiable guard (an unidentifiable
+item's is_identified is never written by any path). do_loot_item composes its
+looted name AFTER the flip so the looted line names the real item the player now
+holds. The veil hides every info suffix: get_item_suffix returns '' for
+unidentified items (killing durability %, BROKEN, and bag carry-bonus at every
+compose_item_line site in one place) and _details_cell gates its durability
+segment on is_identified exactly as rarity already was — the unidentified line
+is mystery name + [Bound|Unbound] only. Examine is close inspection: an
+unidentified (non-unidentifiable) item renders the full identified detail block
+byte-identical to examining it identified, via an in-memory-only
+is_identified = True with no .save() (output-only per #80; the room listing
+keeps the mystery name until pickup); the is_unidentifiable mystery block
+tightened to composed line + blank + description + no-method line, with the
+redundant "(You cannot determine anything further about this item.)"
+parenthetical deleted. Resolution and tab completion continue to match visible
+names only — a re-veiled item's real name neither resolves nor completes.
+Lasting mystery is now exclusively is_unidentifiable. Seed data untouched (the
+veil is the drop mechanic, not a ground-state invariant).
+
+COMMITS (all pushed to origin/version_24_11)
+--------------------------------------------
+e3c197d  Step 0: closeout report stub (work-has-started signal)
+d9df274  Version start: SHYLAND_VERSION 24.10 -> 24.11-DEV (pin test same
+         commit), followed by the version-start make deploy-dev
+05b836f  Code + tests: consumers.py (transfer_to_character/do_loot_item flips,
+         _details_cell gate, cmd_examine close inspection), item_utils.py
+         (get_item_suffix veil gate), tests/test_v24_11_brief1.py
+18de3e5  Architecture doc: stamp 24.11, hash moved to 05b836f (architectural
+         change — ownership-transfer and examine behavior)
+
+FINAL IMPLEMENTATION COMMIT HASH: 18de3e5
+(this closeout report's own commit follows it on the branch)
+
+NO-MIGRATION STATEMENT
+----------------------
+Code-only, exactly as the brief pre-flight states: no model changes, no
+migration, no seed changes, and no PENDING DEPLOY-TIME ACTIONS block. No prior
+pending deploy-time actions were outstanding (V24.10's production seed executed
+at its closeout tail — confirmed in the V24.10 closeout).
+
+VERIFICATION
+------------
+- Full in-container suite, path form (docker exec django python manage.py test
+  apps/shyland/tests): 517 tests, OK (was 506 entering the brief; +11 new —
+  the brief's 10 required cases plus a loot-path unidentifiable-guard case).
+- Brief test cases 1-10 all implemented in tests/test_v24_11_brief1.py and
+  passing: pickup flip persisted (1); unidentifiable pickup guard (2); loot
+  flip + real-name return (3, plus 3b loot guard); drop re-veil + guard (4);
+  suffix '' for unidentified durability item and bag, identified equivalents
+  unchanged (5); _details_cell omits durability, keeps Bound|Unbound (6);
+  examine reveals real name-with-tier/Type/Damage/Durability without
+  persisting, room listing still mystery (7); unidentifiable examine block
+  exact, exactly one cannot-determine sentence, never the real name (8);
+  resolver + tab completion mystery-tokens-only (9); drop/pickup round trip
+  with exact ground line 'an unidentified weapon  [Unbound]' and exact restored
+  line (10).
+- Shell spot-check on the dev stack (manage.py shell in-container): unidentified
+  floor item yielded mystery display name and '' suffix; simulated pickup via
+  the transfer_to_character logic persisted the flip; real name restored.
+  Throwaway fixtures cleaned up. PASS.
+- make deploy-dev run after implementation + verification (Step 6); dev stack
+  is running the brief build.
+
+ISSUES
+------
+- #80 closed 2026-08-05, gated on the suite passing (closing comment records
+  the implementation summary).
+- No mid-build discoveries; nothing filed.
+
+DEVIATIONS
+----------
+1. Test fixture corrections during development (not deviations from the brief's
+   contract, recorded for completeness): case 3b's corpse-less item hit the
+   v23.2 exactly-one-location save invariant and was given a corpse; case 6's
+   expected durability voice corrected to 'say' (60% sits in the 50-75 penalty
+   band — the band-derived voice, per the v22 doctrine).
+2. Architecture doc: the Section 7 "Item identification trigger — NPC sage,
+   Warden ability, identification scrolls" not-yet-built bullet was removed as
+   superseded by the shipped ruling (lasting mystery is exclusively
+   is_unidentifiable) — one line beyond the brief's two named passages, in the
+   same identification scope.
+
+TEST-HYGIENE DEVIATIONS: none — no existing test pinned the old examine
+parenthetical or the unidentified-suffix behavior; zero pool conversions.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None (code-only brief).
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+PENDING — awaiting the operator's playtest against the dev stack (brief
+checklist, 7 items). This line is completed in place before session end; the
+session cannot end without an explicit disposition (#170).
