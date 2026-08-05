@@ -100,6 +100,12 @@ None (code-only brief).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — awaiting the operator's playtest against the dev stack (brief
-checklist, 7 items). This line is completed in place before session end; the
-session cannot end without an explicit disposition (#170).
+Operator reports playtest successful (2026-08-05, in-conversation: "playtest
+confirmed" — brief checklist against the dev stack; playtest fixtures were
+prepared in-session for the operator's character: a droppable unbound
+Patchwork Satchel created, and the rare unbound Wooden Shield's durability
+set to 60% to exercise the worn-gear veil). Terminal disposition.
+
+Mid-session filing: #203 (examine's 'Note: … you may drop it' line — weird on
+ground items post-#80, redundant with the flag block, key/value inconsistent;
+labeled V24, unruled, needs a design session).
