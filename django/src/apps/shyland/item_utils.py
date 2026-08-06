@@ -209,7 +209,11 @@ def get_display_description(item):
 
 def get_item_suffix(item):
     """The per-item info suffix an item line carries: carry bonus for
-    bags, durability state for gear that wears. Empty for everything else."""
+    bags, durability state for gear that wears. Empty for everything else.
+    Empty for unidentified items (#80): any suffix partially reveals the
+    item's nature through the veil."""
+    if not item.is_identified:
+        return ''
     defn = item.definition
     if defn.item_type == 'bag':
         return f'— +{defn.carry_bonus} carry capacity'

@@ -878,7 +878,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         penalty → value, penalty bands → say, broken → error. Rarity
         words are always rarity-colored in information output."""
         segs = []
-        if item.definition.takes_durability_loss:
+        # #80: durability is gated on identification like rarity below —
+        # the veil hides everything but Bound|Unbound.
+        if item.is_identified and item.definition.takes_durability_loss:
             if item.is_broken:
                 voice = 'error'
             elif get_durability_penalty(item) > 0:
@@ -1808,16 +1810,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if res.ok:
             item = res.items[0]
-            lines = []
-            if not item.is_identified:
-                lines.append(compose_item_line(item))
-                lines.append('')
-                lines.append(f'  {get_display_description(item)}')
-                lines.append('')
-                lines.append('  (You cannot determine anything further about this item.)')
-                if item.is_unidentifiable:
-                    lines.append('  No known method of identification will reveal its true nature.')
+            if item.is_unidentifiable and not item.is_identified:
+                lines = [
+                    compose_item_line(item),
+                    '',
+                    f'  {get_display_description(item)}',
+                    '  No known method of identification will reveal its true nature.',
+                ]
             else:
+                # #80 knowledge by holding: examine is close inspection —
+                # the reveal is output-only. In-memory flip, no .save();
+                # the room listing keeps the mystery name until pickup.
+                item.is_identified = True
                 lines = self._format_identified_item_lines(item)
             await self.output('\n'.join(lines), 'report')
             return
@@ -3921,6 +3925,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def transfer_to_character(self, item, character):
         item.owner = character
         item.current_room = None
+        # #80 knowledge by holding: pickup identifies (drop's mirror in
+        # transfer_to_room re-veils); the flip never writes an
+        # unidentifiable item's is_identified.
+        if not item.is_unidentifiable:
+            item.is_identified = True
         item.save()
 
     @database_sync_to_async
@@ -3999,10 +4008,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def do_loot_item(self, item, character):
-        name = get_display_name(item)
         item.corpse = None
         item.owner = character
+        # #80 knowledge by holding: looting is taking — same flip as
+        # transfer_to_character, same unidentifiable guard.
+        if not item.is_unidentifiable:
+            item.is_identified = True
         item.save()
+        # Composed AFTER the flip: the looted line names the real item
+        # the player now holds (#80) — drop composes before transfer for
+        # the mirror-image reason.
+        name = get_display_name(item)
         return name
 
     @database_sync_to_async

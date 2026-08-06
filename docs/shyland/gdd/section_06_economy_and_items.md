@@ -230,42 +230,43 @@ Some items carry a hidden curse. The curse is not visible in the item's descript
 
 ### 6.8 Item Identification
 
-Items in Shyland have an identified state that controls what information is visible to the player. This system enables mystery items, cursed items with hidden properties, and one-of-a-kind Artifacts whose true nature is a permanent secret.
+Items in Shyland have an identified state that controls what information is visible to the player. **Knowledge is a property of holding:** a single boolean on the item instance (`is_identified`), no per-character tracking. This system veils dropped items, hides cursed items' deeper properties, and keeps one-of-a-kind Artifacts' true nature a permanent secret.
 
 #### Default Behavior
 
-Items default to identified. The vast majority of items in the game — standard drops, crafted gear, vendor stock — are immediately readable by any player who picks them up. The identification system only activates when a builder or super user deliberately marks an item as mysterious.
+Items default to identified. The vast majority of items — standard drops, crafted gear, vendor stock — are immediately readable.
 
-#### Unidentified Items
+#### Knowledge by Holding
 
-When a builder creates an item they want to be mysterious, they set `is_identified = False` on the item and configure two optional fields on the item definition:
+- **Picking an item up identifies it.** Every holding path — `pickup`, corpse looting — flips `is_identified` True: a permanent unlock of normal display for as long as the item is held. The flip lives at the ownership-transfer choke point, not in individual commands.
+- **Dropping an item re-veils it.** The moment an item leaves hands, it becomes a stranger: `is_identified` flips False and the item shows its mystery form to all observers, including its original owner on re-pickup. The database record is untouched — the boolean is purely a presentation gate.
+- The same physical item can therefore be readable to its holder and a mystery on the ground. There is no shared or per-character identification memory.
 
-- **Mystery name** — the name shown to players before identification. Examples: `"an unknown sword"`, `"a fragment of something"`, `"a device you don't recognise"`. If not set, falls back to `"an unidentified [item type]"`.
-- **Mystery description** — the text shown when the player examines the item. Can be evocative atmosphere, deliberate misdirection, partial lore, or simply `"You can't determine anything about it."` If not set, falls back to that generic message.
+#### Unidentified Display
 
-Unidentified items show only their mystery name and mystery description. No real name, no rarity, no Mk tier, no stats, no damage range — nothing mechanical is revealed. A player can pick up an unidentified item, carry it, and even equip it (soulbinding it in the process) without knowing what it truly is.
+An unidentified item shows its **mystery name** — authored on the definition (examples: `"an unknown sword"`, `"a fragment of something"`, `"a device you don't recognise"`), or the fallback `an unidentified [item type]` — and, on the mystery examine branch (unidentifiable items only — see below), its **mystery description**. No real name, no rarity, no Mk tier, no stats, no damage range — **and no info suffix: durability percentage, BROKEN state, and bag carry-bonus are all hidden**, because not every item has a suffix and its mere presence would partially reveal what the item might be. The unidentified item line is mystery name + `[Bound|Unbound]`, nothing else.
 
-#### Identification Is Per-Character Knowledge
+#### Examine Is Close Inspection
 
-Identification is not a property of the item object — it is knowledge the current holder has about it. When a character drops an unidentified item, that knowledge is lost. The next character to pick it up starts fresh with no identification.
+`examine` on an unidentified item reveals its real details **without requiring pickup** — the full identified detail block, byte-identical to examining the same item identified. It changes no state: the room listing keeps showing the mystery name until someone picks the item up. Curse status is never part of the reveal (it is separately gated on `curse_identified` — Section 6.7). Exception: permanently unidentifiable items show the mystery block instead — one cannot-determine line plus the no-method line.
 
-**v20 status and redesign direction (#80):** the drop-loses-knowledge rule shipped in v18 (drop flips `is_identified` False) but the identification *service* never did — making drop a one-way trapdoor discovered in v20 play. The database record stays fully intact; the boolean is purely a presentation gate. The ruled future direction, deliberately unmilestoned: knowledge is a property of **holding** — ground items show mystery names to the room and observers; `examine` (close inspection) reveals real details *without* pickup; **picking the item up** flips the boolean and permanently unlocks normal display; drop re-veils. The identification service then concerns curses and deeper properties, not basic nature.
+#### Authored Mystery Is Transient
 
-This means the same physical item can be identified to one character and unidentified to another, depending on their history with it. There is no shared identification state across characters.
+Because any pickup identifies, a builder-set `is_identified = False` survives only until first pickup. Lasting mystery is exclusively `is_unidentifiable`. The mystery name/description fields serve two working roles: the dropped-item veil, and permanently unidentifiable items.
 
 #### Permanently Unidentifiable Items
 
-A super user can mark a specific item instance as `is_unidentifiable = True`. No in-game mechanism — NPC sage, Warden ability, identification scroll — can ever identify such an item. The mystery name and mystery description are all any player will ever see through normal play.
+A super user can mark a specific item instance as `is_unidentifiable = True`. No in-game mechanism — NPC sage, Warden ability, identification scroll — can ever identify such an item. The mystery name and mystery description are all any player will ever see through normal play. A player can pick up an unidentifiable item, carry it, and even equip it (soulbinding it in the process) without knowing what it truly is.
 
-This is intended for one-of-a-kind Artifacts whose true nature is a permanent secret of the game world itself. Players can examine them, read whatever lore the super user wrote into the mystery description, and speculate — but the mechanical truth never surfaces.
+This is intended for one-of-a-kind Artifacts whose true nature is a permanent secret of the game world itself. Players can examine them — examine shows only the mystery description — read whatever lore the super user wrote, and speculate; the mechanical truth never surfaces.
 
-#### Identification Trigger
+#### The Identification Service (Future)
 
-The in-game mechanism for identifying items — NPC sage service, Warden class ability, consumable identification scroll — is designed but not yet implemented. See Section 12.
+The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **curses and deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12.
 
 #### Interaction with Curses
 
-An unidentified item may also be cursed. Identifying the item reveals both its true nature and its curse status simultaneously, allowing the player to make an informed decision before equipping. Without identification, equipping a cursed item is a risk the player takes knowingly.
+An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; only the identification service (or curse-detection skill) reveals a curse before equipping. Without that, equipping a cursed item is a risk the player takes knowingly.
 
 ### 6.9 The Effect System
 
@@ -369,7 +370,7 @@ The `inventory` command (v22 — the information standards of Section 9.1 applie
 Display rules:
 
 - **Details** reads `90%, Uncommon, Bound` — durability + rarity + binding, no brackets. The durability number is colored by the **mechanical durability band** (derived from the band table in 6.5, never its own thresholds: no penalty → value-color, penalty bands → say-color, broken → error-color); rarity words are always rarity-colored in information output; the binding flag reads `Bound | Unbound`.
-- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead.
+- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead. Unidentified items show no Details suffix at all — no durability, no carry bonus.
 - Cursed items that have not been identified show no curse indicator.
 - Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name.
 - Carry count rides the section header: `Inventory (12/250)...`
