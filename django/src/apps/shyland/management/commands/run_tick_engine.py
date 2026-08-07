@@ -796,6 +796,7 @@ class Command(BaseCommand):
         NPC's *current* room, and spawn counts are honored."""
         from django.db.models import Count
         from django.utils import timezone
+        from apps.shyland.combat_utils import npc_max_vitality
         from apps.shyland.models import NpcInstance, RoomSpawn
 
         now = timezone.now()
@@ -829,14 +830,15 @@ class Command(BaseCommand):
                 spawn.count - total,
                 (spawn.count * 2) - total,
             )
+            hp = npc_max_vitality(spawn.npc_definition, spawn.mk_tier)
             for _ in range(to_create):
                 NpcInstance.objects.create(
                     definition=spawn.npc_definition,
                     current_room=spawn.room,
                     spawn_room=spawn.room,
                     mk_tier=spawn.mk_tier,
-                    vitality_current=spawn.npc_definition.base_vitality,
-                    vitality_max=spawn.npc_definition.base_vitality,
+                    vitality_current=hp,
+                    vitality_max=hp,
                     is_alive=True,
                 )
                 created.append({
