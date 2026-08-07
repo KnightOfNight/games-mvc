@@ -1,3 +1,112 @@
 2026-08-06 — Session start: Shyland V24.12 Brief 1 (Repair Kit Wiring, #134) — branch version_24_12
 
-[STUB — completed in place at session end]
+CLOSEOUT REPORT — V24.12 Brief 1: Repair Kit Wiring (#134)
+===========================================================
+
+Session type: implementation. Branch: version_24_12 (worktree
+../games-mvc-version_24_12). Pre-flight: local dev target confirmed,
+posture coherent. Brief verified verbatim at the branch tip (design
+commit aefc665; GDD authority 822addc).
+
+WHAT LANDED
+-----------
+- Part 1 (opening act, after the Step 0 stub per the standing ritual):
+  SHYLAND_VERSION 24.11 -> 24.12-DEV with the pin test moved in the same
+  commit (06ceba8), followed by the version-start `make deploy-dev`.
+- Part 2 (code): `durability_restore` live in effect_utils.py —
+  most-damaged-first over everything owned (carried + equipped, stable
+  pk tie-break), broken (0%) ineligible, always succeeds, one atomic
+  clamped UPDATE, restore 15 + 10×Mk clamped at 100, annotation reports
+  ACTUAL points applied. Component-keyed gate in consumers.py
+  (`effect_restores_durability` + `durability_restore_need`): dying ->
+  combat -> eligibility, before apply and consume; each state's authored
+  warn line as tabled in the brief; no kit consumed on any refusal;
+  fulfilled-purpose stop (reward line) with the only-had-N warn
+  suppressed via a `stopped_fulfilled` flag; per-item sequences
+  re-targeting after each kit. Aggregate path untouched (kits fail
+  `_item_aggregatable` by construction — asserted in tests).
+- Part 3 (seed): `repair-kit` EffectDefinition + one instantaneous
+  `durability_restore` component (15.0 / 10.0) in `_seed_effects`;
+  the `repair-kit` ItemDefinition entry gains `base_value: 15` and
+  `effect: effects['repair-kit']`. No loot-table changes;
+  CART_CONSUMABLE_PRICES entry (15) untouched.
+- Part 4: no model changes, no migration (as briefed).
+- Part 9: architecture doc updated in place — stamp 24.12, header hash
+  moved to 26605cc (architectural point release); §4.4 field-repair
+  application, §4.3 new per-item durability-gate subsection, §4.8
+  seed entries, §4.14 durability-restore state-gate exception (4946109).
+
+TESTS
+-----
+Test count before: 517. After: 537 (+20, tests/test_v2412_repair_kit.py
+covering all 15 enumerated cases in the brief's §5 list plus a
+dying-wins-over-combat order case and seed-shape/sale-price/loot-table
+checks). Full suite green in-container via the path form:
+`python manage.py test apps/shyland/tests` — Ran 537 tests, OK.
+
+VERIFICATION (brief Part 6 — all passed)
+----------------------------------------
+1. Full suite green in-container (537 OK).
+2. Dev-DB shell spot-check: base_value == 15; effect slug repair-kit;
+   components.count() == 1; component durability_restore 15.0 / 10.0,
+   durations 0.0/0.0, instantaneous; computed restore Mk 1 = 25.0,
+   Mk 2 = 35.0.
+3. get_sale_price on a common Mk 1 kit: 5.
+4. 'repair-kit' appears in no loot-table seed entries (source grep and
+   dev-DB LootTableEntry query both zero).
+
+DEV DEPLOY AND DATA ACTION (Part 7 — code first, data second)
+-------------------------------------------------------------
+1. `make deploy-dev` run from the worktree after implementation and
+   verification (build + migrate; no migrations to apply).
+2. `make seed` against the dev stack: Repair Kit ItemDefinition updated
+   (base_value 12 -> 15; effect None -> Repair Kit), Repair Kit
+   EffectDefinition + component created. Actual deletions: 0
+   (expected: 0). All seed self-checks PASS.
+
+DEVIATIONS
+----------
+1. Commit order: the brief's Part 1 calls the version bump "the first
+   commit of the implementation session"; the standing ritual (v31,
+   Step 0 verify-and-signal) puts the closeout-stub push first. The
+   ritual won (V24.11 precedent identical): stub 808ffc6, then bump
+   06ceba8. Report-and-accept; no content impact.
+2. Seed back-fill entry (not in the brief): the v18 base_value
+   back-fill in seed_world.py force-overwrites every consumable not in
+   its authored dict to base_value 12 on every reseed — the brief's
+   inline `'base_value': 15` alone cannot survive it. Added
+   `'repair-kit': 15` to the back-fill dict (the exact mechanism the
+   healing draught already uses for the same value, v24.2 precedent).
+   Mechanical necessity to implement the ruled value; no design content.
+3. None otherwise. All authored lines shipped exactly as tabled; no
+   test-hygiene conversions were needed (no existing test pinned the
+   fizz placeholder).
+
+ISSUES
+------
+#134 closed (gated on verification passing), with an implementation
+summary comment.
+
+COMMITS (all pushed to origin/version_24_12)
+--------------------------------------------
+  808ffc6  Step 0: closeout-report stub (work-has-started signal)
+  06ceba8  Version start: SHYLAND_VERSION 24.11 -> 24.12-DEV (+ pin test)
+  cd1cac5  Repair-kit wiring: application, gate, seed
+  26605cc  Tests (20 cases, 517 -> 537) + base_value back-fill entry
+  4946109  Architecture doc (stamp 24.12, hash 26605cc)
+
+Final commit hash: 4946109 (architecture doc; final code hash 26605cc,
+which the arch-doc header records).
+
+SEED DELETIONS
+--------------
+Expected: 0. Actual on dev: 0.
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+[pending — recorded at session end]
+
+PENDING DEPLOY-TIME ACTIONS (production, closeout tail only):
+- Production seed rerun (the sanctioned path: `make seed-prod`, bare, on its own
+  operator confirmation) — applies the repair-kit effect wiring + base_value 15.
+  Expected deletions: 0. Code deploys before this runs (code first, data second).
