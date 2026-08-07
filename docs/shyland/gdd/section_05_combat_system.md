@@ -63,7 +63,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    +75%-per-band lift tracks the player's linear at-level damage growth, keeping
    at-level time-to-kill band-invariant — the HP counterpart of the blessed hit
    targets. Mk 1 multiplies by exactly 1, so all shipped content is unchanged.
-   (v24.13, pending implementation) `scaling_factor` encodes the NPC's within-band
+   `scaling_factor` encodes the NPC's within-band
    level (1–10).
 
 2. Damage calculation (v24.6 — the composite strike, #177:
@@ -194,7 +194,7 @@ Enemies have:
 - **Unarmed message pool** — an optional FK on `NpcDefinition` to an `UnarmedMessagePool`. If null, falls back to the default pool. Used when the NPC has no weapon equipped
 - **Loot tables** — normalized `LootTable` and `LootTableEntry` models; one table can be shared across multiple NPC definitions
 
-NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer, combat tier) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one. **(#104)** Instance HP is set at spawn time: `vitality_max = base_vitality × (1 + 0.75 × (mk_tier − 1))`, rounded half-up — the Mk band lift (§5.1) that keeps at-level time-to-kill constant across bands, uniform over all combat tiers so the boss ladder is preserved within every band. Mk 1 spawns are unchanged by construction. (v24.13, pending implementation)
+NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot table, behavior flags, respawn timer, combat tier) and spawned as **`NpcInstance`** rows (live copies in specific rooms at a specific Mk tier). Mk tier is instance-specific — the same definition can spawn as Mk 1 goblins in a starter zone and Mk 5 goblins in a harder one. **(#104)** Instance HP is set at spawn time: `vitality_max = base_vitality × (1 + 0.75 × (mk_tier − 1))`, rounded half-up — the Mk band lift (§5.1) that keeps at-level time-to-kill constant across bands, uniform over all combat tiers so the boss ladder is preserved within every band. Mk 1 spawns are unchanged by construction.
 
 **Room population is configured via `RoomSpawn`.** Each `RoomSpawn` row declares that a specific room should contain a specific count of a specific NpcDefinition at a specific Mk tier. The tick engine uses this as the sole source of truth for NPC population — it does not infer spawn configuration from existing instance rows. Fields: `room`, `npc_definition`, `mk_tier`, `count` (desired live instances), `is_active`. Unique on `(room, npc_definition, mk_tier)`.
 
