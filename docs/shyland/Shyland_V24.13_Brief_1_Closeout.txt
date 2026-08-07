@@ -1,0 +1,3 @@
+Session start 2026-08-07 — Shyland V24.13 Brief 1 (NPC HP Mk Scaling, #104) — branch version_24_13 — implementation session begun.
+
+[STUB — completed in place at session end]
