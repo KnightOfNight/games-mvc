@@ -40,6 +40,7 @@ ACUITY_FLOOR = 0.1     # the acuity meter's physical range — engine
 ACUITY_CEILING = 1.9   # absolutes, ruled #133 (v23); rails for everything
 NPC_TIER_OFFSET = {'normal': 0, 'elite': 2, 'boss': 2}   # blessed: 55% / 45% / 45% at-level hit
 MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
+NPC_HP_BAND_LIFT = 0.75   # per Mk band above 1; linear, tracks player at-level damage growth (#104)
 
 ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
 
@@ -354,6 +355,14 @@ def npc_level(npc_instance):
     """The NPC's effective level. scaling_factor encodes the NPC's
     within-band level (1-10); Mk tier lifts it by whole bands."""
     return npc_instance.definition.scaling_factor + MK_LEVEL_SPAN * (npc_instance.mk_tier - 1)
+
+
+def npc_max_vitality(npc_definition, mk_tier):
+    """Spawn-time HP for an NpcInstance: the authored within-band value
+    lifted linearly per Mk band (#104). Rounded half-up — banker's
+    rounding would drop .5 cases to even (262.5 -> 262; cf. #105)."""
+    lifted = npc_definition.base_vitality * (1 + NPC_HP_BAND_LIFT * (mk_tier - 1))
+    return int(lifted + 0.5)
 
 
 def get_npc_stats(npc_instance):
