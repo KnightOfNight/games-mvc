@@ -4838,6 +4838,10 @@ class Command(BaseCommand):
             'pristine-animal-pelt': 36,
             'hardened-insect-chitin': 36,
             'healing-draught': 15,
+            # v24.12 (#134): the repair kit at the draught standard —
+            # listed here so the type-wide consumable back-fill below
+            # can't overwrite the authored 15.
+            'repair-kit': 15,
             # v19 brief 10: the freebie newbie kit — exchange-safe by
             # construction (base_value 0 sells and repairs for nothing).
             'worn-cudgel': 0,
