@@ -1457,6 +1457,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         char = self.character
         used = 0
         stopped_at_full = False
+        stopped_fulfilled = False
         for item in res.items:
             effect_def = item.definition.effect
 
@@ -1474,6 +1475,42 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     if used == 0:
                         await self.output('You are already at full health.', 'warn')
                     stopped_at_full = True
+                    break
+
+            # v24.12 (#134): the field-repair gate — component-keyed,
+            # never a name match; runs before apply and consume, so a
+            # refusal consumes nothing and ends the command. Order is
+            # normative: dying wins over combat; the fresh eligibility
+            # read re-targets most-damaged-first each pass.
+            if await self.effect_restores_durability(effect_def):
+                if was_dying:
+                    await self.output(
+                        "Patchwork won't save you now — you need healing.",
+                        'warn')
+                    break
+                if await self.get_active_combat_session(char):
+                    await self.output(
+                        "There's no patching anything up in the middle "
+                        'of a fight!', 'warn')
+                    break
+                eligible, broken = await self.durability_restore_need(char)
+                if not eligible:
+                    if used == 0:
+                        if broken:
+                            await self.output(
+                                "What's broken is beyond a field patch — "
+                                'you need a real repairer.', 'warn')
+                        else:
+                            await self.output(
+                                'Nothing you own needs patching.', 'warn')
+                    else:
+                        # The fulfilled-purpose stop (DD §7 family, the
+                        # heal full-fold precedent): reward color, and
+                        # no only-had-N warn after it.
+                        await self.output(
+                            'Everything you own is in good repair.',
+                            'reward')
+                        stopped_fulfilled = True
                     break
 
             pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
@@ -1509,7 +1546,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 break
 
         if used:
-            if res.requested and not stopped_at_full and used == len(res.items):
+            if (res.requested and not stopped_at_full
+                    and not stopped_fulfilled and used == len(res.items)):
                 # v22 B5 amendment 3 (#132): the founding case — the player
                 # believes they healed more than they did. Warn.
                 await self.output(f'You only had {used}.', 'warn')
@@ -3327,6 +3365,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             component_type__in=('restore_vitality',
                                 'restore_vitality_percent', 'hot_vitality'),
         ).exists()
+
+    @database_sync_to_async
+    def effect_restores_durability(self, effect_def):
+        """v24.12 (#134): field-repair detection for the use-pipeline
+        gate — derived from the effect's own components, never a name
+        match (the #61 helper's law)."""
+        return effect_def.components.filter(
+            component_type='durability_restore').exists()
+
+    @database_sync_to_async
+    def durability_restore_need(self, character):
+        """v24.12 (#134): the kit gate's fresh eligibility read over
+        everything owned that takes durability loss. Returns (eligible,
+        broken): a damaged-but-patchable item exists / a broken (0%)
+        item exists."""
+        owned = ItemInstance.objects.filter(
+            owner=character, definition__takes_durability_loss=True)
+        return (
+            owned.filter(durability_current__gt=0.0,
+                         durability_current__lt=100.0).exists(),
+            owned.filter(durability_current=0.0).exists(),
+        )
 
     async def send_report_lines(self, lines):
         """v21 brief 1 (#90/#91/#92): the structured key/value report
