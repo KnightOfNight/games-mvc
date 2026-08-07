@@ -3701,10 +3701,28 @@ class Command(BaseCommand):
         })
         self.stdout.write(f'  EffectDefinition "{wraith_poison.name}" seeded.')
 
+        # --- Repair Kit ---
+        repair_kit = self._reconcile(EffectDefinition, {'slug': 'repair-kit'}, {
+            'name': 'Repair Kit',
+            'description': "Restores durability to the owner's most damaged item.",
+        })
+        # v24.12 (#134): field repair — 15 + 10×Mk durability points,
+        # instantaneous, clamped at 100 by the application.
+        self._reconcile(EffectComponent, {'definition': repair_kit, 'order': 0}, {
+            'component_type': 'durability_restore',
+            'target_stat': '',
+            'magnitude_base': 15.0,
+            'magnitude_scaling': 10.0,
+            'duration_base': 0.0,
+            'duration_scaling': 0.0,
+        })
+        self.stdout.write(f'  EffectDefinition "{repair_kit.name}" seeded.')
+
         self._effects = {
             'healing-draught': healing_draught,
             'focus-tonic': focus_tonic,
             'fracture-wraith-poison': wraith_poison,
+            'repair-kit': repair_kit,
         }
 
     def _seed_items(self):
@@ -4187,13 +4205,16 @@ class Command(BaseCommand):
                 'item_type': 'consumable',
                 'genre_tag': 'wasteland',
                 'valid_slots': [],
+                # v24.12 (#134): the seed owns the kit's value — 15 cp,
+                # the draught standard (sale 5 cp); cart-only supply.
+                'base_value': 15,
                 'scaling_base': 0.0,
                 'scaling_factor': 0.0,
                 'takes_durability_loss': False,
                 'durability_table': [],
                 'primary_stats': [],
                 'secondary_stat_pool': [],
-                'effect': None,
+                'effect': effects['repair-kit'],
                 'description': 'Patches, adhesive, and a small wrench. Enough to hold things together.',
             },
             # Materials (vendor-sellable, no slots, stats, or durability)
@@ -4817,6 +4838,10 @@ class Command(BaseCommand):
             'pristine-animal-pelt': 36,
             'hardened-insect-chitin': 36,
             'healing-draught': 15,
+            # v24.12 (#134): the repair kit at the draught standard —
+            # listed here so the type-wide consumable back-fill below
+            # can't overwrite the authored 15.
+            'repair-kit': 15,
             # v19 brief 10: the freebie newbie kit — exchange-safe by
             # construction (base_value 0 sells and repairs for nothing).
             'worn-cudgel': 0,

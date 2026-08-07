@@ -183,6 +183,17 @@ Each ItemDefinition carries its own durability table defining the degradation ra
 - **At 0% durability:** Repairable, but a very difficult roll. Most repairs at 0% will fail. Players who let items reach zero are taking a real risk.
 - Repair is performed by repair vendors (currency cost) or via the Smithing/Tinkering crafting disciplines.
 
+#### Field Repair — the Repair Kit
+
+The **Repair Kit** consumable is the field leg of the repair economy — patches, adhesive, and a small wrench between here and the nearest repairer (#134):
+
+- **`use [N] repair kit` — no new grammar.** The kit picks its own target: the **most-damaged** eligible item the character owns (carried + equipped — the same everything-owned pool `repair` resolves over). Broken (0%) items are ineligible targets and are skipped.
+- **A kit always succeeds and is consumed.** Restore = **15 + 10 × Mk** durability points (Mk 1 = +25, Mk 2 = +35), clamped at 100 — a `durability_restore` effect component with magnitude computed from base 15 and per-Mk factor 10 (the Draught-Law shape, 6.9). The success roll remains the repairer's mechanic; the kit's cost is the kit itself plus the partial restore.
+- **Broken gear is beyond a field patch.** A 0% item refuses the kit; when the only damage owned is broken gear, `use` refuses outright (warn, its own authored line) without consuming a kit. Recovery from 0% stays repairer-only — the very-difficult roll above stands, and letting gear break remains a real cost.
+- **Refused in combat and while dying.** Using a durability-restore consumable is refused in combat in the no-mending-in-a-fight doctrine, and refused while dying — nothing but healing while dying — each with its own authored warn line. The gate keys on the effect component, never the item name.
+- **Economy:** `base_value` 15 — the draught price standard (cart buy 15 cp, sale 5 cp). Supply is **cart-only** (the two ring street carts); the kit sits on no loot table — the loot-in-kind tables (6.15) are unchanged by rule.
+- **Sequences stop at whole.** `use N repair kit` runs per-item (repair stays per-line — each mend is its own news), re-targeting most-damaged-first after each kit; zero need refuses without consuming a kit; the sequence stops the moment nothing damaged remains (the fulfilled-purpose doctrine), with the standard only-had-N report. Sentence form: `You use a Repair Kit Mk 1 and patch up the Iron Mace Mk 1. (+25 durability)` — the v23.3 fizz placeholder clause is retired.
+
 ### 6.6 Item Rarity
 
 |Rarity   |Approximate Drop Rate              |

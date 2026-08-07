@@ -157,7 +157,37 @@ def _apply_instant_component(component, target, magnitude):
                 f"(Acuity {target.acuity_current:.1f})")
 
     if ctype == 'durability_restore':
-        return ("watch the repair kit fizz to no useful effect", "")
+        # v24.12 (#134): field repair — patch the owner's most-damaged
+        # eligible item, over everything owned (carried + equipped),
+        # stable tie-break on pk. Broken (0%) gear is ineligible — the
+        # vendor roll owns it — and the kit can never target itself
+        # (kits are takes_durability_loss=False). A kit always succeeds:
+        # no roll, one atomic clamped UPDATE; the annotation reports the
+        # ACTUAL points applied after the clamp. The use-pipeline gate
+        # refuses before this runs whenever no target exists — None here
+        # is defense, not flow.
+        from .item_utils import item_ref
+        from .models import ItemInstance
+        target_item = (
+            ItemInstance.objects.filter(
+                owner=target,
+                definition__takes_durability_loss=True,
+                durability_current__gt=0.0,
+                durability_current__lt=100.0,
+            )
+            .select_related('definition')
+            .order_by('durability_current', 'pk')
+            .first()
+        )
+        if target_item is None:
+            return None
+        before = target_item.durability_current
+        ItemInstance.objects.filter(pk=target_item.pk).update(
+            durability_current=Least(
+                F('durability_current') + magnitude, Value(100.0)))
+        applied = int(min(magnitude, 100.0 - before))
+        return (f'patch up {item_ref(target_item)}',
+                f'(+{applied} durability)')
 
     return None
 
