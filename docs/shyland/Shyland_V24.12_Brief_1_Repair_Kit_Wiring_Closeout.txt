@@ -104,7 +104,8 @@ Expected: 0. Actual on dev: 0.
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-[pending — recorded at session end]
+Operator reports playtest successful (2026-08-07, in-conversation: "playtest
+confirmed" — brief checklist against the dev stack).
 
 PENDING DEPLOY-TIME ACTIONS (production, closeout tail only):
 - Production seed rerun (the sanctioned path: `make seed-prod`, bare, on its own
