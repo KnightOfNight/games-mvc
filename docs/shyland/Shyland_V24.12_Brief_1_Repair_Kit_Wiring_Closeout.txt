@@ -1,0 +1,3 @@
+2026-08-06 — Session start: Shyland V24.12 Brief 1 (Repair Kit Wiring, #134) — branch version_24_12
+
+[STUB — completed in place at session end]
