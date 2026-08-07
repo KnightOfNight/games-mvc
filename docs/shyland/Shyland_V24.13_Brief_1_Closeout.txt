@@ -1,3 +1,128 @@
 Session start 2026-08-07 — Shyland V24.13 Brief 1 (NPC HP Mk Scaling, #104) — branch version_24_13 — implementation session begun.
 
-[STUB — completed in place at session end]
+V24.13 BRIEF 1 CLOSEOUT REPORT — NPC HP Mk Scaling (#104)
+=========================================================
+
+SUMMARY
+-------
+NPC HP now scales with Mk tier at spawn time, per the #104 ruling of record
+(2026-08-07) and the brief's six binding design rules. The helper
+combat_utils.npc_max_vitality(npc_definition, mk_tier) computes
+base_vitality × (1 + NPC_HP_BAND_LIFT × (mk_tier − 1)) with
+NPC_HP_BAND_LIFT = 0.75, rounded half-up via int(lifted + 0.5) — never
+built-in round(), whose banker's rounding sends .5 cases to even
+(round(262.5) == 262, the #105 parity trap; Silk Matron 150 at Mk 2 is 263
+by ruling and test-pinned as the sentinel). The tick engine's respawn sweep
+(run_tick_engine.py, the codebase's only non-test NpcInstance creation
+site — grep-verified still exactly one) computes hp once per spawn row and
+persists it to both vitality_current and vitality_max; no read-time scaling
+anywhere. Mk 1 multiplies by exactly 1 — zero change to any shipped spawn,
+test-pinned as an identity invariant across base_vitality 1..1000. The lift
+is linear per band and uniform across all combat tiers (normals, elites,
+bosses — deliberately not exponential); base_vitality remains the authored
+within-band value carrying species identity and the #101 boss-ladder tuning.
+Doctrine: at-level time-to-kill is band-invariant. Opens Phase 3 (Mk 2
+balance) of the V24 series plan (#139).
+
+COMMITS (all pushed to origin/version_24_13)
+--------------------------------------------
+2768f02  Step 0: closeout report stub (work-has-started signal)
+43e3c4c  Version start: SHYLAND_VERSION 24.12 -> 24.13-DEV (pin test same
+         commit), followed by the version-start make deploy-dev
+f001a79  Code: combat_utils.py (NPC_HP_BAND_LIFT constant, npc_max_vitality
+         helper), run_tick_engine.py (respawn-sweep spawn site routes both
+         HP fields through the helper; import added to the sweep's local
+         imports per the file's convention)
+eed9559  Tests: tests/test_npc_hp_scaling.py
+3ae1fe4  Architecture doc: stamp 24.13, hash moved to f001a79 (architectural
+         change — spawn-time HP derivation), §4.5 npc_max_vitality + §4.9
+         respawn-sweep HP, new header version block
+d36f16f  Playtest checklist (operator-requested expansion of brief §6):
+         docs/shyland/Shyland_V24.13_Playtest_Checklist.md
+
+FINAL IMPLEMENTATION COMMIT HASH: 3ae1fe4
+(d36f16f, a session artifact requested by the operator mid-session, and this
+closeout report's own commit follow it on the branch)
+
+NO-MIGRATION STATEMENT
+----------------------
+Code-only, exactly as the brief's §3.3 states: no model changes, no
+migration, no seed data changes, no reseed — expected deletions 0 (no seed
+run at all), and no PENDING DEPLOY-TIME ACTIONS block. No prior pending
+deploy-time actions were outstanding (V24.12's production seed executed at
+its closeout tail via make seed-prod — confirmed in the V24.12 closeout).
+
+VERIFICATION (all five brief gates passed before #104 was closed)
+-----------------------------------------------------------------
+1. Full in-container suite, path form (docker exec game-mvc-django python
+   manage.py test apps/shyland/tests): 541 tests, OK (was 537 entering the
+   brief; +4 new).
+2. tests/test_npc_hp_scaling.py all passing: the binding 10-case table
+   (including the 150 -> 263 banker's-rounding sentinel), the Mk 1 identity
+   invariant (npc_max_vitality(defn, 1) == base_vitality for 1..1000), and
+   the respawn-sweep integration pair — Mk 2 RoomSpawn (base 40) creates an
+   instance at 70/70; companion Mk 1 spawn creates 40/40 (live-content
+   invariance at the integration layer).
+3. grep -rn 'NpcInstance.objects.create' non-test: exactly one site,
+   routed through npc_max_vitality.
+4. make deploy-dev from the worktree after 1-3 passed (second deploy of the
+   session; the version-start deploy preceded implementation per §3.0).
+5. Live dev spot-check via in-container shell: stale pre-change cave beetle
+   instance (pk 844, spawned 2026-08-02) deleted; the ticker respawned a
+   fresh instance (pk 1091, spawned 2026-08-07 18:18 UTC on the new code)
+   carrying flat 40/40 == base_vitality. Mk 1 invariance confirmed live.
+
+DEVIATIONS FROM THE BRIEF
+-------------------------
+None. Exact binding names used (NPC_HP_BAND_LIFT,
+npc_max_vitality(npc_definition, mk_tier)); the creation site matched the
+brief's single-site verification (no second site found); no test hygiene
+conversions were needed.
+
+SESSION NOTES (not deviations)
+------------------------------
+- Operator-requested playtest checklist committed as
+  Shyland_V24.13_Playtest_Checklist.md (d36f16f) — an expansion of the
+  brief's §6 surface in the V20 checklist style.
+- Operator-directed dev-only playtest aid, LEFT IN PLACE by operator ruling
+  ("we can keep them for testing"): RoomSpawn rows 141 (Crowned Devourer)
+  and 142 (Devourer's drones, gated) in The Devourer's Hoard (Hollowcrown,
+  Z01) flipped mk_tier 1 -> 2 on the DEV database only; live Mk 1 instances
+  cleared and respawned by the ticker as Mk 2. Observed live: Devourer
+  490/490 (280 × 1.75), drones 123/123 each (70 × 1.75 = 122.5, half-up —
+  a live sentinel-class .5 case). This is a live-DB tweak on dev, not seed
+  data; any future seed run enforces the authored Mk 1 rows back. Production
+  is untouched and unaffected.
+- The operator playtested the Mk 2 encounter at character level 13 vs the
+  effective level-20 boss: fight correctly brutal in both directions
+  (graze-heavy player output, boss hitting hard), and the operator's
+  character died — the first player death in a long while, received as a
+  positive signal for Phase 3 difficulty coherence. Full combat loop
+  (engagement, dying window, death, recall respawn) exercised live against
+  a lifted Mk 2 instance with no misbehavior observed.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+Operator reports playtest successful. (2026-08-07, in-conversation:
+"playtest confirmed successful" — playtest ran on the dev stack and included
+both the checklist's Mk 1 invariance surface and live Mk 2 combat against
+the lifted Hollowcrown encounter.)
+
+DEV-STACK STATE AT SESSION END
+------------------------------
+Dev runs the 24.13-DEV build (last make deploy-dev after verification
+passed); suite 541/541; no migrations pending; Hollowcrown boss room
+deliberately at Mk 2 per the session note above.
+
+ISSUES
+------
+#104 closed 2026-08-07 (gated on verification passing), with the
+implementation summary recorded as a closing comment. No other issue state
+touched. Milestone Version 24.13 (#33): founding ticket closed; milestone
+closure is the closeout session's entry-gate check, not this session's act.
+
+NEXT
+----
+Ready for closeout (V24.13 has one brief; no further implementation
+sessions expected). The closeout tail carries zero data actions — no seed,
+no pending deploy-time block.
