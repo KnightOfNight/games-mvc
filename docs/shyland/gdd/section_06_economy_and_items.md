@@ -183,7 +183,7 @@ Each ItemDefinition carries its own durability table defining the degradation ra
 - **At 0% durability:** Repairable, but a very difficult roll. Most repairs at 0% will fail. Players who let items reach zero are taking a real risk.
 - Repair is performed by repair vendors (currency cost) or via the Smithing/Tinkering crafting disciplines.
 
-#### Field Repair — the Repair Kit (v24.12, pending implementation)
+#### Field Repair — the Repair Kit
 
 The **Repair Kit** consumable is the field leg of the repair economy — patches, adhesive, and a small wrench between here and the nearest repairer (#134):
 
