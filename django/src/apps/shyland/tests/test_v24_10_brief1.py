@@ -36,9 +36,9 @@ def make_floored_def(**overrides):
         scaling_base=5.0, scaling_factor=2.0, damage_spread=3.0,
         is_ranged=True,
         primary_stats=[
-            {'stat': 'per', 'base': 2.0, 'factor': 0.8},
-            {'stat': 'flame_factor', 'base': 2.0, 'factor': 1.0,
-             'floor_base': 8.0, 'floor_factor': 4.0},
+            {'stat': 'per', 'base': 0.7, 'factor': 2.1},
+            {'stat': 'flame_factor', 'base': 1.875, 'factor': 1.125,
+             'floor_base': 3.0, 'floor_factor': 9.0},
         ],
         secondary_stat_pool=[],
     )
@@ -63,8 +63,8 @@ class FloorSnapshotTests(TestCase):
                 self.assertIn('floor', entry)
                 self.assertIsInstance(entry['floor'], int)
                 floors.append(entry['floor'])
-            # X = 8 + 4 × mk, identical across all five rarities.
-            self.assertEqual(floors, [8 + 4 * mk] * len(RARITIES))
+            # X = 3 + 9 × mk, identical across all five rarities.
+            self.assertEqual(floors, [3 + 9 * mk] * len(RARITIES))
 
     def test_value_still_varies_with_rarity_spread(self):
         defn = make_floored_def()
@@ -76,7 +76,7 @@ class FloorSnapshotTests(TestCase):
                 entry = next(e for e in inst.rolled_primary_stats
                              if e['stat'] == 'flame_factor')
                 values[rarity] = entry['value']
-                self.assertEqual(entry['floor'], 8 + 4 * 4)   # X unmoved
+                self.assertEqual(entry['floor'], 3 + 9 * 4)   # X unmoved
         self.assertNotEqual(values['common'], values['legendary'])
 
     def test_unfloored_primary_entries_carry_no_floor_key(self):
@@ -211,12 +211,12 @@ class FloorInvariantCheckerTests(SimpleTestCase):
     def test_clean_specs_pass(self):
         self.assertEqual(floor_invariant_violations([
             ('flame-projector',
-             [{'stat': 'flame_factor', 'base': 2.0, 'factor': 1.0,
-               'floor_base': 8.0, 'floor_factor': 4.0}],
+             [{'stat': 'flame_factor', 'base': 1.875, 'factor': 1.125,
+               'floor_base': 3.0, 'floor_factor': 9.0}],
              [{'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2}]),
             ('iron-sword',
-             [{'stat': 'str', 'base': 3.0, 'factor': 1.0}],
-             [{'stat': 'bleed_factor', 'base': 0.3, 'factor': 0.1}]),
+             [{'stat': 'str', 'base': 1.0, 'factor': 3.0}],
+             [{'stat': 'bleed_factor', 'base': 0.25, 'factor': 0.15}]),
         ]), [])
 
     def test_floor_on_a_secondary_entry_is_rejected(self):
@@ -260,12 +260,12 @@ class SeedFlooredWeaponsTests(TestCase):
             (fp.scaling_base, fp.scaling_factor, fp.damage_spread),
             (5.0, 2.0, 3.0))
         self.assertEqual(fp.primary_stats, [
-            {'stat': 'per', 'base': 2.0, 'factor': 0.8},
-            {'stat': 'flame_factor', 'base': 2.0, 'factor': 1.0,
-             'floor_base': 8.0, 'floor_factor': 4.0},
+            {'stat': 'per', 'base': 0.7, 'factor': 2.1},
+            {'stat': 'flame_factor', 'base': 1.875, 'factor': 1.125,
+             'floor_base': 3.0, 'floor_factor': 9.0},
         ])
         self.assertEqual(fp.secondary_stat_pool, [
-            {'stat': 'per', 'base': 1.0, 'factor': 0.4},
+            {'stat': 'per', 'base': 0.35, 'factor': 1.05},
             {'stat': 'crit_chance', 'base': 0.5, 'factor': 0.2},
         ])
 
@@ -281,12 +281,12 @@ class SeedFlooredWeaponsTests(TestCase):
             (dc.scaling_base, dc.scaling_factor, dc.damage_spread),
             (4.0, 1.8, 2.0))
         self.assertEqual(dc.primary_stats, [
-            {'stat': 'dex', 'base': 2.0, 'factor': 0.8},
-            {'stat': 'poison_factor', 'base': 2.0, 'factor': 1.0,
-             'floor_base': 5.0, 'floor_factor': 3.0},
+            {'stat': 'dex', 'base': 0.7, 'factor': 2.1},
+            {'stat': 'poison_factor', 'base': 1.875, 'factor': 1.125,
+             'floor_base': 2.0, 'floor_factor': 6.0},
         ])
         self.assertEqual(dc.secondary_stat_pool, [
-            {'stat': 'dex', 'base': 1.0, 'factor': 0.4},
+            {'stat': 'dex', 'base': 0.35, 'factor': 1.05},
             {'stat': 'crit_chance', 'base': 0.8, 'factor': 0.3},
         ])
 
