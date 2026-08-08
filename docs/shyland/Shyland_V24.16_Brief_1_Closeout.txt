@@ -74,6 +74,9 @@ seed changes, no data actions; prior releases' blocks all closed.)
 Final commit hashes: code f62dbe9, tests 3b139a7, architecture doc
 e7d1190 (report completed in place thereafter).
 
-Operator playtest disposition: PENDING — awaiting operator playtest
-against the dev stack (brief Step 5 checklist); this line is completed
-verbatim-style per #170 before session end.
+Operator playtest disposition: Operator reports playtest successful
+(2026-08-08, against the dev stack per the brief Step 5 checklist).
+
+Mid-build discovery filed during the session: #215 (bags' flat
+carry_bonus is noise against the STR-scaling capacity base) — normal
+pipeline, unruled, no bearing on this brief.
