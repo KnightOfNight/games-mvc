@@ -182,11 +182,23 @@ A stat bonus on any equipped item adds **flatly** to the stat, via one effective
 
 **XP Sources:**
 
-- Killing enemies (scaled to level differential)
+- Killing enemies (scaled to combat tier and level differential)
 - Quest completion (primary XP source)
 - Exploration (first visit to a new room grants a small XP bonus)
 - Crafting milestones
 - PvP kills in PvP zones (reduced rate, separate PvP XP track)
+
+**Kill XP (v24.15, #26):** a kill pays `mk_tier × 10 × scaling_factor`, multiplied by the combat-tier ladder — **the doubling ladder, every rung doubles**:
+
+| Combat tier | XP multiplier |
+|---|---|
+| Normal | ×1 |
+| Elite | ×2 |
+| Champion | ×4 |
+| Boss | ×8 |
+| World Boss | ×16 |
+
+Adds and escorts pay their own tier (a boss's normal-tier adds stay ×1). The outleveled decay (Section 2) then multiplies: full XP within the NPC's Mk level band, −20% per character level beyond the band top, multiplier floor 10%, never less than 1 XP. The ladder is grounded in the #180 fight-cost survey: it sits deliberately above measured time parity (each tier a modest ~1.1–1.4× XP-per-time premium — rewarded, not mandatory) and below draught-cost parity (loot carries the economy leg; XP does not double-pay what loot pays). All five rungs are ruled now — Champion and World Boss await their first seeded content.
 
 **XP Threshold:** `level² × 100`. Level 1→2 costs 100 XP; level 10→11 costs 10,000 XP. The formula extends infinitely. Multiple levels from a single kill are each resolved and announced separately.
 

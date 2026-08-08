@@ -39,6 +39,10 @@ NPC_CONTEST_STEP = 2.5       # per level, matches player primary-stat growth
 ACUITY_FLOOR = 0.1     # the acuity meter's physical range — engine
 ACUITY_CEILING = 1.9   # absolutes, ruled #133 (v23); rails for everything
 NPC_TIER_OFFSET = {'normal': 0, 'elite': 2, 'boss': 2}   # blessed: 55% / 45% / 45% at-level hit
+# v24.15 (#26): kill-XP doubling ladder by combat tier — every rung 2x the
+# previous. Applies to the xp_for_kill base BEFORE the outleveled decay;
+# escorts and adds pay their own tier.
+NPC_TIER_XP_MULT = {'normal': 1, 'elite': 2, 'champion': 4, 'boss': 8, 'world_boss': 16}
 MK_LEVEL_SPAN = 10           # each Mk tier spans 10 levels (matches the item system's bands)
 NPC_HP_BAND_LIFT = 0.75   # per Mk band above 1; linear, tracks player at-level damage growth (#104)
 
@@ -539,12 +543,17 @@ def get_unarmed_message(attacker_pool, target_name, attacker_name=None, fallback
 
 def xp_for_kill(npc_instance, character):
     """
-    XP for killing an NPC. Full value while the character is within the
-    NPC's Mk level band (band top = mk_tier * 10). Beyond the band top,
-    -20% per level over, floored at 10% of base — and never less than 1.
-    Outleveled content always pays something.
+    XP for killing an NPC. Base = int(mk_tier * 10 * scaling_factor)
+    times the NPC_TIER_XP_MULT doubling ladder (v24.15, #26: normal x1 /
+    elite x2 / champion x4 / boss x8 / world_boss x16; unknown tier pays
+    x1). Full value while the character is within the NPC's Mk level band
+    (band top = mk_tier * 10). Beyond the band top, -20% per level over,
+    floored at 10% of the tier-multiplied base — and never less than 1.
+    Outleveled content always pays something. The tier multiplier composes
+    BEFORE the decay: the decay multiplies the tier-multiplied base.
     """
-    base = int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor)
+    tier_mult = NPC_TIER_XP_MULT.get(npc_instance.definition.combat_tier, 1)
+    base = int(npc_instance.mk_tier * 10 * npc_instance.definition.scaling_factor) * tier_mult
     band_top = npc_instance.mk_tier * 10
     levels_over = max(0, character.level - band_top)
     multiplier = max(0.10, 1.0 - (0.20 * levels_over))

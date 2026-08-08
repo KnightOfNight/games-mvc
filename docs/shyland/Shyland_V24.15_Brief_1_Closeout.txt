@@ -1,0 +1,71 @@
+Session start 2026-08-07 (2026-08-08T01:36Z) — Shyland_V24.15_Brief_1_Tier_XP_Multiplier.md — branch version_24_15
+
+CLOSEOUT REPORT — V24.15 Brief 1: Tier XP Multiplier (#26)
+==========================================================
+
+Summary
+-------
+The combat-tier kill-XP doubling ladder shipped exactly as ruled: NPC_TIER_XP_MULT
+= {'normal': 1, 'elite': 2, 'champion': 4, 'boss': 8, 'world_boss': 16} in
+combat_utils.py, multiplying the xp_for_kill base int(mk_tier * 10 *
+scaling_factor) BEFORE the v18 outleveled decay — the -20%/level multiplier and
+its 10% floor operate on the tier-multiplied base, max(1, ...) closes as ever.
+Escorts and adds pay their own tier (no shared-encounter logic); missing/unknown
+tier defaults to x1 via .get(..., 1); the kill message format is untouched.
+Runtime code only — no model changes, no migration, no seed changes, no data
+actions. The Matron sentinel moved 30 -> 240.
+
+Per-step commits
+----------------
+Step 0  stub / work-has-started signal ............ d302a92
+Step 1  SHYLAND_VERSION 24.14 -> 24.15-DEV + pin
+        test (same commit), then make deploy-dev .. 38d4e5c
+Step 2  implementation (combat_utils.py) .......... 3c1befa   <- the arch-doc hash
+Step 3  tests (tests/test_tier_xp.py) ............. e6f1785
+Step 4  migration: NONE (no model changes;
+        makemigrations not run) ................... n/a
+Step 5  verification (see below) .................. n/a
+Step 6  make deploy-dev — clean (build + migrate,
+        no migrations to apply) ................... n/a
+Step 8  architecture doc (gated, last): 24.15
+        header entry, §4.5 xp_for_kill ladder
+        text, header hash f001a79 -> 3c1befa ...... a636445
+
+Verification results
+--------------------
+1. Full in-container suite, path form (docker exec, django container):
+   python manage.py test apps/shyland/tests — 548/548 OK
+   (543 at branch cut + 5 new in test_tier_xp.py: ladder-matches-ruled-table,
+   every-COMBAT_TIER_CHOICES-key-present, each-rung-doubles-in-choices-order,
+   the 8-row sentinel/composition table via subTest, unknown-tier x1).
+2. make shell spot-checks against the dev DB:
+   - crowned-devourer: combat_tier='boss', scaling_factor=10.0  (as briefed)
+   - silk-matron:      combat_tier='boss', scaling_factor=3.0   (as briefed)
+   - distinct combat_tier values in DB = {boss, elite, normal} — all keys of
+     NPC_TIER_XP_MULT; the .get default never fires for seeded content.
+3. git diff 38d4e5c..HEAD (pre-arch-doc) touched only combat_utils.py and
+   tests/test_tier_xp.py; the arch doc joined at Step 8. Scope clean.
+
+Issue state
+-----------
+#26 closed 2026-08-07 (gated on verification passing), with the verification
+comment recorded on the issue.
+
+Deviations
+----------
+None. Implemented exactly to the brief; all design rules held (ladder values
+exact, composition before decay, escorts pay own tier, .get default, no new
+queries, kill message untouched).
+
+PENDING DEPLOY-TIME ACTIONS: none — no seed or data actions in this release.
+
+Operator playtest disposition
+-----------------------------
+Operator reports playtest successful (2026-08-07, in-conversation: "playtest
+confirmed" — dev-stack Mk 2 Hollowcrown rig per the Step 7 checklist).
+
+Final commit hash
+-----------------
+a636445 (Step 8 architecture doc — last content commit of the brief; this
+closeout-report completion commit follows it, with the issues report as the
+session's end artifact after that).
