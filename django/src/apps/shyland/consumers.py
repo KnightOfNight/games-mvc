@@ -978,16 +978,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         max_carry = effective_stats(char, equipped)['str'] * 10 + bag_bonus
         current_carry = len(unequipped)
 
-        lines = self._equipment_doll_lines(equipped)
-
+        # v24.16 (#208): the render is the Inventory table alone — the
+        # paper-doll belongs to bare `equip`, the money line to `wallet`.
+        # The equipped set above still feeds the capacity numbers.
         # Inventory table: Quantity after Name, Slot empty unless slotted
         # (unequipped items never are), flat alphabetical by name.
         # v23 B2 (#18): all STACKABLE_ITEM_TYPES group on (definition,
         # mk_tier, rarity, soulbound state) — the trailing sort-key
         # components exist only to make same-group rows adjacent;
         # alphabetical-by-name stays the visible order.
-        lines.append({})
-        lines.append({'k': f'Inventory ({current_carry}/{max_carry})...'})
+        lines = [{'k': f'Inventory ({current_carry}/{max_carry})...'}]
         unequipped_sorted = sorted(
             unequipped,
             key=lambda i: (
@@ -1026,10 +1026,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         lines += self._table_lines(
             ['Slot', 'Name', 'Quantity', 'Details'], inv_rows,
         )
-
-        wallet_char = await self.get_character_fresh()
-        lines.append({})
-        lines.append(self._wallet_line(wallet_char))
 
         # v20 brief 2 amendment 1 (#56): state reports carry 'report'
         # (unstamped on the client) — inventory, wallet, help, who, stats,
@@ -1073,7 +1069,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         ]),
         ('Information commands', [
             ('help (?)', 'help', 'Show this help.'),
-            ('inventory (inv)', 'inventory', 'Show your equipment, inventory, and wallet.'),
+            ('inventory (inv)', 'inventory', 'Show your inventory.'),
             ('last', 'last', 'Show characters and when they were last seen.', True),
             ('list', 'list', 'List what a vendor here has for sale.'),
             ('look (l)', 'look', 'Look at the room again.'),
