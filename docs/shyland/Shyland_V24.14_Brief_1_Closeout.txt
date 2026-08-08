@@ -1,0 +1,127 @@
+2026-08-07 — Session start: implementation of Shyland_V24.14_Brief_1_Gear_Stat_Band_Lift.md on branch version_24_14.
+
+================================================================================
+V24.14 BRIEF 1 CLOSEOUT — Gear Stat Band Lift (#130)
+================================================================================
+
+SUMMARY
+
+Seed-data-only retune: the 146 stat entries in seed_world.py rewritten to the
+band-lift doctrine (GDD §6 "The band lift") — 135 changed, 11 crit_chance
+entries byte-identical. Full lift base=0.25×m1 / factor=0.75×m1 (six
+primaries, lifesteal, electric_damage_bonus, physical_resist, inert flats);
+half-power 0.625/0.375×m1 for the proc-factor family; floor pairs full-lifted
+(flame-projector 8/4 -> 3/9, dart-caster 5/3 -> 2/6 — Mk 1 floors 12 and 8
+unchanged); every Mk 1 midpoint preserved exactly. Zero runtime code changes,
+zero model changes, zero migrations (Step 4 confirmed: no migration). No
+instance backfill (drop-time snapshot doctrine).
+
+The retune was applied by a deterministic transform script that asserted an
+exact occurrence count for every (stat, old base/factor) pattern and midpoint
+preservation on the mapping itself before writing a byte; all 135 counts
+matched the brief's §3 table.
+
+COMMITS (branch version_24_14)
+
+  7d988da  Step 0: closeout-report stub (work-has-started signal)
+  f8d1721  Step 1: SHYLAND_VERSION 24.13 -> 24.14-DEV + pin test (own commit),
+           followed by the version-start make deploy-dev
+  b89c3ac  Step 2: seed retune — 135 entries lifted (137 changed lines:
+           133 single-line + 2 two-line floor blocks)
+  c106076  Step 3: tests — v24.10 pinned literals updated; new
+           tests/test_band_lift.py doctrine-shape test
+  8b07814  Step 8 (gated, last): architecture doc — stamp 24.14, hash stays
+           f001a79; band-lift authoring rule; v24.10 carrier literals updated
+
+Final implementation hash: 8b07814
+
+VERIFICATION (brief §5 — all passed)
+
+  1. Full in-container suite, path form (docker exec, django container):
+     python manage.py test apps/shyland/tests — 543/543 OK (541 -> 543 with
+     the two new doctrine tests).
+  2. tests/test_band_lift.py passes (factor = 3×base full / 0.6×base procs /
+     floors 3×floor_base / crit_chance exempt); test_v24_10_brief1.py passes
+     with updated expected values.
+  3. Dev-DB spot-checks after the reseed — all PASS: iron-sword lifesteal
+     0.175/0.525; flame-projector flame_factor 1.875/1.125 floor 3.0/9.0;
+     dart-caster poison_factor 1.875/1.125 floor 2.0/6.0;
+     copper-ring-of-strength str primary 0.7/2.1; crit_chance entries exactly
+     the 11 old pairs, unchanged.
+  4. Mk 1 midpoint invariance: all 146 entry midpoints + 2 floor midpoints
+     captured from the live dev DB before the reseed and re-captured after —
+     diff empty (byte-identical).
+  5. Seed deletion count: EXPECTED 0, ACTUAL 0 (seed-owned rows). See the
+     dev-stack notes below for the anticipated live-DB Hollowcrown
+     interaction, which is not a seed-owned deletion.
+
+Step 5 executed code-first/data-second: make deploy-dev (image bake), then
+make seed against the dev stack.
+
+ISSUES
+
+  #130 closed (gated on §5 passing) with the full implementation record.
+  #211 filed during playtest (operator-directed, labeled V24, may be moved at
+  triage): the silver accessory tier — Mk 2 jewelry needs the tier-material
+  ladder extended (silver definitions for V25's Mk 2 zones) plus a ruling on
+  a Mk-mismatch guard for tier-material definitions. Finding: an admin-gifted
+  Mk 2 copper ring is indistinguishable from Mk 1 except by stats — the name
+  is supposed to carry the tier and the ladder's next rung doesn't exist yet.
+
+DEVIATIONS (recorded, none silent)
+
+  1. Architecture doc: in addition to §8's enumerated scope (stamp, header
+     version block, the ~line 817 authoring-rule paragraph), the adjacent
+     v24.10 proc-floor paragraph's seeded-carrier literals were updated to
+     the lifted curves (per 0.7/2.1, flame 1.875/1.125 floor 3+9×Mk, dex
+     0.7/2.1, poison 1.875/1.125 floor 2+6×Mk) — the section body describes
+     present state and would otherwise have been wrong about the shipped
+     seed. One step beyond the brief's enumerated doc scope; zero design
+     content.
+  2. test_v24_10_brief1.py's local make_floored_def fixture: alongside the
+     directed flame_factor/floor updates, its per primary was updated
+     2.0/0.8 -> 0.7/2.1 to keep the fixture doctrine-shaped. Assertion-
+     neutral (no test reads the per entry's curve); original intent (floors
+     seeded, invariant enforced) preserved. The fixture's Mk 1 floor is 12
+     under both old and new pairs, so all floor-math semantics held.
+
+DEV-STACK STATE NOTES (operator-kept, live-DB only — production untouched)
+
+  - The brief-anticipated Hollowcrown interaction: the reseed deleted the
+    operator's Mk 2 RoomSpawn rows (141/142, reported by the seed as
+    "not authored" with quantities ×1/×2) and recreated them at authored
+    Mk 1 under new ids 143/144; mk_tier=2 was restored on both per the
+    brief's Step 5 directive. The standing Mk 2 dev encounter survives.
+  - Transient double-dose incident (diagnosed, resolved, not a code bug):
+    the live Mk 2 NPC instances survived the reseed (instances link to
+    rooms, not spawn rows), and in the minutes between the reseed and the
+    mk_tier=2 restore the tick engine spawned a Mk 1 set for the briefly
+    Mk 1 spawn rows — the operator met (and cleared) both sets at once.
+    The respawn sweep deletes expired dead instances and spawns fresh from
+    the (now Mk 2) spawn rows, so the state self-cleaned; verified: one
+    fresh Mk 2 set at full HP, no recurrence possible.
+  - Operator-directed playtest state added this session: three off-seed
+    Silver clone definitions (silver-ring-of-strength, -dexterity,
+    silver-amulet-of-endurance; #211 workaround) with Harley Stone's three
+    Mk 2 jewelry instances re-pointed to them; 16 admin-gifted test items
+    (Mk 1 pair + Mk 2 weapons/armor/jewelry, rare+) plus a Mk 2 Satchel;
+    Hollowcrown respawn_minutes set to 1 (crowned-devourer 10 -> 1,
+    devourers-drones 3 -> 1) for Phase 3 farming. All of it reverts or
+    orphans on a future reseed; none of it is release content.
+
+PENDING DEPLOY-TIME ACTIONS (open until the production execution)
+
+  - Production seed run at the V24.14 closeout tail's deploy window, via
+    make seed-prod (bare invocation, its own operator confirmation — #187).
+    Expected deletions: 0. Production carries no Mk 2 instances; the run
+    updates definition curve fields only.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+
+  Operator reports playtest successful ("playtest confirmed", 2026-08-07,
+  in-session). All three checklist points exercised on the dev stack: Mk 1
+  examines unchanged; Mk 2 examines carrying the ~1.75x lift; the Hollowcrown
+  Mk 2 encounter cleared with Mk 2 gear equipped.
+
+Session end: 2026-08-07, implementation-session-end ritual.
+================================================================================
