@@ -1,8 +1,9 @@
 """V24.7 Brief 1 (#195, #176, #194): equipment display.
 
 The display says "two-handed" and shows its consequences. Bare `equip`
-renders the Equipment paper-doll through the one shared composition inv
-uses (#195); consumed hand slots name their consumer, muted (#176);
+renders the Equipment paper-doll through the shared composition helper
+(#195; its sole consumer since the v24.16 inv trim, #208); consumed
+hand slots name their consumer, muted (#176);
 handed-ness is disclosed in examine, the listing Slot cell, and the
 hands-conflict refusal clause (#194). Zero mechanics changes — targeted
 equip behavior is byte-identical outside the refusal clause; the combat
@@ -89,7 +90,11 @@ class BareEquipTests(TransactionTestCase):
         self.assertFalse(any('Inventory (' in t for t in texts))
         self.assertFalse(any('Wallet:' in t for t in texts))
 
-    async def test_bare_equip_matches_inv_paper_doll_byte_identical(self):
+    async def test_bare_equip_matches_paper_doll_helper_byte_identical(self):
+        # v24.16 (#208) re-oracle: inv no longer renders the doll, so
+        # the original intent — the paper-doll composition is pinned as
+        # bare `equip`'s exact render — is asserted against
+        # `_equipment_doll_lines(equipped)` rendered directly.
         zone, room = await sync_to_async(make_world)('e7b')
 
         def setup():
@@ -101,14 +106,15 @@ class BareEquipTests(TransactionTestCase):
             return char
         char = await sync_to_async(setup)()
 
-        bare_sent, inv_sent = [], []
-        await make_stub_consumer(char, bare_sent).cmd_equip('   ')
-        await make_stub_consumer(char, inv_sent).cmd_inventory()
+        bare_sent = []
+        consumer = make_stub_consumer(char, bare_sent)
+        await consumer.cmd_equip('   ')
         bare = report_lines(bare_sent)
-        inv = report_lines(inv_sent)
-        # The shared-composition guarantee: inv opens with the identical
-        # paper-doll block, byte for byte.
-        self.assertEqual(bare, inv[:len(bare)])
+        # The shared-composition guarantee: bare `equip` is the helper's
+        # render, byte for byte — nothing added, nothing dropped.
+        equipped = await consumer.get_equipped_items(char)
+        expected = consumer._equipment_doll_lines(equipped)
+        self.assertEqual(bare, expected)
 
     async def test_whitespace_only_args_are_bare(self):
         zone, room = await sync_to_async(make_world)('e7c')

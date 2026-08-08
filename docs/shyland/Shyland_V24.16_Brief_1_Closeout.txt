@@ -1,0 +1,82 @@
+2026-08-07 — Implementation session started: Shyland_V24.16_Brief_1_Inv_Trim.md on branch version_24_16.
+
+================================================================
+V24.16 BRIEF 1 CLOSEOUT — INV TRIM (#208)
+================================================================
+
+Session type: implementation. Branch: version_24_16 (worktree). Pre-flight:
+exit 0, target local dev, posture .env == .env.dev.
+
+Step 0: closeout stub pushed 4344179 (work-has-started signal).
+
+Step 1 — Version start: SHYLAND_VERSION 24.15 -> 24.16-DEV, pin test in
+test_b2_amendment1.py moved in the same commit (e107525); version-start
+make deploy-dev ran clean (no migrations to apply).
+
+Step 2 — Implementation (f62dbe9): django/src/apps/shyland/consumers.py.
+cmd_inventory renders the Inventory table alone — the paper-doll block
+(_equipment_doll_lines call + leading blank-line separator) and the wallet
+tail (get_character_fresh call, blank-line separator, _wallet_line append)
+removed; the Inventory (N/M)... header is the first line of the render.
+The equipped-items query, bag_bonus, max_carry (effective STR x 10 +
+equipped-bag carry_bonus, #100), current_carry, sort, stacking walk (#18),
+_table_lines, and the report-category send all kept. _equipment_doll_lines
+and _wallet_line NOT deleted — bare equip (#195) is the doll helper's sole
+consumer, wallet keeps its shared renderer; neither command's output
+changed by one byte. Help row: 'Show your inventory.'
+
+Step 3 — Tests (3b139a7):
+- New tests/test_v24_16_brief1.py: header-first (no leading blank, no
+  Equipment header), no paper-doll rows (equipped names absent, no
+  slot-label rows), no Wallet line, capacity-alive pin (stat_str 10 +
+  rolled +2 gear STR = 12 effective; x10 + bag carry_bonus 5 = 125 —
+  exact header 'Inventory (1/125)...'), help-row pin.
+- TEST-CONVERSION NOTE (standing test-hygiene rule, deviation-style):
+  test_v24_7_brief1.py::test_bare_equip_matches_inv_paper_doll_byte_identical
+  lost its oracle (inv's doll block no longer exists). Converted to
+  test_bare_equip_matches_paper_doll_helper_byte_identical — bare equip's
+  report lines compared byte-for-byte against
+  _equipment_doll_lines(equipped) rendered directly; original intent (the
+  paper-doll composition is pinned as bare equip's exact render) preserved
+  as explicit assertions. Module docstring's "shared composition inv" line
+  updated to sole-consumer form.
+- The brief's three anticipated parser-update sites needed NO changes and
+  pass unchanged: test_b2_amendment1.py::test_inventory_slot_cell_populated,
+  test_v24_8_brief1.py::DualSlotInventoryTests, and
+  test_data_integrity.py::InventoryStackingTests all locate rows by item
+  name over unequipped items, which never rendered in the old doll block.
+- Full suite in-container (python manage.py test apps/shyland/tests):
+  553/553 pass (548 -> 553).
+
+Step 4 — Dev deploy: make deploy-dev from the worktree, clean; dev stack
+runs the verified build (help Version line reads 24.16-DEV).
+
+Step 6 — Architecture doc (e7d1190, gated on Steps 2-4 passing):
+Shyland_Architecture_v24.md updated in place — stamp 24.16, header hash
+MOVED 3c1befa -> f62dbe9 (output-composition change; v24.7/v24.8
+precedent). v24.16 header-note entry + per-release blockquote; 4.3
+"Changed in" run gains the v24.16 sentence; the equipment-display
+subsection's only-callers sentence updated to sole-caller-since-v24.16;
+the v24.7 test-suite line gains the "(until v24.16 — #208 ...)"
+re-oracle parenthetical. v19 wallet section and v22 standards paragraph
+left as history per the brief. No other sections changed.
+
+Issues: #208 CLOSED (gated on verification passing), with implementation
+comment.
+
+Deviations: none beyond the brief-mandated test conversion recorded above.
+
+Expected deletions: 0. Actual: 0 (no seed-owned replacement ran).
+
+PENDING DEPLOY-TIME ACTIONS: none. (Runtime code only — no migration, no
+seed changes, no data actions; prior releases' blocks all closed.)
+
+Final commit hashes: code f62dbe9, tests 3b139a7, architecture doc
+e7d1190 (report completed in place thereafter).
+
+Operator playtest disposition: Operator reports playtest successful
+(2026-08-08, against the dev stack per the brief Step 5 checklist).
+
+Mid-build discovery filed during the session: #215 (bags' flat
+carry_bonus is noise against the STR-scaling capacity base) — normal
+pipeline, unruled, no bearing on this brief.
