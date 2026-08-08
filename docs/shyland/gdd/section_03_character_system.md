@@ -188,7 +188,7 @@ A stat bonus on any equipped item adds **flatly** to the stat, via one effective
 - Crafting milestones
 - PvP kills in PvP zones (reduced rate, separate PvP XP track)
 
-**Kill XP (v24.15, pending implementation) (#26):** a kill pays `mk_tier × 10 × scaling_factor`, multiplied by the combat-tier ladder — **the doubling ladder, every rung doubles**:
+**Kill XP (v24.15, #26):** a kill pays `mk_tier × 10 × scaling_factor`, multiplied by the combat-tier ladder — **the doubling ladder, every rung doubles**:
 
 | Combat tier | XP multiplier |
 |---|---|

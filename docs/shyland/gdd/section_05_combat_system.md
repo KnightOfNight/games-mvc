@@ -204,7 +204,7 @@ NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot t
 
 **Currency drops** are rolled at death using the formula: `random.randint(currency_drop_min × mk_tier, currency_drop_max × mk_tier)`. Currency display respects zone aliases via `display_for_zone()`.
 
-**Kill XP (v24.15, pending implementation) (#26):** the reward counterpart of the tier difficulty offsets — kill XP multiplies by combat tier on the doubling ladder (normal ×1 / elite ×2 / champion ×4 / boss ×8 / world boss ×16), applied before the outleveled decay; escorts pay their own tier. The authoritative statement, ladder table, and derivation live in Section 3.
+**Kill XP (v24.15, #26):** the reward counterpart of the tier difficulty offsets — kill XP multiplies by combat tier on the doubling ladder (normal ×1 / elite ×2 / champion ×4 / boss ×8 / world boss ×16), applied before the outleveled decay; escorts pay their own tier. The authoritative statement, ladder table, and derivation live in Section 3.
 
 Bosses have multi-phase fights with behavioral changes at HP thresholds. Some boss abilities specifically target Acuity — a screaming eldritch horror doesn't just deal damage, it pushes the entire party's Acuity toward an extreme.
 
