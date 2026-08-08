@@ -204,6 +204,8 @@ NPCs are defined by an **`NpcDefinition`** (the template — name, stats, loot t
 
 **Currency drops** are rolled at death using the formula: `random.randint(currency_drop_min × mk_tier, currency_drop_max × mk_tier)`. Currency display respects zone aliases via `display_for_zone()`.
 
+**Kill XP (v24.15, pending implementation) (#26):** the reward counterpart of the tier difficulty offsets — kill XP multiplies by combat tier on the doubling ladder (normal ×1 / elite ×2 / champion ×4 / boss ×8 / world boss ×16), applied before the outleveled decay; escorts pay their own tier. The authoritative statement, ladder table, and derivation live in Section 3.
+
 Bosses have multi-phase fights with behavioral changes at HP thresholds. Some boss abilities specifically target Acuity — a screaming eldritch horror doesn't just deal damage, it pushes the entire party's Acuity toward an extreme.
 
 **Canonical NPC ordering (v21, #64):** `(spawned_at, pk)` ascending is the single authoritative order for NPCs sharing a room — the Who's-here listing, the resolver's default pick, the `N.noun` index, and the ordinal words in messages all derive from it. Bare `kill bear` engages the FIRST bear and the messages say so. Ordinal words ("the first black bear") appear in combat messages ONLY while duplicates of that visible name are present in the encounter; a solo NPC renders without them, and the Who's-here listing stays bare names — order is its contract, not labels.
