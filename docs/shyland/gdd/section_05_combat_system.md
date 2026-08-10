@@ -51,7 +51,15 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
 
    NPC contest stats (v19 — "contests add, quantities multiply"): the stats NPCs bring
    to opposed rolls grow ADDITIVELY on the player curve. npc_level = scaling_factor +
-   10 × (mk_tier − 1); DEX = round(18 + 2.5 × (level − 1)) + tier offset (**v21:
+   10 × (mk_tier − 1); DEX = 18 + floor(2.5 × (level − 1)) + tier offset (v24.17,
+   pending implementation) (#105) (**v24.17 — floor, not round:** the floor is
+   applied to the growth term, mirroring the reference player's own floor-share
+   DEX accrual, so NPC DEX equals the attainable at-level primary at every level
+   of every band and the blessed hit targets are exact everywhere. The prior
+   `round()` was Python's banker's rounding, which sent the band's `.5` levels
+   to the nearest even integer — overshooting the player by 1 DEX = one d20 pip
+   = −5% hit at exactly L4 and L8, the #89 survey's G5 finding; aligned levels
+   are unchanged by the fix) (**v21:
    normal +0 / elite +2 / boss +2 — re-blessed at-level hit rates of 55% / 45% / 45%**;
    the v19 offsets of +3/+6 concentrated boss difficulty in the miss rate and made the
    blessed targets real only for max-DEX builds — the #89 survey's knife-edge finding.
