@@ -71,7 +71,7 @@ nothing carried in.)
 Final commit hashes: code d83fcdf, tests 98f3d68, architecture doc
 25090a8 (report completed in place thereafter).
 
-Operator playtest disposition: PENDING — awaiting the operator's ruling.
-(The brief notes the change's surface is statistical — a 5% hit-rate
-shift at two levels per band — and offers "No playtests for this brief"
-as an acceptable disposition.)
+Operator playtest disposition: No playtests for this brief (2026-08-10,
+terminal — the change's surface is statistical, a 5% hit-rate shift at
+two levels per band; the brief offered this disposition and the operator
+ruled it in-session).
