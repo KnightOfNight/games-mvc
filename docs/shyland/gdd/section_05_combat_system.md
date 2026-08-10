@@ -52,7 +52,7 @@ Each combat round (3 seconds = 3 engine ticks), a character may take **1 Primary
    NPC contest stats (v19 — "contests add, quantities multiply"): the stats NPCs bring
    to opposed rolls grow ADDITIVELY on the player curve. npc_level = scaling_factor +
    10 × (mk_tier − 1); DEX = 18 + floor(2.5 × (level − 1)) + tier offset (v24.17,
-   pending implementation) (#105) (**v24.17 — floor, not round:** the floor is
+   #105) (**v24.17 — floor, not round:** the floor is
    applied to the growth term, mirroring the reference player's own floor-share
    DEX accrual, so NPC DEX equals the attainable at-level primary at every level
    of every band and the blessed hit targets are exact everywhere. The prior
