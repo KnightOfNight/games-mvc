@@ -1,3 +1,77 @@
 Session started 2026-08-10 — Shyland_V24.17_Brief_1_DEX_Curve_Rounding_Parity.md — branch version_24_17.
 
-[STUB — completed in place at session end]
+================================================================
+V24.17 BRIEF 1 CLOSEOUT — DEX CURVE ROUNDING PARITY (#105)
+================================================================
+
+Session type: implementation. Branch: version_24_17 (worktree). Pre-flight:
+exit 0, target local dev, posture .env == .env.dev.
+
+Step 0: closeout stub pushed 96ef89c (work-has-started signal).
+
+Step 1 — Version start (fb5a395): SHYLAND_VERSION 24.16 -> 24.17-DEV, pin
+test in test_b2_amendment1.py moved in the same commit; version-start
+make deploy-dev ran clean (no migrations to apply).
+
+Step 2 — The curve fix (d83fcdf): django/src/apps/shyland/combat_utils.py,
+get_npc_stats only. The DEX curve line changes from
+round(NPC_CONTEST_BASE + NPC_CONTEST_STEP * (L - 1)) to
+NPC_CONTEST_BASE + math.floor(NPC_CONTEST_STEP * (L - 1)) — the floor on
+the growth term mirrors the reference player's floor-share DEX accrual,
+making the blessed at-level hit targets (55/45/45) exact at every level
+of every band. Docstring updated (v24.17, #105). Per the ruling, all
+untouched: the STR/PER/INT growth = round(...) line (Amendment-1
+ratified), npc_max_vitality's half-up rounding + comment (#104), and the
+constants NPC_CONTEST_BASE/NPC_CONTEST_STEP/NPC_TIER_OFFSET. math was
+already imported. No other line in the function changed.
+
+Step 3 — Tests (98f3d68): new tests/test_dex_parity.py, 6 tests —
+the curve law (Mk 1-3 x within-band 1-10 x normal/elite/boss, exact
+equality vs 18 + floor(2.5*(L-1)) + offset), player parity (normal-tier
+DEX == attainable primary at effective levels 1-30), blessed targets
+exact (thresholds 10/12/12, success faces 11/9/9 = 55%/45%/45%, every
+level 1-30 x tier), both sentinels (elite sf 4.0 Mk 1 -> 27, sf 8.0
+Mk 1 -> 37), aligned-level pins (normal Mk 1 sf 2.0/6.0/10.0 ->
+20/30/40). Zero test conversions, as the brief's design-time grep
+predicted — the two existing tests reading ['dex'] (test_v24_6_brief1,
+test_gear_combat) are relative/gear-bonus reads, not curve pins.
+Full suite in-container (python manage.py test apps/shyland/tests):
+559/559 pass (553 -> 559, exactly the new file's count).
+
+Step 4 — Verification: (1) suite green at the expected count; (2) dev
+Django-shell spot-check — elite scaling_factor 4.0 reports DEX 27 at
+Mk 1 and 52 at Mk 2 (effective L14: 18 + floor(32.5) + 2); (3)
+grep-check — combat_utils.py contains exactly one math.floor, inside
+get_npc_stats, and the growth line still reads round(.
+
+Step 5 — Dev deploy: make deploy-dev from the worktree, clean; dev-side
+data actions: none.
+
+Architecture doc (25090a8, gated on all above passing):
+Shyland_Architecture_v24.md updated in place — stamp 24.17 (new
+per-release blockquote), header hash MOVED f62dbe9 -> d83fcdf
+(architectural point release — contest-math change), v24.17 note
+prepended to the header parenthetical; section 4.5: the quoted
+get_npc_stats snapshot's curve line updated, the contest-stats paragraph
+gains the floor doctrine (the exactness claim now holds without the #105
+caveat), and the Amendment-1 growth sentence gains the
+deliberately-untouched clause. No other sections changed.
+
+Issues: #105 CLOSED (gated on verification passing), with implementation
+comment.
+
+Deviations: none.
+
+Expected deletions: 0. Actual: 0 (no seed-owned replacement ran).
+
+PENDING DEPLOY-TIME ACTIONS: none. (Runtime code only — no migration, no
+seed changes, no data actions; V24.16 closed with zero pending actions,
+nothing carried in.)
+
+Final commit hashes: code d83fcdf, tests 98f3d68, architecture doc
+25090a8 (report completed in place thereafter).
+
+Operator playtest disposition: PENDING — awaiting the operator's ruling.
+(The brief notes the change's surface is statistical — a 5% hit-rate
+shift at two levels per band — and offers "No playtests for this brief"
+as an acceptable disposition.)
