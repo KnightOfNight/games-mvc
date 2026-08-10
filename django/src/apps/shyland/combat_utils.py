@@ -373,6 +373,10 @@ def get_npc_stats(npc_instance):
     """Return effective NPC stats. DEX (the difficulty dial for contests)
     grows purely off the curve+tier-offset so hit chances hit the blessed
     targets (55% normal / 45% elite / 45% boss) at every level and Mk tier.
+    The floor on the curve's growth term mirrors the reference player's
+    floor-share DEX accrual (18 + floor(2.5 x (L - 1))), making the blessed
+    targets exact at every level (v24.17, #105) — banker's round() drifted
+    -5% hit at the .5-up levels (L4/L8 per band).
     v21 B3 (#101): boss and elite share the +2 dodge tier — boss identity
     lives in HP, damage, and escorts, not the miss rate.
     STR/PER/INT keep their authored species bases and grow additively on the
@@ -380,7 +384,7 @@ def get_npc_stats(npc_instance):
     damage stays proportionate. base_dex is no longer read here."""
     d = npc_instance.definition
     L = npc_level(npc_instance)
-    curve = round(NPC_CONTEST_BASE + NPC_CONTEST_STEP * (L - 1))
+    curve = NPC_CONTEST_BASE + math.floor(NPC_CONTEST_STEP * (L - 1))
     offset = NPC_TIER_OFFSET.get(d.combat_tier, 0)
     growth = round(NPC_CONTEST_STEP * (L - 1))
     return {
