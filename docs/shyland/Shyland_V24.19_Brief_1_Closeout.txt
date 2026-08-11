@@ -122,7 +122,13 @@ b081447 (report completed in place thereafter).
 SHYLAND_VERSION remains 24.19-DEV at session end; the closeout session
 stamps 24.19.
 
-Operator playtest disposition: PENDING — awaiting operator playtest
-against the dev stack (brief Step 6 checklist). This line is updated
-verbatim-style with the operator's disposition before the session-end
-ritual runs.
+Operator playtest disposition: Operator reports playtest successful
+(2026-08-10, terminal — two-account live reproduction on the dev stack
+per the brief's Step 6 checklist: both toons engaged the same black
+bear from separate sessions; the kill and the bystander's "Combat has
+ended." landed in the same round, same second, fight pane cleared, no
+stuck window; bystander's loot command passed the in-combat gate and
+correctly hit the standing kill-attribution refusal — "That is not your
+kill" — which is corpse ownership, not the #218 gate, and belongs to
+#220's out-of-scope multiplayer-attribution question; killer's own kill,
+loot, and corpse flow all normal).
