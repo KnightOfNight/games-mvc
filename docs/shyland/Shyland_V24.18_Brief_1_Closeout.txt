@@ -1,1 +1,87 @@
-Session start 2026-08-10 — Shyland_V24.18_Brief_1_In_Combat_Acuity_Drift_Pause.md — branch version_24_18 (implementation session; stub, completed in place at session end)
+Session started 2026-08-10 — Shyland_V24.18_Brief_1_In_Combat_Acuity_Drift_Pause.md — branch version_24_18.
+
+================================================================
+V24.18 BRIEF 1 CLOSEOUT — IN-COMBAT ACUITY DRIFT PAUSE (#142)
+================================================================
+
+Session type: implementation. Branch: version_24_18 (worktree). Pre-flight:
+exit 0, target local dev, posture .env == .env.dev. Brief verified verbatim
+at the branch tip (committed by the design session at 27385ab, zero drift).
+
+Step 0: closeout stub pushed b35803f (work-has-started signal).
+
+Step 1 — Version start (9936e3e): SHYLAND_VERSION 24.17 -> 24.18-DEV, pin
+test in test_b2_amendment1.py moved in the same commit; version-start
+make deploy-dev ran clean (no migrations to apply).
+
+Step 2 — The drift pause (c3c21c8):
+django/src/apps/shyland/management/commands/run_tick_engine.py,
+get_characters_needing_drift (Phase 2) only. The candidate queryset gains
+.exclude(combat_sessions__is_active=True) — every character with any
+active CombatSession is excluded from passive acuity drift, exactly
+Phase 4 regen's combat-membership predicate expressed at queryset level,
+with a comment noting the predicate is shared with Phase 4 by ruling
+(#142). Per the ruling, all untouched: the acuity_shift_types has-shift
+exclusion (#133 — an independent pause condition), the per-character
+drift loop, save_acuity, ACUITY_DRIFT_RATE (0.01), the snap-within-rate
+rule, the 2-decimal rounding, the ACUITY_FLOOR/ACUITY_CEILING clamp, and
+drift silence. Post-combat resume is ordinary by construction — the
+character simply reappears in the candidate set on the next tick.
+
+Step 3 — Tests (0b944f8): new tests/test_acuity_drift_pause.py, 7 tests
+in the test_v243_regen engine-harness style (stubbed send_to_player /
+broadcast_to_room / _online_character_pks; non-boundary ticks throughout
+so Phase 1 shift processing never moves the value): drift law both
+directions (0.90 -> 0.91, 1.10 -> 1.09), snap rule (0.995 lands exactly
+1.0), in-combat pause (active CombatSession, value byte-unchanged),
+ordinary resume (session deactivated -> exactly one 0.01 step, no
+catch-up), shift independence (active shift_acuity_high pauses drift out
+of combat — the #133 exclusion pinned — and shift + combat together
+still no drift). Zero test conversions, as the brief's design-time check
+predicted. Full suite in-container (python manage.py test
+apps/shyland/tests): 566/566 pass (559 -> 566, exactly the new file's
+count).
+
+Step 4 — Verification: full suite green at the expected count; the
+new file's five required pins all present and passing.
+
+Step 5 — Dev deploy: make deploy-dev from the worktree, clean; dev-side
+data actions: none.
+
+Step 6 — Operator playtest: run on the dev stack per the brief's
+checklist (tonic to band edge, hold through in-combat expiry, ordinary
+drift-back after the fight).
+
+Architecture doc (4d94f19, gated on all above passing):
+Shyland_Architecture_v24.md updated in place — stamp 24.18 (new
+per-release blockquote), header hash MOVED d83fcdf -> c3c21c8
+(architectural point release — tick-engine runtime change), v24.18 note
+prepended to the header parenthetical; section 4.9: the #133 paragraph's
+Phase 2 drift description amended with the in-combat exclusion, the
+shared-predicate doctrine (one definition of "in combat" for Phases 2
+and 4), the independence of the two pause conditions, and the test-file
+pointer. Doc-wide drift sweep (grep -n 'drift'): the section 4.6 acuity-
+rails paragraph lists Phase 2 only as a clamp consumer — still true, not
+touched. No other sections changed.
+
+Issues: #142 CLOSED (gated on verification passing), with implementation
+comment. Playtest finding, design-level, filed thin as #225 (acuity
+displays truncate to one decimal — 1.15 renders as 1.1; three surfaces
+mapped: client toFixed(1), stats command :.1f, tick-engine message
+suffixes) — filed for a design-session ruling, no code changed in this
+session.
+
+Deviations: none.
+
+Expected deletions: 0. Actual: 0 (no seed-owned replacement ran).
+
+PENDING DEPLOY-TIME ACTIONS: none. (Runtime code only — no migration, no
+seed changes, no data actions; V24.17 closed with zero pending actions,
+nothing carried in.)
+
+Final commit hashes: code c3c21c8, tests 0b944f8, architecture doc
+4d94f19 (report completed in place thereafter).
+
+Operator playtest disposition: Operator reports playtest successful
+(2026-08-10, terminal — run against the dev stack per the brief's Step 6
+checklist; the one finding was design-level, filed as #225).
