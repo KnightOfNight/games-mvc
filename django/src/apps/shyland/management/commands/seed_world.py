@@ -4842,6 +4842,11 @@ class Command(BaseCommand):
             # listed here so the type-wide consumable back-fill below
             # can't overwrite the authored 15.
             'repair-kit': 15,
+            # v24.21 (#201): the floored-proc pair — authored pricing
+            # (ruled 2026-08-05). Listing here also removes them from the
+            # type-wide 25 back-fill's reach.
+            'flame-projector': 85,
+            'dart-caster': 70,
             # v19 brief 10: the freebie newbie kit — exchange-safe by
             # construction (base_value 0 sells and repairs for nothing).
             'worn-cudgel': 0,
