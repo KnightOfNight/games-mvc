@@ -1195,8 +1195,12 @@ class Command(BaseCommand):
         # ---- Phase 2: Passive Acuity drift (every tick) ----
         @database_sync_to_async
         def get_characters_needing_drift():
+            # In-combat characters are excluded: the combat-membership
+            # predicate is shared with Phase 4 regen by ruling (#142).
             candidates = list(Character.objects.exclude(
                 acuity_current=F('acuity_baseline')
+            ).exclude(
+                combat_sessions__is_active=True
             ))
 
             acuity_shift_types = {'shift_acuity_high', 'shift_acuity_low'}
