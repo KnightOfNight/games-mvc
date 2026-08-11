@@ -1,3 +1,45 @@
 Session start: 2026-08-11 — Shyland_V24.21_Brief_1_Floored_Weapon_Pricing.md — branch version_24_21
 
-(Stub — completed in place at session end.)
+CLOSEOUT REPORT — V24.21 Brief 1: Floored Weapon Pricing (#201)
+
+Commit chain (each pushed at its step boundary):
+  7d67b96  Step 0: closeout report stub (work-has-started signal)
+  c7e6a0e  Version start: SHYLAND_VERSION 24.20 -> 24.21-DEV (pin test moved in the same commit), followed by make deploy-dev
+  3b7e4f2  Implementation + tests: two authored base_values entries ('flame-projector': 85, 'dart-caster': 70) in seed_world.py; new tests/test_v24_21_brief1.py
+  45e1f83  Architecture doc: stamp 24.20 -> 24.21 in place, hash unmoved (seed-data release, v24.14 precedent)
+
+Final implementation commit hash: 45e1f83 (the closeout-report completion commit follows it).
+
+Migrations: NONE. No model changes in this brief.
+
+Prior pending deploy-time actions pre-flight: none outstanding (V24.20 closed with an empty tail), matching the brief's statement.
+
+Implementation: exactly as specified — two entries plus the brief's comment inserted after 'repair-kit': 15 in the base_values dict (seed_world.py lines 4845-4849). git diff on the file was verified to be exactly the two entries plus comment; the pair's ItemDefinition seed blocks (lines 3922/3950) untouched; get_item_value/get_sale_price untouched (verified, not modified); no runtime code change.
+
+Verification (all steps passed):
+  1. grep + git diff: the two new dict entries alongside the pair's existing definition blocks; nothing else changed in the file. PASS
+  2. Full suite in-container, path form: 580 tests, OK (576 -> 580; the 4 new regression tests pin seeded base_values 85/70 and derived Mk 1 Common value/sale 85/28 and 70/23 through the real arithmetic). PASS
+  3. make deploy-dev (build + migrate, no migrations to apply), then make seed against the dev stack. Seed self-checks all PASS, including "No ItemDefinition left at default base_value (found 0)". PASS
+  4. Post-reseed DB check (dev): flame-projector base_value = 85, dart-caster = 70. PASS
+  5. Derived-price spot check on dev: Mk 1 Common 85/28 and 70/23; Mk 2 Common 170/56 and 140/46. PASS
+
+Dev reseed deletion count — expected 0, actual (seed-owned): 0. PASS.
+  Note: the reseed output showed 5 "not authored by this seed" enforce-exact deletions, all pre-existing
+  dev-only live-DB state unrelated to this brief, known and recorded from prior sessions: the operator-ruled
+  Hollowcrown Mk 2 tweak's NPCs (Crowned Devourer x1, Devourer's drones x2 — "any seed run reverts" per the
+  standing ruling) and the 3 off-seed Silver clone ItemDefinitions (the #211 playtest workaround, recorded as
+  reverts/orphans-on-reseed at their creation). Zero deletions attributable to this brief's change; the
+  seed-owned replacement tables changed nothing. Flagged to the operator in-session: the dev DB's Mk 2
+  Hollowcrown tweak is reverted and the silver clone jewelry is gone; restoring either is the operator's call.
+
+Test-hygiene deviations: NONE. No existing test pinned the pair's base_value (as the brief anticipated); no literal conversions were needed. New test file only.
+
+Architecture doc: Shyland_Architecture_v24.md updated in place — new Version 24.21 block, stamp 24.21, commit hash NOT moved (seed-data release, not an architectural change; v24.14 precedent). Verified no passage pins the pair's price (all base_value passages are the mechanism description, the generic value formula, or clearly-dated historical narratives); no section-content correction needed.
+
+Issue state: #201 closed with a comment linking implementing commit 3b7e4f2, after all verification steps passed.
+
+Operator playtest disposition (#170): PENDING — awaiting the operator's in-conversation disposition; this line is updated in place before session end (the implementation-session-end ritual gates on it).
+
+PENDING DEPLOY-TIME ACTIONS (stays open until the production execution at release deploy):
+
+- Production seed rerun — make seed-prod, bare, in the closeout session's tail on its own operator confirmation (Deployment Law step 6; #187). Expected deletion count: 0. Code first, data second: runs only after make deploy-prod has shipped the release.
