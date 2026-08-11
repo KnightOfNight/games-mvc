@@ -1,1 +1,128 @@
 Session start 2026-08-10 — Shyland_V24.19_Brief_1_Zombie_Combat_Sessions.md — branch version_24_19 (implementation session; stub, completed in place at session end)
+
+================================================================
+V24.19 BRIEF 1 CLOSEOUT — ZOMBIE COMBAT SESSION REAPING (#218)
+================================================================
+
+Session type: implementation. Branch: version_24_19 (worktree). Pre-flight:
+exit 0, target local dev, posture .env == .env.dev. Brief verified verbatim
+at the branch tip (committed by the design session at 21dfc96, zero drift).
+Process-assumption diff against Instructions v31: no discrepancies. Prior
+pending deploy-time actions: none (V24.18 closed with an empty tail).
+
+Step 0: closeout stub pushed c569ad4 (work-has-started signal).
+
+Step 1 — Version start (60d006e): SHYLAND_VERSION 24.18 -> 24.19-DEV, pin
+test in test_b2_amendment1.py moved in the same commit; version-start
+make deploy-dev ran clean (no migrations to apply).
+
+Step 2 — Implementation (4f30bdf):
+django/src/apps/shyland/management/commands/run_tick_engine.py only, both
+parts per the brief.
+
+Part A — kill path M2M-wide. In execute_actions' kill block, immediately
+after the killer's-session removal (session.npcs.remove(npc)): the dead
+NPC's other active sessions (npc.combat_sessions.filter(is_active=True)
+.exclude(pk=session.pk)) each drop the row. A session left with no living
+NPCs closes on the standard end pattern in the same round — is_active=
+False, focus_npc=None, save, release_session_npcs, "Combat has ended."
+(reward) and a fresh status per member via the round's pk-addressed
+messages/statuses lists, and its fight-clear payload after the round
+(closed sessions accumulate in ended_sessions, threaded out of
+execute_actions as a fourth return element; build_fight_payloads on an
+inactive session already returns the clearing payload). A session that
+retains living NPCs but had the dead NPC as focus reassigns to its next
+living NPC (canonical (spawned_at, pk) order) with "You turn your attacks
+on {name}." (combat), the name ordinal-composed via npc_display_name
+against that session's own remaining live NPCs. The killer's session flow
+is untouched; no room broadcast changes.
+
+Part B — loop-head self-heal. The active-sessions loop opens each
+iteration with a fresh DB read (read_session_state: current is_active +
+living-NPC existence — never the prefetched cache, stale for sessions
+Part A closed earlier in the same tick's loop). No longer active ->
+silent continue. Active with zero living NPCs (dead rows attached or no
+rows at all) -> immediate close on the standard pattern (self_heal_close:
+is_active=False, focus_npc=None, release_session_npcs, then "Combat has
+ended." (reward) + fresh status + fight-clear per member), logged
+"Combat session {pk} closed (self-heal: no living NPCs)", then continue —
+update_session_tick never runs for it, so a zombie never refreshes its
+own last_tick_at and the stale sweep is restored as backstop by
+construction. The stale sweep itself (get_stale_sessions/close_session)
+is untouched. release_session_npcs untouched per ruling 4.
+
+Step 3 — Tests (0d10dcf): new tests/test_zombie_sessions.py, 6 tests in
+the test_combat_state engine-harness style (TransactionTestCase; real
+Command with broadcast_to_room / send_to_player / _online_character_pks
+stubbed to recording lists; kill rounds made deterministic by patching
+combat_utils.resolve_hit to 'hit' against 1-hp targets; factories reused
+from test_combat_state). All six required pins present:
+  1. Cross-session kill closes the bystander — both sessions inactive,
+     NPC row removed from both, B received "Combat has ended." (reward),
+     B out of combat by the loot gate's own predicate, B's fight pane
+     cleared (active=False payload).
+  2. Cross-session focus reassignment — B's session stays active, focus
+     moves to the surviving NPC, B received the focus announcement, no
+     close.
+  3. Self-heal, dead row attached — closed on the next engine pass,
+     member received "Combat has ended.", last_tick_at byte-unchanged
+     (the no-refresh assertion pinning the stale-sweep restoration).
+  4. Self-heal, zero rows — closes identically, last_tick_at unchanged.
+  5. Dead NPCs never restored — is_alive False and vitality_current 0
+     after both close paths.
+  6. Living shared NPC never snaps to full — a damaged NPC in two active
+     sessions keeps its damaged vitality through the round in which the
+     new close paths fire (the v23 #25 guard pinned). Construction note:
+     the new close paths only ever close zero-living-NPC sessions, so the
+     damaged living NPC is shared between the two sessions that survive
+     (B's and C's) while A's closes and B's refocuses — the pin is that
+     no new path resets or restores it.
+Expected conversions: zero — confirmed, no existing test failed under the
+new close paths.
+
+Step 4 — Verification: full suite in-container (docker exec, python
+manage.py test apps/shyland/tests): 572/572 pass (566 at V24.18 close +
+exactly the new file's 6). Gates satisfied for Steps 5–7.
+
+Step 5 — Dev deploy: make deploy-dev from the worktree, clean (no
+migrations to apply); dev-side data actions: none.
+
+Step 6 — Operator playtest: per the brief's checklist on the dev stack —
+the exact live reproduction from #218 (two accounts, shared NPC, A lands
+the kill, B sees "Combat has ended." and can loot immediately; the
+focus-shift variant; solo-kill sanity).
+
+Architecture doc (b081447, gated on all above passing):
+Shyland_Architecture_v24.md updated in place — stamp 24.19 (new
+per-release blockquote), header hash MOVED c3c21c8 -> 4f30bdf
+(architectural point release — tick-engine session-lifecycle change),
+v24.19 note prepended to the header parenthetical; section 4.9 gains the
+combat-session lifecycle block (M2M-wide kill removal with other-session
+closure/focus-reassignment, the loop-head self-heal with the no-refresh
+ordering, the fresh-DB loop-head read, release_session_npcs unchanged by
+ruling). Doc sweep (grep 'last_tick_at\|stale'): every other hit uses
+"stale" in unrelated senses (cached consumer state, FK snapshots, stale
+focus fallback) — nothing else factually stale, no other sections
+changed.
+
+Issues: #218 CLOSED (gated on verification passing), with implementation
+comment.
+
+Deviations: none.
+
+Expected deletions: 0. Actual: 0 (no model changes, no migration, no
+seed data, no data actions — scope class as briefed).
+
+PENDING DEPLOY-TIME ACTIONS: none. (Runtime code only; V24.18 closed
+with an empty tail, nothing carried in, this brief creates none.)
+
+Final commit hashes: code 4f30bdf, tests 0d10dcf, architecture doc
+b081447 (report completed in place thereafter).
+
+SHYLAND_VERSION remains 24.19-DEV at session end; the closeout session
+stamps 24.19.
+
+Operator playtest disposition: PENDING — awaiting operator playtest
+against the dev stack (brief Step 6 checklist). This line is updated
+verbatim-style with the operator's disposition before the session-end
+ritual runs.
