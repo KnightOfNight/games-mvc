@@ -263,9 +263,52 @@ class Command(BaseCommand):
             session.save(update_fields=['tick_counter', 'last_tick_at'])
             return session.tick_counter
 
+        @_dsa
+        def read_session_state(session):
+            """v24.19 (#218): current is_active plus living-NPC existence,
+            read from the DB — never the prefetched cache, which is stale
+            for any session the M2M-wide kill path closed earlier in this
+            same tick's loop."""
+            db_active = CombatSession.objects.filter(
+                pk=session.pk, is_active=True).exists()
+            has_living = session.npcs.filter(is_alive=True).exists()
+            return db_active, has_living
+
+        @_dsa
+        def self_heal_close(session):
+            """v24.19 (#218): standard end pattern for a session holding
+            no living NPCs — close, release, member statuses."""
+            session.is_active = False
+            session.focus_npc = None
+            session.save(update_fields=['is_active', 'focus_npc'])
+            release_session_npcs(session)
+            chars = list(session.characters.select_related(
+                'current_room__area', 'current_room__zone',
+            ).all())
+            return [(c.pk, self._build_status(c)) for c in chars]
+
         sessions = await get_active_sessions()
 
         for session in sessions:
+            # v24.19 (#218): loop-head self-heal, deliberately BEFORE
+            # update_session_tick — a session with no living NPCs closes
+            # instead of ticking, so a zombie never refreshes its own
+            # last_tick_at and the stale sweep stays live as the backstop.
+            db_active, has_living = await read_session_state(session)
+            if not db_active:
+                # Closed (and messaged) earlier this tick by the kill
+                # path — nothing left to do.
+                continue
+            if not has_living:
+                payloads = await self_heal_close(session)
+                for char_pk, status in payloads:
+                    await self.send_to_player(
+                        char_pk, "Combat has ended.", 'reward', status,
+                        fight={'type': 'fight', 'active': False, 'enemies': []},
+                    )
+                logger.info(f"Combat session {session.pk} closed (self-heal: no living NPCs)")
+                continue
+
             tick_counter = await update_session_tick(session)
 
             if tick_counter % COMBAT_ROUND_TICKS != 0:
@@ -406,6 +449,10 @@ class Command(BaseCommand):
                 messages = []
                 statuses = []
                 room_messages = []
+                # v24.19 (#218): other sessions the M2M-wide kill path
+                # closed this round — they get their fight-clear payload
+                # after the flush.
+                ended_sessions = []
 
                 # v22 B5 (#100): one equipped-set load per round feeds
                 # effective stats, TAV, and the gear wiring — armor and
@@ -581,6 +628,44 @@ class Command(BaseCommand):
                             live_npcs = [n for n in live_npcs if n.pk != npc.pk]
                             session.npcs.remove(npc)
 
+                            # v24.19 (#218): a kill is M2M-wide. Every
+                            # other active session holding this NPC drops
+                            # the dead row now: one left with no living
+                            # NPCs closes this same round (its members
+                            # were stuck behind the in-combat gate); one
+                            # that retains living NPCs but was focused
+                            # here refocuses aloud (focus changes are
+                            # never silent). The killer's own session
+                            # keeps its existing flow below.
+                            other_sessions = list(
+                                npc.combat_sessions.filter(is_active=True)
+                                .exclude(pk=session.pk))
+                            for other in other_sessions:
+                                other.npcs.remove(npc)
+                                other_live = list(
+                                    other.npcs.select_related('definition')
+                                    .filter(is_alive=True)
+                                    .order_by('spawned_at', 'pk'))
+                                other_chars = list(other.characters.select_related(
+                                    'current_room__area', 'current_room__zone',
+                                ).all())
+                                if not other_live:
+                                    other.is_active = False
+                                    other.focus_npc = None
+                                    other.save(update_fields=['is_active', 'focus_npc'])
+                                    release_session_npcs(other)
+                                    for c in other_chars:
+                                        messages.append((c.pk, "Combat has ended.", 'reward', None))
+                                        statuses.append((c.pk, self._build_status(c)))
+                                    ended_sessions.append(other)
+                                elif other.focus_npc_id == npc.pk:
+                                    new_focus = other_live[0]
+                                    other.focus_npc = new_focus
+                                    other.save(update_fields=['focus_npc'])
+                                    focus_name = npc_display_name(new_focus, other_live)
+                                    for c in other_chars:
+                                        messages.append((c.pk, f"You turn your attacks on {focus_name}.", 'combat', None))
+
                             if not live_npcs:
                                 session.is_active = False
                                 session.focus_npc = None
@@ -699,9 +784,9 @@ class Command(BaseCommand):
 
                         statuses.append((character.pk, self._build_status(character)))
 
-                return messages, statuses, room_messages
+                return messages, statuses, room_messages, ended_sessions
 
-            messages, statuses, room_messages = await execute_actions(
+            messages, statuses, room_messages, ended_sessions = await execute_actions(
                 session, ordered_actions, character, npcs
             )
 
@@ -716,6 +801,12 @@ class Command(BaseCommand):
             # hp is current, and if the round ended the session (victory)
             # the payload clears the pane and the combat-red state.
             await send_fight_payloads(session)
+
+            # v24.19 (#218): fight-clear payloads for the other sessions
+            # the kill path closed this round (build_fight_payloads on an
+            # inactive session returns the clearing payload).
+            for other in ended_sessions:
+                await send_fight_payloads(other)
 
     # ------------------------------------------------------------------
     # Corpse decay
