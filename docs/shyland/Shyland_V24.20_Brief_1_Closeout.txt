@@ -1,3 +1,78 @@
-2026-08-10 — Implementation session started: Shyland_V24.20_Brief_1_Examine_Binding_Rows_Removal.md on branch version_24_20.
+Shyland V24.20 Brief 1 — Closeout Report
+=========================================
 
-(Stub — completed in place at session end.)
+Session started: 2026-08-10 — Shyland_V24.20_Brief_1_Examine_Binding_Rows_Removal.md on branch version_24_20.
+Session ended:   2026-08-11.
+
+Brief: Shyland_V24.20_Brief_1_Examine_Binding_Rows_Removal.md (committed 249aa8d by the V24.20 design session)
+Founding ticket: #203 (closed, gated on verification passing, with implementing-commit comment)
+Branch: version_24_20
+
+WHAT WAS DONE
+-------------
+- Version start (first brief of the release): SHYLAND_VERSION "24.19" -> "24.20-DEV"
+  in its own commit (0993b00), pin-test assertion in tests/test_b2_amendment1.py moved
+  in the same commit; followed by the version-start make deploy-dev.
+- Implementation (74f8e0d): both binding prose rows deleted from examine's identified
+  detail block in consumers.py _format_identified_item_lines:
+    * "  Note:       This item is not yet bound — you may drop it."
+    * "  Bound:      This item is bound to you."
+  Bound state is carried solely by the headline's trailing flag block. Equipped: and
+  Curse: rows untouched; every other row byte-identical. Output composition only —
+  no model, resolver, state, or message-category change; compose_item_line untouched.
+- New regression tests: django/src/apps/shyland/tests/test_v24_20_brief1.py (4 tests:
+  unbound-unequipped no Note: row + Unbound flag block; soulbound-unequipped no bound
+  prose + Bound flag block; soulbound-equipped keeps Equipped: row, no binding prose;
+  Curse: row unchanged).
+- Architecture doc (4290bf1, gated final step): Shyland_Architecture_v24.md updated in
+  place — new Version 24.20 header paragraph, stamp 24.19 -> 24.20. The commit hash
+  does NOT move (output-composition change ruled non-architectural by the brief).
+  No section-content changes: no passage describes the deleted rows (the one
+  "bound to you" hit at line 1231 is drop's refusal warn — different string and site).
+
+MIGRATIONS
+----------
+None. No model changes in this brief.
+
+VERIFICATION (all passed)
+-------------------------
+1. Full suite green, in-container, path form: 576 tests OK (572 before this brief;
+   the 4 new tests account for the growth).
+2. The four new regression tests pass (confirmed individually at -v 2).
+3. grep 'not yet bound\|bound to you\.' on consumers.py: zero hits anywhere in the
+   file — no hit inside _format_identified_item_lines. (Drop's refusal warn survives
+   at consumers.py:1225 but is line-wrapped mid-string, so the single-line pattern
+   does not match it; the warn was verified intact by a separate grep.)
+4. make deploy-dev run after implementation + verification; dev-DB smoke on the
+   deployed build: formatter renders clean for an unbound-unequipped item and a
+   soulbound-equipped item (no binding prose; flag block and Equipped: row intact);
+   SHYLAND_VERSION 24.20-DEV live on the dev stack.
+
+DEVIATIONS
+----------
+None from the brief. One observation for the record: the brief's ruling that the
+architecture-doc commit hash does not move diverges from the v24.16 precedent (which
+treated an output-composition change as architectural and moved the hash). The brief
+anticipated the question and ruled explicitly; the brief was followed.
+
+Test hygiene: no existing test asserted either deleted string; zero existing-test
+changes.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None. No seed or data actions in this brief.
+
+DEV-STACK STATE
+---------------
+Last make deploy-dev: 2026-08-10, post-implementation (build + migrate; no migrations
+to apply). Dev stack runs the brief's build at 24.20-DEV. Suite count: 576.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+Operator reports playtest successful (2026-08-11, in-conversation: "playtest
+confirmed"). Terminal disposition.
+
+FINAL COMMIT HASH
+-----------------
+4290bf1 (architecture doc stamp — the brief's last content commit; this closeout
+report and the session's issues report follow it on the branch).
