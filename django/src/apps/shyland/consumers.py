@@ -1814,14 +1814,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if item.is_equipped:
             lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
 
-        if item.is_soulbound:
-            lines.append('  Bound:      This item is bound to you.')
-
         if item.is_cursed and item.curse_identified:
             lines.append('  Curse:      This item carries a curse.')
-
-        if not item.is_equipped and not item.is_soulbound:
-            lines.append('  Note:       This item is not yet bound — you may drop it.')
 
         return lines
 

@@ -270,6 +270,8 @@ An unidentified item shows its **mystery name** — authored on the definition (
 
 `examine` on an unidentified item reveals its real details **without requiring pickup** — the full identified detail block, byte-identical to examining the same item identified. It changes no state: the room listing keeps showing the mystery name until someone picks the item up. Curse status is never part of the reveal (it is separately gated on `curse_identified` — Section 6.7). Exception: permanently unidentifiable items show the mystery block instead — one cannot-determine line plus the no-method line.
 
+**The detail block states binding once (#203).** Bound state lives solely in the item line's trailing flag block (`[Rarity, Bound|Unbound]`), which heads the detail block; no prose row restates it. The block's conditional tail rows are exactly `Equipped:` and `Curse:` — each carrying a fact the flag block does not. The former `Note: This item is not yet bound — you may drop it.` and `Bound: This item is bound to you.` rows are deleted: the first read misvoiced on ground items once examine stopped requiring pickup, and both restated an on-screen fact under inconsistent key styles.
+
 #### Authored Mystery Is Transient
 
 Because any pickup identifies, a builder-set `is_identified = False` survives only until first pickup. Lasting mystery is exclusively `is_unidentifiable`. The mystery name/description fields serve two working roles: the dropped-item veil, and permanently unidentifiable items.
