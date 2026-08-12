@@ -1,0 +1,73 @@
+2026-08-11 — Implementation session started — Brief: Shyland_V24.22_Brief_1_Acuity_Two_Decimal_Display — Branch: version_24_22
+
+IMPLEMENTATION RECORD
+
+Step 0 — verify-and-signal: brief confirmed byte-identical at the branch tip
+(committed 91963a4 by the V24.22 design session; no drift, not even
+whitespace). Stub committed and pushed: 466e50a.
+
+Step 1 — version start: SHYLAND_VERSION "24.21" -> "24.22-DEV" in its own
+commit with the pin test (test_b2_amendment1.py) moved in the same commit:
+98d43ba. Version-start make deploy-dev run from the worktree: clean
+(build + migrate, no migrations to apply).
+
+Step 2 — implementation (commit 8518524): all seven format sites converted
+exactly as specified, no other changes:
+  1. game.html ~657: toFixed(1) -> toFixed(2); adjacent comment updated
+     ("One decimal" -> "Two decimals, matching the `stats` command's
+     Acuity rendering") so its claim stays true.
+  2. consumers.py 2726-2727 (stats command): acuity_current and
+     acuity_baseline :.1f -> :.2f.
+  3. run_tick_engine.py 1181, 1220, 1257, 1282 (dot_acuity, hot_acuity,
+     sharpens, wavers suffixes): :.1f -> :.2f.
+Display-only confirmed: stored values, the round(..., 1) engine storage
+steps, the exactly-stored band edge, and _build_status's round(..., 2)
+payload calls all untouched. No models, no migration, no seed data.
+
+Step 3 — tests (commit 3267d62): the three pinned tick-suffix literals in
+test_acuity_shifts.py updated literal-for-literal (1.1 -> 1.10 at line 79,
+1.2 -> 1.20 at line 138, 0.2 -> 0.20 at line 167). New test file
+tests/test_v24_22_brief1.py (implementer's-choice placement, granted by the
+brief): drives a shift_acuity_high settle onto the exactly-stored 1.15 band
+edge, asserts the numeral-free SETTLES terminal line, stored value exactly
+1.15, and the stats render '  Acuity:     1.15 (baseline 1.00)' — the
+founding #225 complaint plus the trailing-zero contract, asserted forever.
+
+DEVIATION (one, recorded — test construction, not behavior): the brief's
+Step 3 example describes the new test as asserting the band-edge value in a
+tick SUFFIX ("renders the tick suffix as (Acuity 1.15)"). No tick suffix
+can ever carry an exact x.x5 value: every engine acuity mutation except the
+band-edge stop stores round(..., 1), and the band-edge stop deliberately
+prints the numeral-free terminal line ("Your focus settles at its
+keenest.") per #133 doctrine, which this brief explicitly preserves. The
+test therefore pins the founding complaint at its real numeral surface —
+the stats sheet (and by the same :.2f/round(...,2)/toFixed(2) chain, the
+stats pane) — after driving the engine to the exact 1.15 edge, and the
+tick-suffix trailing-zero contract is pinned by the three updated literals
+(1.10/1.20/0.20). Intent fully preserved; no code deviation of any kind.
+
+Step 4 — verification: all gates passed.
+  1. grep for :.1f acuity sites in consumers.py + run_tick_engine.py:
+     zero hits.
+  2. grep for toFixed(1) in game.html: zero hits (acuity was its only
+     user — no other reader existed).
+  3. make build, then full in-container suite via the path form
+     (python manage.py test apps/shyland/tests): 581 tests, OK
+     (580 -> 581: the one new test).
+Issue #225 closed as completed with closing comment, gated on the above.
+
+Step 5 — dev deploy: make deploy-dev from the worktree after verification:
+clean (no migrations to apply). No PENDING DEPLOY-TIME ACTIONS — this brief
+has none and there are no unexecuted prior-brief actions (first brief of
+the release).
+
+Step 7 — architecture doc (last, gated; commit d2b78f2): updated in place —
+v24.22 entry added to the header, hash moved 4f30bdf -> 3267d62 (this
+brief's final code commit; runtime code changes after the seed-only/
+doc-only 24.20-24.21), stats-pane content paragraph "one decimal" -> "two
+decimals, matching `stats`". No other sections changed.
+
+Final code commit: 3267d62 (architecture doc commit: d2b78f2).
+
+PLAYTEST DISPOSITION: Operator reports playtest successful (2026-08-11,
+in-conversation, against the dev stack running 24.22-DEV).

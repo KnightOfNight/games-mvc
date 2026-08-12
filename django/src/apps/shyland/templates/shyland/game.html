@@ -652,9 +652,9 @@
       barV.textContent = msg.vitality_max !== undefined
         ? `${msg.vitality} / ${msg.vitality_max}`
         : `${msg.vitality}`;
-      // One decimal, matching the `stats` command's Acuity rendering.
+      // Two decimals, matching the `stats` command's Acuity rendering.
       barA.textContent = typeof msg.acuity === 'number'
-        ? msg.acuity.toFixed(1) : msg.acuity;
+        ? msg.acuity.toFixed(2) : msg.acuity;
       barL.textContent = msg.longevity_max !== undefined
         ? `${msg.longevity} / ${msg.longevity_max}`
         : `${msg.longevity}`;

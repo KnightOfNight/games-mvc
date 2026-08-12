@@ -76,7 +76,7 @@ class AcuityShiftHighTests(TransactionTestCase):
         # COMBAT_ROUND_TICKS=3rd tick) — drive boundary ticks only.
         # Boundary 1: climbing — the sharpens line, value-suffixed.
         texts = await self._tick(cmd, msgs, char, 3)
-        self.assertEqual(texts, ['Your focus sharpens. (Acuity 1.1)'])
+        self.assertEqual(texts, ['Your focus sharpens. (Acuity 1.10)'])
 
         # Boundary 2: arrival — exactly the terminal line, not the sharpens line.
         texts = await self._tick(cmd, msgs, char, 6)
@@ -135,7 +135,7 @@ class AcuityShiftHighTests(TransactionTestCase):
         cmd, msgs = run_effects_engine()
 
         texts = await self._tick(cmd, msgs, char, 3)
-        self.assertEqual(texts, ['Your focus sharpens. (Acuity 1.2)'])
+        self.assertEqual(texts, ['Your focus sharpens. (Acuity 1.20)'])
         texts = await self._tick(cmd, msgs, char, 6)
         self.assertEqual(texts, [SETTLES])
         texts = await self._tick(cmd, msgs, char, 9)
@@ -164,7 +164,7 @@ class AcuityShiftLowTests(TransactionTestCase):
         cmd, msgs = run_effects_engine()
 
         texts = await self._tick(cmd, msgs, char, 3)
-        self.assertEqual(texts, ['Your focus wavers. (Acuity 0.2)'])
+        self.assertEqual(texts, ['Your focus wavers. (Acuity 0.20)'])
         texts = await self._tick(cmd, msgs, char, 6)
         self.assertEqual(texts, [FRAYS])
         texts = await self._tick(cmd, msgs, char, 9)

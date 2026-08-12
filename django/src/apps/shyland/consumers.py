@@ -2723,8 +2723,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             {},
             {'v': f'  Vitality:   {character.vitality_current} / {character.vitality_max}'},
             {'v': f'  Longevity:  {character.longevity_current} / {character.longevity_max}'},
-            {'v': f'  Acuity:     {character.acuity_current:.1f} '
-                  f'(baseline {character.acuity_baseline:.1f})'},
+            {'v': f'  Acuity:     {character.acuity_current:.2f} '
+                  f'(baseline {character.acuity_baseline:.2f})'},
             {},
             {'v': f'  XP: {character.xp} / {xp_for_next_level(character.level)} (next level)'},
             # v22 brief 2 (DD §9): blank line before Unspent stat points.
