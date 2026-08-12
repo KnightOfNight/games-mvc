@@ -69,5 +69,5 @@ decimals, matching `stats`". No other sections changed.
 
 Final code commit: 3267d62 (architecture doc commit: d2b78f2).
 
-PLAYTEST DISPOSITION: pending — awaiting operator playtest against the dev
-stack (checklist in the brief, Step 6).
+PLAYTEST DISPOSITION: Operator reports playtest successful (2026-08-11,
+in-conversation, against the dev stack running 24.22-DEV).
