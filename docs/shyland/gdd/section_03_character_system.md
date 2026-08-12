@@ -174,7 +174,7 @@ A stat bonus on any equipped item adds **flatly** to the stat, via one effective
 |Physical Defense|(END × 2) + armor value                                    |
 |Magic Resistance|(WIS × 2) + equipment bonuses                              |
 |Initiative      |PER + DEX + d10 (rolled per combat)                        |
-|Carry Weight    |STR × 10 (in arbitrary units) + equipped bag bonuses       |
+|Carry Weight    |STR × 10 (in arbitrary units), scaled by equipped-bag percentages per 6.10 (v24.23, pending implementation)|
 
 ### 3.5 Progression & Leveling
 
@@ -280,7 +280,7 @@ Auto-swap respects every existing unequip constraint: a cursed item cannot be di
 
 **Slot capacity.** Characters have exactly two RING slots; every other equipment slot holds exactly one item. (Implemented in v18 as a slot-capacity mechanism; RING is currently the only multi-capacity slot.)
 
-**Carry limit:** Base carry weight is STR × 10. Bags equipped in valid slots add a carry bonus on top of that. No off-body storage, no bank, no shared stash.
+**Carry limit:** Base carry weight is STR × 10. Equipped bags scale it by their summed carry percentages — Section 6.10 (v24.23, pending implementation). No off-body storage, no bank, no shared stash.
 
 ### 3.7 Death & Resurrection
 
