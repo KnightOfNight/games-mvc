@@ -69,7 +69,7 @@
      fight info) scroll themselves. Anchoring the shell to the
      html→body 100% chain with overflow hidden makes window-level
      overflow impossible by construction. */
-  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 14px; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; font-size: 16px; }
 
   /* v20 brief 4 (#2): the ruled desktop skeleton. Baseline 1000px total;
      the right pane keeps a fixed 300px content width top-to-bottom and
@@ -95,7 +95,7 @@
     border-right: 5px solid var(--zone-border);
     white-space: nowrap;
     overflow: hidden;
-    font-size: 15px;
+    font-size: 1.0714rem;
     font-weight: bold;
   }
   .loc-seg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -199,7 +199,7 @@
     display: flex;
     flex-direction: column;
     background: var(--surface);
-    font-size: 12px;
+    font-size: 0.8571rem;
     color: var(--muted);
     min-height: 0;
     /* v20 brief 4 amendment 1 (#73/#51): the pane as a whole never
@@ -210,7 +210,7 @@
      verbatim — no text-transform or case styling of any kind. */
   /* v22 B2 amendment 3: the name is value-colored at rest; the combat
      red re-points to var(--error) for naming hygiene (same pixels). */
-  #stats-name { font-size: 12px; font-weight: bold; color: var(--value-color); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stats-name { font-size: 0.8571rem; font-weight: bold; color: var(--value-color); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #side-stats {
     flex: none;
     padding: 10px;
@@ -227,7 +227,7 @@
   /* v20 brief 4 amendment 1 (#72): V/L ratio bars + the Acuity band
      gauge. Numerals stay real text (the accessible values); tracks are
      decorative (aria-hidden). Bar height matches the fight panel's. */
-  #bars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-top: 8px; }
+  #bars { display: flex; flex-direction: column; gap: 6px; font-size: 0.8571rem; margin-top: 8px; }
   .statbar { display: flex; align-items: center; gap: 6px; }
   .bar-label { flex: none; width: 10px; color: var(--value-color); }
   .statbar-track, .gauge-track {
@@ -270,7 +270,7 @@
   .fight-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--value-color); }
   .fight-bar { flex: none; width: 64px; height: 8px; background: var(--bg); border: 1px solid var(--error); }
   .fight-fill { height: 100%; background: var(--error); }
-  .fight-nums { flex: none; color: var(--value-color); font-size: 11px; }
+  .fight-nums { flex: none; color: var(--value-color); font-size: 0.7857rem; }
 
   /* v20 brief 1 (#36): the map — fixed 300×300, at the pane bottom.
      v21 brief 1 (#85): +5px zone-colored border-top; height grows to
@@ -312,7 +312,7 @@
     border-top: 5px solid var(--zone-border);
     border-right: 5px solid var(--zone-border);
   }
-  #prompt { color: var(--accent); font-size: 15px; user-select: none; }
+  #prompt { color: var(--accent); font-size: 1.0714rem; user-select: none; }
   #cmd {
     flex: 1;
     min-width: 0;
@@ -321,12 +321,12 @@
     outline: none;
     color: var(--text);
     font-family: inherit;
-    font-size: 14px;
+    font-size: 1rem;
     caret-color: var(--accent);
   }
   #conn { flex: none; display: flex; align-items: center; gap: 5px; }
   #conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--conn-gray); }
-  #conn-ms { color: var(--muted); font-size: 11px; min-width: 4ch; text-align: right; }
+  #conn-ms { color: var(--muted); font-size: 0.7857rem; min-width: 4ch; text-align: right; }
   #conn.conn-green #conn-dot { background: var(--conn-green); }
   #conn.conn-amber #conn-dot { background: var(--conn-amber); }
   #conn.conn-red   #conn-dot { background: var(--combat-accent); animation: conn-pulse 1s ease-in-out infinite; }
@@ -340,7 +340,7 @@
     border: none;
     border-radius: 3px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.8571rem;
     font-family: inherit;
   }
   #send-btn:hover { opacity: .85; }
