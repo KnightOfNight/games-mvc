@@ -43,11 +43,25 @@ IMPLEMENTATION SUMMARY
     unidentified satchel).
 
 SEED — ACTUAL VS EXPECTED
-  Expected deletion count (brief §6): 0 rows.
-  Actual: 0 rows deleted. Reconciliation report: "ItemDefinition: no differences"
-  on the confirming re-run; 54 ItemDefinitions seeded; all seed verification
-  checks PASS. Dev reseed ran after the final make deploy-dev (code first,
-  data second).
+  Expected deletion count (brief §6, seed-owned definitions): 0 rows.
+  Actual, seed-owned reconciliation: 0 rows deleted — "ItemDefinition: no
+  differences" on the confirming re-run; 54 ItemDefinitions seeded; all seed
+  verification checks PASS. Dev reseed ran after the final make deploy-dev
+  (code first, data second).
+
+  AMENDED 2026-08-12 (operator playtest finding): the reseed's enforce-exact
+  sweep additionally deleted the 3 OFF-SEED "Silver clone" ItemDefinitions —
+  the #211 workaround, standing dev-only DB state from the V24.14 session,
+  ledger-flagged "all reverts/orphans on reseed" — cascading to Harley
+  Stone's 3 equipped Mk 2 jewelry instances (ItemInstance.definition is
+  on_delete=CASCADE). The rest of the standing dev-only rig reverted with it:
+  Hollowcrown boss-room RoomSpawn rows back to seed-authored Mk 1 (recreated
+  as pks 145/146), respawn_minutes back to 10/3. Expected seed behavior
+  ("the code is definitive" — enforce-exact is the settled seed-authority
+  rule), not a defect of this brief; recorded here because the initial
+  "Actual: 0" line was read from the confirming re-run's report and missed
+  the first run's sweep of the off-seed rows. Production expectation is
+  unchanged: 0 deletions (prod carries no off-seed definitions).
 
 TEST-CONVERSION DEVIATIONS (brief §7 — reported, never silent)
   - tests/test_v24_16_brief1.py: make_def's carry_bonus kwarg renamed to
