@@ -1178,7 +1178,7 @@ class Command(BaseCommand):
                     await self.send_to_player(
                         character.pk,
                         f"Your focus is disrupted by {definition.name}. "
-                        f"(Acuity {character.acuity_current:.1f})",
+                        f"(Acuity {character.acuity_current:.2f})",
                         'combat', status,
                     )
 
@@ -1217,7 +1217,7 @@ class Command(BaseCommand):
                     await self.send_to_player(
                         character.pk,
                         f"Your mind clears from {definition.name}. "
-                        f"(Acuity {character.acuity_current:.1f})",
+                        f"(Acuity {character.acuity_current:.2f})",
                         'system', status,
                     )
 
@@ -1254,7 +1254,7 @@ class Command(BaseCommand):
                         else:
                             await self.send_to_player(
                                 character.pk,
-                                f"Your focus sharpens. (Acuity {character.acuity_current:.1f})",
+                                f"Your focus sharpens. (Acuity {character.acuity_current:.2f})",
                                 'system', status,
                             )
 
@@ -1279,7 +1279,7 @@ class Command(BaseCommand):
                         else:
                             await self.send_to_player(
                                 character.pk,
-                                f"Your focus wavers. (Acuity {character.acuity_current:.1f})",
+                                f"Your focus wavers. (Acuity {character.acuity_current:.2f})",
                                 'system', status,
                             )
 
