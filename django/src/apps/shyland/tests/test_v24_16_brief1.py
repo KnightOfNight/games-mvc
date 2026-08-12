@@ -3,8 +3,8 @@
 `inv` / `inventory` renders the Inventory table alone — the paper-doll
 belongs to bare `equip` (#195), the money line to `wallet`. The
 equipped-items query stays alive: capacity still reads effective STR
-(base + gear, #100) × 10 + equipped-bag `carry_bonus`. The help row
-says exactly what the command now does.
+(base + gear, #100) × 10, scaled by the equipped-bag percentage
+(v24.23, #215). The help row says exactly what the command now does.
 """
 
 from asgiref.sync import sync_to_async
@@ -19,13 +19,13 @@ from apps.shyland.tests.test_command_revamp import (
 )
 
 
-def make_def(prefix, name, item_type, valid_slots=None, carry_bonus=0):
+def make_def(prefix, name, item_type, valid_slots=None, carry_pct_base=0):
     return ItemDefinition.objects.create(
         name=name, slug=f'{prefix}-{name.lower().replace(" ", "-")}',
         item_type=item_type, genre_tag='fantasy',
         valid_slots=valid_slots or [],
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
-        carry_bonus=carry_bonus,
+        carry_pct_base=carry_pct_base,
     )
 
 
@@ -43,8 +43,8 @@ class InvTrimTests(TransactionTestCase):
 
     async def _inv_output(self, prefix):
         """Char with a helm equipped (rolled +2 STR), a bag equipped
-        (+5 carry), and one slotless material carried; returns the
-        report lines/texts of `inv`."""
+        (+5% carry, v24.23), and one slotless material carried; returns
+        the report lines/texts of `inv`."""
         zone, room = await sync_to_async(make_world)(prefix)
 
         def setup():
@@ -52,7 +52,7 @@ class InvTrimTests(TransactionTestCase):
             helm = make_def(prefix, 'Iron Helm', 'armor',
                             valid_slots=['HEAD'])
             bag = make_def(prefix, 'Duskhide Satchel', 'bag',
-                           valid_slots=['BACK'], carry_bonus=5)
+                           valid_slots=['BACK'], carry_pct_base=5)
             ore = make_def(prefix, 'Test Ore', 'material')
             make_instance(helm, char, slot='HEAD',
                           primary=[{'stat': 'str', 'value': 2}])
@@ -95,9 +95,10 @@ class InvTrimTests(TransactionTestCase):
     async def test_capacity_reads_effective_str_plus_bag_bonus(self):
         lines, texts = await self._inv_output('i16d')
         # stat_str default 10 + rolled +2 on the equipped helm = 12
-        # effective STR; ×10 = 120, + the equipped bag's carry_bonus 5.
-        # One unequipped item carried. The equipped query is alive.
-        self.assertEqual(texts[0], 'Inventory (1/125)...')
+        # effective STR; ×10 = 120, scaled by the equipped bag's 5%
+        # (v24.23, #215): 120 × 105 // 100 = 126. One unequipped item
+        # carried. The equipped query is alive.
+        self.assertEqual(texts[0], 'Inventory (1/126)...')
 
 
 class HelpRowTests(SimpleTestCase):

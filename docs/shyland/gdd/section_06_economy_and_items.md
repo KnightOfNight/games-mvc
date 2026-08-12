@@ -375,15 +375,15 @@ Rationale (ruled 2026-07-30, #139): any flat-number heal fails *within* a Mk ban
 
 Bags are equipment items that expand carry capacity. They occupy equipment slots (BACK is the primary bag slot; future slots such as a hip slot for courier bags are planned).
 
-- Base carry capacity: STR × 10
-- Equipping a bag adds its `carry_bonus` to the total
+- Base carry capacity: effective STR (base + gear) × 10
+- **Bags contribute a percentage, not a flat number (v24.23, #215):** each equipped bag adds `carry_pct_base + carry_pct_per_mk × Mk` percentage points, authored per definition and scaled by the **instance's** Mk tier — deterministic, no rarity roll (bags continue to roll no stats). The percentages of all equipped bags **sum into one multiplier, never compound** — capacity = floor(base × (1 + Σpct/100)); two 20% bags read ×1.40, not ×1.44. This is the capacity formula's first non-additive term, ruled deliberately: a flat bonus decays against the level-and-gear-scaling base (by level 17 the best bag in the game was +4.3%), while a percentage holds a bag's felt value constant at every level. Seeded values: Satchel 10 + 5×Mk (Mk 1 = 15%, Mk 2 = 20%); Patchwork Satchel 5 + 3×Mk (Mk 1 = 8%, Mk 2 = 11%).
 - The inventory is a flat pool — players do not manage which specific item is in which pocket
 - **A bag cannot be unequipped if doing so would put the character over their carry limit**
 - The slot a bag occupies creates meaningful trade-offs — a courier bag on a hip slot means no pistol there
 
 ### 6.11 Inventory Display
 
-The `inventory` command (v22 — the information standards of Section 9.1 applied) renders the **Inventory table** alone (v24.16, #208). The original three-part composite (#90) — Equipment, Inventory, Wallet — is retired: the Equipment paper-doll belongs to bare `equip` (v24.7 — #195) and the money line to `wallet`; `inv` duplicates neither. The carry count in the header still reads the equipped set — capacity is effective STR (base + gear) plus equipped-bag carry bonuses — even though the equipment is no longer displayed.
+The `inventory` command (v22 — the information standards of Section 9.1 applied) renders the **Inventory table** alone (v24.16, #208). The original three-part composite (#90) — Equipment, Inventory, Wallet — is retired: the Equipment paper-doll belongs to bare `equip` (v24.7 — #195) and the money line to `wallet`; `inv` duplicates neither. The carry count in the header still reads the equipped set — capacity per the Section 6.10 formula (effective STR base, equipped-bag contribution) — even though the equipment is no longer displayed.
 
 Two table compositions are defined here:
 
@@ -393,7 +393,7 @@ Two table compositions are defined here:
 Display rules:
 
 - **Details** reads `90%, Uncommon, Bound` — durability + rarity + binding, no brackets. The durability number is colored by the **mechanical durability band** (derived from the band table in 6.5, never its own thresholds: no penalty → value-color, penalty bands → say-color, broken → error-color); rarity words are always rarity-colored in information output; the binding flag reads `Bound | Unbound`.
-- Durability appears only for items with `takes_durability_loss=True`; bags show carry bonus instead. Unidentified items show no Details suffix at all — no durability, no carry bonus.
+- Durability appears only for items with `takes_durability_loss=True`; bags show their carry contribution (Section 6.10) instead. Unidentified items show no Details suffix at all — no durability, no carry contribution.
 - Cursed items that have not been identified show no curse indicator.
 - Unidentified items show only their mystery name (no rarity, no Mk tier) in place of the real item name.
 - Carry count rides the section header: `Inventory (12/250)...`

@@ -174,7 +174,7 @@ class ItemDefinitionAdmin(admin.ModelAdmin):
         ('Weapon', {'fields': ('damage_spread', 'is_ranged')}),
         ('Equipment', {'fields': ('valid_slots', 'is_two_handed')}),
         ('Durability', {'fields': ('takes_durability_loss', 'durability_table')}),
-        ('Carry', {'fields': ('carry_bonus',)}),
+        ('Carry', {'fields': ('carry_pct_base', 'carry_pct_per_mk')}),
         ('Stats', {'fields': ('primary_stats', 'secondary_stat_pool')}),
         ('Effect / Curse', {'fields': ('effect', 'is_cursed_template')}),
     )

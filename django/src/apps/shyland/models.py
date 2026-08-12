@@ -450,7 +450,12 @@ class ItemDefinition(models.Model):
     takes_durability_loss = models.BooleanField(default=True)
     durability_table = models.JSONField(default=list)
 
-    carry_bonus = models.IntegerField(default=0)
+    # Percentage Bags (#215): equipped-bag carry contribution is
+    # carry_pct_base + carry_pct_per_mk x instance Mk tier, in percentage
+    # points of the STR-derived capacity base. Percentages from multiple
+    # equipped bags sum, never compound.
+    carry_pct_base = models.IntegerField(default=0)
+    carry_pct_per_mk = models.IntegerField(default=0)
 
     primary_stats = models.JSONField(default=list)
     secondary_stat_pool = models.JSONField(default=list)

@@ -1,0 +1,130 @@
+2026-08-11 — Implementation session started: Shyland_V24.23_Brief_1_Percentage_Bags.md on branch version_24_23.
+
+================================================================================
+V24.23 BRIEF 1 CLOSEOUT REPORT — Percentage Bags (#215)
+================================================================================
+
+Branch: version_24_23
+Brief: Shyland_V24.23_Brief_1_Percentage_Bags.md (verbatim at branch tip 936f14d)
+Final implementation commit hash: fb60a59 (architecture doc follows at 0a7ec28;
+this closeout completion is the commit after that)
+Founding ticket: #215 — CLOSED, gated on verification steps 1-6 all passing.
+
+COMMIT LEDGER
+  113aacb  Step 0: closeout stub (work-has-started signal)
+  5c4ad31  Version start: SHYLAND_VERSION 24.22 -> 24.23-DEV (pin test same commit),
+           followed by version-start make deploy-dev
+  3848a8d  §3 model: carry_bonus -> carry_pct_base (RenameField) + carry_pct_per_mk,
+           admin Carry fieldset, migration 0042
+  5b5349f  §4-5 helpers + displays: item_utils.carry_capacity / bag_pct; all four
+           consumer sites converge; suffix + examine percentage form
+  ecc4352  §6 seed: satchel 10/5, patchwork-satchel 5/3
+  fb60a59  §7 tests: test_v24_23_brief1.py new; pinned conversions; suite 589 OK
+  0a7ec28  §9 architecture doc: stamp 24.23, hash moved to fb60a59
+
+IMPLEMENTATION SUMMARY
+  - Formula (Section 1, binding): capacity = floor(effective_STR × 10 × (100 + Σ bag_pct) / 100),
+    integer math (// 100). bag_pct = carry_pct_base + carry_pct_per_mk × instance Mk tier.
+    Percentages sum across equipped bags, never compound.
+  - Migration 0042 is a RenameField (carry_bonus -> carry_pct_base) + defaulted
+    AddField (carry_pct_per_mk), exactly as the brief directed. Note: Django's
+    rename detection needed steering — with both new fields deconstructing
+    identically it offers candidates interactively; first non-interactive run
+    guessed carry_bonus -> carry_pct_per_mk and was deleted and regenerated
+    with the correct mapping before anything was committed or applied.
+  - One helper answers every site: cmd_inventory header, get_carry_capacity,
+    get_carry_counts, and _unequip_blocked_reason (called with the reduced
+    equipped list — "capacity without this bag"). No private copies remain
+    (grep for carry_bonus outside migrations: zero hits).
+  - Displays: bag info suffix "— +{pct}% carry capacity" and examine
+    "Carry bonus: +{pct}%", both at the instance's Mk. The examine block lives
+    inside _format_identified_item_lines and the suffix gates on is_identified,
+    so unidentified bags leak nothing (verified live: suffix '' on an
+    unidentified satchel).
+
+SEED — ACTUAL VS EXPECTED
+  Expected deletion count (brief §6, seed-owned definitions): 0 rows.
+  Actual, seed-owned reconciliation: 0 rows deleted — "ItemDefinition: no
+  differences" on the confirming re-run; 54 ItemDefinitions seeded; all seed
+  verification checks PASS. Dev reseed ran after the final make deploy-dev
+  (code first, data second).
+
+  AMENDED 2026-08-12 (operator playtest finding): the reseed's enforce-exact
+  sweep additionally deleted the 3 OFF-SEED "Silver clone" ItemDefinitions —
+  the #211 workaround, standing dev-only DB state from the V24.14 session,
+  ledger-flagged "all reverts/orphans on reseed" — cascading to Harley
+  Stone's 3 equipped Mk 2 jewelry instances (ItemInstance.definition is
+  on_delete=CASCADE). The rest of the standing dev-only rig reverted with it:
+  Hollowcrown boss-room RoomSpawn rows back to seed-authored Mk 1 (recreated
+  as pks 145/146), respawn_minutes back to 10/3. Expected seed behavior
+  ("the code is definitive" — enforce-exact is the settled seed-authority
+  rule), not a defect of this brief; recorded here because the initial
+  "Actual: 0" line was read from the confirming re-run's report and missed
+  the first run's sweep of the off-seed rows. Production expectation is
+  unchanged: 0 deletions (prod carries no off-seed definitions).
+
+TEST-CONVERSION DEVIATIONS (brief §7 — reported, never silent)
+  - tests/test_v24_16_brief1.py: make_def's carry_bonus kwarg renamed to
+    carry_pct_base; the Duskhide Satchel test bag (flat +5) became
+    carry_pct_base=5 (Mk 1 -> 5%); the pinned header expectation moved
+    'Inventory (1/125)...' -> 'Inventory (1/126)...' (120 × 105 // 100 = 126).
+    Original intent — capacity reads effective STR and the equipped bag
+    contributes — preserved as explicit assertions.
+  - tests/test_v24_11_brief1.py: make_veiled_def/mem_def carry_bonus kwargs
+    renamed to carry_pct_base; the identified-bag suffix pin moved
+    '— +5 carry capacity' -> '— +5% carry capacity'. Original intent — suffix
+    empty through the veil, present when identified — preserved verbatim.
+  - tests/test_gear_combat.py: NO change needed, a deviation from the brief's
+    expectation that it would need conversion — its carry test equips no bag,
+    and bagless capacity is invariant under the new formula
+    (STR × 10 × 100 // 100 = STR × 10). Passed unchanged in the full suite.
+
+VERIFICATION (§8 — all passing before #215 close)
+  1. Migration 0042 applied cleanly on dev (make migrate; subsequent deploy-dev
+     migrate a no-op).
+  2. Bag definitions post-reseed: satchel carry_pct_base=10/carry_pct_per_mk=5,
+     patchwork-satchel 5/3 (shell check). Reseed deleted 0 rows (expected 0).
+  3. Live capacity shell check: both dev characters' helper capacity equals the
+     hand-recomputed formula (Sharon-Love: effSTR 31, patchwork Mk 1, 8% -> 334;
+     Harley Stone: effSTR 40, satchel Mk 2, 20% -> 480). Bag delta is the
+     percentage of the base (Harley: +80 = 20% of 400), not flat.
+  4. Suffix and examine show the percentage form; unidentified bag shows nothing
+     (live + in-memory veil checks; inv header comes from the same helper).
+  5. Unequip guard: refuses at 100 carried over a bagless limit of 100; allows
+     at 99 (test_v24_23_brief1.UnequipGuardTests).
+  6. Full in-container suite, path form: 589 tests, OK (581 pre-brief + 8 new).
+  7. #215 closed with shipped summary (2026-08-11).
+  Reference case (§1): STR 47 + Mk 2 Satchel = 470 × 120 // 100 = 564 — pinned
+  in tests AND verified in the dev shell.
+
+STANDING REQUIREMENTS
+  - Version constant: bumped to "24.23-DEV" as the opening act (own commit,
+    pin test moved with it), version-start make deploy-dev run.
+  - Final make deploy-dev: run from the worktree after implementation and
+    verification passed; dev reseed followed (code first, data second).
+  - Operator playtest checklist: brief §11, targets the dev stack, ready now.
+
+SESSION NOTES
+  - Mid-session dev breakage window: between the model-change build and the
+    call-site build, the running stack briefly threw on capacity-touching
+    commands (old code reading the renamed field). Operator observed one
+    "Something went wrong" on inv at 21:16; resolved by the next make build.
+    Expected mid-brief state, no data impact.
+
+PENDING DEPLOY-TIME ACTIONS
+  - Production reseed: make seed-prod (bare, on its own operator confirmation)
+    in the closeout tail's deploy window, AFTER the code deploy
+    (make deploy-prod) — code first, data second. Expected deletion count on
+    prod: 0 rows (reconcile-in-place keyed by slug). This block stays open
+    until the production execution at release deploy.
+
+OPERATOR PLAYTEST DISPOSITION
+  Operator reports playtest successful (2026-08-12, in-conversation:
+  "playtest confirmed"). Terminal disposition. One playtest finding during
+  the session — the reseed reverting the standing dev-only rig (silver
+  clones / Hollowcrown Mk 2 / respawn tweaks) — investigated, verified as
+  the ledger-predicted enforce-exact sweep, recorded in the amended SEED
+  section above; operator ruled "leave it." No findings against the brief's
+  own spec.
+
+================================================================================

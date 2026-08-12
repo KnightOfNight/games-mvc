@@ -1,5 +1,6 @@
 import random
 
+from .combat_utils import effective_stats
 from .models import ItemInstance
 
 SLOT_DISPLAY_NAMES = {
@@ -207,6 +208,27 @@ def get_display_description(item):
     return "You can't determine anything about this item."
 
 
+def bag_pct(definition, mk_tier):
+    """v24.23 (#215): one equipped bag's carry contribution in percentage
+    points — carry_pct_base + carry_pct_per_mk × the instance's Mk tier.
+    Deterministic; bags have no rolled stats."""
+    return definition.carry_pct_base + definition.carry_pct_per_mk * mk_tier
+
+
+def carry_capacity(character, equipped_items):
+    """v24.23 (#215): the single carry-capacity formula —
+    floor(effective_STR × 10 × (100 + Σ bag_pct) / 100), integer math.
+    Percentages from multiple equipped bags sum into one multiplier, never
+    compound. The unequip guard asks "capacity without this bag" by calling
+    this with the reduced equipped list."""
+    total_pct = sum(
+        bag_pct(i.definition, i.mk_tier)
+        for i in equipped_items
+        if i.definition.item_type == 'bag'
+    )
+    return effective_stats(character, equipped_items)['str'] * 10 * (100 + total_pct) // 100
+
+
 def get_item_suffix(item):
     """The per-item info suffix an item line carries: carry bonus for
     bags, durability state for gear that wears. Empty for everything else.
@@ -216,7 +238,8 @@ def get_item_suffix(item):
         return ''
     defn = item.definition
     if defn.item_type == 'bag':
-        return f'— +{defn.carry_bonus} carry capacity'
+        # v24.23 (#215): percentage form, at the instance's Mk.
+        return f'— +{bag_pct(defn, item.mk_tier)}% carry capacity'
     if defn.takes_durability_loss:
         if item.is_broken:
             return '— BROKEN'

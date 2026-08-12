@@ -30,7 +30,8 @@ from .envelope import envelope_ts
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
 from .item_utils import (
-    compose_item_line, format_slot_name, generate_item_instance,
+    bag_pct, carry_capacity, compose_item_line, format_slot_name,
+    generate_item_instance,
     get_display_name, get_display_name_with_tier, get_display_description,
     get_durability_penalty, get_item_flags, get_item_suffix, get_item_value,
     get_repair_cost, get_repair_success_chance, get_sale_price, item_ref,
@@ -971,11 +972,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         equipped = [i for i in items if i.is_equipped]
         unequipped = [i for i in items if not i.is_equipped]
 
-        bag_bonus = sum(
-            i.definition.carry_bonus for i in equipped if i.definition.item_type == 'bag'
-        )
-        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
-        max_carry = effective_stats(char, equipped)['str'] * 10 + bag_bonus
+        # v24.23 (#215): capacity via the single helper — effective STR
+        # base (#100) scaled by the summed equipped-bag percentages.
+        max_carry = carry_capacity(char, equipped)
         current_carry = len(unequipped)
 
         # v24.16 (#208): the render is the Inventory table alone — the
@@ -1410,16 +1409,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if item.is_cursed:
             return f"Your {get_display_name(item)} is cursed and cannot be removed."
         if item.definition.item_type == 'bag':
-            other_bag_bonus = sum(
-                i.definition.carry_bonus for i in equipped_items
-                if i.definition.item_type == 'bag' and i.pk != item.pk
-            )
-            # v22 B5 (#100): the limit after removal — effective STR over
+            # v24.23 (#215): the limit after removal — the one helper over
             # the equipped set minus the bag coming off (no query; the
             # caller's equipped_items list is the source).
             remaining = [i for i in equipped_items if i.pk != item.pk]
-            new_limit = (effective_stats(self.character, remaining)['str'] * 10
-                         + other_bag_bonus)
+            new_limit = carry_capacity(self.character, remaining)
             if (unequipped_count + 1) > new_limit:
                 return f"You're carrying too many items to remove your {get_display_name(item)}."
         return None
@@ -1798,7 +1792,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             lines.append(dur_str)
 
         if defn.item_type == 'bag':
-            lines.append(f'  Carry bonus: +{defn.carry_bonus}')
+            # v24.23 (#215): percentage form, at the instance's Mk.
+            lines.append(f'  Carry bonus: +{bag_pct(defn, item.mk_tier)}%')
 
         if item.rolled_primary_stats:
             lines.append('')
@@ -3959,12 +3954,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         items = ItemInstance.objects.filter(owner=character)
         current_count = items.count()
         equipped = list(items.filter(is_equipped=True).select_related('definition'))
-        bag_bonus = sum(
-            i.definition.carry_bonus for i in equipped
-            if i.definition.item_type == 'bag'
-        )
-        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
-        max_capacity = effective_stats(character, equipped)['str'] * 10 + bag_bonus
+        # v24.23 (#215): capacity via the single helper.
+        max_capacity = carry_capacity(character, equipped)
         return (current_count, max_capacity)
 
     @database_sync_to_async
@@ -4099,12 +4090,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ItemInstance.objects.filter(owner=character, is_equipped=True)
             .select_related('definition')
         )
-        bag_bonus = sum(
-            b.definition.carry_bonus for b in equipped
-            if b.definition.item_type == 'bag'
-        )
-        # v22 B5 (#100): carry capacity reads effective STR (base + gear).
-        max_carry = effective_stats(character, equipped)['str'] * 10 + bag_bonus
+        # v24.23 (#215): capacity via the single helper.
+        max_carry = carry_capacity(character, equipped)
         return current, max_carry
 
     # ------------------------------------------------------------------
