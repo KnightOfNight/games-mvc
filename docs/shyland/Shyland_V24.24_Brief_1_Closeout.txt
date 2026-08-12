@@ -1,0 +1,110 @@
+2026-08-12 — Implementation session START — Brief: Shyland_V24.24_Brief_1_Readability_Pass.md — Branch: version_24_24
+
+================================================================================
+Shyland V24.24 Brief 1 — Readability Pass — CLOSEOUT REPORT
+================================================================================
+
+Session date:      2026-08-12
+Brief:             Shyland_V24.24_Brief_1_Readability_Pass.md (verified verbatim
+                   at the branch tip, commit 7bf7fe1, before work began)
+Branch:            version_24_24 (worktree ../games-mvc-version_24_24)
+Founding issue:    #233 (umbrella) — dependencies #221 (contrast), #222 (type scale)
+Session type:      Implementation
+
+--------------------------------------------------------------------------------
+PRE-FLIGHT
+--------------------------------------------------------------------------------
+- check_docker_host.py: exit 0, target local dev, posture coherent
+  (.env == .env.dev), daemon lima-rancher-desktop. DOMAIN sanity-checked
+  (emma.private.magrathea.com) before deploys.
+- Standing pre-flight line: no prior PENDING DEPLOY-TIME ACTIONS outstanding —
+  V24.23's production seed executed at its closeout tail (deletions 0=0).
+- This brief creates NO deploy-time data actions.
+- Brief process assumptions diffed against Instructions v31: no discrepancies.
+
+--------------------------------------------------------------------------------
+WORK PERFORMED (commit per step, pushed at every boundary)
+--------------------------------------------------------------------------------
+8ad71d5  Step 0: closeout report stub (work-has-started signal)
+8cd6370  Step 1 (version start, own commit): SHYLAND_VERSION "24.23" ->
+         "24.24-DEV"; pin test (test_b2_amendment1.py) moved in the same
+         commit. Followed by the version-start make deploy-dev (clean; no
+         migrations to apply).
+977503c  Step 2: game.html type scale — root html,body 14px -> 16px (the one
+         px declaration; the tuning knob); all 10 other sites to rem at exact
+         14px-base ratios: #loc-bar 1.0714rem, #side 0.8571rem, #stats-name
+         0.8571rem, #bars 0.8571rem, .fight-nums 0.7857rem, #prompt
+         1.0714rem, #cmd 1rem, #conn-ms 0.7857rem, #send-btn 0.8571rem.
+         .map-updown byte-identical per ruling 4 (font: shorthand, tuck-rule
+         geometry). No layout dimensions touched; right pane fixed 300px;
+         map SVG untouched.
+3f1eb68  Step 3: character_create.html — root 14px -> 16px; h1 1.2857rem;
+         select/input[type="text"] 1rem; button[type="submit"] 1rem;
+         --muted #6b6b80 -> #85859c (variable-level only; no other palette
+         change).
+4a82136  §9.2: architecture doc Shyland_Architecture_v24.md updated in place —
+         stamp 24.24 (new header blockquote entry, V24.21 stamp-only
+         precedent), hash NOT moved (presentation-only release; stays
+         fb60a59). No section content changes.
+
+No server code, no models, no migrations, no seed data, no routing, no shared
+surface. No GDD edits (ruled — §2.5 of the brief).
+
+--------------------------------------------------------------------------------
+FINAL TUNED VALUES (approved by operator — ruling 6 / §8.7)
+--------------------------------------------------------------------------------
+Root type size:    16px  (html, body — both templates; band 12–24px)
+--muted:           #85859c  — contrast 5.01:1 on #16161a (AA minimum 4.5:1;
+                   old #6b6b80 computed 3.47:1); subordinate to --text
+                   (#c8c8d4, 10.89:1)
+
+TUNING-ITERATION LOG: none — the starting values were approved as final
+(zero tuning iterations; no out-of-band requests, no design findings filed).
+
+--------------------------------------------------------------------------------
+VERIFICATION (§7) — ALL PASSED
+--------------------------------------------------------------------------------
+1. Full suite in-container (path form):
+   docker exec game-mvc-django python manage.py test apps/shyland/tests
+   -> Ran 589 tests, OK. Branch base (24.23 stamp): 589. Zero new failures;
+   count moved only by the pin test's value, i.e. not at all.
+2. Template grep assertions:
+   - game.html font-size declarations: 16px ×1 (root) + rem ×9 — exactly one
+     px site. character_create.html: 16px ×1 (root) + rem ×3.
+   - .map-updown: git diff vs branch base shows NO hunk touching it
+     (byte-identical).
+   - #6b6b80: zero occurrences in character_create.html.
+3. Contrast check of final --muted (#85859c on #16161a): 5.01 >= 4.5. PASS.
+4. Diff confinement (merge-base origin/main..HEAD): the two templates,
+   version.py, the pin test, the architecture doc, and docs/shyland/
+   documents only. PASS — no deviation.
+5. make deploy-dev run from the worktree after 1–4 passed (clean; no
+   migrations to apply). Dev stack runs the readability build.
+
+--------------------------------------------------------------------------------
+DEVIATIONS
+--------------------------------------------------------------------------------
+None. (Expected: none.)
+
+--------------------------------------------------------------------------------
+ISSUES (§9.1 — gated on §7 verification + §8 operator approval; both held)
+--------------------------------------------------------------------------------
+#221 closed (shipped comment). #222 closed (shipped comment). #233 closed —
+final values commented on the issue (root 16px; --muted #85859c @ 5.01:1).
+
+--------------------------------------------------------------------------------
+PLAYTEST DISPOSITION
+--------------------------------------------------------------------------------
+Operator reports playtest successful. (Terminal. Per the brief, the tuning
+loop is part of the playtest — the operator approved the final values, which
+are the starting values, in-conversation on 2026-08-12.)
+
+--------------------------------------------------------------------------------
+FINAL COMMIT HASH
+--------------------------------------------------------------------------------
+4a82136 (architecture doc stamp — last content commit of the brief; this
+report's completion commit follows it)
+
+SHYLAND_VERSION remains 24.24-DEV until the closeout session stamps it.
+PENDING DEPLOY-TIME ACTIONS: none.
+================================================================================
