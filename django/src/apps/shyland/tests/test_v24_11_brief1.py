@@ -32,25 +32,25 @@ BASE_TIME = timezone.now() - timedelta(days=1)
 
 
 def make_veiled_def(prefix, name, item_type='weapon', mystery='',
-                    takes_durability=False, carry_bonus=0):
+                    takes_durability=False, carry_pct_base=0):
     return ItemDefinition.objects.create(
         name=name, slug=f'{prefix}-{name.lower().replace(" ", "-")}',
         item_type=item_type, genre_tag='fantasy',
         valid_slots=['MAIN_HAND'] if item_type == 'weapon' else [],
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
         takes_durability_loss=takes_durability,
-        mystery_name=mystery, carry_bonus=carry_bonus,
+        mystery_name=mystery, carry_pct_base=carry_pct_base,
     )
 
 
 def mem_def(pk, name, item_type='weapon', mystery='',
-            takes_durability=False, carry_bonus=0):
+            takes_durability=False, carry_pct_base=0):
     return ItemDefinition(
         pk=pk, name=name, slug=f'memdef-{pk}', item_type=item_type,
         genre_tag='fantasy', valid_slots=[],
         scaling_base=0.0, scaling_factor=0.0,
         takes_durability_loss=takes_durability,
-        mystery_name=mystery, carry_bonus=carry_bonus,
+        mystery_name=mystery, carry_pct_base=carry_pct_base,
     )
 
 
@@ -231,7 +231,7 @@ class VeilDisplayTests(SimpleTestCase):
     def test_5_suffix_empty_for_unidentified(self):
         worn_def = mem_def(1, 'Gleamsteel Saber', takes_durability=True)
         bag_def = mem_def(2, 'Duskhide Satchel', item_type='bag',
-                          carry_bonus=5)
+                          carry_pct_base=5)
         worn_unid = mem_item(11, worn_def, identified=False, dur=60.0)
         bag_unid = mem_item(12, bag_def, identified=False)
         self.assertEqual(get_item_suffix(worn_unid), '')
@@ -240,7 +240,9 @@ class VeilDisplayTests(SimpleTestCase):
         worn_id = mem_item(13, worn_def, identified=True, dur=60.0)
         bag_id = mem_item(14, bag_def, identified=True)
         self.assertEqual(get_item_suffix(worn_id), '— 60% durability')
-        self.assertEqual(get_item_suffix(bag_id), '— +5 carry capacity')
+        # v24.23 (#215): the identified bag suffix is the percentage form
+        # (Mk 1 instance, carry_pct_base 5, per-Mk 0 → 5%).
+        self.assertEqual(get_item_suffix(bag_id), '— +5% carry capacity')
 
     def test_6_details_cell_gates_durability(self):
         worn_def = mem_def(3, 'Gleamsteel Saber', takes_durability=True)
