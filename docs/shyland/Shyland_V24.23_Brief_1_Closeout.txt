@@ -119,6 +119,12 @@ PENDING DEPLOY-TIME ACTIONS
     until the production execution at release deploy.
 
 OPERATOR PLAYTEST DISPOSITION
-  (open — recorded before session end)
+  Operator reports playtest successful (2026-08-12, in-conversation:
+  "playtest confirmed"). Terminal disposition. One playtest finding during
+  the session — the reseed reverting the standing dev-only rig (silver
+  clones / Hollowcrown Mk 2 / respawn tweaks) — investigated, verified as
+  the ledger-predicted enforce-exact sweep, recorded in the amended SEED
+  section above; operator ruled "leave it." No findings against the brief's
+  own spec.
 
 ================================================================================
