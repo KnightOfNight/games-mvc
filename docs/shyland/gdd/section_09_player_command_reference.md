@@ -130,7 +130,7 @@ Three kinds, one punctuation law — **colon = the value is on the line; ellipsi
 - **Kind 2** — `Key...` + indented value list.
 - **Kind 3** — `Key...` + table (muted column headers, value rows).
 
-Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208); `list` = the vendor table (Section 6.12); `wallet` = the shared Kind 1 line; `who` = one line, `Players online (3): Shy-Guy, Sharon-Love, Marvin`; `stats` = the character sheet with the six stat rows (base + gear parenthetical), a blank line, the Armor row, and a blank line before Unspent; `last` = the admin Kind 3 table; `look` untouched by the standards (the room render has its own v20/v21 rules). Durability numbers are colored by the mechanical band, derived, never owned; rarity words always rarity-colored.
+Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208); `list` = the vendor table (Section 6.12); `wallet` = the shared Kind 1 line; `who` = one line, `Players online (3): Shy-Guy, Sharon-Love, Marvin`; `stats` = the character sheet with the `Home:` row under the Player line (the effective home node's travel name — attunement, Section 2.11; v24.26, pending implementation), the six stat rows (base + gear parenthetical), a blank line, the Armor row, and a blank line before Unspent; `last` = the admin Kind 3 table; `look` untouched by the standards (the room render has its own v20/v21 rules). Durability numbers are colored by the mechanical band, derived, never owned; rarity words always rarity-colored.
 
 #### Settings Standard
 

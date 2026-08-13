@@ -511,6 +511,7 @@ Rules of the bond:
 - **Independent of the relay (#30).** Sending is the shard's nature (world data); attunement is the player's bond (player data). Neither gates the other.
 - **No combat gate, structurally.** Every attunable room is a safe room, so the success path cannot occur in combat — an in-combat `attune` can only ever draw the nothing-here warn. (While dying, `attune` refuses like every non-self-preservation command — the §9.1 matrix governs.)
 - **Death respawn follows the bond** (Section 3.7): the death sequence delivers the player to their attuned node, full bars, client re-synced. All nodes are safe rooms — a frontier respawn is never a death trap.
+- **The bond is always visible:** `stats` carries a `Home:` row in the identity block, directly under the `Player:` line — the effective home node's travel name, exact, never varying (Section 9.1 shipped surfaces).
 
 The attunement moment is a small ceremony — the Shard or sphere acknowledging the bond — authored at implementation time in the network's voice under the standing creative-content policy. Refusal and report wording likewise lands at brief time under the three-layer response doctrine.
 

@@ -74,6 +74,13 @@ File: `django/src/apps/shyland/consumers.py`.
 - **Gating:** do *not* add `attune` to the combat-refused set (design rule 8). Confirm the dying gate refuses it by default.
 - **Chart/help/completion sync (one source of truth, three surfaces):** add `attune` to the §9 chart's help rendering (the generated help in `consumers.py` ≈ line 1197 area) and to the connect-time verb list; tab completion completes the verb only — there is no noun pool.
 
+### Step 4b — The `Home:` row in `stats` (operator-ruled 2026-08-13, on #38)
+
+File: `django/src/apps/shyland/consumers.py`, `_send_stats` (≈ line 2749).
+
+- The identity block gains a `Home:` row **directly under the `Player:` line**, before the blank line and the stat rows: `  Home: {travel_name}` — the effective home node's `travel_name` (a null bond renders the founding node's name, `The Convergence`). Value-color under the standing key/value form, exact, never varying (a rendering, not speech).
+- Resolve via Step 3's effective-home resolution; extend the character load's `select_related` as needed — no extra query per stat row.
+
 ## Step 5 — The relay (`travel` from a shard)
 
 File: `django/src/apps/shyland/consumers.py`.
@@ -115,6 +122,7 @@ Additions (new test file(s) under `django/src/apps/shyland/tests/`; invocation, 
 6. **home:** delivers to the attuned node's room; null delivers to the Heart; a bond changed mid-countdown lands at the *new* home (completion-time resolution, design rule 7).
 7. **Respawn:** death delivers to the attuned node's room (full bars, visit recorded); null delivers to the Heart.
 8. **Chart/help sync:** help output includes `attune`; the pin test moved in Step 1.
+8b. **stats:** the sheet carries `Home: The Convergence` for a bond-less character and `Home: <travel_name>` after attuning, positioned directly under the `Player:` line.
 9. **Color chart:** the set-equality test stays green.
 10. Full suite green.
 
@@ -132,7 +140,7 @@ After Step 9's deploy-dev:
 - [ ] At the Heart, `attune` → the already-attuned response (a fresh bond-less character counts as Heart-attuned).
 - [ ] In a nodeless room, `attune` → the no-node warn.
 - [ ] `travel fordwatch` from the Heart; at Fordwatch, `travel` → spheres only (the Heart; the Verdant Crown only if this character has revealed it), no shard rows.
-- [ ] At Fordwatch, `attune` → ceremony line ending `(Home: Fordwatch)`.
+- [ ] At Fordwatch, `attune` → ceremony line ending `(Home: Fordwatch)`; `stats` now shows `Home: Fordwatch` under the Player line (and showed `Home: The Convergence` before the attune).
 - [ ] Walk into the wild, `home` → the fog countdown, landing at **Fordwatch**; the cooldown refusal still carries its exact parenthetical on an immediate retry.
 - [ ] Die on purpose → death sequence unchanged, respawn at **Fordwatch** with full bars.
 - [ ] From Fordwatch, relay to the Heart via `travel the convergence`; `attune` at the Heart → home is the Heart again.
