@@ -1,3 +1,175 @@
 2026-08-13 — Session start: implementation session, Shyland V24.26 Brief 1 (Shard_Relay_And_Attunement), branch version_24_26.
 
-[STUB — completed in place at session end]
+================================================================================
+Shyland V24.26 Brief 1 — Shard Relay & Attunement — Closeout Report
+================================================================================
+
+Branch: version_24_26
+Founding ticket: #38 (obelisk attunement: player-set home spawn) — CLOSED
+Dependency: #30 (checkpoint shards as travel senders) — CLOSED
+Final implementation commit: ba6f3e5
+Architecture-doc commit: fde4b07 (stamp 24.26; header hash moved to ba6f3e5 —
+this release is architectural)
+Closeout-report commit: (this file's commit, after fde4b07)
+
+--------------------------------------------------------------------------------
+What shipped (by brief step)
+--------------------------------------------------------------------------------
+
+Step 1 — Version constant (76e44ec): SHYLAND_VERSION 24.25 -> 24.26-DEV, pin
+test moved in the same commit; version-start `make deploy-dev` run.
+
+Step 2 — Model & migration (e6f2efb): Character.attuned_node (FK ->
+'TravelNode', null/blank, SET_NULL, related_name='attuned_characters',
+help_text per the brief) replaces recall_room, removed in the same change.
+No data migration — null means the founding node (the Heart), which is what
+every existing recall_room pointed at (ruling B2). TravelNode docstring and
+node_type help_text updated to the relay model. Migration
+0045_remove_character_recall_room_character_attuned_node_and_more generated
+via `make makemigrations APP=shyland`, applied via `make migrate`, committed
+unedited. (The migration also carries an AlterField on node_type from the
+help_text change — cosmetic, no schema effect beyond the help text.)
+
+Step 3 — Effective-home resolution (d0707ae): shared sync helpers
+resolve_home_node(character) / resolve_home_room(character) at module level
+in models.py (attuned node when bonded, else the founding-node query
+travel_name='The Convergence', node_type='obelisk'). Consumer:
+get_heart_room replaced by get_home_room (dedicated query with the
+attuned-node select_related path; stale "#38 is a future version" docstring
+died with it). Tick engine: get_expired_dying select_relates
+attuned_node__room__zone/__area; execute_death resolves via
+resolve_home_room; respawn message/status payload shapes unchanged; the
+'your recall point' fallback string became 'your home'.
+
+Step 4 — attune (d0707ae): cmd_attune registered as ('cmd_attune', False)
+(chart fn 2). Exactly the three ruled cases: no node -> warn from
+ATTUNE_NO_NODE_LINES; node == effective home (null compares as the founding
+node) -> warn from ATTUNE_ALREADY_LINES; else atomic
+.update(attuned_node=node) then a pooled ceremony line ending in the exact
+composed parenthetical `(Home: {travel_name})`, success voice. Pools are
+module-level, 3 lines each, authored in the network's voice under the
+creative-content policy. NOT added to COMBAT_BLOCKED (design rule 8); the
+dying gate verified deny-by-default (DYING_ALLOWED whitelist) — attune
+refuses while dying with zero changes. Help row added to HELP_SECTIONS; the
+connect-time verbs list and verb completion derive from the dispatch table;
+no noun pool.
+
+Step 4b — stats Home: row (d0707ae): `  Home: {travel_name}` directly under
+the Player: line, before the blank line; effective home via the Step-3
+resolution over the already-loaded character (get_character_fresh
+select_relates attuned_node — no extra query per stat row; the founding-node
+fallback query fires only for bond-less characters). Null bond renders
+The Convergence.
+
+Step 5 — The relay (d0707ae): checkpoint sender refusal deleted;
+get_revealed_destinations gains spheres_only=False adding
+.filter(node_type='obelisk'); cmd_travel and _complete_travel both pass
+spheres_only=(node.node_type != 'obelisk'). No-node refusal reworded to
+teach obelisk-or-shard (warn). Listing format untouched; the opener gained a
+shard-voice variant ("The Shard reaches through the network to the spheres
+it answers to...") and the empty-pool line likewise (defensive only).
+Departure/arrival TravelMessage pools untouched. Zone locks untouched
+(transition-generic, already on the path).
+
+Step 6 — home delivers to the bond (d0707ae): destination resolved at
+countdown COMPLETION via get_home_room (design rule 7 — the initiation
+previously captured the room; resolution moved into the completion
+callback). Already-at-home kindly refusal compares against the effective
+home room; its wording ("You are already home.") names no Heart and
+survives verbatim. Cooldown machinery, countdown pools, interruption rules:
+untouched.
+
+Step 7 — Reference sweep (d0707ae): `grep -rn 'recall_room' django/src/`
+returns ONLY the two migration files (0001 initial, 0045 removal). Sites
+converted: views.py creation kwarg deleted (null = the Heart, ruling B2);
+admin.py raw_id_fields + fieldset swap recall_room -> attuned_node (pulled
+forward into the Step-2 commit — Django's system checks gate makemigrations
+on admin references; noted as ordering, not a deviation); consumers.py
+select_related sites (get_character, get_character_fresh) swapped to
+attuned_node; seed_world.py recall backfill line deleted (no other seed
+changes; seed-owned deletions: expected 0, actual 0 — nothing seed-owned is
+touched). Broader vocabulary sweep: zero 'recall' mentions remain anywhere
+in the app outside migrations and the out-of-scope no_recall room flag.
+
+Step 8 — Tests (ba6f3e5): new tests/test_v24_26_brief1.py — 27 tests
+covering the model surface (field present/nullable/SET_NULL; recall_room
+absent; resolver both directions), attune's three cases (bondless-at-Heart
+and explicit-bond already-attuned both covered; ceremony parenthetical
+asserted exact; re-attune at the Heart sets the founding node explicitly),
+attune gating (dying refusal; absent from COMBAT_BLOCKED; nodeless-room
+warn via _dispatch), relay pools (listing content, completion pool exactly
+the revealed spheres, direct-attempt refusals for unrevealed sphere AND
+revealed shard, obelisk pool unchanged), relay travel end to end with
+standard messaging, home (null -> Heart, bond -> bonded room, kindly
+refusal at bonded room, bond changed mid-countdown lands at the NEW home),
+respawn via the engine harness (bonded -> shard room full bars, null ->
+Heart), chart/help sync, and the stats Home: row (position and both
+renderings). Color chart set-equality test untouched and green (no new
+color literals). Full suite: 630 tests, OK, in-container path form.
+
+Step 9 — Verification: ALL PASS.
+  9.1 Full in-container suite green (630).
+  9.2 Dev shell: shyland_character schema has attuned_node_id and no
+      recall_room_id; an attune-shaped update sets the FK and the resolver
+      answers Fordwatch, restore answers The Convergence; recall_room grep
+      hits migrations only.
+  9.3 The callout check, live on dev: character Sharon-Love (Verdant Crown
+      NOT revealed) at Fordwatch — the sender pool is exactly
+      ['The Convergence'] (Heart listed; Crown absent; no shard rows);
+      direct 'travel the verdant crown' finds 0 matches (refused); after
+      standing in the Crown once, the pool lists it. Synthetic visit
+      removed after the check.
+  9.4 `make deploy-dev` run from the worktree after implementation and
+      tests passed. Dev stack is running the brief's build.
+
+Step 10 — Operator playtest checklist: ready on the dev stack (see the
+brief). Disposition recorded below.
+
+Step 11 — Architecture doc (fde4b07): updated in place, stamp 24.26, header
+hash MOVED to ba6f3e5 (architectural: Character schema change, new command,
+changed travel topology). Sections updated: header + new version block; §4.1
+Character and TravelNode (+ the new effective-home-resolution block); §4.3
+travel command (relay semantics) and the new Attunement subsection; §4.7
+admin row; §4.9 tick engine death path (both recall passages); §4.14 home
+gates/completion, travel listing opener, tab completion; §6 Obelisk Network
+decision block; §7 network-nodes row. The no_recall room-flag rows stay
+(out of scope by design rule 9).
+
+--------------------------------------------------------------------------------
+Deviations & notes
+--------------------------------------------------------------------------------
+
+1. Test conversions (per brief Step 7/8, reported per the test-hygiene
+   rule): test_room_visits.py test_respawn_records_visit_at_recall_room
+   renamed/converted to test_respawn_records_visit_at_home_room — a
+   TravelNode is created for the destination room and the character bonds
+   to it; the intent (respawn arrival records a RoomVisit) is preserved as
+   an explicit assertion. Factory recall_room=room kwargs dropped in six
+   test files (test_combat_state, test_ui_layout, test_map_payload,
+   test_command_revamp x2, test_room_visits, test_session_takeover).
+2. Ordering note (not a deviation): the admin.py swap listed under Step 7
+   was applied within Step 2's commit — Django's system checks reject a
+   ModelAdmin referencing a removed field, which would have blocked the
+   Step-2 makemigrations.
+3. The migration filename carries "_and_more" because the node_type
+   help_text change rides as an AlterField; no schema effect.
+4. Brief test 7 asks respawn to assert "visit recorded": the visit is
+   recorded consumer-side on the respawn event (not in the tick engine), so
+   that half of the intent is pinned by the converted test_room_visits test;
+   the engine-harness tests pin relocation + full bars.
+5. Fog-voice lines naming the Heart (HOME_MID_POOL line 2, HOME_ARRIVAL_LINE)
+   are deliberately untouched: design rule 10 plus the explicit GDD §2.11
+   ruling "The arrival ceremony stays the Heart's fog-motif shape wherever
+   home now points." Flagged here for visibility only; no issue filed — the
+   GDD text already rules it.
+6. Suite count 603 (24.25 stamp) -> 630: +27 new tests, no removals.
+
+PENDING DEPLOY-TIME ACTIONS: none. The schema migration rides
+`make deploy-prod`'s migrate in the closeout tail; no seed reruns, no data
+actions (expected seed deletions: 0; none occurred).
+
+--------------------------------------------------------------------------------
+Operator playtest disposition
+--------------------------------------------------------------------------------
+
+[PENDING — to be recorded verbatim-style per #170 before session end]
