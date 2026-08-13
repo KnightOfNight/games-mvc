@@ -1,3 +1,103 @@
 Session start 2026-08-12: implementation session for Shyland V24.25 Brief 1 (Zone Locks & Convergence Areas), branch version_24_25.
 
-[STUB — completed in place at session end]
+================================================================
+V24.25 BRIEF 1 CLOSEOUT REPORT — Zone Locks & Convergence Areas
+================================================================
+
+Release: Version 24.25 (milestone Version 24.25)
+Founding ticket: #41 (closed). Dependency: #95 (closed).
+Branch: version_24_25. Brief applied by name per the directed-brief rule.
+Final commit hash: cffcaa7 (architecture doc; implementation content tip 276da2b).
+
+STEP RESULTS
+------------
+Step 0  — Closeout stub pushed at f17b787 (work-has-started signal).
+Step 1  — SHYLAND_VERSION 24.24 -> 24.25-DEV in its own commit 8bb0acd, pin
+          test moved in the same commit; version-start make deploy-dev run.
+Step 2  — Zone.entry_requires_zone + ZoneCompletion; schema migration 0043
+          (generated, unedited), grandfather data migration 0044 (RunPython
+          body authored per the brief; reverse = noop). Commit 2c0eec5.
+Step 3  — Key minting in record_room_visit (the single choke point); return
+          signature now (first_visit, zone_completed); announcement wired in
+          all six arrival paths (connect, move, travel, flee, home, respawn),
+          reward category, after the room render, only on newly created rows.
+Step 4  — check_zone_lock shared sync helper; gate in cmd_move (before any
+          state change) and cmd_travel (before departure messaging);
+          intra-zone movement always passes; three module-level pools
+          (3 lines each). Commit 75f46ec (steps 3-5).
+Step 5  — Travel listing: locked zones' destination rows render through the
+          existing muted seg voice; zone heading keeps its theme color;
+          match pool and tab completion untouched.
+Step 6  — Seed: The Everround (the-everround, #C9AE7A) + Morra's Smithy
+          (morras-smithy, #C0855C) in _seed_areas; 40 ring rooms + 2 smithy
+          rooms assigned; Heart stays area-free; Verdant Reach lock authored
+          to The Convergence (Convergence itself authored open); _verify
+          extended with the 6d table, colors, lock authoring + exclusivity.
+          Commit fab33f2.
+Step 7  — New test file test_zone_locks.py: 14 tests (model, minting x3,
+          walking gate x2, travel gate x2, no-area fallback, muted listing +
+          tab completion, seed idempotence + 6d table, pool law). Chart
+          set-equality test untouched and green (no new color literal).
+          Commit 276da2b.
+Step 8  — Verification, all passing:
+          1. Full in-container suite: 603/603 OK (path form), was 589.
+          2. make seed on dev: both new areas in output; all _verify checks
+             PASS. Deletion count: expected 0, actual 0.
+          3. Dev shell checks: membership counts 40/2/4/4/5/4, area-free 1,
+             zone total 60; the-verdant-reach.entry_requires_zone.slug ==
+             'the-convergence'; grandfather verified — 3/3 pre-existing dev
+             characters hold the Convergence ZoneCompletion.
+          4. Contrast vs output-pane background #0D0D0F:
+             #C9AE7A (The Everround)  = 9.08:1  (>= 4.5 PASS)
+             #C0855C (Morra's Smithy) = 6.24:1  (>= 4.5 PASS)
+          5. make deploy-dev then make seed — code first, data second.
+Step 9  — Operator playtest checklist ready; dev stack is running the brief's
+          build, seeded.
+Step 10 — Architecture doc updated in place: stamp 24.25, header hash MOVED
+          to 276da2b (architectural release — new model, new gate machinery);
+          sections updated: 4.1 (Zone lock field, ZoneCompletion, area color
+          table), 4.3 (new "Zone entry locks and keys" subsection), 4.8 (seed
+          block), header release paragraph. Commit cffcaa7.
+
+ISSUES
+------
+#41 closed (gated on Step 8 passing) with shipped-summary comment.
+#95 closed (gated on Step 8 passing) with shipped-summary comment.
+
+DEVIATIONS
+----------
+1. test_room_visits.py: the record_room_visit helper tests were adjusted to
+   the new (first_visit, zone_completed) tuple return — the local record()
+   wrapper unpacks and returns first_visit; original assertions preserved
+   intact. Necessary consequence of the brief's specified signature change;
+   reported here, not silent.
+2. No other deviations. Pools shipped verbatim from the brief; seed area
+   descriptions shipped verbatim.
+
+OBSERVATION FOR THE NEXT DESIGN SESSION (no code impact)
+--------------------------------------------------------
+Playtest checklist items 1, 2, and the "travel fordwatch works" half of 7
+assume a brand-new character sees Verdant destinations in the travel
+listing. Under the unchanged revelation law (GDD §2.11: a node reveals only
+when the character has visited its room), a minute-zero character has no
+revealed Verdant nodes — the listing is empty of them and "travel fordwatch"
+draws the knows-no-such-place line (which still blocks entry, in a different
+voice). The muted-row state is real and tested (revealed-but-locked), but
+for the Convergence->Verdant gate it is unreachable in normal play: revealing
+a Verdant node requires entering the Reach, which requires the key. The
+muted listing is forward machinery for retroactively authored locks (e.g. a
+V25 lock on an already-explored zone). Items 3-6, 8, 9 and the walking-gate
+half of 7 are unaffected. Reported as a checklist/spec observation, not a
+defect in the shipped behavior, which follows GDD §2.11/§2.12 as written.
+
+PENDING DEPLOY-TIME ACTIONS (open until the closeout tail's deploy window)
+--------------------------------------------------------------------------
+1. Production seed via make seed-prod (areas + lock authoring reach
+   production only via seed; expected deletions 0). The grandfather
+   migration itself rides make deploy-prod's migrate — code first, data
+   second.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+PENDING — awaiting the operator's playtest on the dev stack. This line is
+completed in place before the session ends via implementation-session-end.
