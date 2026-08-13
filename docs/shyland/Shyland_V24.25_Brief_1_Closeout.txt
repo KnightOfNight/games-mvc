@@ -99,5 +99,10 @@ PENDING DEPLOY-TIME ACTIONS (open until the closeout tail's deploy window)
 
 OPERATOR PLAYTEST DISPOSITION (#170)
 ------------------------------------
-PENDING — awaiting the operator's playtest on the dev stack. This line is
-completed in place before the session ends via implementation-session-end.
+Operator reports playtest successful (2026-08-13, dev stack, build
+24.25-DEV at ca5eba3). All checklist items confirmed. Items 1 and 2
+resolved to the revelation-law behavior (empty listing /
+knows-no-such-place) as predicted in the OBSERVATION block above —
+operator confirmed expected, ruled no issue needed. Item 3 drew the
+refusal pool correctly (The Convergence / The Everround, warn voice, no
+movement); items 4-9 all confirmed as written.
