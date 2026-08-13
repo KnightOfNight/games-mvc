@@ -11,6 +11,7 @@ from datetime import timedelta, timezone as dt_timezone
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.db.models import Count
 from django.urls import reverse
 from django.utils import timezone
 
@@ -40,7 +41,7 @@ from .item_utils import (
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
     ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomSpawn,
-    RoomVisit, TravelMessage, TravelNode, VendorEntry,
+    RoomVisit, TravelMessage, TravelNode, VendorEntry, Zone, ZoneCompletion,
     COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
     FLEE_COOLDOWN_TICKS,
 )
@@ -123,6 +124,30 @@ _NO_EXIT_DEFAULTS = {
     'up':    "There is nothing above you.",
     'down':  "You'd have to dig to go that way.",
 }
+
+# V24.25 (#41, GDD §2.12): zone entry locks. Locks are world data
+# (Zone.entry_requires_zone, seed-authored); keys are player data
+# (ZoneCompletion, permanent, never revoked). One generic, door-agnostic
+# refusal pool serves every gate — lines speak about the requirement,
+# never the door, name the required zone and exactly one Area of it still
+# holding unvisited rooms, and never count. The unlock announcement is
+# reward voice, celebrates the completed zone by name, and never names
+# what it unlocked.
+ZONE_LOCK_REFUSAL_LINES = [
+    "{zone} has not finished with you. {area} still keeps corners you haven't seen.",
+    "The way senses how much of {zone} you carry, and it is not yet all of it. {area} remembers rooms you never entered.",
+    "Not yet. Walk all of {zone} first — {area} is still waiting to be seen.",
+]
+ZONE_LOCK_REFUSAL_LINES_NO_AREA = [
+    "{zone} has not finished with you. There are still places in it you haven't seen.",
+    "Not yet. {zone} still holds ground your feet have never touched.",
+    "The way holds fast. Walk all of {zone} first.",
+]
+ZONE_COMPLETE_LINES = [
+    "You have walked every path of {zone}. Somewhere, a way that was closed quietly stops being closed.",
+    "Every corner of {zone} knows your footsteps now. Something, somewhere, unlatches.",
+    "{zone} has shown you all it has — and the world, having watched, opens a little wider.",
+]
 
 
 def _join_owned_names(items, conj):
@@ -387,7 +412,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # Arrival-equivalent (#50): covers a fresh character's spawn room
         # (creation sets current_room without a visit) and heals any
         # pre-fix room the character is standing in.
-        first_visit = await self.record_room_visit(self.character, room)
+        first_visit, zone_completed = await self.record_room_visit(
+            self.character, room)
         self.room_group = f'room_{room.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
 
@@ -444,6 +470,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         })
 
         await self.send_room_description(room, first_visit=first_visit)
+        if zone_completed:
+            await self.announce_zone_completion(room.zone.name)
         # v20 brief 1 (#35): full map state on connect, following the v19
         # client-state sync full-state pattern.
         await self.send_map()
@@ -600,6 +628,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             })
             return
 
+        # V24.25 (#41, GDD §2.12): the entry gate — refused before any
+        # state changes; no cooldowns touched.
+        refusal = await self.check_zone_lock(self.character, destination,
+                                             room.zone_id)
+        if refusal:
+            await self.output(refusal, 'warn')
+            return
+
         char_name = self.character.name
 
         await self.channel_layer.group_send(self.room_group, {
@@ -612,7 +648,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
 
         await self.move_character(destination)
-        first_visit = await self.record_room_visit(self.character, destination)
+        first_visit, zone_completed = await self.record_room_visit(
+            self.character, destination)
         self.last_direction = DIRECTION_CANONICAL[direction]
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -635,6 +672,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # combat-red status is the final status the client receives.
         await self.send_room_description(destination, entering=True,
                                          first_visit=first_visit)
+        if zone_completed:
+            await self.announce_zone_completion(destination.zone.name)
         aggro_npcs = await self.get_aggro_npcs_in_room(destination)
         if aggro_npcs:
             for npc in aggro_npcs:
@@ -725,6 +764,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 for i, cell in enumerate(row):
                     widths[i] = max(widths[i], len(cell))
 
+            # V24.25 (#41, GDD §2.11): a zone locked to this character
+            # (lock authored, key absent) keeps its destinations listed
+            # and matchable — the rows render muted; the heading keeps
+            # the zone color. The lock mutes the destinations, not the
+            # zone's identity.
+            completed_ids = await self.get_completed_zone_ids(self.character)
+
             lines = [{'k': 'The Obelisk offers passage to...'}]
             for slug in sorted(by_zone, key=zone_rank):
                 zone = zones[slug]
@@ -735,10 +781,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     {'t': 'Zone: ', 'c': 'key'},
                     {'t': zone.name, 'x': zone.theme_color},
                 ]})
-                lines += self._table_lines(
-                    headers, [node_row(d) for d in by_zone[slug]],
-                    min_widths=widths,
-                )
+                rows = [node_row(d) for d in by_zone[slug]]
+                if (zone.entry_requires_zone_id is not None
+                        and zone.entry_requires_zone_id not in completed_ids):
+                    rows = [[[(cell, 'muted')] for cell in row]
+                            for row in rows]
+                lines += self._table_lines(headers, rows, min_widths=widths)
             await self.send_report_lines(lines)
             return
 
@@ -760,6 +808,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         destination = matches[0].room
+
+        # V24.25 (#41, GDD §2.12): the entry gate — same check as walking,
+        # before any departure messaging. Locked destinations stay
+        # matchable; the attempt draws the refusal.
+        refusal = await self.check_zone_lock(self.character, destination,
+                                             room.zone_id)
+        if refusal:
+            await self.output(refusal, 'warn')
+            return
+
         char_name = self.character.name
 
         departure = await self.get_random_travel_message('departure')
@@ -768,7 +826,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.channel_layer.group_discard(self.room_group, self.channel_name)
         await self.move_character(destination)
-        first_visit = await self.record_room_visit(self.character, destination)
+        first_visit, zone_completed = await self.record_room_visit(
+            self.character, destination)
         self.last_direction = None
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -781,6 +840,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         destination = await self.get_current_room()
         await self.send_room_description(destination, entering=True,
                                          first_visit=first_visit)
+        if zone_completed:
+            await self.announce_zone_completion(destination.zone.name)
         await self.send_map()
 
         arrival = await self.get_random_travel_message('arrival')
@@ -2627,7 +2688,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_fight(None)
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
             await self.move_character(destination)
-            first_visit = await self.record_room_visit(self.character, destination)
+            first_visit, zone_completed = await self.record_room_visit(
+                self.character, destination)
             self.last_direction = flee_dir
             self.room_group = f"room_{destination.id}"
             await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -2639,6 +2701,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             destination_full = await self.get_current_room()
             await self.send_room_description(destination_full, entering=True,
                                              first_visit=first_visit)
+            if zone_completed:
+                await self.announce_zone_completion(destination_full.zone.name)
             aggro_npcs = await self.get_aggro_npcs_in_room(destination)
             if aggro_npcs:
                 for npc in aggro_npcs:
@@ -3089,7 +3153,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 self.HOME_DEPART_WITNESS.format(name=char.name), 'room')
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
             await self.move_character(heart)
-            first_visit = await self.record_room_visit(self.character, heart)
+            first_visit, zone_completed = await self.record_room_visit(
+                self.character, heart)
             self.last_direction = None
             self.room_group = f'room_{heart.id}'
             await self.channel_layer.group_add(self.room_group, self.channel_name)
@@ -3098,6 +3163,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             destination = await self.get_current_room()
             await self.send_room_description(destination, entering=True,
                                              first_visit=first_visit)
+            if zone_completed:
+                await self.announce_zone_completion(destination.zone.name)
             await self.send_map()
             await self.broadcast_to_room_exclude(
                 self.HOME_ARRIVE_WITNESS.format(name=char.name), 'room')
@@ -3230,9 +3297,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_add(self.room_group, self.channel_name)
             self.last_direction = None
             room = await self.get_current_room()
-            first_visit = await self.record_room_visit(char, room)
+            first_visit, zone_completed = await self.record_room_visit(char, room)
             await self.send_room_description(room, entering=True,
                                              first_visit=first_visit)
+            if zone_completed:
+                await self.announce_zone_completion(room.zone.name)
             await self.send_map()
 
     # ------------------------------------------------------------------
@@ -3822,9 +3891,74 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         was the first. v20 brief 1 amendment 2 (#50): visits land at arrival
         time in every arrival path, independent of room-description
         rendering — an aggro ambush that skips the description must not skip
-        the visit."""
+        the visit.
+
+        V24.25 (#41, GDD §2.12): this choke point is also where keys are
+        minted — a first visit covering the zone's last unseen room creates
+        the character's permanent ZoneCompletion. Returns (first_visit,
+        zone_completed); zone_completed is True only when the completion row
+        was newly created (a pre-existing row — the grandfather migration —
+        suppresses the announcement), and the check runs only on a first
+        visit — revisits cost nothing."""
         _, created = RoomVisit.objects.get_or_create(character=character, room=room)
-        return created
+        zone_completed = False
+        if created:
+            zone = room.zone
+            visited = RoomVisit.objects.filter(
+                character=character, room__zone=zone).count()
+            if visited == zone.rooms.count():
+                _, zone_completed = ZoneCompletion.objects.get_or_create(
+                    character=character, zone=zone)
+        return created, zone_completed
+
+    async def announce_zone_completion(self, zone_name):
+        """V24.25 (#41): the unlock announcement — reward voice, after the
+        room render, celebrating the completed zone by name. It never names
+        the zone(s) it unlocked."""
+        await self.send_output(
+            random.choice(ZONE_COMPLETE_LINES).format(zone=zone_name),
+            'reward')
+
+    @database_sync_to_async
+    def check_zone_lock(self, character, destination, current_zone_id):
+        """V24.25 (#41, GDD §2.12): the transition-generic entry gate —
+        walking and travel alike call this before the move executes. Returns
+        None when passable, else the refusal line (warn voice). Only
+        *entering* a locked zone is gated: intra-zone movement always
+        passes, and no character is ever ejected from a zone they stand in.
+        The {area} slot names the required zone's Area holding the most
+        rooms this character hasn't visited (never counts)."""
+        dest_zone = destination.zone
+        if dest_zone.pk == current_zone_id:
+            return None
+        required_id = dest_zone.entry_requires_zone_id
+        if required_id is None:
+            return None
+        if ZoneCompletion.objects.filter(
+                character=character, zone_id=required_id).exists():
+            return None
+        required = Zone.objects.get(pk=required_id)
+        area_row = (
+            Room.objects.filter(zone=required)
+            .exclude(visits__character=character)
+            .exclude(area__isnull=True)
+            .values('area__name')
+            .annotate(n=Count('id'))
+            .order_by('-n', 'area__name')
+            .first()
+        )
+        if area_row:
+            return random.choice(ZONE_LOCK_REFUSAL_LINES).format(
+                zone=required.name, area=area_row['area__name'])
+        return random.choice(ZONE_LOCK_REFUSAL_LINES_NO_AREA).format(
+            zone=required.name)
+
+    @database_sync_to_async
+    def get_completed_zone_ids(self, character):
+        """V24.25 (#41): the character's key ring — completed zone ids."""
+        return set(
+            ZoneCompletion.objects.filter(character=character)
+            .values_list('zone_id', flat=True))
 
     @database_sync_to_async
     def touch_last_seen(self, character):

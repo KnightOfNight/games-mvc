@@ -90,7 +90,10 @@ class RoomVisitHelperTests(TestCase):
         self.consumer = SkylandConsumer()
 
     def record(self, room):
-        return _record_room_visit(self.consumer, self.character, room)
+        # V24.25 (#41): the helper returns (first_visit, zone_completed);
+        # these tests cover the first-visit half.
+        first_visit, _ = _record_room_visit(self.consumer, self.character, room)
+        return first_visit
 
     def resolve(self, room, force_long=False, first_visit=None):
         return _resolve_room_rendering(
