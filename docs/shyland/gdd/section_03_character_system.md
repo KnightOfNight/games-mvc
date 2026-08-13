@@ -16,7 +16,7 @@ New players choose:
 
 There is no portrait selection. Portraits were considered and explicitly cut — not deferred — from character creation. Characters have no visual avatar.
 
-On successful creation, the character spawns at **Heart of the Convergence (0,0,0)** — the same room used as the default recall destination.
+On successful creation, the character spawns at **Heart of the Convergence (0,0,0)** — the same room every character starts attuned to as their home node (Section 2.11).
 
 #### Starting Attire
 
@@ -290,7 +290,7 @@ Death in Shyland is meaningful but not brutal. The full dying-and-death sequence
 - **Presentation:** the fallen player's output pane clears; a red fatal-blow line opens the sequence ("You have been dealt a fatal blow…"); a lore ladder escalates through the window (a line every ~5 seconds, then every second at the end) — all lore, never mechanical time units. No combat output of any kind reaches the dying player. The room sees the third-person fall announcement (excluding the fallen).
 - While Dying, only self-preservation and speech remain (v22 matrix): `use` (self-rescue), `cancel`, `say`, `quit`, information, and settings — everything else is refused. Quitting doesn't save you: the dying clock runs on the server, and an unattended death runs the full sequence.
 - **Revival:** any vitality restoration above zero while Dying clears the state — the character rises with **exactly the healed amount** (a strong enough potion may legitimately restore full; a weak one stands you up at a sliver into whatever is still swinging). Combat resumes naturally: the character was never removed from the session. Any other player in the room can also revive them with an item or ability once such tools exist — no group membership required.
-- If not revived within 30 seconds → **Dead**. A death declaration ("The darkness takes you."), then the player respawns at their bound recall point (default: The Convergence) with full bars, the client fully re-synced (fresh room output, channel-group swap).
+- If not revived within 30 seconds → **Dead**. A death declaration ("The darkness takes you."), then the player respawns at their attuned home node (default: the Heart of the Convergence; player-set via `attune` — v24.26, pending implementation, #38, Section 2.11) with full bars, the client fully re-synced (fresh room output, channel-group swap). Every attunable node is a safe room — respawn never lands in danger.
 - On death: all remaining `EffectInstance` rows cleared; pending combat actions cleared; the `CombatSession` ends; Acuity resets (death resets it; level-ups do not).
 - **XP loss:** 10% of current XP (cannot lose a level); applies at level 10+ only.
 - **Durability loss:** all equipped items with `takes_durability_loss=True` lose 10% per death; after 10 unrepaired deaths an item breaks. The flag is the only gate. (v19 convention: `takes_durability_loss=False` is reserved for genuinely rare items and Artifacts — ordinary gear wears, including the free starter kit; the durability loop is part of onboarding.)
