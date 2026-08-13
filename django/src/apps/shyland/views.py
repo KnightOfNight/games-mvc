@@ -82,7 +82,8 @@ class CharacterCreateView(ShylandAccessMixin, View):
                 origin=origin,
                 archetype=archetype,
                 current_room=spawn_room,
-                recall_room=spawn_room,
+                # v24.26 (#38): no attuned_node — null means the founding
+                # node (the Heart), the design's default home.
                 stat_str=stats['str'], stat_dex=stats['dex'], stat_end=stats['end'],
                 stat_int=stats['int'], stat_wis=stats['wis'], stat_per=stats['per'],
                 acuity_current=origin.acuity_baseline,

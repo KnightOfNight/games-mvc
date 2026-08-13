@@ -127,7 +127,7 @@ def make_character(prefix, room):
     return Character.objects.create(
         user=user, name=f'{prefix} Char',
         origin=origin, archetype=archetype,
-        current_room=room, recall_room=room,
+        current_room=room,
     )
 
 

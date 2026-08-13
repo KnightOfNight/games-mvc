@@ -11,7 +11,7 @@ from django.test import TestCase, TransactionTestCase
 from apps.shyland.consumers import SkylandConsumer
 from apps.shyland.models import (
     Archetype, Character, CombatSession, NpcDefinition, NpcInstance,
-    Origin, Room, RoomVisit, Zone,
+    Origin, Room, RoomVisit, TravelNode, Zone,
 )
 
 
@@ -56,7 +56,7 @@ def make_character(prefix, room):
     return Character.objects.create(
         user=user, name=f'{prefix} Char',
         origin=origin, archetype=archetype,
-        current_room=room, recall_room=room,
+        current_room=room,
     )
 
 
@@ -246,12 +246,18 @@ class ArrivalRecordingTests(TransactionTestCase):
         finally:
             await communicator.disconnect()
 
-    async def test_respawn_records_visit_at_recall_room(self):
+    async def test_respawn_records_visit_at_home_room(self):
+        # v24.26 (#38): converted from the pre-attunement field shape —
+        # respawn now follows the attuned node's room. The intent is
+        # unchanged and asserted explicitly below: respawn arrival
+        # records a visit.
         zone, room_a, room_b = await sync_to_async(make_world)('Respawn')
         character = await sync_to_async(make_character)('Respawn', room_a)
+        node = await sync_to_async(TravelNode.objects.create)(
+            room=room_b, travel_name='Respawn Home', node_type='checkpoint')
         await sync_to_async(
             Character.objects.filter(pk=character.pk).update
-        )(recall_room=room_b)
+        )(attuned_node=node)
 
         communicator = await self._connect(character)
         try:
@@ -275,7 +281,7 @@ class ArrivalRecordingTests(TransactionTestCase):
             )()
             self.assertTrue(
                 visit_exists,
-                'Respawn arrival at the recall room must record a RoomVisit.',
+                'Respawn arrival at the home room must record a RoomVisit.',
             )
             # First-ever arrival there: the long form must render.
             self.assertEqual(len(texts), 1)

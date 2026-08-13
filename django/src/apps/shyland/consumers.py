@@ -43,7 +43,7 @@ from .models import (
     ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomSpawn,
     RoomVisit, TravelMessage, TravelNode, VendorEntry, Zone, ZoneCompletion,
     COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
-    FLEE_COOLDOWN_TICKS,
+    FLEE_COOLDOWN_TICKS, resolve_home_node, resolve_home_room,
 )
 
 # v22 brief 2 (DD §9): the re-authored anatomical order, head to feet —
@@ -245,6 +245,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'repair': ('cmd_repair', True),
         'kill': ('cmd_attack', True), 'attack': ('cmd_attack', True),
         'k': ('cmd_attack', True),
+        # v24.26 brief 1 (#38): bare verb — args ignored (DD §9.1 fn 2).
+        'attune': ('cmd_attune', False),
         'flee': ('cmd_flee', False),
         # v24.4 brief 1 (#166): bare verb — args ignored (DD §9.1 fn 2).
         'heal': ('cmd_heal', False),
@@ -700,25 +702,33 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         if node is None:
             await self.output(
-                'There is no obelisk here. Travel is a gift of the obelisks — '
-                'you must stand before one.', 'warn',
-            )
-            return
-        if node.node_type != 'obelisk':
-            await self.output(
-                'The obelisks project their protection here, but only an obelisk '
-                'itself can send you onward.', 'warn',
+                'There is no obelisk or shard here. Travel is a gift of the '
+                'network — you must stand before one of its stones.', 'warn',
             )
             return
 
-        destinations = await self.get_revealed_destinations(node)
+        # V24.26 (#30, GDD §2.11): the relay — a shard sends too, but to
+        # revealed spheres only; an obelisk offers the full revealed pool.
+        is_shard = node.node_type != 'obelisk'
+        destinations = await self.get_revealed_destinations(
+            node, spheres_only=is_shard)
 
         if not args:
             if not destinations:
-                await self.output(
-                    'The Obelisk is silent. It has nothing to show you yet — '
-                    'the network reveals itself only to those who walk it.', 'report',
-                )
+                # Defensive only for shards — the Heart reveals at first
+                # login, so a shard's sphere pool is never empty in
+                # practice.
+                if is_shard:
+                    await self.output(
+                        'The Shard is silent. It knows no sphere to pass '
+                        'you to — the network reveals itself only to those '
+                        'who walk it.', 'report',
+                    )
+                else:
+                    await self.output(
+                        'The Obelisk is silent. It has nothing to show you yet — '
+                        'the network reveals itself only to those who walk it.', 'report',
+                    )
                 return
             # v22 brief 2 (Step 11) + amendment 3: per-zone display
             # blocks in hardness order (TRAVEL_ZONE_ORDER); within each
@@ -771,7 +781,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # zone's identity.
             completed_ids = await self.get_completed_zone_ids(self.character)
 
-            lines = [{'k': 'The Obelisk offers passage to...'}]
+            # The shard-sender opener speaks in the shard's voice: it
+            # relays upward to the spheres it answers to.
+            if is_shard:
+                lines = [{'k': 'The Shard reaches through the network '
+                               'to the spheres it answers to...'}]
+            else:
+                lines = [{'k': 'The Obelisk offers passage to...'}]
             for slug in sorted(by_zone, key=zone_rank):
                 zone = zones[slug]
                 lines.append({})
@@ -1107,6 +1123,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     HELP_SECTIONS = [
         ('Action commands', [
             ('attack (kill, k)', 'attack <NPC> | <player>', 'Engage a target in combat.'),
+            ('attune', 'attune', 'Bond to the travel node here — your new home.'),
             ('buy', 'buy [<quantity>] <item>', 'Buy from a vendor in the room.'),
             ('cancel', 'cancel [<command>]', 'Stop an in-progress command.'),
             ('drop', 'drop [<quantity>] <item>', 'Drop an item on the ground.'),
@@ -2763,10 +2780,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             suffix = f' ({bonus:+d})' if bonus else ''
             return {'v': f'  {label}: {getattr(character, f"stat_{key}")}{suffix}'}
 
+        # v24.26 brief 1 (#38): the Home: row — the effective home node's
+        # travel name (a null bond renders the founding node). A
+        # rendering: exact, never varying.
+        home_node = await self.get_effective_home_node(character)
         lines = [
             {'k': 'Character Stats:'},
             {'v': f'  Player: {character.name} - Level {character.level} '
                   f'{character.origin.name} {character.archetype.name}'},
+            {'v': f'  Home: {home_node.travel_name if home_node else "The Convergence"}'},
             {},
             stat_line('Strength     (STR)', 'str'),
             stat_line('Dexterity    (DEX)', 'dex'),
@@ -3008,6 +3030,70 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # Cadence to the three authored beats, then completion at t=10.
     HOME_CADENCE = (3.0, 4.0, 3.0)
 
+    # ------------------------------------------------------------------
+    # V24.26 brief 1 (#38, GDD §2.11): attune — the bare-verb bond.
+    # ------------------------------------------------------------------
+
+    # Attune's authored content (creative-content policy): the ceremony
+    # is the Shard or sphere acknowledging the bond, in the network's
+    # voice. The success parenthetical is composed outside the pool —
+    # machine-honest and never varying, the house cooldown-refusal shape.
+    ATTUNE_NO_NODE_LINES = [
+        'You reach out, and nothing answers. No sphere, no shard — '
+        'nothing here to hold a bond.',
+        'The network does not touch this place. Your bond stays where '
+        'it was.',
+        'You still yourself and listen for the hum of the network. '
+        'Silence. There is no stone here.',
+    ]
+    ATTUNE_ALREADY_LINES = [
+        'The stone barely stirs. It already knows you — this is home.',
+        'A faint pulse of recognition, nothing more. Your bond is '
+        'already here.',
+        'The stone gives a low, familiar hum and settles. You are '
+        'already attuned to this place.',
+    ]
+    ATTUNE_SUCCESS_LINES = [
+        'The stone flares once, and something settles in your chest. '
+        'It knows you now.',
+        'A hum rises from the stone, finds your pulse, and matches it. '
+        'The old bond lets go.',
+        'Light runs beneath the surface of the stone and holds there, '
+        'steady. This place claims you.',
+    ]
+
+    @database_sync_to_async
+    def get_effective_home_node(self, character):
+        """Step-3 resolution for the already-attuned check and the stats
+        Home: row — null compares as the founding node (GDD §2.11)."""
+        return resolve_home_node(character)
+
+    @database_sync_to_async
+    def set_attuned_node(self, node):
+        # Atomic update — never read-modify-write on a cached object.
+        Character.objects.filter(pk=self.character_pk).update(
+            attuned_node=node)
+
+    async def cmd_attune(self):
+        # Chart fn 2 (arguments ignored). No combat gate, structurally:
+        # every attunable room is a safe room (GDD §2.11), so the
+        # success path cannot occur in combat — in combat this can only
+        # ever draw the no-node warn. While dying the central
+        # deny-by-default gate in receive_json refuses it.
+        room = await self.get_current_room()
+        node = await self.get_travel_node(room)
+        if node is None:
+            await self.output(random.choice(self.ATTUNE_NO_NODE_LINES), 'warn')
+            return
+        char = await self.get_character_fresh()
+        home_node = await self.get_effective_home_node(char)
+        if home_node is not None and node.pk == home_node.pk:
+            await self.output(random.choice(self.ATTUNE_ALREADY_LINES), 'warn')
+            return
+        await self.set_attuned_node(node)
+        line = random.choice(self.ATTUNE_SUCCESS_LINES)
+        await self.output(f'{line} (Home: {node.travel_name})', 'success')
+
     async def send_unknown_command(self):
         """The one unknown-command response — also the admin stealth
         response, byte-identical by construction (fn 18)."""
@@ -3063,17 +3149,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.interrupt_home('You stop heading home.', 'success')
 
     @database_sync_to_async
-    def get_heart_room(self):
-        """The Heart of the Convergence — home's sole destination (#38
-        attunement is a future version). Resolved via the network's
-        founding obelisk node, which seed-verify pins."""
-        node = (
-            TravelNode.objects
-            .filter(travel_name='The Convergence', node_type='obelisk')
-            .select_related('room__zone')
-            .first()
+    def get_home_room(self):
+        """The character's effective home room (GDD §2.11, Attunement):
+        the attuned node's room when a bond exists, else the founding
+        node — the Heart of the Convergence, pinned by seed-verify."""
+        char = (
+            Character.objects
+            .select_related('attuned_node__room__zone',
+                            'attuned_node__room__area')
+            .get(pk=self.character_pk)
         )
-        return node.room if node else None
+        return resolve_home_room(char)
 
     @database_sync_to_async
     def touch_last_connect(self):
@@ -3089,11 +3175,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # Chart fn 2 (arguments ignored); combat and dying refusals fire
         # in the central gates. Gate order per the brief.
         char = await self.get_character_fresh()
-        heart = await self.get_heart_room()
-        if heart is None:
+        home = await self.get_home_room()
+        if home is None:
             await self.send_output('Home is nowhere to be found. Contact an admin.', 'error')
             return
-        if char.current_room_id == heart.pk:
+        # V24.26 (#38): the kindly refusal compares against the effective
+        # home — the attuned node's room, the Heart when no bond exists.
+        if char.current_room_id == home.pk:
             # Judgment call recorded in the brief: homing from home would
             # burn the cooldown for nothing; the refusal is kindness.
             await self.send_output('You are already home.', 'warn')
@@ -3117,16 +3205,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     f'{line} ({stamp} cooldown rem.)', 'warn')
                 return
 
-        task = asyncio.ensure_future(self._home_countdown(heart))
+        task = asyncio.ensure_future(self._home_countdown())
         self.delayed_actions['home'] = task
 
-    async def _home_countdown(self, heart):
+    async def _home_countdown(self):
         """The 15-second connection-bound countdown (Step 1.7's template:
         registered in delayed_actions by the starter, deregistered here).
         Combat entry of any kind interrupts with the violent voice — the
         consumer-side entries cancel the task directly; engine-side
         entries (respawn aggro, incoming attacks) are caught at each
-        beat's checkpoint. Disconnect cancels silently."""
+        beat's checkpoint. Disconnect cancels silently. V24.26 (#38,
+        design rule 7): the destination resolves at completion, not
+        initiation — the fog takes you to your home as it is when the
+        fog parts."""
         async def broken_by_violence():
             if await self.get_active_combat_session(self.character):
                 await self.send_output(self.HOME_VIOLENT_LINE, 'warn')
@@ -3148,15 +3239,22 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 return
 
             # Completion — travel's machinery pattern, home's own voice.
+            # Completion-time resolution (#38): a bond changed mid-fog
+            # lands at the new home.
+            home = await self.get_home_room()
+            if home is None:
+                await self.send_output(
+                    'Home is nowhere to be found. Contact an admin.', 'error')
+                return
             char = await self.get_character_fresh()
             await self.broadcast_to_room_exclude(
                 self.HOME_DEPART_WITNESS.format(name=char.name), 'room')
             await self.channel_layer.group_discard(self.room_group, self.channel_name)
-            await self.move_character(heart)
+            await self.move_character(home)
             first_visit, zone_completed = await self.record_room_visit(
-                self.character, heart)
+                self.character, home)
             self.last_direction = None
-            self.room_group = f'room_{heart.id}'
+            self.room_group = f'room_{home.id}'
             await self.channel_layer.group_add(self.room_group, self.channel_name)
 
             await self.send_output(self.HOME_ARRIVAL_LINE, 'success')
@@ -3637,9 +3735,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     async def _complete_travel(self, arg_text):
         room = await self.get_current_room()
         node = await self.get_travel_node(room)
-        if node is None or node.node_type != 'obelisk':
+        if node is None:
             return []
-        destinations = await self.get_revealed_destinations(node)
+        # V24.26 (#30): completion completes exactly what the sender
+        # offers — the sphere-filtered pool at a shard.
+        destinations = await self.get_revealed_destinations(
+            node, spheres_only=(node.node_type != 'obelisk'))
         names = [d.travel_name.lower() for d in destinations]
         partial = arg_text.lower().lstrip()
         return sorted({n for n in names if n.startswith(partial)})[:50]
@@ -3859,7 +3960,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             char = (
                 Character.objects
                 .select_related(
-                    'current_room__zone', 'recall_room',
+                    'current_room__zone', 'attuned_node',
                     'archetype__unarmed_message_pool',
                 )
                 .get(user=user)
@@ -3982,8 +4083,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return TravelNode.objects.filter(room=room).first()
 
     @database_sync_to_async
-    def get_revealed_destinations(self, current_node):
-        return list(
+    def get_revealed_destinations(self, current_node, spheres_only=False):
+        qs = (
             TravelNode.objects
             .filter(room__visits__character_id=self.character_pk)
             .exclude(pk=current_node.pk)
@@ -3992,6 +4093,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             .select_related('room__zone')
             .order_by('travel_name')
         )
+        # V24.26 (#30, GDD §2.11): a shard relays to revealed spheres
+        # only — never to another shard. Revelation stays the standing
+        # membership check above; this is the one node_type filter.
+        if spheres_only:
+            qs = qs.filter(node_type='obelisk')
+        return list(qs)
 
     @database_sync_to_async
     def get_random_travel_message(self, category):
@@ -4383,7 +4490,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # v21 brief 1 (#91): origin joins the select_related set — the
         # stats Player line renders origin.name + archetype.name.
         char = Character.objects.select_related(
-            'current_room__zone', 'current_room__area', 'recall_room',
+            'current_room__zone', 'current_room__area', 'attuned_node',
             'origin', 'archetype__unarmed_message_pool',
         ).get(pk=self.character_pk)
         self.character = char

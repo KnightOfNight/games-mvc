@@ -248,7 +248,7 @@ def make_character(prefix, room):
     return Character.objects.create(
         user=user, name=f'{prefix} Char',
         origin=origin, archetype=archetype,
-        current_room=room, recall_room=room,
+        current_room=room,
     )
 
 
@@ -970,7 +970,7 @@ class NameInvariantTests(TestCase):
         Character.objects.create(
             user=user, name='SILK matron',
             origin=self.origin, archetype=self.archetype,
-            current_room=self.room, recall_room=self.room,
+            current_room=self.room,
         )
         npc_names = {n.lower() for n in
                      NpcDefinition.objects.values_list('name', flat=True)}

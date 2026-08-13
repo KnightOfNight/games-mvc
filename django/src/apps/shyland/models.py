@@ -1015,6 +1015,28 @@ class TravelNode(models.Model):
         return f'{self.travel_name} ({self.node_type})'
 
 
+def resolve_home_node(character):
+    """The effective home node (GDD §2.11, Attunement): the character's
+    attuned node when a bond exists, else the founding node — the Heart
+    of the Convergence, pinned by seed-verify. One home concept (#38):
+    'home' delivers here and death respawn wakes here. Sync ORM — call
+    from inside a database_sync_to_async wrapper in async contexts."""
+    if character.attuned_node_id is not None:
+        return character.attuned_node
+    return (
+        TravelNode.objects
+        .filter(travel_name='The Convergence', node_type='obelisk')
+        .select_related('room__zone', 'room__area')
+        .first()
+    )
+
+
+def resolve_home_room(character):
+    """The effective home room — resolve_home_node's room."""
+    node = resolve_home_node(character)
+    return node.room if node else None
+
+
 class TravelMessage(models.Model):
     CATEGORY_CHOICES = [
         ('traveler', 'Traveler'),           # shown to the traveling player

@@ -175,16 +175,21 @@ class Command(BaseCommand):
             return list(Character.objects.filter(
                 is_dying=True,
                 dying_since__lte=cutoff,
-            ).select_related('recall_room__zone', 'recall_room__area'))
+            ).select_related('attuned_node__room__zone',
+                             'attuned_node__room__area'))
 
         @_dsa
         def execute_death(character):
+            from apps.shyland.models import resolve_home_room
             broken = apply_death_penalties(character)
-            recall = character.recall_room
+            # v24.26 (#38, GDD §2.11): respawn follows the bond — the
+            # effective home room, the Heart when no bond exists. Same
+            # resolver as 'home' (one home concept, ruling B5).
+            home = resolve_home_room(character)
             character.is_dying = False
             character.dying_since = None
             character.is_dead = False
-            character.current_room = recall
+            character.current_room = home
             character.vitality_current = character.vitality_max
             character.acuity_current = character.acuity_baseline
             character.longevity_current = character.longevity_max
@@ -209,21 +214,21 @@ class Command(BaseCommand):
                     # v23 B1 (#25): player-death disengagement — the
                     # NPCs the faller was fighting reset to full.
                     release_session_npcs(session)
-            return broken, recall
+            return broken, home
 
         dying_chars = await get_expired_dying()
         for character in dying_chars:
-            broken, recall = await execute_death(character)
+            broken, home = await execute_death(character)
             name = character.name
             await self.send_to_player(character.pk, "The darkness takes you.", 'error', None)
-            msg = f"You have died and awakened at {recall.name if recall else 'your recall point'}."
+            msg = f"You have died and awakened at {home.name if home else 'your home'}."
             if broken:
                 msg += f" Your {', '.join(broken)} {'has' if len(broken) == 1 else 'have'} broken."
-            # v20 brief 4: location of the recall room (#1); death always
+            # v20 brief 4: location of the home room (#1); death always
             # ends combat membership (#2), so in_combat is False and the
             # fight pane clears.
-            recall_zone = recall.zone if recall else None
-            recall_area = recall.area if recall and recall.area_id else None
+            home_zone = home.zone if home else None
+            home_area = home.area if home and home.area_id else None
             status_payload = {
                 'type': 'status',
                 'character_name': character.name,
@@ -235,18 +240,18 @@ class Command(BaseCommand):
                 'acuity_band_high': round(character.acuity_band_high, 2),
                 'longevity': character.longevity_current,
                 'longevity_max': character.longevity_max,
-                'room_name': recall.name if recall else '',
-                'zone_name': recall_zone.name if recall_zone else '',
-                'zone_color': recall_zone.theme_color if recall_zone else '#CCCCCC',
-                'area_name': recall_area.name if recall_area else None,
-                'area_color': recall_area.theme_color if recall_area else None,
+                'room_name': home.name if home else '',
+                'zone_name': home_zone.name if home_zone else '',
+                'zone_color': home_zone.theme_color if home_zone else '#CCCCCC',
+                'area_name': home_area.name if home_area else None,
+                'area_color': home_area.theme_color if home_area else None,
                 'in_combat': False,
             }
             await self.send_to_player(
                 character.pk, msg, 'system', status_payload, event='respawn',
                 fight={'type': 'fight', 'active': False, 'enemies': []},
             )
-            logger.info(f"Character {name} died and respawned at room {recall.pk if recall else 'None'}")
+            logger.info(f"Character {name} died and respawned at room {home.pk if home else 'None'}")
 
         # --- Active combat sessions ---
         @_dsa
