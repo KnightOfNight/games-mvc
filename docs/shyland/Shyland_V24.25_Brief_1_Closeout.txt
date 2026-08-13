@@ -1,0 +1,3 @@
+Session start 2026-08-12: implementation session for Shyland V24.25 Brief 1 (Zone Locks & Convergence Areas), branch version_24_25.
+
+[STUB — completed in place at session end]
