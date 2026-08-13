@@ -149,6 +149,35 @@ ZONE_COMPLETE_LINES = [
     "{zone} has shown you all it has — and the world, having watched, opens a little wider.",
 ]
 
+# V24.26 brief 1 (#38, GDD §2.11): attune's authored content (creative-
+# content policy) — the ceremony is the Shard or sphere acknowledging the
+# bond, in the network's voice. The success parenthetical is composed
+# outside the pool: machine-honest and never varying, the house
+# cooldown-refusal shape.
+ATTUNE_NO_NODE_LINES = [
+    'You reach out, and nothing answers. No sphere, no shard — '
+    'nothing here to hold a bond.',
+    'The network does not touch this place. Your bond stays where '
+    'it was.',
+    'You still yourself and listen for the hum of the network. '
+    'Silence. There is no stone here.',
+]
+ATTUNE_ALREADY_LINES = [
+    'The stone barely stirs. It already knows you — this is home.',
+    'A faint pulse of recognition, nothing more. Your bond is '
+    'already here.',
+    'The stone gives a low, familiar hum and settles. You are '
+    'already attuned to this place.',
+]
+ATTUNE_SUCCESS_LINES = [
+    'The stone flares once, and something settles in your chest. '
+    'It knows you now.',
+    'A hum rises from the stone, finds your pulse, and matches it. '
+    'The old bond lets go.',
+    'Light runs beneath the surface of the stone and holds there, '
+    'steady. This place claims you.',
+]
+
 
 def _join_owned_names(items, conj):
     names = [f'your {get_display_name(i)}' for i in items]
@@ -3032,35 +3061,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     # ------------------------------------------------------------------
     # V24.26 brief 1 (#38, GDD §2.11): attune — the bare-verb bond.
+    # The pools live at module level with the zone-lock speech.
     # ------------------------------------------------------------------
-
-    # Attune's authored content (creative-content policy): the ceremony
-    # is the Shard or sphere acknowledging the bond, in the network's
-    # voice. The success parenthetical is composed outside the pool —
-    # machine-honest and never varying, the house cooldown-refusal shape.
-    ATTUNE_NO_NODE_LINES = [
-        'You reach out, and nothing answers. No sphere, no shard — '
-        'nothing here to hold a bond.',
-        'The network does not touch this place. Your bond stays where '
-        'it was.',
-        'You still yourself and listen for the hum of the network. '
-        'Silence. There is no stone here.',
-    ]
-    ATTUNE_ALREADY_LINES = [
-        'The stone barely stirs. It already knows you — this is home.',
-        'A faint pulse of recognition, nothing more. Your bond is '
-        'already here.',
-        'The stone gives a low, familiar hum and settles. You are '
-        'already attuned to this place.',
-    ]
-    ATTUNE_SUCCESS_LINES = [
-        'The stone flares once, and something settles in your chest. '
-        'It knows you now.',
-        'A hum rises from the stone, finds your pulse, and matches it. '
-        'The old bond lets go.',
-        'Light runs beneath the surface of the stone and holds there, '
-        'steady. This place claims you.',
-    ]
 
     @database_sync_to_async
     def get_effective_home_node(self, character):
@@ -3083,15 +3085,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         room = await self.get_current_room()
         node = await self.get_travel_node(room)
         if node is None:
-            await self.output(random.choice(self.ATTUNE_NO_NODE_LINES), 'warn')
+            await self.output(random.choice(ATTUNE_NO_NODE_LINES), 'warn')
             return
         char = await self.get_character_fresh()
         home_node = await self.get_effective_home_node(char)
         if home_node is not None and node.pk == home_node.pk:
-            await self.output(random.choice(self.ATTUNE_ALREADY_LINES), 'warn')
+            await self.output(random.choice(ATTUNE_ALREADY_LINES), 'warn')
             return
         await self.set_attuned_node(node)
-        line = random.choice(self.ATTUNE_SUCCESS_LINES)
+        line = random.choice(ATTUNE_SUCCESS_LINES)
         await self.output(f'{line} (Home: {node.travel_name})', 'success')
 
     async def send_unknown_command(self):
