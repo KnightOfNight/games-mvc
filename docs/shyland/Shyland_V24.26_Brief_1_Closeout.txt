@@ -172,4 +172,6 @@ actions (expected seed deletions: 0; none occurred).
 Operator playtest disposition
 --------------------------------------------------------------------------------
 
-[PENDING — to be recorded verbatim-style per #170 before session end]
+Operator reports playtest successful (in-conversation, 2026-08-13:
+"playtest confirmed" — the Step 10 checklist against the dev stack).
+Disposition is terminal per #170.
