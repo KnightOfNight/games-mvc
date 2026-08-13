@@ -207,7 +207,7 @@ A rectangular park (9 rooms wide, 7 rooms tall on the coordinate grid) surroundi
 | Path | Direction | Material | Rooms |
 |---|---|---|---|
 | Wisteria Walk | North | Pale grey stone + wisteria trellises | 4 |
-| Bamboo Run | East | Crushed amber gravel + bamboo stands | 3 |
+| Bamboo Run | East | Crushed amber gravel + bamboo stands | 4 |
 | Basalt Way | South | Dark basalt slabs + flowering moss | 5 |
 | Fern Boards | West | Dark timber boardwalk + ferns | 4 |
 
