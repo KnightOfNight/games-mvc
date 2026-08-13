@@ -61,7 +61,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 5. `<NPC>` — match against an NPC name.
 6. `<player>` — match against a player name.
 7. `<quantity>` optional; a number or the literal "all" (as many as match).
-8. `<destination>` — match against a sphere or shard travel destination name.
+8. `<destination>` — match against a sphere or shard travel destination name. (v24.25) Locked-zone destinations stay in the match pool — listed muted, matchable, and the attempt draws the zone-lock refusal (Section 2.12).
 9. `<*>` — any arguments are accepted.
 10. a target is required: at least one listed argument must be present. Bare invocation responds with the standard prompt `What do you want to <verb>?` (error-color).
 11. `<quantity>` as footnote 7, but "all" not accepted (numeric only).
@@ -83,7 +83,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 Every response to a command belongs to exactly one layer, and the layer picks the voice:
 
 - **CLI error (error-color, red):** the parser refused — unknown command, bad syntax, missing required argument (the footnote 10/13/15 standard prompts), settings usage lines. The machine didn't understand you.
-- **World declined (warn-color, yellow):** valid command, world says no — resolution failures (no match in the pool, bad index, ambiguity, the sell-all block, the consumables-only bulk sell (v23.1)) and mechanical failures (state-gate refusals, no vendor/repairer/obelisk here, can't afford, sold out, at capacity, repair didn't hold, heal at full, bound-drop attempt, unequip without bag room, failed flee, the generic Artifact sale refusal — no-leak, Section 6.13). The world understood you and refused.
+- **World declined (warn-color, yellow):** valid command, world says no — resolution failures (no match in the pool, bad index, ambiguity, the sell-all block, the consumables-only bulk sell (v23.1)) and mechanical failures (state-gate refusals, no vendor/repairer/obelisk here, can't afford, sold out, at capacity, repair didn't hold, heal at full, bound-drop attempt, unequip without bag room, failed flee, the zone-lock entry refusal on movement and travel (Section 2.12; v24.25), the generic Artifact sale refusal — no-leak, Section 6.13). The world understood you and refused.
 - **World answered (normal voices):** success prose, the combat family, loot-color gains.
 
 **Consequence must be seen (#132):** the partial-fulfillment shortfall reports (`You only had N.` on use and drop, `There were only N here.` on pickup, `They only had N.` on buy) and use's no-effect `Nothing happens.` speak in the warn voice — a consequence delivered in the muted ambient voice goes unread. Deliberate exceptions, ruled correct: the sell shortfall keeps its friendly success voice (`You only had 3 — the vendor was happy to take them.`), and the ambient system voice keeps the logout farewell and the muted combat misses.

@@ -162,7 +162,7 @@ Special travel options:
 - **`home` (v22)** — the hearth command: a 10-second delayed return to the Heart of the Convergence, from anywhere, narrated as fog-motif atmosphere; broken by movement, combat, or `cancel`; 5-minute completion-only cooldown (timings retuned v23.4, #162). The Heart is the only destination until attunement (#38) ships. Full design in Section 2.11.
 - **Recall scroll** — teleports player to their bound recall point (default: The Convergence)
 - **The Obelisk Network** — the game's fast-travel system: obelisk rooms are travel sources; checkpoints and obelisks are destinations, revealed per-character by visiting them. Free, global, and command-driven (`travel`). Full design in Section 2.11.
-- **Zone gates** — the sealed genre-zone gates on the Convergence ring are authored prose (opened per zone as its content ships — the Verdant gate opened in v18). The `ZoneGate` model was superseded and deleted in v18 (Brief 2, migration 0019); the Obelisk Network above is the game's fast-travel system.
+- **Zone gates** — the sealed genre-zone gates on the Convergence ring are authored prose (opened per zone as its content ships — the Verdant gate opened in v18). The `ZoneGate` model was superseded and deleted in v18 (Brief 2, migration 0019); the Obelisk Network above is the game's fast-travel system. **(v24.25, pending implementation)** An opened gate is additionally governed by the zone entry requirements of Section 2.12 — the gate can be open and the way still locked to an unfinished explorer.
 
 Mounts are deferred to a future version.
 
@@ -211,11 +211,11 @@ A rectangular park (9 rooms wide, 7 rooms tall on the coordinate grid) surroundi
 | Basalt Way | South | Dark basalt slabs + flowering moss | 5 |
 | Fern Boards | West | Dark timber boardwalk + ferns | 4 |
 
-Each path has a continuous sensory identity maintained through all its rooms. Non-path park rooms are not navigable; rooms adjacent to lawn areas have custom `no_exit_*_msg` text directing players to stay on the paths.
+Each path has a continuous sensory identity maintained through all its rooms, and each path is a named **Area** (Section 2.3) with its own theme color. Non-path park rooms are not navigable; rooms adjacent to lawn areas have custom `no_exit_*_msg` text directing players to stay on the paths.
 
 #### The Ring Street
 
-A 35-room ring street surrounds the park, approximating a circle in the square-room coordinate system. The ring connects to each path at its cardinal intersection. Walking the ring clockwise from north, players encounter:
+A 40-room ring street surrounds the park, approximating a circle in the square-room coordinate system. Formally the street is **The Everround** — its own Area **(v24.25, pending implementation)** — though to the people who live on it, it is simply *the ring road*: a street with an official name and a nickname, exactly as cities do. The ring connects to each path at its cardinal intersection. Walking the ring clockwise from north, players encounter:
 
 - **Seven sealed zone gates** — one per future battle zone, placed clockwise from north in zone build order (Verdant Reach at ~1:00, Ashenveil at ~2:00, continuing through The Wastelands at ~11:00). Each sealed gate has atmospheric `no_exit_*_msg` flavor text hinting at the zone beyond. When a zone is built, its gate is opened by wiring the exit.
 - **Four information NPC intersections** — at the north, east, south, and west path/ring junctions, each with a unique NPC and structure
@@ -241,6 +241,8 @@ The ring street is lined with trees throughout. Sparse content between gates inc
 | Repairbot Prime | Across ring from Info Prime (east) | Vertical metal docking tube, Version 2 chassis | General repair | ~300 years old; same design lineage as Info Prime; precise; unexpectedly mentions things it has never said aloud before |
 | Ferwick | Across ring from Pella (south) | Open-air stall | Magical repairs | Old, cheerful, slightly scattered; first attempt sometimes fails; always succeeds on second attempt; never charges for the retry; finds it funny |
 | Veris | Across ring from Seris (west) | Exotic shifting crystal structure — exact twin of Seris's | Crystal vendor | Same personality as Seris — quiet, perceptive, unhurried — but different words; twins in nature, not in script |
+
+**Morra's smithy is its own two-room Area — Morra's Smithy** (exterior + interior) **(v24.25, pending implementation)**: an establishment off the ring street, not part of The Everround. With the four park paths, The Everround, and Morra's Smithy, every room of the Convergence except the Heart belongs to a named Area — the Heart stays area-free, the singular center of everything.
 
 **Exits are transitions, not doors.** This is a core world-building principle established with Infinity City. Players do not open doors between rooms — they feel the world change around them. Zone gates in particular should feel like the zone begins, not like a door was opened.
 
@@ -446,6 +448,8 @@ Travel is a simple command — no dialogue system required:
 
 Destination names are unique across the entire network and typeable (Fordwatch, Stairhead, Cragfoot — every future zone's node names must keep that promise). Multi-word destinations accept case-insensitive prefix matching, consistent with MUD command feel.
 
+**(v24.25, pending implementation)** Destinations in a zone the player has not yet unlocked (Section 2.12) remain listed — discovery is never hidden — but their rows render in the **muted font**; a travel attempt at one draws the zone-lock refusal pool.
+
 **Travel is free, forever. It is a gift from the obelisks, but it has to be earned through revelation.** The cost is not copper — it is the journey the player already made. Discovery is the price. No fee, no resource cost, no cooldown.
 
 #### Safety — Obelisk Presence
@@ -500,6 +504,26 @@ The game already has message-pool machinery of this shape (`UnarmedMessagePool`)
 - **The Heart is the only destination** until obelisk attunement (#38) ships — home ships pointing at its default and gains player-set destinations with that future zones-and-travel version. Refused in combat and while dying; refused (kindly) when already at the Heart — homing from home would burn the cooldown for nothing.
 
 Under the hood, home is the first resident of the **delayed-action registry** — a connection-bound task pattern that is the standing template for all future delayed actions and `cancel`'s candidate pool (Section 9.1).
+
+### 2.12 Zone Entry Requirements — Locks and Keys (v24.25, pending implementation)
+
+Zone progression is gated by **locks and keys** (#41). Design intent: every player fully explores a zone before leaving it behind — beginning with the Convergence and its seeded newbie gear, so no new player reaches a zone where things can hurt them without having seen everything the sanctuary gave them first.
+
+**The lock is world data.** A zone may carry an entry requirement naming another zone: *to enter this zone, you must have fully explored that one.* Locks are authored at zone-authoring time, seed-owned. Nothing derives from danger level — sanctuaries and battle zones alike may be locked or open, and locks chain (a future zone may require the zone before it). The shipped set (v24.25): **The Verdant Reach requires The Convergence**; every other zone is open. New zones author their locks when they are built — the V25 zones are expected to require the Verdant Reach.
+
+**The key is player data.** A character earns a zone's key — a permanent **zone completion** record — at the moment their recorded room visits (`RoomVisit`, Section 2.5) cover every room of the zone. The check fires only when a new first-visit row is recorded; the key is minted once, timestamped. Completions are recorded for **every** zone, whether or not any lock currently wants them — a player who finishes the Verdant Reach today already holds that key when a V25 gate first asks for it.
+
+**Keys are permanent; locks are authored.** A key, once earned, is never revoked. If a later release adds rooms to a zone, earning changes for those who haven't finished — possession changes for no one. Locks, being world data, may be added, retargeted, or removed by future design rulings.
+
+**Grandfathering (the 24.25 deploy):** every character existing at deploy time receives the Convergence key unconditionally — live players are never stranded — plus honestly computed keys for every zone their visit record already completes. Characters created after 24.25 earn every key for real.
+
+**Enforcement is transition-generic.** Every transition into a room of a locked zone — walking an exit, `travel`, and any future path — checks the key. No key: the world declines (warn-color, Section 9.1's world-declined layer) and the move does not happen. There is no enforcement inside a zone — a character standing in a zone is never ejected by a lock.
+
+**The refusal** speaks from one generic, door-agnostic pool (≥3 lines, pooled-speech law) with two slots: the required zone's name, and the name of exactly **one** Area of that zone still holding unvisited rooms — the machinery picks the Area with the most unseen rooms. The refusal never carries counts (exploration counts are map territory — #163). The same pool serves the walking refusal and the travel refusal; lines speak about the requirement, never the door.
+
+**The unlock announcement.** The room entry that mints a key also delivers a pooled line in the reward voice (green — it went your way): the completed zone celebrated by name, the newly opened ways alluded to but **never named**. Ideally a player meets this message before ever meeting the refusal — the gate experienced as an achievement, not a wall.
+
+**The travel surface.** Destinations in a locked zone remain in the `travel` listing — discovery is never hidden — rendered in the **muted font**; the attempt draws the refusal pool (Section 2.11).
 
 -----
 
