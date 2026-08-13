@@ -36,7 +36,7 @@ World
 |Z07    |The Pale Shore     |Cosmic horror / lovecraftian ocean              |Endgame     |
 |Z08    |The Wastelands     |Infinite scaling zone — always level-appropriate|All levels  |
 
-**The Convergence (Z05)** is the game's social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. It is the point where all universes overlap and stillness holds. It is also the default logout and recall destination. The starting area within The Convergence is **Infinity City** — see Section 2.9.
+**The Convergence (Z05)** is the game's social hub — a permanent sanctuary zone where PvP is disabled, vendors of all types exist, and players from all backgrounds congregate. It is the point where all universes overlap and stillness holds. It is also the default logout destination and every character's initial home node (attunement, Section 2.11). The starting area within The Convergence is **Infinity City** — see Section 2.9.
 
 **The Wastelands (Z08)** is a special infinite scaling zone — see Section 2.7.
 
@@ -159,9 +159,8 @@ Players move using directional commands: `north`, `south`, `east`, `west`, `up`,
 
 Special travel options:
 
-- **`home` (v22)** — the hearth command: a 10-second delayed return to the Heart of the Convergence, from anywhere, narrated as fog-motif atmosphere; broken by movement, combat, or `cancel`; 5-minute completion-only cooldown (timings retuned v23.4, #162). The Heart is the only destination until attunement (#38) ships. Full design in Section 2.11.
-- **Recall scroll** — teleports player to their bound recall point (default: The Convergence)
-- **The Obelisk Network** — the game's fast-travel system: obelisk rooms are travel sources; checkpoints and obelisks are destinations, revealed per-character by visiting them. Free, global, and command-driven (`travel`). Full design in Section 2.11.
+- **`home` (v22)** — the hearth command: a 10-second delayed return to the player's attuned home node (default: the Heart of the Convergence — attunement is v24.26, #38), from anywhere, narrated as fog-motif atmosphere; broken by movement, combat, or `cancel`; 5-minute completion-only cooldown (timings retuned v23.4, #162). Full design in Section 2.11.
+- **The Obelisk Network** — the game's fast-travel system: obelisks send anywhere; checkpoint shards relay to revealed obelisks (v24.26, #30); all nodes are destinations, revealed per-character by visiting them. Free, global, and command-driven (`travel`). Full design in Section 2.11.
 - **Zone gates** — the sealed genre-zone gates on the Convergence ring are authored prose (opened per zone as its content ships — the Verdant gate opened in v18). The `ZoneGate` model was superseded and deleted in v18 (Brief 2, migration 0019); the Obelisk Network above is the game's fast-travel system. An opened gate is additionally governed by the zone entry requirements of Section 2.12 — the gate can be open and the way still locked to an unfinished explorer.
 
 Mounts are deferred to a future version.
@@ -196,7 +195,7 @@ The city is old. Nobody planned it. It accumulated. Travelers, refugees, merchan
 
 #### Heart of the Convergence — (0, 0, 0)
 
-The starting room and default recall destination. At its center stands **the Obelisk** — a dark, smooth monolith with as many facets as there are universes, each face ground to a perfect plane that catches light differently. At the Obelisk's heart, suspended inside the stone, is a small sphere that glows white. Steadily. Without flickering. It simply is.
+The starting room and the default home node (attunement, Section 2.11). At its center stands **the Obelisk** — a dark, smooth monolith with as many facets as there are universes, each face ground to a perfect plane that catches light differently. At the Obelisk's heart, suspended inside the stone, is a small sphere that glows white. Steadily. Without flickering. It simply is.
 
 The Obelisk serves as an information point for new players. It speaks in as few words as possible, always the best ones.
 
@@ -423,9 +422,9 @@ The obelisks are the game's fast-travel system. There are no waystones, no porta
 
 #### Network Shape
 
-- **Obelisks are sources and destinations.** To travel, a player must be standing in an obelisk room. Every zone-end obelisk is a network node, as is the Obelisk at the Heart of the Convergence.
-- **Checkpoints are destinations only.** A player can arrive at a checkpoint but never depart from one. From a checkpoint, you walk — the zone content stays meaningful.
-- **The network is global, never zone-scoped.** From any obelisk, a player can travel to any checkpoint or obelisk they have revealed — no zone boundaries, no special-casing the Convergence. Cross-battle-zone travel is allowed by design (a high-level player warping to a beginner-zone checkpoint to help a friend is a feature, not an exploit). One flat rule — *destination revealed? travel permitted* — keeps the implementation simple: a single per-character set of revealed nodes and one membership check.
+- **Obelisks send anywhere.** From an obelisk room, a player can travel to any node they have revealed, shard or sphere. Every zone-end obelisk is a network node, as is the Obelisk at the Heart of the Convergence.
+- **Checkpoint shards relay to obelisks (v24.26, #30).** From a shard room, `travel` offers exactly the player's revealed **spheres** — a shard is a fragment of an obelisk, with a fragment of its power. The stranded-at-the-frontier pain dies (shop run = shard → obelisk → shard, two hops) while obelisks keep their hub specialness and return-trip traversal survives. Relay obeys revelation like everything else: a player halfway through a zone can relay back to the Heart, but that zone's own sphere does not appear until they have stood in it. Full mesh was considered and rejected; the pre-v24.26 destination-only asymmetry is retired.
+- **The network is global, never zone-scoped.** From any sender, a player can travel to any destination its type offers and they have revealed — no zone boundaries, no special-casing the Convergence. Cross-battle-zone travel is allowed by design (a high-level player warping to a beginner-zone checkpoint to help a friend is a feature, not an exploit). One flat rule — *destination revealed? travel permitted* — keeps the implementation simple: a single per-character set of revealed nodes and one membership check (the shard sender adds only a sphere-type filter on top).
 
 The Convergence Obelisk is not mechanically special — it is simply the first node every character reveals, at minute zero. Special in lore, ordinary in code.
 
@@ -435,14 +434,14 @@ A node becomes an available destination the moment the player sees its room. **R
 
 The Heart of the Convergence reveals at first login — every character is born there — but the network starts empty of anywhere to *go*. The destination list grows as the player explores. A brand-new player standing at the Obelisk with zero destinations is a natural lore beat: the Obelisk has nothing to show them yet.
 
-A player deep in a zone therefore has exactly three ways out: walk, recall scroll (to the Convergence), or push forward to the summit obelisk. (Note, recorded at Brief 2 closeout: the recall command is designed but not yet implemented — §9.2 — so until it ships, deep-zone players have two ways out. Accepted for The Verdant Reach's launch.) Conquering a zone's obelisk is what turns that zone from a place you trek through into a place you command.
+A player deep in a zone therefore has three ways out: walk, `home` (the hearth command, to their attuned node), or push forward to the summit obelisk — and once they reach any checkpoint, its shard relays them to a revealed obelisk (v24.26, #30). (The once-planned recall scroll is retired — v24.26, #38: `home` plus attunement covers the entire command-driven-return need; killed, not deferred.) Conquering a zone's obelisk is what turns that zone from a place you trek through into a place you command.
 
 #### The `travel` Command
 
 Travel is a simple command — no dialogue system required:
 
-- `travel` — lists the player's revealed destinations. Only meaningful in an obelisk room; elsewhere it explains that travel requires an obelisk.
-- `travel <destination>` — travels there, if the destination is revealed and the player stands at an obelisk.
+- `travel` — lists the destinations the room's node offers: at an obelisk, every revealed node; at a checkpoint shard, revealed spheres only (v24.26, #30). In a room with no node it explains that travel requires an obelisk or its shard.
+- `travel <destination>` — travels there, if the destination is revealed and the room's node offers it.
 
 **The listing (v22):** the bare `travel` listing renders as **per-zone display blocks** — the key-color opener `The Obelisk offers passage to...`, then per zone a `Zone: <name>` heading (the zone name in the zone's own theme color — the licensed exception to value-color) over a `Type / Destination / Description` table with identical column geometry across every block. Zones sort by **hardness to the player** (the danger ladder from the zone table: Sanctuary before Beginner before Intermediate, and so on); within a zone, destinations sort ascending by straight-line map-space distance from the player (the interim sort — the real travel redesign belongs to a future zones-and-travel version). Type reads `Sphere` (obelisk) or `Shard` (checkpoint). **The Description is the stone's own sentence:** each node carries a one-line `listing_description` harvested verbatim from its room's authored prose (never authored fresh for the listing) — the standing convention is that every new node gets its one-liner at authoring time, seed-owned and enforce-exact.
 
@@ -468,8 +467,9 @@ Every checkpoint holds a **Shard** — a small sphere like the one suspended in 
 - **Shards have moods, expressed purely in text.** Room prose and `examine` describe temperament. The Reach's Shards are all pretty happy — bobbing, curious. A future graveyard checkpoint's Shard might hover quietly in a corner. Mood is an authoring surface per zone (and per placement where it earns it), and a storytelling channel: players learn to read a zone's soul from how its Shards behave.
 - **Shards are indestructible presences.** `attackable=False` (refused everywhere, independent of room safety) and listed under "Who's here?" — a *who*, like the spheres, by field-confirmed v19 ruling. Examine-only for now. They watch.
 - **The Shard is the only checkpoint-specific thing the obelisk put there.** No stone markers, no waystones, no built structures — the obelisk's medium is magic, not masonry. Everything else in a checkpoint room is the natural evolution of the local zone.
+- **Shards relay (v24.26, #30).** A fragment of an obelisk carries a fragment of its power: from a Shard's room, `travel` reaches the player's revealed spheres — never other shards. The Network Shape rules above govern; the Shard is the diegetic face of the relay.
 
-The recurring signature players learn across every zone: see a Shard, you're safe, services are near, and you can arrive here from any obelisk.
+The recurring signature players learn across every zone: see a Shard, you're safe, services are near, you can arrive here from any obelisk — and it can send you back to one you've revealed.
 
 #### Checkpoint Commerce
 
@@ -493,15 +493,37 @@ The game already has message-pool machinery of this shape (`UnarmedMessagePool`)
 - **Shards are NPC definitions** — non-aggressive, no loot, examine-only; safe rooms make them unkillable in practice. Verdant Shard content ships with the zone's world seed, not the network brief.
 - **The Heart of the Convergence gains a Sphere NPC — the Primordial Sphere** — for examine parity with every zone-end sphere to come. The Convergence sphere doesn't predate the pattern — **it started it**, and its name says so. Each zone-end sphere is named for its zone (the Verdant Reach's is the Verdant Sphere). The Obelisk itself remains room prose; the network registers the Heart as its first node (travel name: "The Convergence").
 
+#### Attunement — Home Is a Choice (v24.26, #38)
+
+Every character has exactly one **home node**: the network node where `home` delivers them and where death respawn wakes them. One home concept, one destination — the attuned node is both, always. The default is the Heart of the Convergence: every character starts attuned there, and characters existing at the 24.26 deploy are unchanged until they choose otherwise.
+
+**The `attune` command — bare verb, no nouns, ever.** Presence is the argument: you attune to the node in the room where you stand. Three cases, exhaustive:
+
+- The room has no travel node → the command says so (world-declined warn).
+- The player is already attuned to this room's node → it says that.
+- Otherwise → the bond moves, and the command reports the new attunement and home location.
+
+Rules of the bond:
+
+- **One home at a time.** Attuning replaces the previous bond — a bond, not a bookmark list. No confirmation friction: re-attuning is free, instant, and undone by attuning elsewhere.
+- **Any travel node is attunable** — shard and sphere alike, the Heart included (re-attuning at the Heart is the way back to default). In the room only; there is no remote form.
+- **Free, like travel.** The obelisks' gift doctrine extends to the bond: no fee, no resource cost, no cooldown. Reaching the node was the price.
+- **Independent of the relay (#30).** Sending is the shard's nature (world data); attunement is the player's bond (player data). Neither gates the other.
+- **No combat gate, structurally.** Every attunable room is a safe room, so the success path cannot occur in combat — an in-combat `attune` can only ever draw the nothing-here warn. (While dying, `attune` refuses like every non-self-preservation command — the §9.1 matrix governs.)
+- **Death respawn follows the bond** (Section 3.7): the death sequence delivers the player to their attuned node, full bars, client re-synced. All nodes are safe rooms — a frontier respawn is never a death trap.
+- **The bond is always visible:** `stats` carries a `Home:` row in the identity block, directly under the `Player:` line — the effective home node's travel name, exact, never varying (Section 9.1 shipped surfaces).
+
+The attunement moment is a small ceremony — the Shard or sphere acknowledging the bond — authored at implementation time in the network's voice under the standing creative-content policy. Refusal and report wording likewise lands at brief time under the three-layer response doctrine.
+
 #### Home — the Hearth Command (v22)
 
-`home` is the way back when there is no obelisk near: a **10-second delayed return to the Heart of the Convergence** (v23.4, #162; retuned from 15 seconds — 5 was considered and rejected as near-instant escape), usable anywhere, in home's own fog-motif voice — a cousin of obelisk travel's machinery pattern, never its words.
+`home` is the way back when there is no obelisk near: a **10-second delayed return to the player's attuned home node** (destination generalized from the fixed Heart by attunement — v24.26, #38; delay v23.4, #162, retuned from 15 seconds — 5 was considered and rejected as near-instant escape), usable anywhere, in home's own fog-motif voice — a cousin of obelisk travel's machinery pattern, never its words.
 
 - **The countdown is atmosphere, never a UI.** Authored prose lines at the start, middle, and late beats of the wait (`You close your eyes and reach for home. The edges of the world begin to soften.` → drawn from mid and late pools → `The fog parts, and the Heart takes you in. You are home.`). No timer display, no meta-instructions about canceling — the wait warns implicitly, in fiction.
 - **Anything breaks it.** The player's own movement or travel auto-cancels the countdown (its line prints, then the move proceeds normally); combat entry of any kind — the player's own attack, aggro engagement, any incoming attack — interrupts it in a distinct violent voice (`The fog is ripped away. The world comes back hard — you are not going anywhere.`); `cancel` stops it voluntarily (`You stop heading home.`). Disconnect mid-countdown kills it silently — intent state dies with the intender.
 - **Cooldown: 5 minutes, completion-only** (v23.4, #162; retuned from 15 minutes — existing characters' per-player values reset to the new default unconditionally, admin overrides included). Interrupted or canceled countdowns never start the clock; it starts when the traveler lands at the Heart. Per-player overridable via admin. The refusal is wry in-fiction prose ending in a terse machine-honest parenthetical with the remaining time: `You can't go home yet, you were just there. Give it a few minutes. (3m cooldown rem.)` — funny in the prose, exact in the parens.
 - **Ceremony like travel:** departure is witnessed by the origin room at the vanish (`{name} fades into a fog only they can see, and is gone.`), arrival is witnessed at the Heart (`A fog gathers from nowhere, and {name} steps out of it.`).
-- **The Heart is the only destination** until obelisk attunement (#38) ships — home ships pointing at its default and gains player-set destinations with that future zones-and-travel version. Refused in combat and while dying; refused (kindly) when already at the Heart — homing from home would burn the cooldown for nothing.
+- **The destination is the attuned home node** (v24.26, #38) — the Heart of the Convergence by default, player-set via `attune` (see Attunement, above). Refused in combat and while dying; refused (kindly) when already at the home node — homing from home would burn the cooldown for nothing. The arrival ceremony stays the Heart's fog-motif shape wherever home now points.
 
 Under the hood, home is the first resident of the **delayed-action registry** — a connection-bound task pattern that is the standing template for all future delayed actions and `cancel`'s candidate pool (Section 9.1).
 

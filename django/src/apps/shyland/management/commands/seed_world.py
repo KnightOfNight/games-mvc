@@ -2606,14 +2606,13 @@ class Command(BaseCommand):
     def _set_character_rooms(self):
         heart = self.rooms['heart']
         moved_null = Character.objects.filter(current_room__isnull=True).update(current_room=heart)
-        recall_set = Character.objects.filter(recall_room__isnull=True).update(recall_room=heart)
         # Also update any characters still in old placeholder rooms — but leave
         # anyone standing in a seeded zone where they are.
         moved_outside = Character.objects.exclude(
             current_room__zone__slug__in=('the-convergence', 'the-verdant-reach'),
         ).update(current_room=heart)
         self.stdout.write(
-            f'Characters: {moved_null} moved from no room, {recall_set} recall rooms set, '
+            f'Characters: {moved_null} moved from no room, '
             f'{moved_outside} moved from outside The Convergence.'
         )
 

@@ -115,11 +115,11 @@ class RoomAdmin(admin.ModelAdmin):
 class CharacterAdmin(admin.ModelAdmin):
     list_display = ('name', 'user', 'level', 'unspent_stat_points', 'origin', 'archetype', 'current_room', 'last_seen')
     list_filter = ('archetype', 'is_hardcore', 'is_dead')
-    raw_id_fields = ('origin', 'archetype', 'current_room', 'recall_room')
+    raw_id_fields = ('origin', 'archetype', 'current_room', 'attuned_node')
     readonly_fields = ('wallet_display',)
     list_select_related = ('user',)
     fieldsets = (
-        (None, {'fields': ('user', 'name', 'origin', 'archetype', 'current_room', 'recall_room')}),
+        (None, {'fields': ('user', 'name', 'origin', 'archetype', 'current_room', 'attuned_node')}),
         ('Progression', {'fields': ('level', 'xp', 'unspent_stat_points')}),
         ('Primary Stats', {'fields': ('stat_str', 'stat_dex', 'stat_end', 'stat_int', 'stat_wis', 'stat_per')}),
         ('Bars', {'fields': ('vitality_current', 'vitality_max', 'longevity_current', 'longevity_max',

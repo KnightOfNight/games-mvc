@@ -15,6 +15,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | Type | Command | Arguments | Added |
 |---|---|---|---|
 | action | attack (kill, k) | 5 \| 6 · 10 | |
+| | attune | 2 | v24.26 |
 | | buy | 11 4 · 10 | |
 | | cancel | 12 | v22 |
 | | drop | 11 4 · 10 · 16 | |
@@ -61,7 +62,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 5. `<NPC>` — match against an NPC name.
 6. `<player>` — match against a player name.
 7. `<quantity>` optional; a number or the literal "all" (as many as match).
-8. `<destination>` — match against a sphere or shard travel destination name. (v24.25) Locked-zone destinations stay in the match pool — listed muted, matchable, and the attempt draws the zone-lock refusal (Section 2.12).
+8. `<destination>` — match against a sphere or shard travel destination name. (v24.25) Locked-zone destinations stay in the match pool — listed muted, matchable, and the attempt draws the zone-lock refusal (Section 2.12). (v24.26) The pool is the room's sender type's offering: every revealed node at an obelisk, revealed spheres only at a checkpoint shard (Section 2.11).
 9. `<*>` — any arguments are accepted.
 10. a target is required: at least one listed argument must be present. Bare invocation responds with the standard prompt `What do you want to <verb>?` (error-color).
 11. `<quantity>` as footnote 7, but "all" not accepted (numeric only).
@@ -90,14 +91,14 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 
 #### The State-Gating Matrix (v22)
 
-- **In combat — allowed:** attack, flee, use (except durability-restore consumables — the Repair Kit refuses in the no-mending doctrine, gate keyed on the effect component, its own authored warn line; v24.12), heal (v24.4), examine, cancel, say, sudo, quit, all information commands (including `list`), all settings. **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip (targeted forms only — bare `equip` is an information rendering and is allowed, per footnote 21; v24.7 — #195), unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
+- **In combat — allowed:** attack, flee, use (except durability-restore consumables — the Repair Kit refuses in the no-mending doctrine, gate keyed on the effect component, its own authored warn line; v24.12), heal (v24.4), examine, cancel, say, sudo, quit, all information commands (including `list`), all settings — and attune (v24.26: no gate needed structurally — every attunable room is a safe room, so an in-combat `attune` can only ever draw the nothing-here warn; Section 2.11). **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip (targeted forms only — bare `equip` is an information rendering and is allowed, per footnote 21; v24.7 — #195), unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
 - **While dying — allowed:** use (restoratives only — durability-restore consumables refuse: nothing but healing while dying; v24.12), heal (v24.4) (self-rescue heal — deliberate design), cancel, say, sudo, quit, information, settings. Everything else refused (warn).
 - **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
 - `cancel` is allowed in every state — the escape hatch is never locked.
 
 #### Resolution Scope Pools
 
-buy → room vendor stock · sell → inventory excluding equipped (bound sellable — vendors are the designed sink) · drop → inventory excluding equipped and excluding bound (footnote 16) · pickup → room floor · equip → carried equippables (equippability = mechanical layer) · unequip → equipped only (inventory room = mechanical layer) · use → carried consumables, never vendor stock · repair → everything owned including equipped · **examine → the union**: inventory + equipped + floor + vendor stock + NPCs here + corpses + players here (the vendor-examine gap closed; players answer with their composite line) · attack → living NPCs in the room · loot → lootable corpses here · travel → revealed destinations · spend → the six stats · cancel → your running delayed actions.
+buy → room vendor stock · sell → inventory excluding equipped (bound sellable — vendors are the designed sink) · drop → inventory excluding equipped and excluding bound (footnote 16) · pickup → room floor · equip → carried equippables (equippability = mechanical layer) · unequip → equipped only (inventory room = mechanical layer) · use → carried consumables, never vendor stock · repair → everything owned including equipped · **examine → the union**: inventory + equipped + floor + vendor stock + NPCs here + corpses + players here (the vendor-examine gap closed; players answer with their composite line) · attack → living NPCs in the room · loot → lootable corpses here · travel → revealed destinations the room's sender type offers (revealed spheres only at a shard; v24.26) · spend → the six stats · cancel → your running delayed actions. `attune` takes no noun — no pool (v24.26).
 
 Pool miss = warn. Same-segment ambiguity: **nearest wins** (self before room before vendor); ordinals and tab disambiguate.
 
@@ -129,7 +130,7 @@ Three kinds, one punctuation law — **colon = the value is on the line; ellipsi
 - **Kind 2** — `Key...` + indented value list.
 - **Kind 3** — `Key...` + table (muted column headers, value rows).
 
-Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208); `list` = the vendor table (Section 6.12); `wallet` = the shared Kind 1 line; `who` = one line, `Players online (3): Shy-Guy, Sharon-Love, Marvin`; `stats` = the character sheet with the six stat rows (base + gear parenthetical), a blank line, the Armor row, and a blank line before Unspent; `last` = the admin Kind 3 table; `look` untouched by the standards (the room render has its own v20/v21 rules). Durability numbers are colored by the mechanical band, derived, never owned; rarity words always rarity-colored.
+Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208); `list` = the vendor table (Section 6.12); `wallet` = the shared Kind 1 line; `who` = one line, `Players online (3): Shy-Guy, Sharon-Love, Marvin`; `stats` = the character sheet with the `Home:` row under the Player line (the effective home node's travel name — attunement, Section 2.11; v24.26), the six stat rows (base + gear parenthetical), a blank line, the Armor row, and a blank line before Unspent; `last` = the admin Kind 3 table; `look` untouched by the standards (the room render has its own v20/v21 rules). Durability numbers are colored by the mechanical band, derived, never owned; rarity words always rarity-colored.
 
 #### Settings Standard
 
@@ -198,8 +199,9 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 
 |Command            |Description                                            |
 |-------------------|-------------------------------------------------------|
-|`recall`           |Teleport to bound recall point (requires recall scroll). *Note (v22): the `home` command now covers the command-driven return to the Heart (Section 2.11); recall survives as the item-driven variant and awaits the zones-and-travel version alongside attunement (#38).*|
 |`enter <exit name>`|Use a named exit (non-directional)                     |
+
+*(The formerly planned `recall` scroll command is retired — v24.26, #38: `home` plus attunement (Section 2.11) covers the entire command-driven-return need; an item duplicating a free command is dead design weight. Killed, not deferred — the directional-arrows disposition.)*
 
 ### 9.3 Command Design Rules
 
