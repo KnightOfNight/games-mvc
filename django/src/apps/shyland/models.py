@@ -46,6 +46,12 @@ class Zone(models.Model):
     # client via the state-sync payload. Hex like '#7DC95E'.
     theme_color = models.CharField(max_length=7, default='#CCCCCC')
 
+    entry_requires_zone = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='unlocked_by',
+        help_text='To enter this zone, a character must have fully explored '
+                  'the named zone (GDD §2.12). Seed-authored; null = open.')
+
     def __str__(self):
         return self.name
 
@@ -313,6 +319,18 @@ class RoomVisit(models.Model):
 
     class Meta:
         unique_together = ('character', 'room')
+
+
+class ZoneCompletion(models.Model):
+    """A character's permanent key for a zone (GDD §2.12): minted when their
+    RoomVisit records cover every room of the zone. Never deleted — keys are
+    permanent; locks are authored."""
+    character = models.ForeignKey(Character, on_delete=models.CASCADE, related_name='zone_completions')
+    zone = models.ForeignKey(Zone, on_delete=models.CASCADE, related_name='completions')
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('character', 'zone')
 
 
 class EffectDefinition(models.Model):
