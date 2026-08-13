@@ -242,7 +242,12 @@ class Character(models.Model):
     level = models.IntegerField(default=1)
     xp = models.IntegerField(default=0)
     current_room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name='characters')
-    recall_room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name='recall_characters')
+    attuned_node = models.ForeignKey(
+        'TravelNode', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='attuned_characters',
+        help_text="The character's home node (GDD §2.11, Attunement): where "
+                  "'home' delivers and where death respawn wakes. Null = the "
+                  "founding node (the Heart of the Convergence).")
 
     stat_str = models.IntegerField(default=10)
     stat_dex = models.IntegerField(default=10)
@@ -977,8 +982,9 @@ class TravelNode(models.Model):
 
     A character's available destinations are derived from RoomVisit: any node
     whose room they have seen is revealed to them, permanently. The network is
-    global — no zone scoping. Travel is free and only initiates from a room
-    whose node is obelisk-type; checkpoints are destinations only.
+    global — no zone scoping. Travel is free and initiates from any node's
+    room: obelisks send to every revealed node; checkpoints relay to revealed
+    obelisks only — never to another checkpoint (GDD §2.11, v24.26).
     """
     NODE_TYPE_CHOICES = [
         ('obelisk', 'Obelisk'),
@@ -996,8 +1002,8 @@ class TravelNode(models.Model):
     )
     node_type = models.CharField(
         max_length=12, choices=NODE_TYPE_CHOICES,
-        help_text='Obelisks are travel sources and destinations. '
-                  'Checkpoints are destinations only.',
+        help_text='Obelisks send to every revealed node. Checkpoints relay '
+                  'to revealed obelisks only (GDD §2.11, v24.26).',
     )
     # v22 brief 2 amendment 3: the stone's one-line sentence shown in the
     # travel listing's Description column. Harvested from the world's own
