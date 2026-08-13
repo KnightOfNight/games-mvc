@@ -1245,6 +1245,8 @@ class Command(BaseCommand):
                 'inevitably, and without a plan.'
             ),
             'theme_color': '#B387E8',
+            # V24.25 (#41, GDD §2.12): the hub itself is open to everyone.
+            'entry_requires_zone': None,
         })
         self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
@@ -1311,12 +1313,48 @@ class Command(BaseCommand):
             'theme_color': '#7FA86B',
         })
 
-        self.stdout.write('Areas seeded: Wisteria Walk, Bamboo Run, Basalt Way, Fern Boards.')
+        # V24.25 (#95, GDD §2.9): the ring street and the smithy get their
+        # areas — the Heart stays deliberately area-free.
+        the_everround = self._reconcile(Area, {'slug': 'the-everround'}, {
+            'zone': zone,
+            'name': 'The Everround',
+            'area_description': (
+                'The ring street carries the city around the park in one unbroken round, and everyone '
+                'who lives on it calls it the ring road, though the old maps are firm that its name is '
+                'The Everround. The paving is worn generous and smooth, patched in a dozen stones from '
+                'a dozen worlds that no longer match and no longer care. Trees lean over the walk at '
+                'intervals, planted by nobody, tended by everybody. Between the storefronts and the '
+                'stalls and the lots still deciding what to become, the sealed gates wait with their '
+                'weather leaking through — a breath of incense, a wash of neon, a cold that does not '
+                'belong to the day. Walk far enough in either direction and the street makes its quiet '
+                'argument: that every way around is also a way back.'
+            ),
+            'theme_color': '#C9AE7A',
+        })
+
+        morras_smithy = self._reconcile(Area, {'slug': 'morras-smithy'}, {
+            'zone': zone,
+            'name': 'Morra\'s Smithy',
+            'area_description': (
+                'The smithy announces itself before it appears — coal smoke on the air, the bright '
+                'patient ring of hammer on iron, a warmth that reaches into the street. The building is '
+                'proper stone and timber, built to outlast its neighbors and succeeding, its doorway '
+                'wide enough for armored customers and its floor swept the way only a serious '
+                'workshop\'s floor is swept. Everything here has a place, every place has a purpose, '
+                'and the heat of the forge sits under it all like a held opinion.'
+            ),
+            'theme_color': '#C0855C',
+        })
+
+        self.stdout.write('Areas seeded: Wisteria Walk, Bamboo Run, Basalt Way, '
+                          'Fern Boards, The Everround, Morra\'s Smithy.')
         return {
             'wisteria_walk': wisteria_walk,
             'bamboo_run': bamboo_run,
             'basalt_way': basalt_way,
             'fern_boards': fern_boards,
+            'the_everround': the_everround,
+            'morras_smithy': morras_smithy,
         }
 
     # ------------------------------------------------------------------
@@ -1358,6 +1396,8 @@ class Command(BaseCommand):
         br = areas['bamboo_run']
         bw = areas['basalt_way']
         fb = areas['fern_boards']
+        ee = areas['the_everround']
+        ms = areas['morras_smithy']
 
         # --- Heart of the Convergence ---------------------------------------
         self._room(
@@ -1629,6 +1669,7 @@ class Command(BaseCommand):
             'large enough for a man, a chair, and decades of opinions. The word INFORMATION is carved '
             'above the opening in letters so old the bark has begun to grow back around them. The man '
             'inside is already watching you.',
+            area=ee,
         )
         self._room(
             zone, 'r02', 1, 5,
@@ -1642,6 +1683,7 @@ class Command(BaseCommand):
             'and the air that drifts out of it smells of ferns and rain. A wooden '
             'sign has been nailed to the left tree at eye level. It reads: THE VERDANT REACH. Below '
             'that, in different handwriting, older: Mind the roots.',
+            area=ee,
         )
         self._room(
             zone, 'r03', 2, 5,
@@ -1653,6 +1695,7 @@ class Command(BaseCommand):
             'their facades wearing the particular dignity of places that were once busy and are patiently '
             'waiting to be busy again. One doorway still has a bundle of dried flowers hanging above it, '
             'brown with age. The street is clean. Someone sweeps it.',
+            area=ee,
         )
         self._room(
             zone, 'r04', 3, 5,
@@ -1666,6 +1709,7 @@ class Command(BaseCommand):
             'lamppost stands at the corner, unlit. Its glass is intact. There are no scorch marks in its '
             'bowl, as though it was installed and never needed. A faint smell of old stone and cold '
             'candle wax drifts from somewhere ahead.',
+            area=ee,
         )
         self._room(
             zone, 'r05', 4, 5,
@@ -1678,6 +1722,7 @@ class Command(BaseCommand):
             'with no handle. Above it, carved directly into the stone: a shape that might be an arch, '
             'might be a gateway, might be a stylized flame. The inscription below it is in a language '
             'you don\'t recognize. The door does not move when you push it. It is very cold to the touch.',
+            area=ee,
         )
         self._room(
             zone, 'r33', 4, 4,
@@ -1689,6 +1734,7 @@ class Command(BaseCommand):
             'building presents a plain facade — no windows on this side, just old stone and a downpipe '
             'stained with decades of weather. The air carries the faint smell of old stone from the '
             'north and something that hasn\'t quite resolved itself yet from the east.',
+            area=ee,
         )
         self._room(
             zone, 'r06', 5, 4,
@@ -1707,6 +1753,7 @@ class Command(BaseCommand):
             no_exit={
                 'east': 'Ashenveil Cathedral is sealed. The iron doors stand open but something on the other side is not yet ready for visitors.',
             },
+            area=ee,
         )
         self._room(
             zone, 'r07', 5, 3,
@@ -1719,6 +1766,7 @@ class Command(BaseCommand):
             'has its counter installed already, a beautiful piece of dark hardwood polished to a shine, '
             'with nothing yet to sell from it. The park trees on the inner edge continue their patient '
             'row, unmoved by commerce.',
+            area=ee,
         )
         self._room(
             zone, 'r08', 5, 2,
@@ -1732,6 +1780,7 @@ class Command(BaseCommand):
             'that catches light strangely — not glass, not metal, a deep vivid blue that shifts toward '
             'violet depending on the angle. It has no text. It is simply a color, hung above a door, as '
             'advertisement. The door is locked.',
+            area=ee,
         )
         self._room(
             zone, 'r09', 5, 1,
@@ -1745,6 +1794,7 @@ class Command(BaseCommand):
             'blue-white even in daylight, its light steady and cold and unlike anything else on the ring. '
             'Below it, a small hand-lettered card reads: Coming Soon. The card is yellowed. The tubing '
             'still glows.',
+            area=ee,
         )
         self._room(
             zone, 'r10', 5, 0,
@@ -1758,6 +1808,7 @@ class Command(BaseCommand):
             'deep patina. The first is labeled CIVIC INFORMATION UNIT; the second, CIVIC REPAIR UNIT — '
             'VERSION 2. Both sets of doors are open. Two units stand just outside them, facing outward. '
             'Green buttons are visible on both panels. Both have been recently polished.',
+            area=ee,
         )
         self._room(
             zone, 'r11', 5, -1,
@@ -1771,6 +1822,7 @@ class Command(BaseCommand):
             'weathering has fully erased. A barrel outside another storefront is filled with sand. '
             'Everything here feels like somewhere that knows what dry heat is and has made its '
             'accommodations.',
+            area=ee,
         )
         self._room(
             zone, 'r12', 5, -2,
@@ -1784,6 +1836,7 @@ class Command(BaseCommand):
             'flat stones for sitting. The whole arrangement is carefully maintained. Someone uses this '
             'place and keeps it ready. The air smells of ash that hasn\'t been there in years and somehow '
             'still is.',
+            area=ee,
         )
         self._room(
             zone, 'r34', 5, -3,
@@ -1795,6 +1848,7 @@ class Command(BaseCommand):
             'visible at every chip. Below, the channel smells of stone and still water. On the far bank '
             'the storefronts resume. The park trees on the inner edge line up to the bridge\'s edge and '
             'pick up again immediately on the other side, unbroken as ever.',
+            area=ee,
         )
         self._room(
             zone, 'r36', 5, -4,
@@ -1804,6 +1858,7 @@ class Command(BaseCommand):
             'boots have cut the corner. A verdigris statue of a smith — no one remembers from which '
             'world — raises a hammer that will never fall. South and west, the street runs on; the '
             'wall above glitters with rivets from at least three realities.',
+            area=ee,
         )
         self._room(
             zone, 'r13', 4, -4,
@@ -1819,6 +1874,7 @@ class Command(BaseCommand):
             no_exit={
                 'south': 'The Blasted Flats gate is sealed. The arch stands open but the expanse beyond is not yet reachable — the air from it is very dry.',
             },
+            area=ee,
         )
         self._room(
             zone, 'r14', 3, -4,
@@ -1832,6 +1888,7 @@ class Command(BaseCommand):
             'followed by a date left blank. The workshop beside it has its shutters open, the interior '
             'visible: workbenches, tools racked neatly, everything ready, no one home. From somewhere '
             'below the street, barely audible, a low rhythmic vibration. Not unpleasant. Just present.',
+            area=ee,
         )
         self._room(
             zone, 'r15', 2, -4,
@@ -1845,6 +1902,7 @@ class Command(BaseCommand):
             'things. The carving has no label. Below the building\'s door, just visible at street level, '
             'a brass grate covers a ventilation shaft from which warm air rises steadily, smelling '
             'faintly of oil and hot metal.',
+            area=ee,
         )
         self._room(
             zone, 'r37', 2, -5,
@@ -1854,6 +1912,7 @@ class Command(BaseCommand):
             'proper name. Someone has bolted a second lamp — sleek, humming, unmistakably from the '
             'Sprawl — to the same post, and the two lights argue gently over the cobbles. The street '
             'bends west toward the Iron Gate and north back along the wall.',
+            area=ee,
         )
         self._room(
             zone, 'r16', 1, -5,
@@ -1866,6 +1925,7 @@ class Command(BaseCommand):
             'the pavement are any indication. One hatch is newer than the others, its ring polished from '
             'regular use. It is locked with a mechanism you don\'t immediately recognize. Beside it, '
             'scratched into the stone: an arrow pointing down, and below that, three letters: I.D.',
+            area=ee,
         )
         self._room(
             zone, 'r17', 0, -5,
@@ -1882,6 +1942,7 @@ class Command(BaseCommand):
             no_exit={
                 'down': 'The Iron Deeps lift is undergoing maintenance. The mechanism looks functional but something is preventing descent.',
             },
+            area=ee,
         )
         self._room(
             zone, 'r18', -1, -5,
@@ -1895,6 +1956,7 @@ class Command(BaseCommand):
             'getting along fine — deep teal posts, amber railings, a roof in gold and crimson and a '
             'particular shade of green that has no name. Flowering vines have climbed all four posts '
             'uninvited and stayed. Inside, an old woman on a painted stool is already smiling at you.',
+            area=ee,
         )
         self._room(
             zone, 'r19', -2, -5,
@@ -1907,6 +1969,7 @@ class Command(BaseCommand):
             'space on the other side of the street has given their roots room to spread. One tree has '
             'grown so close to a lamppost that the trunk has incorporated the post\'s base, the metal now '
             'part of the wood. The lamppost still works. The tree does not seem to mind.',
+            area=ee,
         )
         self._room(
             zone, 'r20', -3, -5,
@@ -1919,6 +1982,7 @@ class Command(BaseCommand):
             'The shadows they cast fall at a slightly wrong angle for the time of day. The lamppost on '
             'this block has a crack in its glass that has collected something dark — not dirt, not rust. '
             'The air has no smell at all, which in a city is more disturbing than any smell would be.',
+            area=ee,
         )
         self._room(
             zone, 'r38', -4, -5,
@@ -1928,6 +1992,7 @@ class Command(BaseCommand):
             'defiance of any sun. Chalk marks from generations of travelers scale the lower stones: '
             'names, dates, and arrows pointing to places that may no longer exist. The street turns, '
             'running north along the wall and east toward the Iron Gate.',
+            area=ee,
         )
         self._room(
             zone, 'r35', -4, -4,
@@ -1939,6 +2004,7 @@ class Command(BaseCommand):
             'closed shutters and an awning that has been carefully rolled and tied. The stillness from '
             'the eastern stretch lingers here — not quite as strong, but present. The air is a degree '
             'cooler than it was a few steps back. It normalizes again to the west.',
+            area=ee,
         )
         self._room(
             zone, 'r39', -5, -4,
@@ -1948,6 +2014,7 @@ class Command(BaseCommand):
             'Merchants lower their voices; even cart wheels seem to apologize. A small stone bench '
             'sits against the wall, worn smooth, facing nothing in particular. The street runs north '
             'toward the Pale Gate and east into the long shadow of the wall.',
+            area=ee,
         )
         self._room(
             zone, 'r21', -5, -3,
@@ -1960,6 +2027,7 @@ class Command(BaseCommand):
             'same trees they have always been, but standing in this room looking at them, you feel that '
             'they are very far away. An old woman was sitting on a bench on the outer edge when you '
             'arrived. She is no longer there. The bench is warm.',
+            area=ee,
         )
         self._room(
             zone, 'r22', -5, -2,
@@ -1972,6 +2040,7 @@ class Command(BaseCommand):
             'On the outer edge, the storefronts are quiet and maintained. Ahead, something is catching '
             'the light in shifting colors — violet, pale blue, something between green and gold. It is '
             'not a sign. It is not glass. It is getting closer.',
+            area=ee,
         )
         self._room(
             zone, 'r23', -5, -1,
@@ -1983,6 +2052,7 @@ class Command(BaseCommand):
             'light they distribute travels slowly across the paving, the park trees, the fern fronds that '
             'reach out from the Fern Boards\' mouth just ahead. The air here has a texture to it, a '
             'quality of attentiveness. Both structures are aware of you. Both are content to wait.',
+            area=ee,
         )
         self._room(
             zone, 'r24', -5, 0,
@@ -1996,6 +2066,7 @@ class Command(BaseCommand):
             'and gold that shifts as you move. Directly across the street, its exact twin. The inner '
             'crystal holds a presence that is aware and unhurried. The outer crystal holds the same '
             'presence, differently purposed.',
+            area=ee,
         )
         self._room(
             zone, 'r25', -5, 1,
@@ -2013,6 +2084,7 @@ class Command(BaseCommand):
             no_exit={
                 'west': 'The Pale Shore gate is sealed. The threshold is there but something on the other side is not yet permitting passage — the sound of water carries through anyway.',
             },
+            area=ee,
         )
         self._room(
             zone, 'r26', -5, 2,
@@ -2027,6 +2099,7 @@ class Command(BaseCommand):
             'stone. The sky feels large overhead in a way it doesn\'t elsewhere on the ring. A wind comes '
             'from the direction of the gate behind you carrying nothing — no smell, no temperature. Just '
             'movement.',
+            area=ee,
         )
         self._room(
             zone, 'r27', -5, 3,
@@ -2039,6 +2112,7 @@ class Command(BaseCommand):
             'has fully faded. It is impossible to know which. In the center of the open expanse, a single '
             'chair. Occupied by no one. Facing outward, away from the park, toward the horizon that '
             'should not be visible from inside a city but somehow, from this particular spot, is.',
+            area=ee,
         )
         self._room(
             zone, 'r28', -5, 4,
@@ -2056,6 +2130,7 @@ class Command(BaseCommand):
             no_exit={
                 'west': 'The Wastelands gate is sealed. The gap in the city is real but passage is not yet possible — the grit-laden wind comes through regardless.',
             },
+            area=ee,
         )
         self._room(
             zone, 'r29', -4, 4,
@@ -2068,6 +2143,7 @@ class Command(BaseCommand):
             'at the seam between its wilder edges and its settled center. An old vendor cart sits against '
             'the outer building, empty, its wheels chocked with stones. A handwritten note is tucked '
             'under the brake handle. It reads: Back in an hour. The note is not recent.',
+            area=ee,
         )
         self._room(
             zone, 'r30', -3, 4,
@@ -2080,6 +2156,7 @@ class Command(BaseCommand):
             'arranged by hue on a shelf. The proprietor is not visible. The work is beautiful. On the '
             'park side, the trees are old friends by now, their roots having given up fighting the '
             'paving and found their way beneath it instead.',
+            area=ee,
         )
         self._room(
             zone, 'r31', -2, 4,
@@ -2093,6 +2170,7 @@ class Command(BaseCommand):
             'drifting into the street. The proprietor — visible through the window, elderly, unhurried — '
             'looks up as you pass and nods with the acknowledgment of someone who has seen every kind of '
             'person come through and found them all more or less acceptable.',
+            area=ee,
         )
         self._room(
             zone, 'r40', -2, 5,
@@ -2102,6 +2180,7 @@ class Command(BaseCommand):
             'from every world the rifts have swallowed. A knight rides a neon serpent; a rocket lifts '
             'off from a wheat field; someone has painted the Heart itself, glowing, at the center of '
             'it all. The street curves east toward the gates and south along the western wall.',
+            area=ee,
         )
         self._room(
             zone, 'r32', -1, 5,
@@ -2113,6 +2192,7 @@ class Command(BaseCommand):
             'directions and this room catches most of it. The park trees on the inner edge are the same '
             'trees they have always been: patient, unhurried, growing around whatever the city has put '
             'next to them. The ring is complete. You have walked all the way around.',
+            area=ee,
         )
 
         # --- Morra's Smithy ---------------------------------------------------
@@ -2127,6 +2207,7 @@ class Command(BaseCommand):
             'racks of tools arranged with the precision of someone who knows where everything is and '
             'will know immediately if anything moves. The forge glows at the back. The whole space smells '
             'of hot metal and honest work.',
+            area=ms,
         )
         self._room(
             zone, 'smithy_int', 0, 7,
@@ -2140,6 +2221,7 @@ class Command(BaseCommand):
             'enter but her posture changes slightly — the posture of someone who is now aware of you '
             'and reserving judgment.',
             indoors=True,
+            area=ms,
         )
 
         self.stdout.write(f'Rooms seeded: {len(self.rooms)}.')
@@ -2566,9 +2648,9 @@ class Command(BaseCommand):
         self._check('Zone the-convergence exists', zone_exists)
 
         area_count = Area.objects.filter(zone__slug='the-convergence').count()
-        self._check(f'4 areas exist (found {area_count})', area_count == 4)
+        self._check(f'6 areas exist (found {area_count})', area_count == 6)
 
-        # v20 brief 4 (#1): authored theme colors (location bar).
+        # v20 brief 4 (#1) + V24.25 (#95): authored theme colors (location bar).
         self._check(
             'Convergence zone theme color is #B387E8',
             Zone.objects.filter(slug='the-convergence', theme_color='#B387E8').exists(),
@@ -2576,15 +2658,53 @@ class Command(BaseCommand):
         expected_area_colors = {
             'wisteria-walk': '#C9A0DC', 'bamboo-run': '#A8C77A',
             'basalt-way': '#9A9A9A', 'fern-boards': '#7FA86B',
+            'the-everround': '#C9AE7A', 'morras-smithy': '#C0855C',
         }
         colors_ok = all(
             Area.objects.filter(slug=slug, theme_color=color).exists()
             for slug, color in expected_area_colors.items()
         )
-        self._check('Convergence area theme colors match brief 4', colors_ok)
+        self._check('Convergence area theme colors match their briefs', colors_ok)
 
         room_count = Room.objects.filter(zone__slug='the-convergence').count()
         self._check(f'60 rooms exist (found {room_count})', room_count == 60)
+
+        # V24.25 (#95, GDD §2.9): area membership — the brief's 6d table.
+        expected_memberships = {
+            'the-everround': 40, 'morras-smithy': 2,
+            'wisteria-walk': 4, 'bamboo-run': 4,
+            'basalt-way': 5, 'fern-boards': 4,
+        }
+        for slug, expected in expected_memberships.items():
+            found = Room.objects.filter(
+                zone__slug='the-convergence', area__slug=slug).count()
+            self._check(
+                f'Area {slug} holds {expected} rooms (found {found})',
+                found == expected,
+            )
+        area_free_rooms = list(Room.objects.filter(
+            zone__slug='the-convergence', area__isnull=True))
+        self._check(
+            f'Exactly 1 area-free room, the Heart (found {len(area_free_rooms)})',
+            len(area_free_rooms) == 1
+            and area_free_rooms[0].name == 'Heart of the Convergence',
+        )
+
+        # V24.25 (#41, GDD §2.12): the lock authoring — the Reach requires
+        # the Convergence; no other zone carries a lock.
+        self._check(
+            'Verdant Reach entry lock is The Convergence',
+            Zone.objects.filter(
+                slug='the-verdant-reach',
+                entry_requires_zone__slug='the-convergence').exists(),
+        )
+        other_locks = Zone.objects.exclude(
+            slug='the-verdant-reach').filter(
+            entry_requires_zone__isnull=False).count()
+        self._check(
+            f'No other zone carries an entry lock (found {other_locks})',
+            other_locks == 0,
+        )
 
         heart = Room.objects.filter(
             zone__slug='the-convergence', coord_x=0, coord_y=0, coord_z=0,
@@ -5001,6 +5121,9 @@ class Command(BaseCommand):
                 'the city, and the gentlest — which is not the same as gentle.'
             ),
             'theme_color': '#7DC95E',
+            # V24.25 (#41, GDD §2.12): the first authored lock — entering
+            # the Reach requires a full exploration of the Convergence.
+            'entry_requires_zone': Zone.objects.get(slug='the-convergence'),
         })
         self.stdout.write(f'Zone "{zone.name}" seeded.')
         return zone
