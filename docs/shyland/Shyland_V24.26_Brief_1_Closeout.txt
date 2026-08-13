@@ -1,0 +1,3 @@
+2026-08-13 — Session start: implementation session, Shyland V24.26 Brief 1 (Shard_Relay_And_Attunement), branch version_24_26.
+
+[STUB — completed in place at session end]
