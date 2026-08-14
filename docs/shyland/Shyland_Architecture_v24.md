@@ -1577,8 +1577,7 @@ These are settled. Do not revisit without deliberate consideration.
 
 Future sessions should check this list before assuming a system exists.
 
-- Vendor and repairer NPCs in The Convergence (briefs 5–6 shipped the first reachable services — Essa/Sona/Ridda vend and Maro/Tavik/Old Brammel repair at the Verdant Reach checkpoints — but no Convergence NPC has `VendorEntry` rows or `is_repairer` set)
-- Vendor restock (`VendorEntry.sold_count` exhaustion is permanent until an admin intervenes; moot for now — all three live vendors have unlimited stock)
+- Vendor restock (`VendorEntry.sold_count` exhaustion is permanent until an admin intervenes; moot for now — all live vendors have unlimited stock)
 - Obelisk Network nodes beyond Z01 (the network has two spheres — The Convergence and The Verdant Crown — plus three shards, all five senders since the v24.26 relay; every future zone adds its own)
 - Per-combat-tier behavior differences (`combat_tier` field exists; no differentiated AI yet)
 - Custom blocked exit messages for the `flee` path (flee uses a different room-exit lookup; `no_exit_*_msg` fields only apply to `cmd_move`)
