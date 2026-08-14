@@ -2485,7 +2485,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Per-Archetype Unarmed Message Pools**|All archetypes currently fall back to the default unarmed message pool. Custom pools per archetype are supported by the model but not yet configured.|
 |**Per-NPC Unarmed Message Pools**      |All NPC definitions currently fall back to the default unarmed message pool. Custom pools per NPC definition are supported by the model but not yet configured.|
 |**Starting Attire Rendering**          |`Origin.attire_material` and `Archetype.attire_silhouette` are seeded with real content and combined into flavor text at character creation, but that text is not yet surfaced anywhere in-game (no `look`/inventory display of it yet). |
-|**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) and The Verdant Reach (Z01, levels 1–10) are fully seeded and live. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order; each opening also opens new level content. Note for the next zone pass: the Convergence itself has no commerce yet — the Reach's checkpoint NPCs are the game's only vendors and repairers (architecture doc §7).|
+|**Battle Zones Beyond The Convergence**|Infinity City (The Convergence, Z05) and The Verdant Reach (Z01, levels 1–10) are fully seeded and live. Remaining zones (Z02–Z04, Z06–Z08) follow in zone build order; each opening also opens new level content. The Convergence has commerce of its own — street-cart vendors on The Everround and repair at Morra's Smithy — alongside the Reach's checkpoint vendors and repairers.|
 |**Outleveled-Content XP Reduction**    |**Designed and in v18** (carried in the engine mechanics brief). Full XP within the NPC's Mk band (band top = Mk tier × 10); −20% per level beyond it; multiplier floor 10%; absolute minimum 1 XP — outleveled kills always pay something.|
 |**Hide & Carapace Crafting**           |Animal Hide and Insect Carapace are vendor-sellables only for now. Giving players something to make with them is deferred — much later, alongside the crafting system (Section 6.13).|
 |**NPC Dialogue — deeper tiers**|The v19 listening system (Section 7.6) shipped keyword maps, greetings, and departure reactions for the Convergence roster. Future tiers: keyword vocabularies across battle zones, quest hooks, reputation-conditional responses, and Sirius-class persistent-memory entities.|
@@ -2494,6 +2494,4 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 |**Stat Respec Mechanic**               |Allow players to rebalance already-spent stat points using in-game currency. Needs a dedicated design session.|
 
 -----
-
-*Document version 22.0 — Shyland, Closed*
 *All systems subject to revision during development.*
