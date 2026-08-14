@@ -300,7 +300,7 @@ Death in Shyland is meaningful but not brutal. The full dying-and-death sequence
 
 **Hardcore Mode** (optional, on character creation): permadeath. Character deleted on death. Hardcore characters are flagged visually and have a separate leaderboard.
 
-### 3.8 Character Deletion (v24.27, #234, pending implementation)
+### 3.8 Character Deletion (v24.27, #234)
 
 Character deletion is **hard delete, only** — there is no soft-delete model. No undo window, no name retirement, no archived history. The row is deleted, the schema's cascades run, and the case-insensitively unique name frees for immediate reuse. For a free game there is nothing a soft delete would protect; the flow is instead made trustworthy enough that deleting a veteran character is boring.
 
