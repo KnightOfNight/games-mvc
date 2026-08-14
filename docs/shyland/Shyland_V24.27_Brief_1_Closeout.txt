@@ -1,3 +1,146 @@
 Session start 2026-08-14 — Brief: Shyland_V24.27_Brief_1_Character_Hard_Delete.md — Branch: version_24_27
 
-[STUB — completed in place at session end]
+================================================================================
+Shyland V24.27 Brief 1 — Character Hard Delete — Closeout Report
+================================================================================
+
+Branch: version_24_27
+Founding ticket: #234 (character deletion: item disposition + hard-vs-soft
+delete model) — CLOSED (no dependencies)
+Final implementation commit: 75cede1
+Architecture-doc commit: c9df0ac (stamp 24.27; header hash moved to 75cede1 —
+this release is architectural)
+Closeout-report commit: (this file's commit, after c9df0ac)
+
+--------------------------------------------------------------------------------
+What shipped (by brief step)
+--------------------------------------------------------------------------------
+
+Step 1 — Version constant (56d4ab3): SHYLAND_VERSION 24.26 -> 24.27-DEV, pin
+test moved in the same commit (test_b2_amendment1.py); version-start
+`make deploy-dev` run.
+
+Step 2 — Schema change + orphan cleanup (8ee0899): ItemInstance.owner
+on_delete SET_NULL -> CASCADE, null/blank/related_name unchanged, with the
+ruled constraint comment (held items die with their character by ruling
+#234; room/corpse items unaffected — owner already NULL). Migration
+0046_alter_iteminstance_owner generated via `make makemigrations
+APP=shyland`, committed unedited. Data migration
+0047_delete_orphaned_item_instances authored (the equivalent empty-migration
+path): unconditional deletion of ItemInstance rows with owner, current_room,
+and corpse all NULL (unreachable by the location invariant's definition —
+the #137 logic), deleted count printed, deliberate no-op reverse.
+soulbound_to untouched (SET_NULL) per the design rules.
+
+Step 3 — Consumer guard (8b5df04): receive_json catches
+Character.DoesNotExist out of _dispatch, AHEAD of the #20 catch-all crash
+guard (which would otherwise swallow it into "Something went wrong"), and
+reuses the connect-time no-character routing verbatim — the 'No character
+found. Create one to play.' error line via self.output, the structured
+{'type': 'redirect', 'url': reverse('shyland:create_character'),
+'ts': envelope_ts()} envelope, then close. Same message, envelope shape,
+and URL as connect(). No HTTP-side change (existing entry gating already
+routes a character-less player to the creator).
+
+Step 4 — Tick engine zero-character session close: NO CODE CHANGE — see
+Deviations 1. The directed behavior was verified already implemented and is
+now test-pinned.
+
+Step 5 — Tests (75cede1): new tests/test_v24_27_brief1.py — 8 tests, all
+brief-required coverage: (1) schema pin (owner remote_field.on_delete IS
+CASCADE); (2) cascade correctness (held + equipped + soulbound-to-self
+equipped all die; room drop and corpse content survive untouched); (3) zero
+all-NULL-location rows after deletion; (4) survivors (Corpse row kept,
+killed_by NULL, npc_name_snapshot intact, User row survives, loot-rights
+predicate can never match); (5) case-insensitive name reuse after delete;
+(6) 0047 predicate removes a forged orphan (bulk .update() around save(),
+mirroring how real orphans were made) and touches nothing else, count line
+asserted; (7) zero-character session close (deleted character empties the
+M2M; the combat pass closes the session is_active=False with its damaged
+NPC restored to full and membership cleared); (8) consumer guard end to end
+via the communicator pattern (error line, redirect envelope to
+/shyland/create/, websocket.close — no exception). Full suite: 638 tests,
+OK, in-container path form (baseline 630 at the 24.26 stamp + 8 new, no
+other count changes).
+
+Step 6 — Dev deploy: `make deploy-dev` run from the worktree after
+implementation and verification passed. Dev stack is running the brief's
+build.
+
+Step 7 — Founding ticket: #234 closed with a shipping comment linking this
+report (gated on verification passing — it had).
+
+Step 8 — Architecture doc (c9df0ac): updated in place, stamp 24.27, header
+hash MOVED to 75cede1 (architectural: schema change + consumer behavior).
+Sections updated: header banner + new version paragraph; §4 ItemInstance
+location-integrity subsection (new owner-CASCADE bullet, heading extended
+to #234); §4.9 tick engine (new "Zero-character session close" paragraph —
+verified pre-existing, test-pinned).
+
+--------------------------------------------------------------------------------
+Verification (brief §4) — ALL PASS
+--------------------------------------------------------------------------------
+
+1. Full in-container suite green: 638 tests, OK
+   (`python manage.py test apps/shyland/tests` via docker exec).
+2. Post-migrate on dev: ItemInstance.objects.filter(owner__isnull=True,
+   current_room__isnull=True, corpse__isnull=True).count() == 0.
+3. showmigrations: 0046 and 0047 both applied ([X]); both files committed.
+4. Manual cascade check on dev shell: throwaway character with 2 items
+   (one equipped); .delete() collector dict returned
+   {'shyland.Character': 1, 'shyland.ItemInstance': 2}; orphan count 0
+   before and after; throwaway user removed afterward.
+
+Orphan-deletion count (migration 0047), actual vs expected:
+  dev: ACTUAL 1 row deleted ("0047: deleted 1 orphaned ItemInstance
+  row(s)") vs EXPECTED "whatever prior test-character deletions left
+  behind" — consistent; the cleanup doing its job, safe by construction.
+  prod: expected 0 (no character has ever been deleted there); rides the
+  ordinary migrate in the closeout tail's deploy — see PENDING block.
+
+--------------------------------------------------------------------------------
+Deviations & notes
+--------------------------------------------------------------------------------
+
+1. STEP 4 REQUIRED NO CODE CHANGE — the brief's premise ("nothing closes a
+   character-empty session ... the session would tick forever holding its
+   NPCs") is factually incorrect. The combat pass has closed
+   empty-participant sessions since combat v1: at the next round boundary
+   the participants load returns an empty character list and the
+   `if not characters or not npcs` branch closes the session through
+   close_session — is_active=False plus release_session_npcs (NPC release
+   added at v23 B1, #25) — i.e. within one combat round (<= 3 engine
+   ticks), not never. This existing code is exactly the brief's directed
+   implementation: same trigger ("the participants load already fetches
+   the character list — an empty list is the trigger"), same standard
+   close path, same #107 query discipline (no per-session count query).
+   Verified empirically before concluding: brief test 7 was written first
+   and PASSED against the unmodified engine. Action taken: behavior
+   test-pinned (test 7), architecture doc documents it as verified
+   pre-existing, zero engine changes. The brief's correct observations
+   stand: the v24.19 self-heal checks the NPC side only, and the stale
+   sweep never fires for such a session (last_tick_at keeps advancing) —
+   the round-boundary guard is what covers the character side.
+2. Test-file fixture note (not a hygiene deviation — no existing test
+   changed): make_item_definition supplies scaling_base=1.0 /
+   scaling_factor=0.0 (NOT NULL fields with no defaults). No
+   literal-pinning conversions were needed anywhere; zero existing tests
+   modified beyond the Step-1 pin move.
+3. Suite count 630 (24.26 stamp) -> 638: +8 new tests, no removals, no
+   other count changes.
+4. The 0047 test imports the migration module via importlib and executes
+   its real delete_orphans() against django.apps — the predicate under
+   test is the shipped one, not a copy.
+
+PENDING DEPLOY-TIME ACTIONS: none. The orphan cleanup (0047) is a migration
+and rides the ordinary migrate in every deploy path — nothing waits for the
+closeout tail beyond the deploy itself. No seed changes (expected seed
+deletions: n/a — seed untouched).
+
+--------------------------------------------------------------------------------
+Operator playtest disposition
+--------------------------------------------------------------------------------
+
+OPEN — awaiting the operator's in-conversation disposition (#170). The
+brief's checklist (6 items, dev stack) is ready — recorded here verbatim at
+session end before implementation-session-end runs.
