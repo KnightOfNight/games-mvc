@@ -155,6 +155,10 @@ deletions: n/a — seed untouched).
 Operator playtest disposition
 --------------------------------------------------------------------------------
 
-OPEN — awaiting the operator's in-conversation disposition (#170). The
-brief's checklist (6 items, dev stack) is ready — recorded here verbatim at
-session end before implementation-session-end runs.
+Operator reports playtest successful (in-conversation, 2026-08-14:
+"playtest confirmed" — the brief's checklist against the dev stack: cascade
+summary enumerated the deleted character's 8 item instances; post-delete
+orphan count 0; deleted-while-connected via `stats` produced the error line
+and creator routing; the `inv` coverage gap found during the same playtest
+is filed as #243 and recorded in Deviations note 5).
+Disposition is terminal per #170.
