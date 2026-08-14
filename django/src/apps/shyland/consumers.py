@@ -579,6 +579,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # tell the player one error line, and stay alive.
         try:
             await self._dispatch(verb, args)
+        except Character.DoesNotExist:
+            # v24.27 (#234): deleted-while-connected. The character row is
+            # gone (admin hard delete is the only deletion surface); reuse
+            # the connect-time no-character routing verbatim and close.
+            await self.output('No character found. Create one to play.', 'error')
+            await self.send_json({'type': 'redirect', 'url': reverse('shyland:create_character'),
+                                  'ts': envelope_ts()})
+            await self.close()
         except Exception:
             cmd_logger.exception('shyland command handler crashed: %r', raw)
             await self.send_output('Something went wrong with that command.', 'error')
