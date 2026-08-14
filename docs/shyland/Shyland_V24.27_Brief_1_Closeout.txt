@@ -131,6 +131,20 @@ Deviations & notes
 4. The 0047 test imports the migration module via importlib and executes
    its real delete_orphans() against django.apps — the predicate under
    test is the shipped one, not a copy.
+5. PLAYTEST FINDING -> ISSUE #243 (design-level, filed 2026-08-14 with
+   operator assent): checklist item 5's "send any command" expectation
+   overstates the guard's coverage. The guard (a dispatch-level catch of
+   Character.DoesNotExist, exactly as the brief specifies) fires for
+   fresh-fetch commands (wallet, stats — test-pinned), but commands that
+   only filter by pk or read the consumer's cached self.character never
+   raise: `inv` rendered a benign empty inventory for a deleted character
+   instead of routing (observed live on dev; mechanism confirmed in
+   cmd_inventory). The HTTP entry gate routed correctly on refresh. Not a
+   bug against the brief's implementation spec — the crash-to-routing
+   guard works as directed; whether detection should be
+   command-independent is the design question ruled via #243. Operator's
+   stance at filing: deletion is admin-only and rare (likely never on
+   prod), "but it should work regardless."
 
 PENDING DEPLOY-TIME ACTIONS: none. The orphan cleanup (0047) is a migration
 and rides the ordinary migrate in every deploy path — nothing waits for the
