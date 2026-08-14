@@ -300,5 +300,14 @@ Death in Shyland is meaningful but not brutal. The full dying-and-death sequence
 
 **Hardcore Mode** (optional, on character creation): permadeath. Character deleted on death. Hardcore characters are flagged visually and have a separate leaderboard.
 
+### 3.8 Character Deletion (v24.27, #234, pending implementation)
+
+Character deletion is **hard delete, only** — there is no soft-delete model. No undo window, no name retirement, no archived history. The row is deleted, the schema's cascades run, and the case-insensitively unique name frees for immediate reuse. For a free game there is nothing a soft delete would protect; the flow is instead made trustworthy enough that deleting a veteran character is boring.
+
+- **The Django admin console is the only deletion surface.** No in-game command, no management command, no player-facing self-delete. Deleting a character is an operator action performed in `/admin/`, and the admin confirmation page's cascade summary is the deliberate final check — it truthfully enumerates everything that dies with the character.
+- **Items are deleted with the character.** The entire inventory — held and equipped, bound and unbound — is removed in the same cascade (`ItemInstance.owner` cascades; formerly `SET_NULL`, which silently stranded every held item as an unreachable, location-invariant-violating row). Items the character previously dropped into the world are world items and survive; bound items can never be among them (drop excludes bound items entirely).
+- **What survives, deliberately:** kill attribution and targeted-action history with nulled references and preserved name snapshots; corpses they killed remain lootable-by-nobody and decay on their natural timer; the auth `User` account is untouched (the cascade runs User→Character, never the reverse).
+- **A connected character can be deleted.** The deleted player's session ends cleanly: their next interaction routes them to the game front door exactly like a player with no character (the standard entry-gating rule) — no crash, no ghost. Mid-combat deletion is likewise safe: their queued actions vanish with them and the combat session winds down normally.
+
 -----
 
