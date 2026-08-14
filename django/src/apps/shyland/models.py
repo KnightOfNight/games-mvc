@@ -543,7 +543,10 @@ class ItemInstance(models.Model):
     owner = models.ForeignKey(
         'Character',
         null=True, blank=True,
-        on_delete=models.SET_NULL,
+        # v24.27 (#234): held items die with their character by ruling —
+        # hard delete cascades the whole inventory. Room and corpse items
+        # are unaffected: their owner is already NULL (location invariant).
+        on_delete=models.CASCADE,
         related_name='inventory',
     )
     current_room = models.ForeignKey(
