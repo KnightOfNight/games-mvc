@@ -33,7 +33,7 @@ GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
 .PHONY: setup init build start stop restart nuke logs tick-logs shell \
         migrate makemigrations createsuperuser gen-certs check-secrets \
         new-app push-certs seed gdd help require-local crosscheck-env hooks \
-        deploy-dev deploy-prod
+        deploy-dev deploy-prod seed-prod verify verify-prod
 
 # ---------------------------------------------------------------------------
 # Guards
@@ -187,6 +187,29 @@ seed-prod:
 	cp .env.dev .env
 	@echo "seed-prod complete — production reseeded, resting posture restored (.env == .env.dev)."
 
+## verify-prod: operator-authorized read-only production verification — flips posture, runs one verify_* command, restores
+# Same contract as the other two posture-setting targets: pins its own
+# DOCKER_HOST, refuses an ambient one, and if it fails partway .env
+# deliberately REMAINS in prod posture for a human. Exists so closeout
+# tails can run a brief's read-only prod verification step (#248/#249 —
+# the read-only twin of #187). Runs ONLY a manage.py command in the
+# verify_* family, one per invocation; the commands themselves are
+# brief-shipped, dev-tested code and reach production via release
+# deploys — this target has nothing to run until the first one ships.
+# The VERIFY gates run BEFORE the posture flip: a bad invocation never
+# leaves resting posture.
+verify-prod:
+	@test -n "$(VERIFY)" || (echo "ERROR: usage: make verify-prod VERIFY=verify_<name> — names a brief-shipped manage.py verification command (#249)." && exit 1)
+	@case "$(VERIFY)" in verify_*) ;; *) echo "ERROR: VERIFY must name a verify_* management command (read-only verification family, #249)."; exit 1;; esac
+	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). verify-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
+	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
+	@test -s .env.dev || (echo "ERROR: .env.dev missing or empty — verify-prod needs it to restore the resting posture." && exit 1)
+	cp .env.prod .env
+	DOCKER_HOST=$(PROD_DOCKER_HOST) python3 scripts/check_docker_host.py
+	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) verify VERIFY=$(VERIFY)
+	cp .env.dev .env
+	@echo "verify-prod complete — production verification ran read-only, resting posture restored (.env == .env.dev)."
+
 # ---------------------------------------------------------------------------
 # Django management
 # ---------------------------------------------------------------------------
@@ -275,6 +298,16 @@ seed: crosscheck-env
 	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
 	    exec django python manage.py seed_world
 
+## verify: run a verify_* management command against the current target (VERIFY=verify_<name>)
+# The read-only verification family (#248/#249). From resting posture this
+# targets dev — the "tested on dev" path for every brief-shipped
+# verification command. Production runs go through verify-prod only.
+verify: crosscheck-env
+	@test -n "$(VERIFY)" || (echo "ERROR: usage: make verify VERIFY=verify_<name>" && exit 1)
+	@case "$(VERIFY)" in verify_*) ;; *) echo "ERROR: VERIFY must name a verify_* management command (read-only verification family, #249)."; exit 1;; esac
+	$(DOCKER_COMPOSE) --project-name $(COMPOSE_PROJECT) \
+	    exec django python manage.py $(VERIFY)
+
 ## check-secrets: verify .env and cert files exist before allowing start
 check-secrets:
 	@python3 scripts/check_secrets.py
@@ -312,6 +345,9 @@ help:
 	@echo "  deploy-dev             Deploy current source to the local dev stack (build + migrate)"
 	@echo "  deploy-prod            Operator-authorized production deploy (flips posture,"
 	@echo "                         pre-flights, builds, migrates, restores dev posture)"
+	@echo "  seed-prod              Operator-authorized production seed (same posture contract, #187)"
+	@echo "  verify-prod            Operator-authorized read-only production verification"
+	@echo "                         (VERIFY=verify_<name>; same posture contract, #249)"
 	@echo ""
 	@echo "Django:"
 	@echo "  shell                  Django shell in the container"
@@ -319,6 +355,7 @@ help:
 	@echo "  makemigrations         Make migrations (APP=<name> optional)"
 	@echo "  createsuperuser        Create a Django admin superuser"
 	@echo "  seed                   Run seed_world to populate game world data"
+	@echo "  verify                 Run a verify_* command against the current target (VERIFY=verify_<name>)"
 	@echo ""
 	@echo "Games:"
 	@echo "  new-app NAME=<name>    Scaffold a new game app in apps/"

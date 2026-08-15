@@ -30,11 +30,11 @@ Rationale: the deployment target is production infrastructure. A brief that runs
 
 ### The standing target rule
 
-**`DOCKER_HOST` set — any value — means production. Unset means the local dev daemon.** There is no third target; expanding this rule is an operator decision. The active `.env` must be a byte-for-byte copy of the matching target file — `.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset. The `crosscheck-env` Make guard enforces this automatically before every daemon-touching, state-changing target (`build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, `push-certs`); `require-local` blocks `nuke` outright when `DOCKER_HOST` is set. Both guards are check-only — they stop on mismatch and never copy or repair anything. Switching posture (`cp .env.prod .env` / `cp .env.dev .env`) is always a deliberate act, never something Claude does silently to make a guard pass.
+**`DOCKER_HOST` set — any value — means production. Unset means the local dev daemon.** There is no third target; expanding this rule is an operator decision. The active `.env` must be a byte-for-byte copy of the matching target file — `.env.prod` when `DOCKER_HOST` is set, `.env.dev` when unset. The `crosscheck-env` Make guard enforces this automatically before every daemon-touching, state-changing target (`build`, `start`, `migrate`, `seed`, `verify`, `shell`, `makemigrations`, `createsuperuser`, `push-certs`); `require-local` blocks `nuke` outright when `DOCKER_HOST` is set. Both guards are check-only — they stop on mismatch and never copy or repair anything. Switching posture (`cp .env.prod .env` / `cp .env.dev .env`) is always a deliberate act, never something Claude does silently to make a guard pass.
 
 Worktrees are initialized automatically: the committed `post-checkout` hook (activated once per clone with `make hooks`) copies `.env.dev`, `.env.prod`, and `ssl/` certs from the main checkout into a new worktree and sets its `.env` to **dev posture** — worktrees host design/implementation work, and a dev `.env` fails safe under `crosscheck-env` if an ambient `DOCKER_HOST` leaks in.
 
-The Makefile's Deployment-section targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev`, `make deploy-prod`, and `make seed-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
+The Makefile's Deployment-section targets are the **only sanctioned exception** to check-don't-fix: `make deploy-dev`, `make deploy-prod`, `make seed-prod`, and `make verify-prod` set the posture they name, because invoking them *is* the deliberate act. `deploy-prod` (operator-authorized only) pins the production `DOCKER_HOST` itself, refuses to run if one is already in the environment, pre-flights, builds, migrates, and restores dev resting posture. If it fails partway, `.env` deliberately remains in prod posture and the guards block dev work until a human restores it — never "fix" that state silently; report it.
 
 ---
 
@@ -156,13 +156,16 @@ make deploy-prod    # OPERATOR-AUTHORIZED ONLY: production deploy — flips post
 make seed-prod      # OPERATOR-AUTHORIZED ONLY: production seed — same contract as
                     # deploy-prod (flips posture, pre-flights, seeds, restores);
                     # the sanctioned path for closeout-tail data actions (#187)
+make verify-prod    # OPERATOR-AUTHORIZED ONLY: read-only production verification —
+                    # same posture contract; runs one brief-shipped verify_* command
+                    # (VERIFY=verify_<name>); awaiting its first shipped command (#249)
 ```
 
 > **Deployment law:** production runs `main` only — `make deploy-prod` runs from the main checkout, after the release PR merges, only in a closeout session's tail on the operator's one-time in-conversation go-ahead (one exact occurrence, no future permission implied). Never from a worktree, never with unmerged code, never from any other session type. `SHYLAND_VERSION` on main never carries a `-DEV` suffix (CI-enforced on PRs).
 
 > **Critical:** Source is baked into the Docker image at build time. After editing any file under `django/src/`, run `make build` before testing. `make restart` alone picks up no Python, template, or settings changes.
 
-> **Guards:** `build`, `start`, `migrate`, `seed`, `shell`, `makemigrations`, `createsuperuser`, and `push-certs` all run `crosscheck-env` first, and `nuke` runs `require-local` (see the standing target rule in Session Pre-Flight). A guard failure means the posture is wrong — stop and resolve it deliberately; never copy an env file just to get past the guard.
+> **Guards:** `build`, `start`, `migrate`, `seed`, `verify`, `shell`, `makemigrations`, `createsuperuser`, and `push-certs` all run `crosscheck-env` first, and `nuke` runs `require-local` (see the standing target rule in Session Pre-Flight). A guard failure means the posture is wrong — stop and resolve it deliberately; never copy an env file just to get past the guard.
 
 **Django:**
 ```
