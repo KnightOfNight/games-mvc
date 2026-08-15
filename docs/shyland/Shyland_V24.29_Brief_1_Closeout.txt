@@ -157,9 +157,9 @@ NOTES FOR THE CLOSEOUT SESSION
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — to be recorded here verbatim-style before the session ends:
-"Operator reports playtest successful" / "No playtests for this brief" /
-"Operator deferring playtest".
+Operator reports playtest successful.
 
-The dev stack is deployed and ready; the brief's §14 checklist (14 steps) is
-the playtest script.
+Recorded 2026-08-15, in-conversation, against the dev stack running 24.29-DEV
+after this brief's make deploy-dev. The brief's §14 checklist (14 steps) was
+the playtest script. Terminal disposition — no deferred playtest, nothing for
+the closeout entry gate to re-attest.
