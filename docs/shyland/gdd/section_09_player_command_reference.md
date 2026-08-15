@@ -51,6 +51,7 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | west (w) | 2 | |
 | settings | brief | 1 | |
 | | echo | 1 | v22 |
+| | plunder | 1 | v24.29 |
 | | timestamps | 1 | |
 
 #### Footnotes (stable numbering; never renumbered)
@@ -122,6 +123,20 @@ The transactional commands answer with one plain past-tense sentence, item names
 
 `loot` is `[all] | <NPC>`: `loot all` — or bare `loot`, its exact equivalent — sweeps every corpse in the room (per-item lines, then the summary); `loot <NPC>` loots that NPC's corpse, with `N.noun` disambiguating among same-name corpses. The target is optional, defaulting to the sweep (footnote 20 — the v18 most-recent-corpse convenience and the v20 item-noun/union forms remain retired; the bare form is the room sweep, never a single-corpse guess). Only the killing character may loot items; currency is always transferred on first loot of a corpse; a corpse that never had loot to give answers `The <npc> carried nothing worth taking.`
 
+**`plunder` — the sweep, automatic (v24.29, pending implementation — #235).** The settings command `plunder [on|off]`, **default off**, runs the rights-scoped sweep for the player instead of making them type it. It adds no new capability: plunder can take exactly what bare `loot` could have taken at that moment, and nothing else.
+
+**The trigger is one exact instant — the transition to genuinely out of combat**, meaning every NPC in the fight is dead. It is the same moment the player is told `Combat has ended.`, and it fires wherever that line is delivered. Three cases are deliberately excluded:
+
+- **No per-kill plunder.** A kill landed mid-fight, with other NPCs still alive, never triggers a sweep — not even of the corpse just made. Only the full end of the fight counts.
+- **Flee never plunders.** The fight is not over and the player is no longer in the room.
+- **Death never plunders.** A dying character has already left the session and holds no rights.
+
+**A lost race is a miss, never a queue.** If a fresh engagement begins before the sweep can run — aggro respawn in a room like The Choke — plunder simply does not fire: the player is back in combat, which is precisely the state that blocks looting (#29). Nothing is lost, because rights-held corpses persist until decay and the skipped sweep is picked up by the *next* combat-end transition. That self-correction is why no queueing machinery exists.
+
+**Plunder is silent unless it plunders.** With nothing to take — no corpses in the room, or none this character has rights to — plunder emits nothing whatever. The refusals `There is nothing to loot here.` and `That is not your kill; you may not loot it.` belong to the *typed* command and are never spoken on plunder's behalf. When plunder does sweep, its output is the sweep's output **verbatim**: the same per-item loot lines, the same coin lines, the same summary, and the same carry-capacity refusal when the player fills up mid-sweep — a shortfall is a consequence and must be seen (#132). A plunder is indistinguishable from a `loot` the player typed.
+
+**Plunder does not require a connected player.** Quit is allowed in combat and combat continues after quit (the state-gating matrix above), so a fight that ends for a logged-out character plunders on their behalf — the loot is theirs by the same rights predicate either way, and the output simply has no pane to land in.
+
 #### Information Output Standards
 
 Three kinds, one punctuation law — **colon = the value is on the line; ellipsis = structure follows below**. Headers are uniformly key-color, embedded counts included (`Inventory (12/250)...`); table column guides are muted; rows are value-color.
@@ -134,7 +149,7 @@ Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208)
 
 #### Settings Standard
 
-Three settings commands — `brief`, `echo` (v22, new), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, timestamps on.** Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and the future firehose are untouched; every command remains a stamped event.
+Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29, pending implementation), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, plunder off, timestamps on.** Unlike its siblings, `plunder` changes what the *world* does rather than what the player's pane shows — the setting is read at the moment combat ends, so a mid-fight flip governs that same fight. Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and the future firehose are untouched; every command remains a stamped event.
 
 #### Help
 
@@ -211,7 +226,7 @@ These commands are designed and documented elsewhere in the GDD but not yet in t
 - **Every refusal belongs to a layer** (the three-layer doctrine, Section 9.1): CLI errors are red, world-declines are yellow, and consequence must never speak in the ambient voice.
 - Every unrecognised command gets a helpful redirect, not a bare error: *"Unknown command. Type 'help' for a list of commands."*
 - `help` is generated from the chart and ends with the `Version:` line. When a new command is implemented, it is added to the chart, the dispatch table, and this section — one source of truth, three synchronized surfaces.
-- **Boolean commands always require an explicit value to set.** Never a bare toggle. The bare form *queries* — `brief`, `echo`, and `timestamps` all report their current value; six accepted words set it (the settings standard, Section 9.1).
+- **Boolean commands always require an explicit value to set.** Never a bare toggle. The bare form *queries* — `brief`, `echo`, `plunder`, and `timestamps` all report their current value; six accepted words set it (the settings standard, Section 9.1).
 - **Every submitted command echoes** into the output pane before its result — `> command as typed`, muted, timestamped — a transcript of the player, never re-broadcast to others, echoed even for invalid input so errors keep their context. The `echo` setting suppresses the display pane-side only; the event still exists.
 - **Setting changes are events** (stamped confirmations); reports and renderings are not — see the envelope display rule in 10.2.
 
