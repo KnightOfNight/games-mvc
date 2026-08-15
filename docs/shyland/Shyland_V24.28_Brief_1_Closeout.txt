@@ -221,14 +221,35 @@ including live Shyland WebSocket sessions.
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
 
-PENDING — awaiting the operator's explicit disposition. The dev stack is
-deployed and ready; the brief's §11 checklist (eight items, dev stack) can
-be run now.
+    OPERATOR REPORTS PLAYTEST SUCCESSFUL
 
-This line is completed by the implementation-session-end ritual with one of:
-    "Operator reports playtest successful"   (terminal)
-    "No playtests for this brief"            (terminal)
-    "Operator deferring playtest"            (OPEN — the closeout entry
-                                              gate treats it as a blocker
-                                              and demands fresh operator
-                                              attestation)
+Confirmed by the operator in-conversation on 2026-08-15, against the dev
+stack running 24.28-DEV, covering the brief's §11 checklist (eight items:
+version line, ladder presence and inertness in the admin, silver at Mk 2,
+osmium at Mk 7, sphaerium at Mk 15 and Mk 200, the three refusals plus gold
+at its own rung, the Z01 regression loop, and the freebie kit).
+
+TERMINAL — no further attestation is owed at the closeout entry gate.
+
+
+PLAYTEST-PREP FINDING -> ISSUE #246
+-----------------------------------
+
+Filed while preparing the checklist, and NOT a code defect — shipped
+behavior is correct and deliberate.
+
+The brief's §11 steps 3-6 say "admin-gift", which has two readings on the
+dev stack: the shell helper (generate_item_instance — goes through the
+Mk-mismatch guard, and the path the stock-playtest-items skill mandates)
+and the Django admin ItemInstance add form (direct ORM construction, which
+bypasses the guard by design — Brief §4's documented residual gap).
+
+Under the second reading, §11 step 6's three mismatched gifts MINT rather
+than fail, and an operator would correctly report the guard as broken when
+it is working exactly as ruled. Step 2 of the same checklist sends the
+operator into the Django admin, which makes that reading the natural one.
+
+The playtest was run through the shell-helper path and passed. #246 tracks
+the wording trap, which will recur on any future release guarding a
+generation path; the suggested directions there are a design call, not made
+in this session. Not blocking V24.28.
