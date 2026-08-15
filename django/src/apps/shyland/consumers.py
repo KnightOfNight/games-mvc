@@ -28,6 +28,8 @@ from .command_grammar import (
 )
 from .effect_utils import compose_use_sentence
 from .envelope import envelope_ts
+from . import loot_utils
+from .loot_utils import sweep_corpses
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
 from .item_utils import (
@@ -2169,46 +2171,34 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self._maybe_dispose_corpse(target_corpse)
 
+    @database_sync_to_async
+    def _run_loot_sweep(self, character, room, lootable):
+        return sweep_corpses(character, room, lootable)
+
     async def _loot_sweep(self, character, room, lootable):
         """v20 brief 3 amendment 1 (#62): 'loot all' sweeps every corpse
         in the room the character may loot. Per-item and coin lines
         exactly as single-corpse looting emits them (each its own
         message); empty corpses make no individual noise — the summary
-        counts them. Stops early if the character fills up."""
-        current_count, max_carry = await self.get_carry_counts(character)
-        swept = 0
-        carried_nothing = 0
-        capacity_hit = False
+        counts them. Stops early if the character fills up.
 
-        for corpse in lootable:
-            swept += 1
-            copper = await self._loot_corpse_copper(character, room, corpse)
-            contents = await self.get_corpse_contents(corpse)
-            if copper == 0 and not contents:
-                carried_nothing += 1
-            for item in contents:
-                if current_count >= max_carry:
-                    await self.output(
-                        f"You can't carry any more. ({current_count}/{max_carry} items)",
-                        "warn"
-                    )
-                    capacity_hit = True
-                    break
-                line = compose_item_line(item)
-                await self.do_loot_item(item, character)
-                # v22 B2 amendment 1 (#124): loot-color per DD §6.
-                await self.output(f"You loot {line}.", "reward")
-                current_count += 1
-            await self._maybe_dispose_corpse(corpse)
-            if capacity_hit:
-                break
-
-        summary = f'Looted {swept} corpse{"s" if swept != 1 else ""}'
-        if carried_nothing:
-            summary += (f'; {carried_nothing} carried nothing worth taking.')
-        else:
-            summary += '.'
-        await self.output(summary, 'system')
+        v24.29 (#235): the sweep itself moved to ``loot_utils`` so the
+        plunder hook in the tick engine — a process with no consumer —
+        can run the very same code. This method is now purely the
+        consumer's transport for it: the helper mutates and returns the
+        lines, and they are sent here."""
+        messages, room_lines = await self._run_loot_sweep(character, room, lootable)
+        for text, category in messages:
+            await self.output(text, category)
+        for text, category in room_lines:
+            # The disposal announcement was always a room broadcast, not
+            # a personal line; it stays one.
+            await self.channel_layer.group_send(self.room_group, {
+                'type': 'room_message',
+                'text': text,
+                'category': category,
+                'ts': envelope_ts(),
+            })
 
     # ------------------------------------------------------------------
     # Commerce commands
@@ -4285,64 +4275,31 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def get_corpses_in_room(self, room):
-        from .models import Corpse
-        return list(
-            Corpse.objects.filter(current_room=room)
-            .select_related('killed_by', 'npc_definition')
-            .prefetch_related('contents__definition')
-            .order_by('-created_at')
-        )
+        return loot_utils.corpses_in_room(room)
+
+    # v24.29 (#235): the loot mutations moved to loot_utils so the tick
+    # engine's plunder hook runs the identical code. These stay as the
+    # consumer's async wrappers over the one implementation.
 
     @database_sync_to_async
     def get_corpse_contents(self, corpse):
-        return list(corpse.contents.select_related('definition').all())
+        return loot_utils.get_corpse_contents(corpse)
 
     @database_sync_to_async
     def do_loot_item(self, item, character):
-        item.corpse = None
-        item.owner = character
-        # #80 knowledge by holding: looting is taking — same flip as
-        # transfer_to_character, same unidentifiable guard.
-        if not item.is_unidentifiable:
-            item.is_identified = True
-        item.save()
-        # Composed AFTER the flip: the looted line names the real item
-        # the player now holds (#80) — drop composes before transfer for
-        # the mirror-image reason.
-        name = get_display_name(item)
-        return name
+        return loot_utils.loot_item(item, character)
 
     @database_sync_to_async
     def do_loot_copper(self, corpse, character):
-        from django.db.models import F
-        amount = corpse.copper_drop
-        if amount > 0:
-            Character.objects.filter(pk=character.pk).update(copper=F('copper') + amount)
-            corpse.copper_drop = 0
-            corpse.save(update_fields=['copper_drop'])
-        return amount
+        return loot_utils.loot_copper(corpse, character)
 
     @database_sync_to_async
     def check_corpse_empty_and_delete(self, corpse):
-        # Query the table directly: `corpse.contents.exists()` on a corpse
-        # loaded with prefetch_related answers from the stale prefetch
-        # cache, so an emptied corpse would never delete on the loot that
-        # emptied it (found by v20 brief 3 verification).
-        if not ItemInstance.objects.filter(corpse=corpse).exists():
-            corpse.delete()
-            return True
-        return False
+        return loot_utils.corpse_empty_and_delete(corpse)
 
     @database_sync_to_async
     def get_carry_counts(self, character):
-        current = ItemInstance.objects.filter(owner=character, is_equipped=False).count()
-        equipped = list(
-            ItemInstance.objects.filter(owner=character, is_equipped=True)
-            .select_related('definition')
-        )
-        # v24.23 (#215): capacity via the single helper.
-        max_carry = carry_capacity(character, equipped)
-        return current, max_carry
+        return loot_utils.get_carry_counts(character)
 
     # ------------------------------------------------------------------
     # Commerce DB helpers
