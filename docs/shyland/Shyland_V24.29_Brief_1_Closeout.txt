@@ -113,6 +113,24 @@ DEVIATIONS
 
 4. §1 — cosmetic: the section is titled "Two things" and lists three.
 
+FOLLOW-UPS FILED (post-ritual, at operator direction, 2026-08-15):
+
+  #251 — All config command setters should write both the cached attribute
+        and the DB row. Resolves deviation 2 above, and resolves it the
+        OTHER way: operator ruling is that _set_plunder_mode's shape is
+        correct and the other three setters come to it, rather than
+        plunder being brought back into line with them. Labeled
+        `commands`, no milestone. Carries a note on its overlap with #250
+        (that fix DELETED a cached write; #251 adds one back, with the
+        correct field — not a reversal).
+
+  #252 — Briefs assert unverified facts about existing code; no gate checks
+        a brief for technical coherence. Filed as the procedural cause of
+        #251, citing all four deviations above. Process-doc work for an
+        ops session; lands as the next Instructions edition. No milestone.
+
+  Neither is in milestone 49 and neither blocks this release's closeout.
+
 NO PRE-EXISTING TEST WAS EDITED, other than the §3 version pin
 (test_b2_amendment1.py:118, moved in the same commit as the constant).
 The §5 and §9.21 stop-and-report conditions were never triggered.
