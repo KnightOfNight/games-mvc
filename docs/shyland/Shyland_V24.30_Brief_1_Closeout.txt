@@ -1,0 +1,135 @@
+SHYLAND V24.30 — BRIEF 1 CLOSEOUT REPORT
+=========================================
+
+Session start: 2026-08-15 — brief Shyland_V24.30_Brief_1_Uniform_Config_Setters.md,
+branch version_24_30, implementation session.
+
+Founding ticket: #251 — All config command setters should write both the
+cached attribute and the DB row. Milestone: Version 24.30 (1/1 closed).
+
+
+TECHNICAL PRE-FLIGHT (#252 / Instructions v36)
+----------------------------------------------
+All seven of the brief's §2 technical claims were diffed against the code
+at the branch tip before any edit. ZERO MISMATCHES — every claim exact,
+including the four supporting read paths of claim 4 (send_room_description's
+fresh fetch before _resolve_room_rendering reads brief_mode; _status_payload
+reading its callers' fresh char; loot_utils.get_plunder re-reading by pk at
+combat end; the connect-time payload reading the connect-time object). The
+brief's process assumptions likewise matched the standing rituals — nothing
+to flag, no hard stop.
+
+
+COMMITS (in order)
+------------------
+895e55b  Step 0 — closeout report stub (work-has-started signal)
+f0d527a  Version start — SHYLAND_VERSION 24.30-DEV (pin test moved)
+6248df2  Step 2 — implementation (#251)
+53c6da8  Step 3 — tests
+1adb50e  Step 4 — architecture doc (stamp 24.30, setter hygiene rewritten)
+
+FINAL IMPLEMENTATION COMMIT: 53c6da8 (the hash the architecture doc header
+now carries). Final content commit: 1adb50e. This report's own commit
+follows, per the standing ritual.
+
+
+WHAT LANDED
+-----------
+Step 1 — version start (own commit, per the standing requirement):
+  SHYLAND_VERSION "24.29" -> "24.30-DEV" in version.py, with the pin test
+  assertion in tests/test_b2_amendment1.py moved in the same commit.
+  Followed by the version-start `make deploy-dev` (no migrations pending).
+
+Step 2 — implementation, all in consumers.py:
+  - _set_brief_mode, _set_show_timestamps and _set_echo_mode each gained
+    the cache write after their .update(...) line, mirroring
+    _set_plunder_mode exactly. All four setters now write both.
+  - The caller-side cache assignments were removed from cmd_brief, cmd_echo
+    and cmd_plunder. cmd_brief and cmd_plunder lost their now-empty
+    `if value is not None:` blocks; cmd_echo kept its block (the fresh
+    fetch and status payload inside it remain).
+  - cmd_timestamps unedited, as specified.
+  - No fresh-fetch/deleted-guard logic was added to any set path (#243's
+    ruling, deliberately out of scope).
+  - No model change, no migration, no seed data, no shared surface.
+
+Step 3 — tests: new django/src/apps/shyland/tests/test_v24_30_brief1.py,
+  four tests across three classes:
+  - SetterOwnsBothTests: each of the four setters called DIRECTLY (the
+    issue's exact complaint) writes both the fresh DB row and the cached
+    attribute, driven both directions so the assertion never rides a default.
+  - CommandCacheCoherenceTests: each of the four commands leaves row and
+    cache in step; `timestamps` pins the §2 claim 3 direct-call path.
+  - NoBehaviorDriftTests: all four bare forms still answer the current-
+    setting sentence; an invalid word still answers the `Usage:` line and
+    changes neither the row nor the cache.
+  The existing suites (test_v24_29_brief1.py, test_command_revamp.py) pass
+  UNEDITED — the regression bar held.
+
+Step 4 — architecture doc (last, gated on all of the above passing),
+  Shyland_Architecture_v24.md updated in place:
+  - Header "as of commit" hash moved f0c12e3 -> 53c6da8 with the v24.30
+    one-line summary in the established style.
+  - A Version 24.30 box-out added above the 24.29 one; the v24.29 box-out
+    is history and was not edited.
+  - The "Setter hygiene" passage rewritten: the #250 history (deletion-
+    rather-than-correction) kept intact and retensed — its claim that
+    cmd_echo "already assigns the cached attribute" was true only until
+    this release — with #251 added as its completion.
+
+
+VERIFICATION
+------------
+1. Full suite, in-container, path form:
+     docker compose --project-name game-mvc exec django \
+       python manage.py test apps/shyland/tests
+   RESULT: Ran 687 tests — OK. Suite 683 -> 687, growth exactly the four
+   tests this brief adds and nothing else.
+
+2. §6.2 grep — every cached-attribute assignment inside a setter, none in
+   any command:
+     grep -n 'self.character.brief_mode = value\|self.character.echo_mode = value\|
+              self.character.plunder_mode = value\|self.character.show_timestamps = value' \
+       django/src/apps/shyland/consumers.py
+   RESULT: exactly four hits — lines 4085, 4090, 4095, 4100 — each the line
+   immediately following its own `def _set_*` (4083/4088/4093/4098). ZERO
+   hits inside any cmd_*. PASS.
+
+3. `make deploy-dev` from the worktree after 1–2 passed: complete, dev stack
+   refreshed, "No migrations to apply" (correct — this release has none).
+
+Issue state: #251 closed with a full implementation comment (gated on the
+above passing). A cross-reference comment was added to #250 recording that
+the correct cached line is back inside _set_echo_mode and explaining why
+that is not a reversal of #250's fix. #243 untouched, as the brief directs.
+
+
+DEVIATIONS
+----------
+One, minor and deliberate:
+
+  Removing the caller-side assignments left `cmd_brief` and `cmd_plunder`
+  holding an assigned-but-unused local (`value = await self._cmd_setting(...)`).
+  The brief's §4.2 specifies removing the assignment lines and the emptied
+  conditionals but is silent on the dead local. Both were changed to a bare
+  `await self._cmd_setting(...)` — the file's own idiom for a discarded
+  return, as cmd_timestamps' fallback path already uses. No behavior
+  implication: the return value had no remaining reader.
+
+Nothing else. No test required editing, no brief premise proved false, no
+pending items.
+
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+NONE. No migration, no seed, no data actions — nothing for the closeout
+tail beyond the ordinary `make deploy-prod`.
+
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+Operator reports playtest successful.
+
+Recorded 2026-08-15, in-conversation, against the dev stack running this
+brief's build (#170). Terminal disposition — no attestation is owed to the
+closeout entry gate.
