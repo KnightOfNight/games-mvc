@@ -25,6 +25,25 @@ DYING_LADDER = [
 ]
 
 
+def _queue_plunder(character_pk, messages, room_messages):
+    """v24.29 (#235): run the plunder hook for one character and queue
+    whatever it produced onto the round's accumulators.
+
+    Synchronous — both of its call sites are inside ``execute_actions``,
+    which already runs in a worker thread. Emits nothing at all when the
+    setting is off or the character has no corpse to claim (the silence
+    contract); the disposal announcement stays a room broadcast, exactly
+    as the typed sweep leaves it.
+    """
+    from apps.shyland.loot_utils import plunder_on_combat_end
+
+    plunder_msgs, room_lines, room_id = plunder_on_combat_end(character_pk)
+    for text, category in plunder_msgs:
+        messages.append((character_pk, text, category, None))
+    for text, category in room_lines:
+        room_messages.append((room_id, text, category, None))
+
+
 class Command(BaseCommand):
     help = 'Run the Shyland tick engine (1-second loop).'
 
@@ -311,6 +330,9 @@ class Command(BaseCommand):
                         char_pk, "Combat has ended.", 'reward', status,
                         fight={'type': 'fight', 'active': False, 'enemies': []},
                     )
+                    # v24.29 (#235): plunder site A — the transition is
+                    # announced, then its consequence.
+                    await self.deliver_plunder(char_pk)
                 logger.info(f"Combat session {session.pk} closed (self-heal: no living NPCs)")
                 continue
 
@@ -661,6 +683,10 @@ class Command(BaseCommand):
                                     release_session_npcs(other)
                                     for c in other_chars:
                                         messages.append((c.pk, "Combat has ended.", 'reward', None))
+                                        # v24.29 (#235): plunder site B —
+                                        # an M2M sibling session emptied
+                                        # by someone else's kill.
+                                        _queue_plunder(c.pk, messages, room_messages)
                                         statuses.append((c.pk, self._build_status(c)))
                                     ended_sessions.append(other)
                                 elif other.focus_npc_id == npc.pk:
@@ -683,6 +709,11 @@ class Command(BaseCommand):
                                 # v22 B2 amendment 1 (#124): a good outcome
                                 # — success-color (the reward class).
                                 messages.append((character.pk, "Combat has ended.", 'reward', None))
+                                # v24.29 (#235): plunder site C — the
+                                # killer's own session emptied by its
+                                # last kill. Queued after the level-up
+                                # lines already appended above.
+                                _queue_plunder(character.pk, messages, room_messages)
                                 break
 
                             if npc.pk == focus_npc_pk:
@@ -1659,6 +1690,26 @@ class Command(BaseCommand):
 
     async def _build_status_async(self, character):
         return await database_sync_to_async(self._build_status)(character)
+
+    @database_sync_to_async
+    def _run_plunder(self, character_pk):
+        from apps.shyland.loot_utils import plunder_on_combat_end
+        return plunder_on_combat_end(character_pk)
+
+    async def deliver_plunder(self, character_pk):
+        """v24.29 (#235): the async transport for the plunder hook — used
+        by the loop-head self-heal close, which sends directly rather
+        than through the round's accumulators.
+
+        Per the ruling, no connected player is required: the mutations
+        land either way and the group_send reaches an empty group, which
+        is a no-op rather than an error.
+        """
+        messages, room_lines, room_id = await self._run_plunder(character_pk)
+        for text, category in messages:
+            await self.send_to_player(character_pk, text, category, None)
+        for text, category in room_lines:
+            await self.broadcast_to_room(room_id, text, category)
 
     async def send_to_player(self, character_pk, text, category, status, event=None,
                              fight=None):

@@ -93,6 +93,44 @@ def lootable_corpses(character, room):
     return [c for c in corpses_in_room(room) if c.killed_by_id == character.pk]
 
 
+def plunder_on_combat_end(character_pk):
+    """v24.29 (#235): the plunder hook, called wherever ``Combat has
+    ended.`` is delivered to a character and nowhere else.
+
+    Returns ``(messages, room_lines, room_id)`` — empty lists and a null
+    room id when there is nothing to do.
+
+    **The silence contract:** plunder is silent unless it plunders. With
+    the setting off, with no corpses in the room, or with no corpses this
+    character has rights to, it emits nothing whatsoever. The typed
+    command's refusals (``There is nothing to loot here.`` / ``That is
+    not your kill; you may not loot it.``) belong to ``cmd_loot`` and are
+    never spoken on plunder's behalf — which is why the filtering happens
+    here, before the sweep, and never routes through the command.
+
+    The character is re-read by pk rather than taken as an object so the
+    setting is genuinely read *at combat end*: a player who flips
+    ``plunder`` mid-fight governs that same fight, whatever the calling
+    site had loaded earlier in the round.
+    """
+    character = (
+        Character.objects
+        .select_related('current_room__zone')
+        .filter(pk=character_pk)
+        .first()
+    )
+    if character is None or not character.plunder_mode:
+        return [], [], None
+    room = character.current_room
+    if room is None:
+        return [], [], None
+    lootable = lootable_corpses(character, room)
+    if not lootable:
+        return [], [], None
+    messages, room_lines = sweep_corpses(character, room, lootable)
+    return messages, room_lines, room.pk
+
+
 def _disappear_line(corpse):
     name = corpse.display_name
     return (f"{name[0].upper()}{name[1:]} slowly disappears.", 'room')
