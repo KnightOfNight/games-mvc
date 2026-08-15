@@ -2986,12 +2986,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return value
 
     async def cmd_brief(self, args):
-        value = await self._cmd_setting(
+        await self._cmd_setting(
             args, 'brief', 'brief room display', 'is',
             lambda c: c.brief_mode, self._set_brief_mode,
         )
-        if value is not None:
-            self.character.brief_mode = value
 
     async def cmd_echo(self, args):
         # The client applies the change from the status payload; the
@@ -3001,7 +2999,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             lambda c: c.echo_mode, self._set_echo_mode,
         )
         if value is not None:
-            self.character.echo_mode = value
             char = await self.get_character_fresh()
             await self.send_json(await self._status_payload(char, char.current_room))
 
@@ -3010,12 +3007,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # the other three there is no separate noun for it; the command
         # names the behavior directly. Read at combat end, so flipping it
         # mid-fight governs that same fight.
-        value = await self._cmd_setting(
+        await self._cmd_setting(
             args, 'plunder', 'plunder', 'is',
             lambda c: c.plunder_mode, self._set_plunder_mode,
         )
-        if value is not None:
-            self.character.plunder_mode = value
 
     async def cmd_timestamps(self, args):
         """v20 brief 3 (#45): the preference persists on the Character and
@@ -4079,17 +4074,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     def touch_last_seen(self, character):
         Character.objects.filter(pk=character.pk).update(last_seen=timezone.now())
 
+    # v24.30 (#251): every config setter is the single writer of its own
+    # setting — the DB row and the cached attribute both, so a direct call
+    # can never leave self.character stale. The commands no longer keep
+    # the cache; _set_plunder_mode's v24.29 shape is the family's shape.
+
     @database_sync_to_async
     def _set_brief_mode(self, value):
         Character.objects.filter(pk=self.character_pk).update(brief_mode=value)
+        self.character.brief_mode = value
 
     @database_sync_to_async
     def _set_show_timestamps(self, value):
         Character.objects.filter(pk=self.character_pk).update(show_timestamps=value)
+        self.character.show_timestamps = value
 
     @database_sync_to_async
     def _set_echo_mode(self, value):
         Character.objects.filter(pk=self.character_pk).update(echo_mode=value)
+        self.character.echo_mode = value
 
     @database_sync_to_async
     def _set_plunder_mode(self, value):
