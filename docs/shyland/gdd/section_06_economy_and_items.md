@@ -75,9 +75,9 @@ Items in Shyland use a **Mark (Mk) tier system** tied to player level ranges. Th
 
 **Reading an item:** `Rare Plasma Rifle Mk 7` tells you everything — what it is, how powerful it is relative to other items, and how special it is. Rarity stacks on top of Mark tier.
 
-**Tier materials suppress the Mk suffix (display only).** Items whose names carry a **tier material** — the metal ladder below — do not display a Mark suffix, because the material already says the tier: a *Copper Ring of Strength* is `mk_tier=1` under the hood with standard scaling and rarity machinery, but never prints "Mk 1." This is the same pattern as local zone currencies: a display alias, same math, zero engine change. Flavor materials (iron, wood, leather, and the like) never suppress on their own account: an Iron Sword still reads "Iron Sword Mk 1." **Suppression is a display flag, not the ladder itself** (v24.28, pending implementation): a few items suppress the suffix for reasons of their own without standing on any rung — the freebie kit's *Tarnished Band* and *Cloudy Glass Pendant* among them, whose names claim no tier to begin with. Membership on the ladder is a separate fact, recorded separately.
+**Tier materials suppress the Mk suffix (display only).** Items whose names carry a **tier material** — the metal ladder below — do not display a Mark suffix, because the material already says the tier: a *Copper Ring of Strength* is `mk_tier=1` under the hood with standard scaling and rarity machinery, but never prints "Mk 1." This is the same pattern as local zone currencies: a display alias, same math, zero engine change. Flavor materials (iron, wood, leather, and the like) never suppress on their own account: an Iron Sword still reads "Iron Sword Mk 1." **Suppression is a display flag, not the ladder itself** (v24.28): a few items suppress the suffix for reasons of their own without standing on any rung — the freebie kit's *Tarnished Band* and *Cloudy Glass Pendant* among them, whose names claim no tier to begin with. Membership on the ladder is a separate fact, recorded separately.
 
-**The ladder is eight rungs, and the last one has no ceiling** (v24.28, pending implementation):
+**The ladder is eight rungs, and the last one has no ceiling** (v24.28):
 
 |Mk tier|Material  |Levels|Mk suffix|
 |-------|----------|------|---------|
