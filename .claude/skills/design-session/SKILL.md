@@ -53,6 +53,7 @@ Summarize to the operator: branch (created or joined), worktree path, milestone 
 - Rulings are recorded on their issues **immediately** — comment, `triaged` label in the same motion, milestone per ruling. GitHub follows the conversation in real time.
 - GDD-first: section edits land as rulings settle; the operator reviews mechanics/balance edits in-conversation before commit; creative content flows under the creative-content policy. Intra-branch "(vNN, pending implementation)" markers where code hasn't landed yet.
 - Briefs are born committed: write the brief file into `docs/shyland/` on this branch and commit it. Never deliver a brief by paste.
+- **Technical coherence (#252):** every structural claim the brief makes about existing code (function shapes, tuple members, call-site behavior, field names) is verified against the code at writing time and the brief records that it was — recall is not a source. Before commit: one end-to-end read for self-consistency; a brief must not contradict itself.
 - Issue callouts, MapFrag diagrams for any layout work, geography audit for authored directional text, `--assignee "@me"` on every filing.
 - Commit and push at every meaningful boundary — the operator follows the branch in near-real time.
 - End the session with the `design-session-end` skill. Do not close without it.

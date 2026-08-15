@@ -27,6 +27,7 @@ The operator supplies the version branch name (`version_N` / `version_N_M`). If 
 - Read the highest-numbered `docs/shyland/Shyland_Project_Instructions_vN.md` — the process bible.
 - The operator directs a brief **by name** (Rule 4). Confirm it exists **verbatim at the branch tip** (whitespace-only drift is report-and-accept). No directed brief = reference-only session; ask what the operator wants.
 - Diff the brief's process assumptions against the standing rituals in the instructions; flag discrepancies before starting.
+- **Technical pre-flight (#252):** diff the brief's load-bearing technical claims about existing code (function shapes, tuple members, call-site behavior, field names) against the code itself, before writing anything. **A mismatch on a load-bearing claim is a HARD STOP back to the operator** — never implement a false premise as written, never silently improvise around it.
 
 ## 5. Step 0 — verify-and-signal
 
