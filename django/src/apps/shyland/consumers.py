@@ -4086,7 +4086,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _set_echo_mode(self, value):
         Character.objects.filter(pk=self.character_pk).update(echo_mode=value)
-        self.character.show_timestamps = value
 
     @database_sync_to_async
     def get_travel_node(self, room):
