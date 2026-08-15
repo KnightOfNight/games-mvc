@@ -128,5 +128,8 @@ tail beyond the ordinary `make deploy-prod`.
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — to be recorded here at session end (#170). The dev stack is
-deployed and the brief's §7 checklist is ready to run.
+Operator reports playtest successful.
+
+Recorded 2026-08-15, in-conversation, against the dev stack running this
+brief's build (#170). Terminal disposition — no attestation is owed to the
+closeout entry gate.
