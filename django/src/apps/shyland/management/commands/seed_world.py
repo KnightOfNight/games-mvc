@@ -55,6 +55,270 @@ ARMOR_DUR = [
     {'min': 0,  'max': 0,   'penalty': 1.0},
 ]
 
+# ----------------------------------------------------------------------
+# V24.28 (#211, #245): the tier-material ladder — eight rungs, copper
+# through sphaerium, twelve accessories each. On this ladder the material
+# name IS the tier display, which is why generation is range-guarded
+# (item_utils.generate_item_instance refuses an out-of-range Mk) and why
+# sphaerium — the one rung with no ceiling — is the one rung that does not
+# suppress its Mk suffix: the material alone cannot say the tier when the
+# rung runs on forever.
+#
+# Rungs 2-8 are prep work for the V24 new-zone-prep major: Z02 through Z08
+# do not exist yet, so all eighty-four ship with zero drop-table and zero
+# vendor entries. Seeding the ladder complete now means no future zone
+# build has to stop and author jewelry before it can drop any.
+# ----------------------------------------------------------------------
+
+# (slug prefix, display material, mk_min, mk_max, suppress_mk_suffix).
+# A null maximum is the unbounded shape — sphaerium only.
+LADDER_MATERIALS = [
+    ('copper',    'Copper',    1, 1,    True),
+    ('silver',    'Silver',    2, 2,    True),
+    ('gold',      'Gold',      3, 3,    True),
+    ('platinum',  'Platinum',  4, 4,    True),
+    ('rhodium',   'Rhodium',   5, 5,    True),
+    ('iridium',   'Iridium',   6, 6,    True),
+    ('osmium',    'Osmium',    7, 7,    True),
+    ('sphaerium', 'Sphaerium', 8, None, False),
+]
+
+# (stat word, primary stat, secondary pool) — the ring and the amulet of
+# the same stat share this structure at every rung.
+LADDER_STATS = [
+    ('strength',     'str', ('dex', 'end')),
+    ('dexterity',    'dex', ('str', 'per')),
+    ('endurance',    'end', ('str', 'wis')),
+    ('intelligence', 'int', ('wis', 'dex')),
+    ('wisdom',       'wis', ('int', 'end')),
+    ('perception',   'per', ('dex', 'int')),
+]
+
+# One curve for the whole ladder (#211 ruling): every rung carries stat
+# authorship identical to its copper counterpart. _roll_stat computes
+# midpoint = base + factor x mk_tier, so tier progression is already paid
+# for by the engine — 2.8 at copper's Mk 1, 4.9 at silver's Mk 2, 15.4 at
+# osmium's Mk 7, and upward without limit on sphaerium's rung. Per-rung
+# midpoints were considered and rejected.
+LADDER_PRIMARY = {'base': 0.7, 'factor': 2.1}
+LADDER_SECONDARY = {'base': 0.175, 'factor': 0.525}
+
+# Authored descriptions for the seven rungs above copper (copper's own are
+# authored inline in the accessories list). Each material owns one physical
+# opener per form, carried across all six stats of that form, plus its own
+# stat clauses — the ladder climbs in the prose as well as the numbers.
+LADDER_PROSE = {
+    'silver': {
+        'ring': (
+            'A slender silver band, cool against the skin.',
+            {
+                'strength': 'The grip closes with a certainty the hand did not have before.',
+                'dexterity': 'The fingers move a half-beat ahead of the thought.',
+                'endurance': 'The long walk gives up trying to slow the wearer.',
+                'intelligence': 'Cluttered reasoning sorts itself while the band is worn.',
+                'wisdom': 'Bad decisions announce themselves early, and quietly.',
+                'perception': 'The edges of things stand out sharper than they should.',
+            },
+        ),
+        'amulet': (
+            'A silver pendant on a braided cord, cool against the collarbone.',
+            {
+                'strength': 'Weight that used to argue with the shoulders stops arguing.',
+                'dexterity': 'The body corrects itself before it knows it has slipped.',
+                'endurance': 'The lungs keep their rhythm long past where they usually break it.',
+                'intelligence': 'Tangled problems come apart along seams the wearer had not seen.',
+                'wisdom': 'The wrong path feels wrong a few steps before it proves to be.',
+                'perception': 'Movement at the far edge of sight registers before it is looked at.',
+            },
+        ),
+    },
+    'gold': {
+        'ring': (
+            'A heavy gold band with a soft, unhurried shine.',
+            {
+                'strength': 'What the hand takes hold of, it does not lose.',
+                'dexterity': 'Every motion finds the shortest honest line to where it was going.',
+                'endurance': 'Fatigue arrives late, and politely.',
+                'intelligence': 'Ideas hold their shape under pressure instead of scattering.',
+                'wisdom': 'Judgment settles before haste can get a word in.',
+                'perception': 'The room gives up what it was hiding, one detail at a time.',
+            },
+        ),
+        'amulet': (
+            'A gold pendant on a woven cord, warm with its own weight.',
+            {
+                'strength': 'The shoulders carry as though the load had been halved on the way down.',
+                'dexterity': 'Balance stops being something the body has to remember.',
+                'endurance': 'The road ends before the wearer does.',
+                'intelligence': 'Complicated things arrive already sorted into parts.',
+                'wisdom': 'Old mistakes speak up before they can be repeated.',
+                'perception': 'Silence becomes legible, every small sound in it accounted for.',
+            },
+        ),
+    },
+    'platinum': {
+        'ring': (
+            'A seamless platinum band, white and dense, with no seam to find.',
+            {
+                'strength': 'Force goes where it is aimed and nowhere else.',
+                'dexterity': 'The hand stops missing entirely; it simply does the thing.',
+                'endurance': "The body's reserves turn out to be deeper than advertised.",
+                'intelligence': 'Reasoning runs clean and cold, without a wasted step.',
+                'wisdom': 'Consequences unfold in advance, in order, without drama.',
+                'perception': 'Nothing crosses the field of view unnoticed.',
+            },
+        ),
+        'amulet': (
+            'A platinum pendant on a fine chain, dense and white and unmarked.',
+            {
+                'strength': 'The frame beneath the load quietly proves stronger than the load.',
+                'dexterity': 'Footing holds on ground that has no business holding it.',
+                'endurance': 'Exhaustion becomes a thing that happens to other people.',
+                'intelligence': 'The hardest question in the room shrinks to its essentials.',
+                'wisdom': 'Restraint arrives exactly when it is worth more than speed.',
+                'perception': 'The dark stops being empty and starts being merely dark.',
+            },
+        ),
+    },
+    'rhodium': {
+        'ring': (
+            'A rhodium band polished to a hard mirror; it shows the room back too clearly.',
+            {
+                'strength': "The hand's strength comes back doubled, like a blow returned.",
+                'dexterity': 'Reflex outruns intention; the hand answers before the mind asks.',
+                'endurance': 'Whatever the body spends, something gives most of it back.',
+                'intelligence': 'Thought sees itself thinking and corrects on the way through.',
+                'wisdom': 'Every choice shows its far side before it is made.',
+                'perception': 'Light gives up what it touched, and what touched it.',
+            },
+        ),
+        'amulet': (
+            'A rhodium pendant on a fine chain, mirror-bright, returning every light it meets.',
+            {
+                'strength': 'Weight rebounds off the wearer rather than settling onto them.',
+                'dexterity': 'A stumble reverses itself before it finishes happening.',
+                'endurance': "The body's account never quite empties, however hard it is drawn on.",
+                'intelligence': 'Problems solve themselves in reflection while the wearer watches.',
+                'wisdom': 'The mistake not yet made is already visible, and already avoided.',
+                'perception': 'Nothing hides in a room that will not stop reflecting.',
+            },
+        ),
+    },
+    'iridium': {
+        'ring': (
+            'An iridium band, dark and oil-sheened, colors sliding across it as it turns.',
+            {
+                'strength': 'The hand grips like something that was never going to let go.',
+                'dexterity': 'Movement slips between moments the way the sheen slips between colors.',
+                'endurance': 'The body refuses wear the way the metal refuses it.',
+                'intelligence': 'Thought turns over and shows a face it had been keeping hidden.',
+                'wisdom': 'Understanding shifts with the angle, and every angle is true.',
+                'perception': 'Colors nobody named resolve themselves at the edge of sight.',
+            },
+        ),
+        'amulet': (
+            'An iridium pendant on a black cord, its dark surface shifting through colors that have no name.',
+            {
+                'strength': 'The load meets a body that has stopped agreeing to yield.',
+                'dexterity': 'The ground is negotiated with rather than merely walked on.',
+                'endurance': 'Wear finds nothing on the wearer that it can take hold of.',
+                'intelligence': 'Every problem shows a second face, and the second face is simpler.',
+                'wisdom': 'Certainty arrives shaded, never wrong and never quite the same twice.',
+                'perception': 'Things at the edge of perception stop bothering to hide.',
+            },
+        ),
+    },
+    'osmium': {
+        'ring': (
+            'An osmium band, blue-grey and far heavier than its size allows.',
+            {
+                'strength': 'The hand closes with the weight of something that cannot be argued with.',
+                'dexterity': 'Speed arrives with mass behind it, and nothing deflects it.',
+                'endurance': 'The wearer becomes the immovable part of any long day.',
+                'intelligence': 'Thought lands with the finality of a settled matter.',
+                'wisdom': 'Judgment sinks past the surface of things to what is under them.',
+                'perception': 'Attention falls on the world hard enough to leave nothing unexamined.',
+            },
+        ),
+        'amulet': (
+            'An osmium pendant on a steel-threaded cord, so dense it pulls the cord taut.',
+            {
+                'strength': 'The weight on the cord and the weight on the back cancel each other out.',
+                'dexterity': 'A body this anchored is never actually off balance.',
+                'endurance': 'Whatever the road takes, it takes from something inexhaustible.',
+                'intelligence': 'Complexity collapses under its own weight into a single clear answer.',
+                'wisdom': 'What is worth knowing settles out; the rest is left floating above it.',
+                'perception': 'The world reports itself in full, whether or not it wanted to.',
+            },
+        ),
+    },
+    'sphaerium': {
+        'ring': (
+            'A sphaerium band that is not quite metal, curving through more directions than a ring should have.',
+            {
+                'strength': "The hand's strength stops having a stated limit.",
+                'dexterity': 'Motion arrives where it was going without troubling the distance between.',
+                'endurance': 'The body keeps going along a curve that does not appear to end.',
+                'intelligence': 'Thought runs on past the point where thought usually stops.',
+                'wisdom': 'Understanding widens the way a horizon does, always further out.',
+                'perception': 'The far edge of what can be sensed keeps retreating, and keeps being reached.',
+            },
+        ),
+        'amulet': (
+            'A sphaerium pendant on a cord of the same impossible stuff, holding light the way a sphere holds a horizon.',
+            {
+                'strength': 'Load and bearer trade places; the weight begins carrying itself.',
+                'dexterity': 'The ground and the body agree on where the next step already is.',
+                'endurance': 'There is no end of the road to find, and no need to look for one.',
+                'intelligence': 'Every answer opens onto a larger one, and that one is reachable too.',
+                'wisdom': 'Knowing arrives from a direction the wearer had not thought to face.',
+                'perception': 'Everything nearby is simply present, all at once, without being looked for.',
+            },
+        ),
+    },
+}
+
+
+def ladder_accessories():
+    """V24.28 (#211, #245): the ladder's seven new rungs, twelve pieces each.
+
+    Silver through sphaerium, generated from LADDER_MATERIALS x LADDER_STATS
+    so every rung is provably the copper set's authorship under a different
+    name — the one-curve invariant, enforced by construction rather than by
+    eighty-four hand-copied dicts. Copper (rung 1) is authored literally in
+    the accessories list and skipped here. Descriptions come from
+    LADDER_PROSE, authored per material and form.
+    """
+    entries = []
+    for prefix, material, mk_min, mk_max, suppress in LADDER_MATERIALS:
+        prose = LADDER_PROSE.get(prefix)
+        if prose is None:  # copper — authored inline with the v18 set
+            continue
+        for form, form_name, slot in (('ring', 'Ring', 'RING'),
+                                      ('amulet', 'Amulet', 'NECK')):
+            opener, clauses = prose[form]
+            for stat_word, primary, secondary in LADDER_STATS:
+                entries.append({
+                    'slug': f'{prefix}-{form}-of-{stat_word}',
+                    'name': f'{material} {form_name} of {stat_word.title()}',
+                    'item_type': 'accessory',
+                    'genre_tag': 'fantasy',
+                    'valid_slots': [slot],
+                    'suppress_mk_suffix': suppress,
+                    'tier_material_mk_min': mk_min,
+                    'tier_material_mk_max': mk_max,
+                    'scaling_base': 2.0,
+                    'scaling_factor': 0.8,
+                    'takes_durability_loss': False,
+                    'durability_table': [],
+                    'primary_stats': [{'stat': primary, **LADDER_PRIMARY}],
+                    'secondary_stat_pool': [
+                        {'stat': s, **LADDER_SECONDARY} for s in secondary
+                    ],
+                    'description': f'{opener} {clauses[stat_word]}',
+                })
+    return entries
+
 
 def floor_invariant_violations(definitions):
     """v24.10 (#127): the primary-only proc-floor invariant. The authored
@@ -2993,6 +3257,109 @@ class Command(BaseCommand):
             not floor_violations,
         )
 
+        # V24.28 (#211, #245): the tier-material ladder's five invariants.
+        # The material name is the tier display, so a mis-authored rung
+        # produces an item whose name lies — these fail the seed instead.
+        ladder = {
+            d.slug: d for d in ItemDefinition.objects.filter(
+                tier_material_mk_min__isnull=False)
+        }
+        self._check(
+            f'96 ItemDefinitions sit on the tier-material ladder '
+            f'(found {len(ladder)})',
+            len(ladder) == 96,
+        )
+        for prefix, _name, mk_min, mk_max, suppress in LADDER_MATERIALS:
+            rung = [d for d in ladder.values() if d.tier_material_mk_min == mk_min]
+            self._check(
+                f'{prefix} rung holds 12 definitions at Mk minimum {mk_min} '
+                f'(found {len(rung)})',
+                len(rung) == 12,
+            )
+            # Range shape: every rung but sphaerium is a single tier;
+            # sphaerium alone is unbounded above.
+            self._check(
+                f'{prefix} rung range shape is '
+                + (f'unbounded above Mk {mk_min}' if mk_max is None
+                   else f'exactly Mk {mk_min}'),
+                all(d.tier_material_mk_max == mk_max for d in rung),
+            )
+            # Suffix shape: suppression is a display flag, not membership.
+            # Sphaerium is on the ladder and does NOT suppress, because its
+            # rung spans infinitely and the material cannot say the tier.
+            self._check(
+                f'{prefix} rung has suppress_mk_suffix={suppress}',
+                all(d.suppress_mk_suffix is suppress for d in rung),
+            )
+        unbounded = [d for d in ladder.values() if d.tier_material_mk_max is None]
+        self._check(
+            f'Exactly one rung is unbounded above, and it is sphaerium '
+            f'(found {len(unbounded)} definitions)',
+            len(unbounded) == 12
+            and all(d.slug.startswith('sphaerium-') for d in unbounded),
+        )
+
+        # The one-curve invariant (#211): every rung carries stat authorship
+        # identical to its copper counterpart. Tier progression is the
+        # engine's job, not the authorship's.
+        curve_offenders = []
+        for slug, definition in sorted(ladder.items()):
+            prefix, _, suffix = slug.partition('-')
+            if prefix == 'copper':
+                continue
+            copper = ladder.get(f'copper-{suffix}')
+            if copper is None:
+                curve_offenders.append(f'{slug}: no copper counterpart')
+                continue
+            if definition.primary_stats != copper.primary_stats:
+                curve_offenders.append(f'{slug}: primary_stats differ from copper')
+            if definition.secondary_stat_pool != copper.secondary_stat_pool:
+                curve_offenders.append(f'{slug}: secondary pool differs from copper')
+        for line in curve_offenders:
+            self.stdout.write(self.style.ERROR(f'    ladder curve: {line}'))
+        self._check(
+            f'Every ladder rung carries the copper set\'s stat authorship '
+            f'(found {len(curve_offenders)} violations)',
+            not curve_offenders,
+        )
+
+        # Drop and vendor entries respect the range. The drop path clamps to
+        # entry.mk_tier_min/mk_tier_max and the vendor path passes
+        # entry.mk_tier straight into generate_item_instance, so a
+        # mis-authored entry now raises at drop or purchase time rather than
+        # merely producing a wrong name. Vacuous for rungs 2-8 today.
+        def _in_range(definition, tier):
+            hi = definition.tier_material_mk_max
+            return tier >= definition.tier_material_mk_min and (
+                hi is None or tier <= hi)
+
+        exposure_offenders = []
+        for entry in LootTableEntry.objects.filter(
+                item_definition__tier_material_mk_min__isnull=False,
+        ).select_related('item_definition', 'loot_table'):
+            definition = entry.item_definition
+            if not (_in_range(definition, entry.mk_tier_min)
+                    and _in_range(definition, entry.mk_tier_max)):
+                exposure_offenders.append(
+                    f'{entry.loot_table.name} -> {definition.slug}: '
+                    f'entry Mk {entry.mk_tier_min}-{entry.mk_tier_max} '
+                    f'outside the rung')
+        for entry in VendorEntry.objects.filter(
+                item_definition__tier_material_mk_min__isnull=False,
+        ).select_related('item_definition', 'npc_definition'):
+            definition = entry.item_definition
+            if not _in_range(definition, entry.mk_tier):
+                exposure_offenders.append(
+                    f'{entry.npc_definition.slug} -> {definition.slug}: '
+                    f'stocked at Mk {entry.mk_tier}, outside the rung')
+        for line in exposure_offenders:
+            self.stdout.write(self.style.ERROR(f'    ladder exposure: {line}'))
+        self._check(
+            f'Every loot and vendor entry on a ladder definition sits inside '
+            f'its rung (found {len(exposure_offenders)} violations)',
+            not exposure_offenders,
+        )
+
         self._verify_verdant()
         self._verify_dialogue()
         self._verify_map_geometry()
@@ -4670,6 +5037,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4688,6 +5057,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4706,6 +5077,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4724,6 +5097,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4742,6 +5117,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4760,6 +5137,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['RING'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4778,6 +5157,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4796,6 +5177,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4814,6 +5197,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4832,6 +5217,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4850,6 +5237,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4868,6 +5257,8 @@ class Command(BaseCommand):
                 'genre_tag': 'fantasy',
                 'valid_slots': ['NECK'],
                 'suppress_mk_suffix': True,
+                'tier_material_mk_min': 1,
+                'tier_material_mk_max': 1,
                 'scaling_base': 2.0,
                 'scaling_factor': 0.8,
                 'takes_durability_loss': False,
@@ -4879,6 +5270,13 @@ class Command(BaseCommand):
                 ],
                 'description': 'A copper pendant on a leather cord, faintly warm. Sounds at the edge of hearing come clear.',
             },
+            # V24.28 (#211, #245): the ladder build — the seven rungs above
+            # copper (silver through sphaerium), twelve pieces each, in
+            # ladder order. Generated from the module-level ladder tables so
+            # each rung is copper's curve under a different name; see
+            # ladder_accessories(). Zero drop-table and zero vendor entries:
+            # Z02-Z08 do not exist yet.
+            *ladder_accessories(),
             # v19 brief 10: the freebie kit's two accessory pieces — Common,
             # Mk 1, base_value 0, no secondary stat pool, anchored to the
             # copper ring/amulet-of-strength field structure at 60% (rounded
@@ -4987,10 +5385,17 @@ class Command(BaseCommand):
             'hunting-sling': 225,
             'quilted-jerkin': 300,
         }
-        for stat in ('strength', 'dexterity', 'endurance',
-                     'intelligence', 'wisdom', 'perception'):
-            base_values[f'copper-ring-of-{stat}'] = 30
-            base_values[f'copper-amulet-of-{stat}'] = 30
+        # V24.28 (#211): 30 at every rung of the tier-material ladder.
+        # Valuation multiplies by mk_tier, so the per-tier scaling every
+        # item type gets does the work — a sphaerium piece at Mk 15 is
+        # worth 450 against copper's 30 at Mk 1, and it keeps working at
+        # every tier above the ladder's named floor. Pricing the rungs
+        # against the currency ladder was considered and rejected.
+        for material, _name, _lo, _hi, _suppress in LADDER_MATERIALS:
+            for stat in ('strength', 'dexterity', 'endurance',
+                         'intelligence', 'wisdom', 'perception'):
+                base_values[f'{material}-ring-of-{stat}'] = 30
+                base_values[f'{material}-amulet-of-{stat}'] = 30
 
         for slug, value in base_values.items():
             ItemDefinition.objects.filter(slug=slug).update(base_value=value)
