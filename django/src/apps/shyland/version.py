@@ -5,4 +5,4 @@ stamps; point releases bump it the same way on their own branch ("22.1",
 ...) — main never carries a DEV-suffixed stamp (Deployment Law). The
 constant tells the truth about the code it ships with."""
 
-SHYLAND_VERSION = "24.30-DEV"
+SHYLAND_VERSION = "24.30"
