@@ -158,7 +158,7 @@ make seed-prod      # OPERATOR-AUTHORIZED ONLY: production seed — same contrac
                     # the sanctioned path for closeout-tail data actions (#187)
 make verify-prod    # OPERATOR-AUTHORIZED ONLY: read-only production verification —
                     # same posture contract; runs one brief-shipped verify_* command
-                    # (VERIFY=verify_<name>); awaiting its first shipped command (#249)
+                    # (VERIFY=verify_<name>) under the forced-rollback harness (#249)
 ```
 
 > **Deployment law:** production runs `main` only — `make deploy-prod` runs from the main checkout, after the release PR merges, only in a closeout session's tail on the operator's one-time in-conversation go-ahead (one exact occurrence, no future permission implied). Never from a worktree, never with unmerged code, never from any other session type. `SHYLAND_VERSION` on main never carries a `-DEV` suffix (CI-enforced on PRs).
