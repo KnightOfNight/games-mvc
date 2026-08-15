@@ -511,8 +511,28 @@ class ItemDefinition(models.Model):
     suppress_mk_suffix = models.BooleanField(
         default=False,
         help_text='If True, display names never show the "Mk N" suffix. '
-                  'Used for tier-material items (copper/silver/gold/platinum) '
-                  'whose material name already conveys the tier.',
+                  'Most tier-material items use this because the material already '
+                  'conveys the tier, but it is a display flag only and NOT ladder '
+                  'membership — see tier_material_mk_min. The freebie kit suppresses '
+                  'without being on the ladder; sphaerium is on the ladder and does '
+                  'not suppress, because its rung spans infinitely.',
+    )
+    tier_material_mk_min = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Lowest Mk tier this definition may be generated at. When set, '
+                  'this definition is a rung on the tier-material ladder '
+                  '(copper=1, silver=2, gold=3, platinum=4, rhodium=5, '
+                  'iridium=6, osmium=7, sphaerium=8). Null means the definition '
+                  'is not on the ladder.',
+    )
+    tier_material_mk_max = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Highest Mk tier this definition may be generated at. Null with '
+                  'a set minimum means the rung is unbounded above — the '
+                  'sphaerium shape, covering every tier from its minimum upward. '
+                  'Meaningless unless tier_material_mk_min is set.',
     )
 
     def __str__(self):
