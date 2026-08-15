@@ -1,0 +1,183 @@
+Session start: 2026-08-15 — Shyland_V24.29_Brief_1_Plunder_And_Verification_Harness.md — branch version_24_29
+
+SHYLAND V24.29 BRIEF 1 — CLOSEOUT REPORT
+========================================
+
+Brief:    docs/shyland/Shyland_V24.29_Brief_1_Plunder_And_Verification_Harness.md
+Branch:   version_24_29
+Session:  implementation (local dev target; pre-flight exit 0, posture .env == .env.dev)
+Date:     2026-08-15
+
+Founding issue:  #235 (plunder) — CLOSED by this brief
+Related ticket:  #250 (_set_echo_mode wrong cached attribute) — CLOSED by this brief
+Riding issue:    #249 Part 2 (the verification harness) — NOT closed; comment added, stays open for Part 3
+Milestone:       Version 24.29 — 2/2 closed
+
+
+FINAL COMMIT HASH
+-----------------
+bb301ad   (architecture doc; arch-doc header records f0c12e3, the code tip)
+
+
+SUITE TOTAL
+-----------
+683 tests, all passing (was 653 at branch point — 30 new).
+Run in-container via the path form: python manage.py test apps/shyland/tests
+
+
+COMMIT SEQUENCE (§8 — three parts, separate commits, each revertable alone)
+--------------------------------------------------------------------------
+eeba09a  Step 0 stub (work-has-started signal)
+375f495  Version start: SHYLAND_VERSION 24.28 -> 24.29-DEV (pin moved with it)
+3927ec8  #250 fix — the stray line in _set_echo_mode deleted
+aff1e62  The sweep extracted into loot_utils.py
+87bdc0e  The plunder setting: field, migration 0049, command, registration sites
+c6c5759  The plunder trigger: the three combat-end sites
+7a4fdb2  The verification harness and verify_ladder (#249 Part 2)
+f0c12e3  Tests (30)
+bb301ad  Architecture doc
+
+
+VERIFICATION (§10) — ALL PASS
+-----------------------------
+1. Migration:  0049_character_plunder_mode.py — exactly 0049, a single AddField,
+   committed unedited by hand.
+2. make deploy-dev from the worktree: complete (build + migrate).
+3. In-container suite: 683 tests, OK.
+4. make verify VERIFY=verify_ladder against dev:
+       verify_ladder: 0 mismatched instance(s) out of 8 ladder row(s).
+       exit 0
+   MISMATCH COUNT: 0        LADDER-ROW TOTAL: 8
+5. Dev-path gates (§10.5), both nonzero, posture untouched afterwards:
+       make verify                     -> "ERROR: usage: make verify VERIFY=verify_<name>"   exit 2
+       make verify VERIFY=seed_world   -> refused by the verify_* name gate                  exit 2
+       .env still byte-identical to .env.dev after both.
+6. Output identity, live on dev: confirmed IDENTICAL. The plunder path and the
+   real typed-loot path (through the consumer) were run over two identical
+   corpse sets in the dev shell and produced byte-identical line sequences:
+       ('You loot 2 silvers, 5 coppers from the corpse of the ... boar.', 'reward')
+       ('You loot ... Fang Mk 1  — 100% durability  [Common, Unbound].', 'reward')
+       ('Looted 2 corpses; 1 carried nothing worth taking.', 'system')
+   The check created its own fixtures and removed them; a post-run count
+   confirmed 0 leftover rows. NO standing dev-only DB state from this brief.
+7. Shared-surface check: git diff over the whole branch shows no file modified
+   outside django/src/apps/shyland/ and docs/shyland/. The Makefile is
+   untouched (the verify targets shipped in Part 1, on main).
+8. GDD source untouched: git diff over docs/shyland/gdd/ is empty.
+
+
+DEVIATIONS
+----------
+1. §5 — THE HELPER'S RETURN SIGNATURE. The brief specifies sweep_corpses
+   returning "an ordered list of (text, category) tuples". It returns a PAIR,
+   (messages, room_lines).
+
+   Reason: the sweep's corpse-disposal announcement ("X slowly disappears.")
+   was never a personal line — _maybe_dispose_corpse emitted it as a room-wide
+   channel_layer.group_send. It therefore cannot be a (text, category) tuple
+   bound for the looting character, and a synchronous transport-agnostic helper
+   cannot send it itself. The second list carries it, and each transport
+   broadcasts it on its own channel (the consumer via group_send, the tick
+   engine via broadcast_to_room / the room_messages accumulator).
+
+   Order within each stream is unchanged; cross-stream ordering was never
+   deterministic in the first place, since one path is a direct send and the
+   other a channel-layer round trip. This is the signature adaptation §5
+   explicitly permits ("if preserving behavior exactly requires the helper to
+   take an extra collaborator, pass it in").
+
+   The §5 regression bar was met with no test edited: the existing loot suite
+   (653) passed immediately after the extraction commit.
+
+2. §4.4 vs §4.5/§12 — AN INTERNAL INCONSISTENCY IN THE BRIEF, implemented as
+   written and recorded here rather than silently reconciled.
+
+   §4.4 mandates a _set_plunder_mode that writes both the DB row and the cached
+   attribute, justifying it as matching "cmd_brief's shape". It does not:
+   _set_brief_mode writes only the DB row, and cmd_brief maintains the cached
+   attribute. §4.5 and §12 then state the setters "now uniformly write only the
+   DB row" — which the new setter makes untrue.
+
+   Implemented exactly as §4.4 specifies (the brief gives the code verbatim and
+   says "leave both"). It is harmless: the cached field it writes is its own, so
+   the #250 failure mode cannot recur there. The architecture doc records the
+   accurate position — the three older setters write only the row, and
+   _set_plunder_mode is a deliberate belt-and-braces exception — rather than
+   repeating §12's inaccurate sentence.
+
+3. §6.2 — a wording nit, no behavioral effect. The brief describes the engine's
+   accumulator as (char_pk, text, category, status); the fourth element is
+   actually `event` (status is passed separately as None at the flush). The
+   brief's instruction to append (char_pk, text, category, None) is correct
+   either way and was followed verbatim.
+
+4. §1 — cosmetic: the section is titled "Two things" and lists three.
+
+FOLLOW-UPS FILED (post-ritual, at operator direction, 2026-08-15):
+
+  #251 — All config command setters should write both the cached attribute
+        and the DB row. Resolves deviation 2 above, and resolves it the
+        OTHER way: operator ruling is that _set_plunder_mode's shape is
+        correct and the other three setters come to it, rather than
+        plunder being brought back into line with them. Labeled
+        `commands`, no milestone. Carries a note on its overlap with #250
+        (that fix DELETED a cached write; #251 adds one back, with the
+        correct field — not a reversal).
+
+  #252 — Briefs assert unverified facts about existing code; no gate checks
+        a brief for technical coherence. Filed as the procedural cause of
+        #251, citing all four deviations above. Process-doc work for an
+        ops session; lands as the next Instructions edition. No milestone.
+
+  Neither is in milestone 49 and neither blocks this release's closeout.
+
+NO PRE-EXISTING TEST WAS EDITED, other than the §3 version pin
+(test_b2_amendment1.py:118, moved in the same commit as the constant).
+The §5 and §9.21 stop-and-report conditions were never triggered.
+
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+(Brief §11, verbatim — this block stays OPEN until the production execution.)
+
+The production ladder verification. The first live exercise of `make
+verify-prod`, and the settlement of V24.28's handed-off survey.
+
+- Action: `make verify-prod VERIFY=verify_ladder`
+- Executor: the closeout session, on its own explicit operator confirmation in
+  the closeout tail — bare, single-command invocation. (Executor checkpoint,
+  Instructions v33: this step names a sanctioned posture-setting target, so it
+  is runnable. It is the target #249 Part 1 shipped for exactly this.)
+- Order: after `make deploy-prod`. The command is baked into the image, so it
+  must be deployed before it can run.
+- Expected result: 0 mismatches, exit 0 — the number V24.28 Brief 1 §8
+  predicted and had no way to confirm.
+- If it reports findings: record the count and slugs in the closing report and
+  stop for a design ruling. Do not delete or rewrite instance data. The command
+  cannot mutate, so a finding is information, never damage.
+
+No seed run and no data mutation is required by this release.
+
+
+NOTES FOR THE CLOSEOUT SESSION
+------------------------------
+- SHYLAND_VERSION currently reads "24.29-DEV" (version.py) with its pin at
+  test_b2_amendment1.py:118. Both move together at the closeout stamp.
+- GDD §5 and §9 text for this release landed with the design session and carries
+  "(v24.29, pending implementation)" markers. Those are the closeout's to sweep;
+  this session did not touch GDD source.
+- #249 is deliberately still OPEN and carries no milestone. It ships work in
+  this release but outlives it — Part 3 (retiring the v33 interim rule) is an
+  ops session's work after this release lands.
+- A restart bounces all three games in the repo, including live Shyland
+  WebSocket sessions.
+
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+Operator reports playtest successful.
+
+Recorded 2026-08-15, in-conversation, against the dev stack running 24.29-DEV
+after this brief's make deploy-dev. The brief's §14 checklist (14 steps) was
+the playtest script. Terminal disposition — no deferred playtest, nothing for
+the closeout entry gate to re-attest.
