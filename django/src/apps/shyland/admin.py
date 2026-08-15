@@ -169,7 +169,8 @@ class ItemDefinitionAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'item_type', 'genre_tag', 'description')}),
         ('Economy', {'fields': ('base_value',)}),
-        ('Identification', {'fields': ('mystery_name', 'mystery_description', 'suppress_mk_suffix')}),
+        ('Identification', {'fields': ('mystery_name', 'mystery_description', 'suppress_mk_suffix',
+                                       'tier_material_mk_min', 'tier_material_mk_max')}),
         ('Scaling', {'fields': ('scaling_base', 'scaling_factor')}),
         ('Weapon', {'fields': ('damage_spread', 'is_ranged')}),
         ('Equipment', {'fields': ('valid_slots', 'is_two_handed')}),

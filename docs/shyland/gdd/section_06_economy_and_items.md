@@ -75,7 +75,32 @@ Items in Shyland use a **Mark (Mk) tier system** tied to player level ranges. Th
 
 **Reading an item:** `Rare Plasma Rifle Mk 7` tells you everything — what it is, how powerful it is relative to other items, and how special it is. Rarity stacks on top of Mark tier.
 
-**Tier materials suppress the Mk suffix (display only).** Items whose names carry a **tier material** — the copper → silver → gold → platinum ladder that tracks the currency table — do not display a Mark suffix, because the material already says the tier: a *Copper Ring of Strength* is `mk_tier=1` under the hood with standard scaling and rarity machinery, but never prints "Mk 1." This is the same pattern as local zone currencies: a display alias, same math, zero engine change. The rule is deliberately narrow — it applies **only** to tier materials. Flavor materials (iron, wood, leather, and the like) do not suppress anything: an Iron Sword still reads "Iron Sword Mk 1." Today the tier-material rule covers accessories only; later zones extend the ladder upward with the nobler metals as Mk tiers rise.
+**Tier materials suppress the Mk suffix (display only).** Items whose names carry a **tier material** — the metal ladder below — do not display a Mark suffix, because the material already says the tier: a *Copper Ring of Strength* is `mk_tier=1` under the hood with standard scaling and rarity machinery, but never prints "Mk 1." This is the same pattern as local zone currencies: a display alias, same math, zero engine change. Flavor materials (iron, wood, leather, and the like) never suppress on their own account: an Iron Sword still reads "Iron Sword Mk 1." **Suppression is a display flag, not the ladder itself** (v24.28): a few items suppress the suffix for reasons of their own without standing on any rung — the freebie kit's *Tarnished Band* and *Cloudy Glass Pendant* among them, whose names claim no tier to begin with. Membership on the ladder is a separate fact, recorded separately.
+
+**The ladder is eight rungs, and the last one has no ceiling** (v24.28):
+
+|Mk tier|Material  |Levels|Mk suffix|
+|-------|----------|------|---------|
+|Mk 1   |Copper    |1–10  |suppressed|
+|Mk 2   |Silver    |11–20 |suppressed|
+|Mk 3   |Gold      |21–30 |suppressed|
+|Mk 4   |Platinum  |31–40 |suppressed|
+|Mk 5   |Rhodium   |41–50 |suppressed|
+|Mk 6   |Iridium   |51–60 |suppressed|
+|Mk 7   |Osmium    |61–70 |suppressed|
+|Mk 8+  |Sphaerium |71+   |**shown** |
+
+**It borrows the currency table's names; it does not track it.** The first four rungs take the names of the currency tiers, and there the resemblance ends — the two ladders have unrelated pacing. Currency tier 5 sits somewhere past ten billion copper, astronomically out of reach, while Mk 5 is a mid-game gear tier a player reaches at level 41. Past platinum the ladder continues on its own authority, up the platinum group to the densest metal there is.
+
+**Sphaerium is where the ladder stops being a ladder.** Mk tiers are infinite — the Wastelands scales forever, and a level 150 character finds Mk 15 loot — so no list of metals could ever cover the range one rung at a time. Sphaerium covers all of it: the terminal rung is itself unbounded, naming Mk 8 and every tier above it, without limit and without a fallback. It is named for the spheres, and it stands on the Primordial Sphere at the Heart of the Convergence — the sphere that didn't predate the zone-end pattern but started it. Metal from the mints runs out; what the spheres are made of does not.
+
+**Sphaerium is the one rung that shows its Mk suffix.** Every finite rung suppresses, because there the material *is* the tier — one material, one tier, and the name says it outright. Sphaerium spans infinitely, so suppressing would render a Mk 8 piece and a Mk 47 piece identically, a name carrying no tier signal at all across an unbounded range. So the terminal rung keeps its number: *Sphaerium Ring of Strength Mk 15*. The reading is exact. The finite metals tell you your tier; past them, the material tells you only that you are beyond the ladder, and the number tells you how far beyond.
+
+**One curve; the material names the rung.** Each rung mirrors the rung below it **exactly** in stat authorship — same primary entry, same secondary pool, same Mk 1 midpoints — because a midpoint already computes as `base + factor × mk_tier`. A *Silver Ring of Strength* is simply the copper ring's curve read at `mk_tier=2`: 4.9 where copper reads 2.8. A *Sphaerium Ring of Strength Mk 15* is the same curve again, read at 15. Correct progression, nothing tuned twice, and no rung that has to be balanced against its neighbors. Rungs differ in name and description and in nothing else — `base_value` included, the tier multiplier alone separating a platinum piece from a copper one.
+
+**Name and tier agree by enforcement, not by convention.** A definition standing on the ladder is bound to its rung's tier range, and instance generation refuses everything outside it. A *Copper Ring of Strength* at Mk 2 is a name that lies, and the engine will not mint one — not from a drop table, not from an admin's gift. Sphaerium's range is the only one open at the top.
+
+The ladder covers **accessories only**: a ring and an amulet for each of the six stats at every rung, ninety-six definitions in all. Rungs above copper are seeded ahead of the zones that will drop them, so no zone build ever has to stop and author jewelry first.
 
 **In The Wastelands:** Loot scales dynamically. A level 150 character finds Mk 15 loot. The Mk system extends infinitely to accommodate this.
 

@@ -98,7 +98,23 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
     Call .save() on the returned instance to persist it.
     Artifact instances must not be passed through this function — create them manually.
     Pass gift=True when an admin is deliberately giving an item — soulbinds immediately.
+    A definition carrying tier_material_mk_min may only be generated inside its rung's
+    range, because on the tier-material ladder the material name *is* the tier display
+    and any tier outside the range produces a name that lies.
     """
+    # v24.28 (#211, #245): the Mk-mismatch guard, first thing in the body —
+    # both live generation paths (the loot-drop roll below and do_buy's vendor
+    # path) funnel through here, so one check binds them all.
+    lo = definition.tier_material_mk_min
+    if lo is not None:
+        hi = definition.tier_material_mk_max
+        if mk_tier < lo or (hi is not None and mk_tier > hi):
+            bound = f'Mk {lo}' if hi == lo else f'Mk {lo}+' if hi is None else f'Mk {lo}-{hi}'
+            raise ValueError(
+                f'{definition.slug} is a tier-material definition bound to '
+                f'{bound}; refusing to generate at Mk {mk_tier}. (#211)'
+            )
+
     # v24.10 (#127): the proc floor — a primary entry carrying the authored
     # floor_base/floor_factor pair snapshots X = floor_base + floor_factor ×
     # mk_tier onto the instance as 'floor'. Deterministic and rarity-blind:
