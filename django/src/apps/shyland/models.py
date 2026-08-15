@@ -283,6 +283,10 @@ class Character(models.Model):
     # suppresses the player's own command-echo line. Never affects the
     # firehose or anything server-side beyond the flag itself.
     echo_mode = models.BooleanField(default=True)
+    # v24.29 (#235): when on, the rights-scoped corpse sweep runs
+    # automatically at the moment combat ends. Defaults off — looting
+    # stays a deliberate act until the player opts in.
+    plunder_mode = models.BooleanField(default=False)
     # v22 brief 3 (#57): home's cooldown. Completion-only consumption —
     # home_last_completed is set only when the traveler actually lands
     # at the Heart; interrupted countdowns never start the clock.

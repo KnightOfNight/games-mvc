@@ -284,6 +284,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'travel': ('cmd_travel', True),
         'brief': ('cmd_brief', True),
         'echo': ('cmd_echo', True),
+        'plunder': ('cmd_plunder', True),
         'timestamps': ('cmd_timestamps', True),
         'spend': ('cmd_spend', True),
         'stats': ('cmd_stats', False),
@@ -338,7 +339,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'use', 'heal', 'say', 'quit', 'cancel', 'sudo',
         'help', '?', 'inventory', 'inv', 'last', 'list', 'look', 'l',
         'stats', 'wallet', 'who',
-        'brief', 'echo', 'timestamps',
+        'brief', 'echo', 'plunder', 'timestamps',
     }
 
     # v22 brief 2 (DD §1 fn 10): verbs with a required target and their
@@ -1204,6 +1205,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         ('Settings commands', [
             ('brief', 'brief [on|off]', 'Short room descriptions. Default: off.'),
             ('echo', 'echo [on|off]', 'Show your own commands in the output. Default: on.'),
+            ('plunder', 'plunder [on|off]', 'Automatically loot your kills when combat ends. Default: off.'),
             ('timestamps', 'timestamps [on|off]', 'Show timestamps on events. Default: on.'),
         ]),
     ]
@@ -3003,6 +3005,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             char = await self.get_character_fresh()
             await self.send_json(await self._status_payload(char, char.current_room))
 
+    async def cmd_plunder(self, args):
+        # v24.29 (#235): the subject is the setting's own name — unlike
+        # the other three there is no separate noun for it; the command
+        # names the behavior directly. Read at combat end, so flipping it
+        # mid-fight governs that same fight.
+        value = await self._cmd_setting(
+            args, 'plunder', 'plunder', 'is',
+            lambda c: c.plunder_mode, self._set_plunder_mode,
+        )
+        if value is not None:
+            self.character.plunder_mode = value
+
     async def cmd_timestamps(self, args):
         """v20 brief 3 (#45): the preference persists on the Character and
         reaches the client through the state-sync payload; envelope ts/seq
@@ -3670,7 +3684,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 if arg_text and text.endswith(' ') and not arg_text.endswith(' '):
                     arg_text += ' '
                 verb = self.GRAMMAR_VERBS.get(head)
-                if head in ('brief', 'echo', 'timestamps'):
+                if head in ('brief', 'echo', 'plunder', 'timestamps'):
                     options = self._complete_words(
                         arg_text, sorted(self.SETTING_WORDS), first_only=True)
                 elif head == 'cancel':
@@ -4076,6 +4090,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _set_echo_mode(self, value):
         Character.objects.filter(pk=self.character_pk).update(echo_mode=value)
+
+    @database_sync_to_async
+    def _set_plunder_mode(self, value):
+        Character.objects.filter(pk=self.character_pk).update(plunder_mode=value)
+        self.character.plunder_mode = value
 
     @database_sync_to_async
     def get_travel_node(self, room):
