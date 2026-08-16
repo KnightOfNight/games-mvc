@@ -1,0 +1,13 @@
+SHYLAND V24.31 — BRIEF 1 CLOSEOUT REPORT
+=========================================
+
+Session start: 2026-08-15 — brief
+Shyland_V24.31_Brief_1_Deploy_Target_Build_Exhaust_Sweep.md,
+branch version_24_31, implementation session.
+
+Founding ticket: #205 — Production deploy target gains a prune: stop the
+~500MB/release root-volume growth. Dependency: #255 — arch doc §2.2's
+Makefile table is stale. Milestone: Version 24.31.
+
+STATUS: STUB — created at Step 0 (verify-and-signal) and pushed as the
+work-has-started signal. Completed in place at session end.
