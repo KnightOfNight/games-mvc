@@ -13,6 +13,20 @@ PROJECT_DIR     := $(shell pwd)
 # command — this value is never exported ambiently and nothing else uses it.
 PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 
+# Build-exhaust sweep caps (#205). Every build orphans image layers and leaves
+# BuildKit cache entries behind; unswept, prod's root volume grows ~500MB per
+# release and Emma's dev VM ~2GB per build. Eviction is capped rather than a
+# full prune — a conservative bound that is free: `build` runs `docker compose
+# build --no-cache` by design, so no build reads this cache and the cap costs
+# nothing in build time either way. The -a prohibition that IS load-bearing is
+# on the image prune above, which stays dangling-only so tagged base images are
+# never deleted and re-pulled.
+# The flag name diverges by daemon version: --keep-storage was
+# renamed --reserved-space in Docker 28. Prod runs Docker Engine 25.0.16
+# (linux/arm64); Emma's dev daemon runs 29.6.2-rd.
+PROD_BUILDER_PRUNE_FLAGS := --keep-storage 5GB
+DEV_BUILDER_PRUNE_FLAGS  := --reserved-space 5GB
+
 GDD_MAJOR := 24
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
                 docs/shyland/gdd/_01_version_history.md \
@@ -151,7 +165,9 @@ deploy-dev: require-local
 	python3 scripts/check_docker_host.py
 	$(MAKE) build
 	$(MAKE) migrate
-	@echo "deploy-dev complete — local dev stack refreshed."
+	-docker image prune -f
+	-docker builder prune -f $(DEV_BUILDER_PRUNE_FLAGS)
+	@echo "deploy-dev complete — local dev stack refreshed, build exhaust swept."
 
 ## deploy-prod: operator-authorized production deploy — flips posture, deploys, restores
 # Pins its own DOCKER_HOST; refuses to run if one is already in the
@@ -160,6 +176,10 @@ deploy-dev: require-local
 # If this fails partway, .env deliberately REMAINS in prod posture: a
 # half-finished production deploy needs a human, and the guards will block
 # all dev work until the posture is restored by hand (cp .env.dev .env).
+# The build-exhaust sweep (#205) runs LAST, after the posture restore, and is
+# non-fatal. Both prunes pin their own DOCKER_HOST and neither reads .env, so
+# posture is irrelevant to them — running them after the restore means not even
+# an operator Ctrl-C during a long prune can strand production posture.
 deploy-prod:
 	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). deploy-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
 	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
@@ -169,7 +189,9 @@ deploy-prod:
 	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) build
 	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) migrate
 	cp .env.dev .env
-	@echo "deploy-prod complete — production deployed, resting posture restored (.env == .env.dev)."
+	-DOCKER_HOST=$(PROD_DOCKER_HOST) docker image prune -f
+	-DOCKER_HOST=$(PROD_DOCKER_HOST) docker builder prune -f $(PROD_BUILDER_PRUNE_FLAGS)
+	@echo "deploy-prod complete — production deployed, build exhaust swept, resting posture restored (.env == .env.dev)."
 
 ## seed-prod: operator-authorized production seed — flips posture, seeds, restores
 # Same contract as the production deploy target: pins its own DOCKER_HOST,
@@ -342,9 +364,11 @@ help:
 	@echo "  tick-logs              Follow ticker container logs only"
 	@echo ""
 	@echo "Deployment:"
-	@echo "  deploy-dev             Deploy current source to the local dev stack (build + migrate)"
+	@echo "  deploy-dev             Deploy current source to the local dev stack (build + migrate"
+	@echo "                         + exhaust sweep)"
 	@echo "  deploy-prod            Operator-authorized production deploy (flips posture,"
-	@echo "                         pre-flights, builds, migrates, restores dev posture)"
+	@echo "                         pre-flights, builds, migrates, sweeps exhaust,"
+	@echo "                         restores dev posture)"
 	@echo "  seed-prod              Operator-authorized production seed (same posture contract, #187)"
 	@echo "  verify-prod            Operator-authorized read-only production verification"
 	@echo "                         (VERIFY=verify_<name>; same posture contract, #249)"

@@ -1,0 +1,218 @@
+SHYLAND V24.31 — BRIEF 1 CLOSEOUT REPORT
+=========================================
+
+Session start: 2026-08-15 — brief
+Shyland_V24.31_Brief_1_Deploy_Target_Build_Exhaust_Sweep.md,
+branch version_24_31, implementation session.
+
+Founding ticket: #205 — Deploy targets gain a build-exhaust sweep (image +
+builder prune): stop the ~500MB/release root-volume growth. Dependency:
+#255 — arch doc §2.2's Makefile table is stale. Milestone: Version 24.31,
+closed 2/2.
+
+Final implementation commit: 45b9749
+Architecture doc commit:     987a5e1
+Suite: 687 tests, all pass, count unchanged from the V24.30 stamp.
+
+
+TECHNICAL PRE-FLIGHT (#252 / Instructions v36)
+----------------------------------------------
+All ten of the brief's §2 technical claims were diffed against the code at
+the branch tip before any edit. ZERO MISMATCHES.
+
+  1. Flag divergence — dev daemon confirmed live at 29.6.2-rd; `docker
+     builder prune --help` routes to buildx and offers --reserved-space with
+     no --keep-storage. Prod's 25.0.16 / --keep-storage is operator-supplied
+     and not verifiable from dev, exactly as the brief states.
+  2. PROD_DOCKER_HOST at line 14, `:=` convention — exact.
+  3. deploy-dev recipe and its require-local prerequisite — exact; the guard
+     does assert DOCKER_HOST is empty.
+  4. deploy-prod recipe and its failure-contract comment block — exact.
+  5. `-include .env` at line 6 — exact.
+  6. .PHONY already lists both deploy targets — exact, no edit needed.
+  7. `make help` Deployment block wording — exact.
+  8. No `reset` target exists; `nuke` at line 126 — exact.
+  9. Arch §2.2's table, eleven rows ending in `make reset` — exact.
+ 10. SHYLAND_VERSION = "24.30"; pin test at line 118 — exact.
+
+Process-assumption diff against Instructions v36: no discrepancies.
+
+SHARED-SURFACE FLAG (CLAUDE.md Rule 2): this brief's entire implementation is
+in the repo-root Makefile — shared deployment surface affecting all three
+games. The brief records the design session's operator confirmation (§1), and
+the operator directed the brief by name to open this session. Nothing under
+any game app directory was touched.
+
+
+WHAT SHIPPED
+------------
+Step 1 — version start (c745db3): SHYLAND_VERSION 24.30 -> 24.31-DEV, pin
+test in tests/test_b2_amendment1.py moved in the same commit. Followed by the
+version-start `make deploy-dev` (still unswept — the §6.1 before measurement).
+
+Step 2 — implementation (a8de2ac), Makefile only:
+  - PROD_BUILDER_PRUNE_FLAGS := --keep-storage 5GB
+    DEV_BUILDER_PRUNE_FLAGS  := --reserved-space 5GB
+    declared with `:=` per the file's convention, immediately after
+    PROD_DOCKER_HOST, with the rationale comment.
+  - deploy-dev: `-docker image prune -f` and
+    `-docker builder prune -f $(DEV_BUILDER_PRUNE_FLAGS)` after migrate;
+    completion echo amended. Bare docker is correct — require-local
+    guarantees DOCKER_HOST is unset.
+  - deploy-prod: the same pair, each pinning
+    DOCKER_HOST=$(PROD_DOCKER_HOST), inserted AFTER `cp .env.dev .env`;
+    completion echo amended; the comment block extended with the reason the
+    sweep sits last.
+  - make help: both Deployment lines amended, column alignment preserved.
+  - All three of §4.4's rules honoured: no `-a` on either prune, `-` error-
+    ignore prefix on both lines (not `|| true`), `:=` not `?=`.
+
+No new tests and no test file created, per §5 — the Makefile is not under
+test in this repo. No model change, no migration, no seed data, no GDD
+change, no game code.
+
+Step 3 — ruling correction (45b9749): see DEVIATIONS below.
+
+Step 4 — architecture doc (987a5e1), gated on all verification passing:
+stamp 24.31, header hash moved to 45b9749, V24.31 release paragraph added at
+the top of the box-out stack, §2.2 rewritten target-for-target (carrying
+#255), and the sweep documented below the table. Cross-checked mechanically
+after the rewrite: zero Makefile targets undocumented. `make gdd` deliberately
+NOT run — no GDD change in this release.
+
+
+VERIFICATION (§6)
+-----------------
+1. BEFORE measurement, after the version-start (unswept) deploy:
+     Build Cache  594 entries  26.86GB SIZE  26.28GB RECLAIMABLE
+
+2. Flag acceptance on dev: PASS. Across four swept `make deploy-dev` runs,
+   zero `Error 1 (ignored)` lines — both prune lines executed and exited 0,
+   and --reserved-space 5GB was accepted, not rejected.
+
+3. The cap holds: PASS as corrected (see deviation 1).
+     After first swept deploy:  54 entries  5.781GB SIZE  5.193GB RECLAIMABLE
+     Final swept state:         90 entries  5.854GB SIZE  5.267GB RECLAIMABLE
+   Reclaimable is at or below the 5GB reserve, which Docker parses as 5 GiB
+   (~5.37e9 bytes).
+     Reclaimed:  21.55GB on the first swept deploy (the accumulated backlog),
+                 then 468.3MB / 1.029GB / 771.5MB on the three subsequent
+                 deploys — the ~0.5-1GB per-deploy steady state.
+
+4. No deploy got slower: PASS as corrected (see deviation 2). On every swept
+   deploy the build's FROM step resolves
+   docker.io/library/python:3.12-slim with ZERO image-layer downloads — the
+   property the image prune's bare form protects.
+
+5. Posture intact: PASS. `cmp -s .env .env.dev` exits 0 after every one of
+   the four deploys.
+
+6. Full suite, in-container, path form
+   (`docker exec game-mvc-django python manage.py test apps/shyland/tests`):
+   687 tests, OK. Count unchanged from the V24.30 stamp; no existing test
+   required changing beyond the §3 version pin. Run twice — once mid-session
+   and once against the final build.
+
+7. `make help` renders with alignment intact: PASS.
+
+THE PRODUCTION LINE SHIPS UNEXERCISED. --keep-storage is rejected by dev's
+Docker 29 by construction, so only the dev spelling was exercised. This is a
+known, accepted residual: the `-` prefix bounds the blast radius to "the
+sweep silently does nothing", never a failed or posture-stranded deploy. It
+is exercised for the first time in this release's own closeout tail (§7).
+
+
+DEVIATIONS
+----------
+Two, both in the brief's stated rationale and verification rather than in
+what ships. NO CHANGE TO THE SHIPPED MAKEFILE RESULTED FROM EITHER.
+
+DEVIATION 1 — §6.3's ceiling was asserted against the wrong figure.
+  §6.3 as written required `docker system df` Build Cache SIZE at or below
+  5GB after the sweep. Observed 5.781GB. Diagnosis: --reserved-space /
+  --keep-storage bounds the RECLAIMABLE cache, not the total; entries still
+  in use by the running stack sit on top of the reserve. Reclaimable was
+  5.193GB against a 5 GiB (~5.37e9 byte) reserve — the cap was in fact
+  holding exactly as designed.
+  Resolution: §6.3 corrected in the brief to assert the ceiling on
+  reclaimable. PASSES as corrected. Operator-directed.
+
+DEVIATION 2 — §6.4's premise was false about pre-existing behavior, and
+ruling 2's wording rested on it. This was raised to the operator as a v36
+HARD STOP before any workaround was attempted.
+  §6.4 as written required the pip/requirements layer to show CACHED on a
+  second consecutive deploy, calling this "the property the whole ruling
+  rests on". It rebuilt. Diagnosis, in order:
+    - deploy #2 (first swept, from the 26.86GB unswept cache): pip rebuilt.
+    - deploy #3 (from the swept steady state): pip rebuilt — ruling out a
+      cold-start artifact.
+    - Two consecutive bare `make build` runs with NO prune between them:
+      pip rebuilt BOTH times while the cache GREW 5.78GB -> 6.16GB.
+      Decisive: the sweep is not the cause.
+    - Root cause: the `build:` target runs
+      `docker compose build --no-cache`. No build has ever read the BuildKit
+      cache. The pip layer could never have been a cache hit, before or
+      after this brief.
+  The operator confirmed --no-cache is INTENTIONAL and needs no ticket
+  (2026-08-15), and directed that ruling 2's wording be fixed.
+  Resolution, committed in 45b9749 — brief §1 ruling 2, the Makefile comment
+  and arch doc §2.2 all corrected to the same position:
+    - The cap costs nothing in build time, and `-a` on the BUILDER prune
+      would save nothing there either. The cap is kept as a conservative,
+      free bound — not as a cache-preservation measure. The original clause
+      ("the next deploy's expensive layer (pip) is still a cache hit") is
+      struck.
+    - The `-a` prohibition that IS genuinely load-bearing is on the IMAGE
+      prune: `docker image prune -a` removes tagged base images and forces a
+      cold re-pull of python:3.12-slim — the 2026-07-29 slowdown. §4.4.1 was
+      correct all along and is unaffected.
+    - §6.4 correspondingly re-aimed at the base-image property, which is
+      real, observable and passes.
+  What ships is byte-for-byte what §4 specified. Only the justification and
+  the two checks changed.
+
+Note for the record: --no-cache is also why the dev VM accrues ~2GB per
+build — every build is a full rebuild by construction. Operator has ruled
+this intentional; recorded as context only, not as an open item.
+
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+NONE — per brief §7, and the executor checkpoint (#248) is satisfied by
+construction: the only prod-side step is inside `make deploy-prod`, whose
+executor is `make deploy-prod`. No data action, no seed, no verify_* command.
+
+The issue body's call for a one-time manual prod catch-up is free: V24.31's
+own closeout-tail `make deploy-prod` performs the first prod sweep as part of
+an ordinary deploy, reclaiming everything accumulated to date.
+
+WHAT THE CLOSEOUT TAIL MUST RECORD (brief §7) — read the deploy's own output:
+  - whether both prune lines ran clean, or either printed
+    `Error 1 (ignored)` — the latter meaning prod's --keep-storage was
+    rejected after all;
+  - the bytes reclaimed by each prune.
+If --keep-storage is rejected, file a follow-up issue (the spelling would
+need to move to --reserved-space, meaning prod's daemon was upgraded past
+Docker 28). The deploy itself is unaffected either way.
+
+
+DEPLOY STATE
+------------
+`make deploy-dev` run four times this session, all clean, all from the
+worktree. The dev stack is running this brief's build; posture is dev
+(.env == .env.dev). No production deploy from this session (Deployment Law —
+the prod deploy belongs to the closeout tail alone).
+
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+------------------------------------
+"No playtests for this brief" — operator disposition given 2026-08-15 at the
+implementation-session-end ritual. TERMINAL (#170): the closeout session
+accepts this from this committed report and needs no fresh attestation.
+
+Brief §8 records that this release has no playtestable game surface: nothing
+player-facing changes — no command, no output, no model, no content — and
+the expected disposition is "No playtests for this brief" (terminal). The
+optional infrastructure confirmations in §8 (deploy-dev tail output, docker
+system df, logging in to confirm the game is unchanged, make help) have all
+been executed and passed in-session.
