@@ -206,7 +206,9 @@ the prod deploy belongs to the closeout tail alone).
 
 OPERATOR PLAYTEST DISPOSITION (#170)
 ------------------------------------
-PENDING — awaiting explicit operator disposition.
+"No playtests for this brief" — operator disposition given 2026-08-15 at the
+implementation-session-end ritual. TERMINAL (#170): the closeout session
+accepts this from this committed report and needs no fresh attestation.
 
 Brief §8 records that this release has no playtestable game surface: nothing
 player-facing changes — no command, no output, no model, no content — and
