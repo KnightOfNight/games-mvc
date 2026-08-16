@@ -15,9 +15,13 @@ PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 
 # Build-exhaust sweep caps (#205). Every build orphans image layers and leaves
 # BuildKit cache entries behind; unswept, prod's root volume grows ~500MB per
-# release and Emma's dev VM ~2GB per build. Eviction is LRU to a cap rather
-# than a full prune, so the most recent build's layers survive and no deploy
-# gets slower. The flag name diverges by daemon version: --keep-storage was
+# release and Emma's dev VM ~2GB per build. Eviction is capped rather than a
+# full prune — a conservative bound that is free: `build` runs `docker compose
+# build --no-cache` by design, so no build reads this cache and the cap costs
+# nothing in build time either way. The -a prohibition that IS load-bearing is
+# on the image prune above, which stays dangling-only so tagged base images are
+# never deleted and re-pulled.
+# The flag name diverges by daemon version: --keep-storage was
 # renamed --reserved-space in Docker 28. Prod runs Docker Engine 25.0.16
 # (linux/arm64); Emma's dev daemon runs 29.6.2-rd.
 PROD_BUILDER_PRUNE_FLAGS := --keep-storage 5GB
