@@ -13,19 +13,22 @@ PROJECT_DIR     := $(shell pwd)
 # command — this value is never exported ambiently and nothing else uses it.
 PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 
-# Build-exhaust sweep caps (#205). Every build orphans image layers and leaves
-# BuildKit cache entries behind; unswept, prod's root volume grows ~500MB per
-# release and Emma's dev VM ~2GB per build. Eviction is capped rather than a
-# full prune — a conservative bound that is free: `build` runs `docker compose
-# build --no-cache` by design, so no build reads this cache and the cap costs
-# nothing in build time either way. The -a prohibition that IS load-bearing is
-# on the image prune above, which stays dangling-only so tagged base images are
-# never deleted and re-pulled.
-# The flag name diverges by daemon version: --keep-storage was
-# renamed --reserved-space in Docker 28. Prod runs Docker Engine 25.0.16
-# (linux/arm64); Emma's dev daemon runs 29.6.2-rd.
-PROD_BUILDER_PRUNE_FLAGS := --keep-storage 5GB
-DEV_BUILDER_PRUNE_FLAGS  := --reserved-space 5GB
+# Build-exhaust sweep (#205, corrected #257). Every build orphans image layers
+# and leaves BuildKit cache entries behind; unswept, prod's root volume grows
+# ~500MB per release and Emma's dev VM ~2GB per build. `build` runs `docker
+# compose build --no-cache` by design, so no build EVER reads this cache — it
+# is pure exhaust on both daemons. Prune flags are parsed CLIENT-SIDE by the
+# local CLI; DOCKER_HOST only redirects the API call (#257 — the by-daemon
+# flag-divergence story v24.31 shipped was false), so one CLI vocabulary
+# serves both targets. The asymmetry below is by DAEMON OWNERSHIP, not
+# version: prod's daemon is dedicated to this stack, so its builder prune
+# runs uncapped (a reserve would only preserve unreadable exhaust); Emma's
+# dev daemon is shared and builder-prune eviction is daemon-wide, so dev
+# keeps a 5GB reserve to bound collateral eviction of other projects'
+# caches. The -a prohibition that IS load-bearing is on the image prune,
+# which stays dangling-only so tagged base images are never deleted and
+# re-pulled.
+DEV_BUILDER_PRUNE_FLAGS := --reserved-space 5GB
 
 GDD_MAJOR := 24
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
@@ -165,8 +168,8 @@ deploy-dev: require-local
 	python3 scripts/check_docker_host.py
 	$(MAKE) build
 	$(MAKE) migrate
-	-docker image prune -f
-	-docker builder prune -f $(DEV_BUILDER_PRUNE_FLAGS)
+	docker image prune -f || echo "WARNING: image prune failed — sweep skipped (non-fatal, deploy unaffected)"
+	docker builder prune -f $(DEV_BUILDER_PRUNE_FLAGS) || echo "WARNING: builder prune failed — sweep skipped (non-fatal, deploy unaffected)"
 	@echo "deploy-dev complete — local dev stack refreshed, build exhaust swept."
 
 ## deploy-prod: operator-authorized production deploy — flips posture, deploys, restores
@@ -176,10 +179,12 @@ deploy-dev: require-local
 # If this fails partway, .env deliberately REMAINS in prod posture: a
 # half-finished production deploy needs a human, and the guards will block
 # all dev work until the posture is restored by hand (cp .env.dev .env).
-# The build-exhaust sweep (#205) runs LAST, after the posture restore, and is
-# non-fatal. Both prunes pin their own DOCKER_HOST and neither reads .env, so
-# posture is irrelevant to them — running them after the restore means not even
-# an operator Ctrl-C during a long prune can strand production posture.
+# The build-exhaust sweep (#205, corrected #257) runs LAST, after the posture
+# restore, and is loud-but-non-fatal. Both prunes pin their own DOCKER_HOST and
+# neither reads .env, so posture is irrelevant to them — running them after the
+# restore means not even an operator Ctrl-C during a long prune can strand
+# production posture. The builder prune is uncapped here: prod's daemon is
+# dedicated to this stack and no build reads the cache (--no-cache by design).
 deploy-prod:
 	@test -z "$(DOCKER_HOST)" || (echo "ERROR: DOCKER_HOST is already set ($(DOCKER_HOST)). deploy-prod pins its own target; investigate why it is set, unset it, and retry." && exit 1)
 	@test -s .env.prod || (echo "ERROR: .env.prod missing or empty." && exit 1)
@@ -189,8 +194,8 @@ deploy-prod:
 	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) build
 	DOCKER_HOST=$(PROD_DOCKER_HOST) $(MAKE) migrate
 	cp .env.dev .env
-	-DOCKER_HOST=$(PROD_DOCKER_HOST) docker image prune -f
-	-DOCKER_HOST=$(PROD_DOCKER_HOST) docker builder prune -f $(PROD_BUILDER_PRUNE_FLAGS)
+	DOCKER_HOST=$(PROD_DOCKER_HOST) docker image prune -f || echo "WARNING: image prune failed — sweep skipped (non-fatal, deploy unaffected)"
+	DOCKER_HOST=$(PROD_DOCKER_HOST) docker builder prune -f || echo "WARNING: builder prune failed — sweep skipped (non-fatal, deploy unaffected)"
 	@echo "deploy-prod complete — production deployed, build exhaust swept, resting posture restored (.env == .env.dev)."
 
 ## seed-prod: operator-authorized production seed — flips posture, seeds, restores
