@@ -5,6 +5,7 @@ import random
 from channels.db import database_sync_to_async
 from django.core.management.base import BaseCommand
 
+from apps.shyland import mc
 from apps.shyland import npc_voice
 from apps.shyland.envelope import envelope_ts
 
@@ -1723,6 +1724,17 @@ class Command(BaseCommand):
             status['ts'] = ts
         if fight is not None and 'ts' not in fight:
             fight['ts'] = ts
+        # v25.1 (#37): the MC tap — one record per call, even though
+        # delivery unpacks this into up to three client messages.
+        # actor_name is the process identity, always; finer attribution
+        # lives in data. None values omitted, ts stripped at every level.
+        data = {'text': text, 'category': category, 'status': status,
+                'fight': fight, 'event': event}
+        data = {k: (({sk: sv for sk, sv in v.items() if sk != 'ts'})
+                    if isinstance(v, dict) else v)
+                for k, v in data.items() if v is not None}
+        await mc.mc_emit('out', actor_name='ticker',
+                         audience=[character_pk], data=data)
         await channel_layer.group_send(
             f'player_{character_pk}',
             {
@@ -1740,6 +1752,18 @@ class Command(BaseCommand):
                                 exclude_pks=None):
         from channels.layers import get_channel_layer
         channel_layer = get_channel_layer()
+        # v25.1 (#37): the MC tap — audience resolved at fan-out time,
+        # honoring the exclude semantics.
+        excludes = []
+        if exclude_pk is not None:
+            excludes.append(exclude_pk)
+        if exclude_pks:
+            excludes.extend(exclude_pks)
+        audience = await mc.resolve_room_audience(room_id,
+                                                  exclude_pks=excludes)
+        await mc.mc_emit('out', actor_name='ticker', room_id=room_id,
+                         audience=audience,
+                         data={'text': text, 'category': category})
         await channel_layer.group_send(
             f'room_{room_id}',
             {
