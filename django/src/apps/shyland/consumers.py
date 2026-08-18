@@ -11,6 +11,7 @@ from datetime import timedelta, timezone as dt_timezone
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.conf import settings
 from django.db.models import Count
 from django.urls import reverse
 from django.utils import timezone
@@ -455,7 +456,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.player_group = f'player_{self.character_pk}'
         await self.channel_layer.group_add(self.player_group, self.channel_name)
 
-        self.redis = aioredis.from_url("redis://redis:6379")
+        # v25.1 (#271): the endpoint comes from the one settings constant —
+        # presence must never split from the channel layer's Redis.
+        self.redis = aioredis.from_url(f"redis://{settings.REDIS_HOST}:6379")
         self.session_token = uuid.uuid4().hex
         # v21.1 (#116): single-session enforcement. Any older consumer in
         # this character's personal group sees a token mismatch, prints a
