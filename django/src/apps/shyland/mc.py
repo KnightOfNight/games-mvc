@@ -7,6 +7,7 @@ serialization error, anything) drops the record and never raises into
 game code. No game path may ever block or break on MC.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -22,8 +23,12 @@ MC_STREAM_KEY = 'mc:events'
 # Lazy module-level async client, built on first use from the one
 # endpoint constant (#271). db 0 is shared with the channel layer and
 # the presence keys — the mc:* key namespace doesn't collide with
-# either.
+# either. Rebound if the running event loop changes: redis.asyncio
+# pools bind to the loop that created them — Daphne and the ticker
+# each live on one loop for the process lifetime, but test runs
+# create many.
 _client = None
+_client_loop = None
 
 # Sink-failure warnings are throttled to at most one per interval so a
 # dead Redis never floods the logs.
@@ -32,9 +37,11 @@ _last_warn = None
 
 
 def _get_client():
-    global _client
-    if _client is None:
+    global _client, _client_loop
+    loop = asyncio.get_running_loop()
+    if _client is None or _client_loop is not loop:
         _client = aioredis.Redis(host=settings.REDIS_HOST, port=6379, db=0)
+        _client_loop = loop
     return _client
 
 

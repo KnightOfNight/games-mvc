@@ -133,5 +133,5 @@ class Command(BaseCommand):
                     return 0
                 time.sleep(DB_RETRY_SECONDS)
         client.xack(MC_STREAM_KEY, GROUP,
-                    *[stream_id for stream_id, _fields in entries])
+                    *[_decode(stream_id) for stream_id, _fields in entries])
         return len(entries)
