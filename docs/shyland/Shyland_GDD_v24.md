@@ -702,9 +702,9 @@ Under the hood, home is the first resident of the **delayed-action registry** �
 
 Zone progression is gated by **locks and keys** (#41). Design intent: every player fully explores a zone before leaving it behind — beginning with the Convergence and its seeded newbie gear, so no new player reaches a zone where things can hurt them without having seen everything the sanctuary gave them first.
 
-**The lock is world data.** A zone may carry an entry requirement naming another zone: *to enter this zone, you must have fully explored that one.* Locks are authored at zone-authoring time, seed-owned. Nothing derives from danger level — sanctuaries and battle zones alike may be locked or open, and locks chain (a future zone may require the zone before it). The shipped set (v24.25): **The Verdant Reach requires The Convergence**; every other zone is open. New zones author their locks when they are built — the V25 zones are expected to require the Verdant Reach.
+**The lock is world data.** A zone may carry an entry requirement naming another zone: *to enter this zone, you must have fully explored that one.* Locks are authored at zone-authoring time, seed-owned. Nothing derives from danger level — sanctuaries and battle zones alike may be locked or open, and locks chain (a future zone may require the zone before it). The shipped set (v24.25): **The Verdant Reach requires The Convergence**; every other zone is open. New zones author their locks when they are built — the next new zones are expected to require the Verdant Reach.
 
-**The key is player data.** A character earns a zone's key — a permanent **zone completion** record — at the moment their recorded room visits (`RoomVisit`, Section 2.5) cover every room of the zone. The check fires only when a new first-visit row is recorded; the key is minted once, timestamped. Completions are recorded for **every** zone, whether or not any lock currently wants them — a player who finishes the Verdant Reach today already holds that key when a V25 gate first asks for it.
+**The key is player data.** A character earns a zone's key — a permanent **zone completion** record — at the moment their recorded room visits (`RoomVisit`, Section 2.5) cover every room of the zone. The check fires only when a new first-visit row is recorded; the key is minted once, timestamped. Completions are recorded for **every** zone, whether or not any lock currently wants them — a player who finishes the Verdant Reach today already holds that key when a future zone gate first asks for it.
 
 **Keys are permanent; locks are authored.** A key, once earned, is never revoked. If a later release adds rooms to a zone, earning changes for those who haven't finished — possession changes for no one. Locks, being world data, may be added, retargeted, or removed by future design rulings.
 
@@ -1913,14 +1913,14 @@ Aggregate sanity check (a 20-normal / 6-elite / 1-boss session): income ≈ 460 
 |-------|--------------------|-------------------------------|
 |Say    |`say <text>`        |Current room only. **v22 format:** speech renders `Name: message` in say-color — players and NPCs alike, no `[say]` prefix; the speaker receives their own broadcast (double vision is intentional; `echo off` is the remedy for the command echo, not the speech) |
 |Yell   |`yell <text>`       |Current room + adjacent rooms  |
-|Tell   |`tell <name> <text>`|Private, anywhere              |
+|Tell   |`tell <name> <text>`|Private between players — never from the game (Section 10.11) — anywhere|
 |Party  |`party <text>`      |All party members              |
 |Guild  |`guild <text>`      |All online guild members       |
 |Zone   |`zone <text>`       |All players in current zone    |
 |General|`general <text>`    |All players online (throttled) |
 |Emote  |`emote <text>`      |Freeform action in current room|
 
-All channels are logged server-side for moderation.
+All channels flow through Monitoring and Command (MC): nothing in the game is private (the total-capture doctrine, Section 10.11) — capture serves balance, analysis, and AI as well as moderation.
 
 ### 7.2 Parties
 
@@ -2170,7 +2170,7 @@ Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208)
 
 #### Settings Standard
 
-Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, plunder off, timestamps on.** Unlike its siblings, `plunder` changes what the *world* does rather than what the player's pane shows — the setting is read at the moment combat ends, so a mid-fight flip governs that same fight. Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and the future firehose are untouched; every command remains a stamped event.
+Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, plunder off, timestamps on.** Unlike its siblings, `plunder` changes what the *world* does rather than what the player's pane shows — the setting is read at the moment combat ends, so a mid-fight flip governs that same fight. Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and future MC capture (Section 10.11) are untouched; every command remains a stamped event.
 
 #### Help
 
@@ -2180,7 +2180,7 @@ Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `time
 
 The Django auth Group **`admins.shyland`** grants in-game admin. `sudo` and `last` gate on membership, **checked live on every attempt** — no session caching, revocation instant. For non-members the commands do not exist: absent from help, absent from completion, and attempts return the unknown-command response **byte-identical to gibberish input** (footnote 18).
 
-- **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with the firehose (#33/#37).
+- **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with MC (#33/#37).
 - **`last`** (#88) — the roster: a Kind-3 `Last seen...` table (`Character / Status / Last seen`), the composite character line (`Shy-Guy - Level 10 Highborn Blade`), Online/Offline from presence, and three time forms — `never` (no recorded connect), `since <ISO-8601 UTC>` (online), bare stamp (offline) — ordered online-by-recency, then offline-by-recency, then never. Every character's last-connect is recorded at websocket accept regardless of who can read it.
 
 #### Delayed Actions and `cancel` (v22)
@@ -2296,7 +2296,7 @@ Web-only. Responsive down to phone screen size. No native app. **The app fits th
 
 **Command bar:** input line with the send button inside and the **connection indicator** at its right — a dot plus latency (client pings every 10s, server echoes; green healthy, amber degraded, red pulsing on reconnect, gray dead; accessible label, never announced).
 
-**The output envelope:** every outbound WebSocket message carries `ts` (epoch ms UTC, stamped at creation) and `seq` (per-connection monotonic, stamped at one audited delivery choke point — the designated future firehose tap; nothing may bypass it). **`seq` order is authoritative for rendering;** `ts` may lawfully be non-monotonic against it. **Display rule — timestamps mark events, not renderings:** combat, chat, presence, commerce, XP, errors, system/ambient, setting-change confirmations, and command echoes display the dim `[HH:MM:SS.ss]` local-time prefix (aria-hidden; governed by the `timestamps` preference); room renders and state reports (inventory, stats, vendor lists, examine, help) do not.
+**The output envelope:** every outbound WebSocket message carries `ts` (epoch ms UTC, stamped at creation) and `seq` (per-connection monotonic, stamped at one audited delivery choke point — the envelope stamp, not the MC capture point (MC taps at creation; Section 10.11); nothing may bypass it). **`seq` order is authoritative for rendering;** `ts` may lawfully be non-monotonic against it. **Display rule — timestamps mark events, not renderings:** combat, chat, presence, commerce, XP, errors, system/ambient, setting-change confirmations, and command echoes display the dim `[HH:MM:SS.ss]` local-time prefix (aria-hidden; governed by the `timestamps` preference); room renders and state reports (inventory, stats, vendor lists, examine, help) do not.
 
 **The output palette (v22 — the named chart):** client-side styling driven by server-sent semantic categories (the server never sends hex for message text). The complete named vocabulary, every name a CSS variable and citable design language:
 
@@ -2379,10 +2379,9 @@ NPC AI runs server-side. No game state is trusted from the client.
 
 **Redis is not used for combat state, effect state, or any game data where loss would affect player experience or require recovery logic.** All combat state (`CombatSession`, `CombatAction`) lives in PostgreSQL.
 
-#### Never persisted:
+#### Formerly "never persisted" — reversed by total capture (v25.0, #260):
 
-- Chat messages (ephemeral; stored only if reported for moderation)
-- Combat log
+- Chat messages and the combat log flow to the MC durable record like every other event category (Section 10.11). Persistence begins when the MC sink ships (v25.1, pending implementation).
 
 ### 10.6 World State & Instancing
 
@@ -2450,6 +2449,18 @@ Adopted as version-level law, recorded here and in the architecture doc's design
 
 -----
 
+### 10.11 Monitoring and Command (MC) — Total Capture (v25.0, #260)
+
+**Nothing in the game is private.** Every event category flows through the MC sink — commands, output, speech on every channel, combat internals, presence, commerce — with no exclusions at the tap and no conditionals. Capture serves balance, analysis, and AI, not only moderation, and agents receive the full stream. Retention is a purely operational question (volume and disk), never a privacy mechanism. This reverses the former "never persisted" rule for chat and the combat log (Section 10.5).
+
+**Direct messages are private between players, never private from the game.** Should DMs ever be designed, they pass through MC like everything else — binding on any future DM design (ruled 2026-08-16, #260).
+
+**Speech has three sources:** player-typed, author-written, and — admitted in principle, category rules to come (#265) — generated. sudo's voice (#262) is none of these: the watcher is an out-of-world surface with a persona, not in-world speech.
+
+**Mechanism (v25.1, pending implementation):** capture is creation-level — one record per event, emitted where the event is born, in the consumer and ticker processes alike, with the event's audience recorded as a field; command ingress is captured at receipt (`receive_json`). The delivery choke point (Section 10.4) is the envelope stamp, not the capture point — a per-connection tap would record one row per recipient, not per event. The hot tier is a Redis Stream (bounded window, consumer groups per reader); PostgreSQL is the durable record. Capture is fire-and-forget by construction: a sink failure drops a log record, never a game action (#37).
+
+-----
+
 ## 11. Admin & Content Tools
 
 ### 11.1 Builder System
@@ -2512,7 +2523,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 | Secondary-stat curves vs Mk band growth (#130) | Flat-value gear effects that matter at Mk 1 shrink toward irrelevance by Mk 3 if curves stay as seeded (midpoints grow +0.2/band while NPC numbers roughly double). A retune, not a rework — audit when Mk 2 content is designed, same era as #104. |
 | Mk-2 NPC HP scaling (#104) | NPC vitality does not scale with level/Mk tier (contest stats do) — the first Mk 2 spawn authored would carry level-12+ contest stats with Mk 1 HP. MUST be resolved before any Mk 2 content exists; blocks Mk 2 spawn authoring. |
 | Player macro/alias system (#125) | Client- or server-side command aliases. Unruled; filed during B3 planning. |
-| The firehose (#33, #37) | Universal event logging: every command, every output, every event through the envelope choke point. `sudo`'s listener arrives with it. |
+| MC — the Monitoring half (#33, #37) | Universal event capture: every command, every output, every event through creation-level taps into the MC sink (Section 10.11). sudo (#262) begins listening with it. |
 |**Mounts**                             |Deferred. Super user teleportation covers testing needs in v1.                                                                     |
 |**Housing**                            |Deferred. No player housing in v1.                                                                                                 |
 |**Auction House**                      |Permanently excluded. Items are soulbound; no player item trading ever.                                                            |

@@ -6,14 +6,14 @@
 |-------|--------------------|-------------------------------|
 |Say    |`say <text>`        |Current room only. **v22 format:** speech renders `Name: message` in say-color — players and NPCs alike, no `[say]` prefix; the speaker receives their own broadcast (double vision is intentional; `echo off` is the remedy for the command echo, not the speech) |
 |Yell   |`yell <text>`       |Current room + adjacent rooms  |
-|Tell   |`tell <name> <text>`|Private, anywhere              |
+|Tell   |`tell <name> <text>`|Private between players — never from the game (Section 10.11) — anywhere|
 |Party  |`party <text>`      |All party members              |
 |Guild  |`guild <text>`      |All online guild members       |
 |Zone   |`zone <text>`       |All players in current zone    |
 |General|`general <text>`    |All players online (throttled) |
 |Emote  |`emote <text>`      |Freeform action in current room|
 
-All channels are logged server-side for moderation.
+All channels flow through Monitoring and Command (MC): nothing in the game is private (the total-capture doctrine, Section 10.11) — capture serves balance, analysis, and AI as well as moderation.
 
 ### 7.2 Parties
 

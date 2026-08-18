@@ -41,7 +41,7 @@ Web-only. Responsive down to phone screen size. No native app. **The app fits th
 
 **Command bar:** input line with the send button inside and the **connection indicator** at its right — a dot plus latency (client pings every 10s, server echoes; green healthy, amber degraded, red pulsing on reconnect, gray dead; accessible label, never announced).
 
-**The output envelope:** every outbound WebSocket message carries `ts` (epoch ms UTC, stamped at creation) and `seq` (per-connection monotonic, stamped at one audited delivery choke point — the designated future firehose tap; nothing may bypass it). **`seq` order is authoritative for rendering;** `ts` may lawfully be non-monotonic against it. **Display rule — timestamps mark events, not renderings:** combat, chat, presence, commerce, XP, errors, system/ambient, setting-change confirmations, and command echoes display the dim `[HH:MM:SS.ss]` local-time prefix (aria-hidden; governed by the `timestamps` preference); room renders and state reports (inventory, stats, vendor lists, examine, help) do not.
+**The output envelope:** every outbound WebSocket message carries `ts` (epoch ms UTC, stamped at creation) and `seq` (per-connection monotonic, stamped at one audited delivery choke point — the envelope stamp, not the MC capture point (MC taps at creation; Section 10.11); nothing may bypass it). **`seq` order is authoritative for rendering;** `ts` may lawfully be non-monotonic against it. **Display rule — timestamps mark events, not renderings:** combat, chat, presence, commerce, XP, errors, system/ambient, setting-change confirmations, and command echoes display the dim `[HH:MM:SS.ss]` local-time prefix (aria-hidden; governed by the `timestamps` preference); room renders and state reports (inventory, stats, vendor lists, examine, help) do not.
 
 **The output palette (v22 — the named chart):** client-side styling driven by server-sent semantic categories (the server never sends hex for message text). The complete named vocabulary, every name a CSS variable and citable design language:
 
@@ -124,10 +124,9 @@ NPC AI runs server-side. No game state is trusted from the client.
 
 **Redis is not used for combat state, effect state, or any game data where loss would affect player experience or require recovery logic.** All combat state (`CombatSession`, `CombatAction`) lives in PostgreSQL.
 
-#### Never persisted:
+#### Formerly "never persisted" — reversed by total capture (v25.0, #260):
 
-- Chat messages (ephemeral; stored only if reported for moderation)
-- Combat log
+- Chat messages and the combat log flow to the MC durable record like every other event category (Section 10.11). Persistence begins when the MC sink ships (v25.1, pending implementation).
 
 ### 10.6 World State & Instancing
 
@@ -192,6 +191,18 @@ Adopted as version-level law, recorded here and in the architecture doc's design
 - **(v22) Sync helpers cross into the tick loop only via `database_sync_to_async` or verifiably prefetched data** — the async-safety rule (Section 10.4).
 - **(v22) The color chart is the license** — a color literal off the chart is a defect, enforced by set-equality test (Section 10.2).
 - **(v22) Consequence must be seen** — anything the player needs to act on speaks in a visible voice, never the muted ambient one; masking is done by construction on the server, never delegated to the client (the map's frontier rule is the pattern).
+
+-----
+
+### 10.11 Monitoring and Command (MC) — Total Capture (v25.0, #260)
+
+**Nothing in the game is private.** Every event category flows through the MC sink — commands, output, speech on every channel, combat internals, presence, commerce — with no exclusions at the tap and no conditionals. Capture serves balance, analysis, and AI, not only moderation, and agents receive the full stream. Retention is a purely operational question (volume and disk), never a privacy mechanism. This reverses the former "never persisted" rule for chat and the combat log (Section 10.5).
+
+**Direct messages are private between players, never private from the game.** Should DMs ever be designed, they pass through MC like everything else — binding on any future DM design (ruled 2026-08-16, #260).
+
+**Speech has three sources:** player-typed, author-written, and — admitted in principle, category rules to come (#265) — generated. sudo's voice (#262) is none of these: the watcher is an out-of-world surface with a persona, not in-world speech.
+
+**Mechanism (v25.1, pending implementation):** capture is creation-level — one record per event, emitted where the event is born, in the consumer and ticker processes alike, with the event's audience recorded as a field; command ingress is captured at receipt (`receive_json`). The delivery choke point (Section 10.4) is the envelope stamp, not the capture point — a per-connection tap would record one row per recipient, not per event. The hot tier is a Redis Stream (bounded window, consumer groups per reader); PostgreSQL is the durable record. Capture is fire-and-forget by construction: a sink failure drops a log record, never a game action (#37).
 
 -----
 
