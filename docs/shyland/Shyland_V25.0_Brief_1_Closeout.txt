@@ -51,8 +51,8 @@ major-opening mechanics (GDD_MAJOR -> 25, monolith rename, old monolith
 git rm'd) — closeout work, noted so the tail expects it.
 
 ISSUE CLOSES (§9, gated on this report's completion): #260, #264 (comments
-naming 5da479f and 642223c), #269 (comment naming the release) — leaving
-milestone Version 25.0 at 3/3 for the closeout entry gate.
-[Recorded as executed below once done.]
+naming 5da479f and 642223c), #269 (comment naming the release) — closed
+2026-08-18, leaving milestone Version 25.0 at 3/3 for the closeout entry gate.
 
-OPERATOR PLAYTEST DISPOSITION (#170): PENDING — awaiting operator input.
+OPERATOR PLAYTEST DISPOSITION (#170): Operator reports playtest successful
+(2026-08-18, in-conversation).
