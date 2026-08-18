@@ -11,8 +11,10 @@ Every message sent to the Shyland client carries two envelope fields:
   earlier can be delivered after a direct message created later) and
   that is correct behavior.
 
-The choke point is the designated tap for the Firehose Logging
-milestone (#37/#33). No persistence happens here.
+The choke point is the envelope stamp — not the capture point for
+Monitoring and Command (MC, #37/#33), which taps at creation level: one
+record per event; a per-connection delivery tap would record one row per
+recipient. No persistence happens here.
 """
 import time
 

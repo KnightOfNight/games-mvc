@@ -30,7 +30,7 @@ PROD_DOCKER_HOST := ssh://ec2-user@games.magrathea.com
 # re-pulled.
 DEV_BUILDER_PRUNE_FLAGS := --reserved-space 5GB
 
-GDD_MAJOR := 24
+GDD_MAJOR := 25
 GDD_SECTIONS := docs/shyland/gdd/_00_header.md \
                 docs/shyland/gdd/_01_version_history.md \
                 docs/shyland/gdd/_02_table_of_contents.md \

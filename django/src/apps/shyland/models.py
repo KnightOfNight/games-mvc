@@ -280,8 +280,8 @@ class Character(models.Model):
     # present regardless — this is display preference only.
     show_timestamps = models.BooleanField(default=True)
     # v22 brief 2 (DD §10): pane-only preference — when off, the client
-    # suppresses the player's own command-echo line. Never affects the
-    # firehose or anything server-side beyond the flag itself.
+    # suppresses the player's own command-echo line. Never affects MC
+    # capture or anything server-side beyond the flag itself.
     echo_mode = models.BooleanField(default=True)
     # v24.29 (#235): when on, the rights-scoped corpse sweep runs
     # automatically at the moment combat ends. Defaults off — looting

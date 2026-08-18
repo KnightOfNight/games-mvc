@@ -1,0 +1,58 @@
+2026-08-17 — Implementation session started: Shyland_V25.0_Brief_1_MC_Major_Opening.md on branch version_25_0.
+
+=== CLOSEOUT REPORT ===
+
+Brief: Shyland_V25.0_Brief_1_MC_Major_Opening.md (committed at branch tip 5063e09 at session start)
+Branch: version_25_0
+Session date: 2026-08-17
+
+TECHNICAL PRE-FLIGHT (#252): zero mismatches. All §2 claims verified against
+the code before any edit — version.py:8 read "24.31" with the pin test at
+test_b2_amendment1.py:118; grep -rni firehose django/src/ returned exactly the
+five claimed references at the claimed locations, all comments/docstrings.
+
+COMMITS (in order):
+- dd6ab25  closeout report stub (Step 0 work-has-started signal)
+- f54a110  version start: SHYLAND_VERSION -> "25.0-DEV", pin test moved in the
+           same commit; followed by the version-start make deploy-dev (clean,
+           "No migrations to apply")
+- 986ee16  the firehose->MC sweep: five comment/docstring edits only
+           (envelope.py module docstring, consumers.py send_json docstring,
+           consumers.py settings-standard block comment, consumers.py cmd_echo
+           comment, models.py echo_mode field comment); the two designated-tap
+           claims replaced with the corrected envelope-stamp / creation-level-
+           capture sentences per §4. Diff confined to comment/docstring lines
+           in 3 files; no executable line changed.
+- 642223c  architecture doc: Version 25.0 entry appended at the top of the
+           header history, stamp 25.0, "as of commit" hash NOT moved
+           (comment-only sweep is not architectural). FINAL IMPLEMENTATION
+           COMMIT of this brief.
+
+MIGRATIONS: none (no model change — as the brief states).
+SEED DATA: none. TEMPLATES/STATIC: none. NEW TESTS: none (per §5).
+
+VERIFICATION (§6):
+1. Full suite in-container (python manage.py test apps/shyland/tests via
+   docker exec): 687 tests, OK — exactly the §2 baseline, count unchanged.
+   Run twice: once before the final deploy and once on the final deployed
+   build (extra rigor, not a deviation); OK both times.
+2. grep -rni firehose django/src/ — zero hits (exit 1).
+3. grep -rni firehose docs/shyland/gdd/ | grep -v _01_version_history —
+   zero hits (exit 1); the design session's sweep held.
+4. make deploy-dev from the worktree after 1-3 passed — clean, no migrations,
+   dev stack running the sweep build. (Also confirmed zero firehose hits in
+   Shyland_Architecture_v24.md — the design session's 5da479f retheme held.)
+
+DEVIATIONS: none.
+
+PENDING DEPLOY-TIME ACTIONS: none (per §10 of the brief). The closeout tail
+runs the ordinary operator-authorized make deploy-prod plus the standing
+major-opening mechanics (GDD_MAJOR -> 25, monolith rename, old monolith
+git rm'd) — closeout work, noted so the tail expects it.
+
+ISSUE CLOSES (§9, gated on this report's completion): #260, #264 (comments
+naming 5da479f and 642223c), #269 (comment naming the release) — closed
+2026-08-18, leaving milestone Version 25.0 at 3/3 for the closeout entry gate.
+
+OPERATOR PLAYTEST DISPOSITION (#170): Operator reports playtest successful
+(2026-08-18, in-conversation).

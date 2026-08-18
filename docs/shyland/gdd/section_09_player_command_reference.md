@@ -149,7 +149,7 @@ Shipped surfaces: `inv` = the Inventory table alone (Section 6.11; v24.16, #208)
 
 #### Settings Standard
 
-Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, plunder off, timestamps on.** Unlike its siblings, `plunder` changes what the *world* does rather than what the player's pane shows — the setting is read at the moment combat ends, so a mid-fight flip governs that same fight. Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and the future firehose are untouched; every command remains a stamped event.
+Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `timestamps` — share one shape: six accepted words (`on off yes no true false`, any case); **bare form reports** the current setting (`brief room display is off.`); set form answers the "now" sentence (`command echo is now on.`); invalid input answers the CLI `Usage: <cmd> [on|off]`. Stateless, idempotent, plain prose. **Defaults: brief off (flipped in v22 for new characters; existing players kept their setting), echo on, plunder off, timestamps on.** Unlike its siblings, `plunder` changes what the *world* does rather than what the player's pane shows — the setting is read at the moment combat ends, so a mid-fight flip governs that same fight. Echo is **pane-only**: `echo off` suppresses the player's own `> command` echo lines in their pane and nothing else — server behavior, timestamps, and future MC capture (Section 10.11) are untouched; every command remains a stamped event.
 
 #### Help
 
@@ -159,7 +159,7 @@ Four settings commands — `brief`, `echo` (v22, new), `plunder` (v24.29), `time
 
 The Django auth Group **`admins.shyland`** grants in-game admin. `sudo` and `last` gate on membership, **checked live on every attempt** — no session caching, revocation instant. For non-members the commands do not exist: absent from help, absent from completion, and attempts return the unknown-command response **byte-identical to gibberish input** (footnote 18).
 
-- **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with the firehose (#33/#37).
+- **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with MC (#33/#37).
 - **`last`** (#88) — the roster: a Kind-3 `Last seen...` table (`Character / Status / Last seen`), the composite character line (`Shy-Guy - Level 10 Highborn Blade`), Online/Offline from presence, and three time forms — `never` (no recorded connect), `since <ISO-8601 UTC>` (online), bare stamp (offline) — ordered online-by-recency, then offline-by-recency, then never. Every character's last-connect is recorded at websocket accept regardless of who can read it.
 
 #### Delayed Actions and `cancel` (v22)

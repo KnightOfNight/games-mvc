@@ -115,7 +115,7 @@ The flow every release follows (major `N.0` or point `N.M` alike):
 **"We're just always shipping out a constant stream of point releases one after the other, sometimes incrementing the major number too."** (operator, verbatim — this sentence is the model.)
 
 - **There is one kind of release.** Every release is a point release running the identical lifecycle: design session → committed brief → implementation → playtest disposition → closeout session → operator merge → tail deploy. Nothing else ships anything.
-- **A bump in the major number indicates a significant change in the game** — one or more new features with a name (Version 24 = new-zone-prep; Version 25 = new zones). It rides an otherwise-ordinary release as `N.0`, whose closeout additionally runs the **major-opening mechanics**: `GDD_MAJOR` bump, monolith rename to `Shyland_GDD_vN.md`, old monolith `git rm`'d. (These moved here from the retired end-of-version ritual — main's GDD carries the major's name from the major's first day.)
+- **A bump in the major number indicates a significant change in the game** — one or more new features with a name (Version 24 = new-zone-prep; Version 25 = MC — Monitoring and Command). It rides an otherwise-ordinary release as `N.0`, whose closeout additionally runs the **major-opening mechanics**: `GDD_MAJOR` bump, monolith rename to `Shyland_GDD_vN.md`, old monolith `git rm`'d. (These moved here from the retired end-of-version ritual — main's GDD carries the major's name from the major's first day.)
 - **A change in the minor number is related to the current design: a bug fix or continued development under the current major** — the major's feature parts, amendments, bug fixes (which never wait for anything), small features to existing functions, and prep work for the next major. **Litmus: maps were a major version; adding percentage-seen to maps is a point release.**
 - **There is no cadence.** Majors happen whenever something big is in the works. The even/odd feature/fix alternation is retired (2026-07-29).
 - **There is no end-of-major ritual.** Every release closes itself completely; a major ends by implication when the next major's `N.0` ships. The major's queue is drained when no open issue carries its label unshipped (deliberate stragglers are relabeled to the next major or a capability label) — the shipping release's changelog row notes it, and that's the whole event.
@@ -123,7 +123,7 @@ The flow every release follows (major `N.0` or point `N.M` alike):
 - **Labels and milestones (operator-ruled 2026-07-30, #175 — crisp gates, small permanent namespace):** the two GitHub axes carry the two kinds of fact. **Permanent membership = label; shipping release = milestone.**
   - **Major membership is a permanent label** — `V24`, `V25`, … — applied when an item is triaged into the major, never removed; the label is the major's plan of record and the queue the release stream drains, and the whole era stays queryable forever (`--label VN --state all`). **No major-level milestone exists.**
   - **Milestones are shipping releases only:** each release gets its `Version N.M` milestone — born with its design session, holding the founding ticket plus dependencies only, closed at closeout (the entry gate's "milestone closed N/N" query). Names are exactly `Version N.M`.
-  - **Every other permanent grouping is a label too** — capabilities (`healing-economy`, `authentication`, `firehose-logging`) and content groups (zone builds `Z02`–`Z08`). An issue may carry a major label, grouping labels, and its shipping release's milestone simultaneously — full history survives shipping.
+  - **Every other permanent grouping is a label too** — capabilities (`healing-economy`, `authentication`, `monitoring-and-command`) and content groups (zone builds `Z02`–`Z08`). An issue may carry a major label, grouping labels, and its shipping release's milestone simultaneously — full history survives shipping.
   - **Queue order is not encoded in the tracker** — neither labels nor milestones order issues. Order lives where it always effectively lived: design-session rulings ("next founding ticket"), recorded on issues.
   - The first design session of a new major re-triages the major's labeled queue against the theme (off-theme issues lose the label — moving to a capability label or none — and ship as ordinary point releases whenever chosen).
 - **Scope law (every release):** **one founding ticket, one implementation brief.** Additional tickets only as dependencies (`gh --blocked-by`) describing the same problem, never widening it. Work too big for one brief becomes two releases. Mid-build discoveries file thin into the normal pipeline.
@@ -273,7 +273,7 @@ Characters have three resource bars — not two, not one. All three are in the d
 - **Client:** Vanilla JS, responsive HTML/CSS, no framework dependency
 - **Auth:** Django built-in auth with the shared `user.profile` gamer tag system
 
-All game logic runs server-side. The client is a dumb terminal: it renders server-sent semantic categories and payloads (map, fight, state sync) and is never trusted for game state. Every outbound message passes one delivery choke point carrying the `ts`/`seq` envelope — the future firehose tap.
+All game logic runs server-side. The client is a dumb terminal: it renders server-sent semantic categories and payloads (map, fight, state sync) and is never trusted for game state. Every outbound message passes one delivery choke point carrying the `ts`/`seq` envelope — the envelope stamp (MC capture taps at creation, not here; GDD Section 10.11).
 
 ---
 
@@ -334,7 +334,7 @@ Zones are genre-distinct; Areas optional named groupings; Rooms atomic. Zone and
 | Z07 | The Pale Shore | Cosmic horror | Endgame |
 | Z08 | The Wastelands | Post-apocalyptic, infinite scaling | All levels |
 
-The Convergence is the starting room, social hub, and default recall destination. PvP disabled. The next zone build (Z02 or Z03) belongs to a future major version (Version 25 = new zones).
+The Convergence is the starting room, social hub, and default recall destination. PvP disabled. The next zone build (Z02 or Z03) belongs to a future zones major.
 
 ---
 
