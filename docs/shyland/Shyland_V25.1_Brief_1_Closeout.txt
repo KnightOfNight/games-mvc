@@ -1,1 +1,130 @@
 2026-08-18 — Implementation session started: Shyland_V25.1_Brief_1_MC_Sink.md on branch version_25_1.
+
+================================================================================
+V25.1 Brief 1 — The MC Sink — Closeout Report
+================================================================================
+
+TECHNICAL PRE-FLIGHT (#252)
+Every §2 claim was diffed against the code at branch tip 6b71d67 before any
+work: version constant + pin test, requirements, the two inline REDIS_HOST
+reads (base.py:82/:124), the hardcoded presence URL (consumers.py:458), all
+10 consumer group_send sites at exactly the claimed lines, the 7 status
+sends, every helper/direct-send location, the ticker's two outbound funnels
+(the only group_send sites plus the :1705 docstring), the compose ticker
+block, the absence of a read-only-admin precedent, and the JSONField
+convention. ZERO DRIFT — no hard-stop condition. Process assumptions match
+the standing rituals; the shared-surface edits (base.py, docker-compose.yml,
+CLAUDE.md) carry the operator authorization recorded 2026-08-18 in the brief.
+
+Adjacent discovery (recorded, not acted on): the ticker's presence reader
+_online_character_pks (run_tick_engine.py:989) hardcodes the same
+redis://redis:6379 endpoint #271 describes. #271's body and this brief name
+consumers.py:458 only, so that site was fixed as written and the ticker site
+was recorded as a comment on #271 for an operator ruling — scope law, not
+silently widened.
+
+COMMITS (branch version_25_1, all pushed at step boundaries)
+  706ca7f  Step 0: closeout stub (work-has-started signal)
+  108f5d0  Version start: SHYLAND_VERSION -> 25.1-DEV + pin test, same commit
+           (followed by the version-start make deploy-dev)
+  fd9378f  §5.1/§5.2: REDIS_HOST + MC_STREAM_MAXLEN constants; presence URL
+           from the constant (#271 fix)
+  4773d42  §5.3: mc.py — mc_emit + resolve_room_audience
+  437d849  §5.4: consumer taps — ingress cmd, presence, personal out, direct
+           sends, send_status (7 sites), mc_group_send wrapper (10 sites)
+  037d1b3  §5.5: ticker taps inside send_to_player / broadcast_to_room
+  4b10d97  §5.6: MCEvent model + migration 0050
+  9469eaa  §5.7–§5.9: run_mc_persister, mc-persister compose service,
+           read-only MCEvent admin
+  fd01e3c  §6: tests (15 new, suite 702 OK) + per-loop client rebind +
+           decoded ack ids  ← FINAL IMPLEMENTATION HASH (arch-doc header hash)
+  5da5f64  §5.10/§9: architecture doc 25.1 + CLAUDE.md lines
+  (this report's commit follows as the session's last content commit)
+
+DEVIATIONS (recorded, none silent)
+1. mc.py's lazy module-level client REBINDS when the running event loop
+   changes. The brief specified a lazy module-level client; the first suite
+   run exposed the redis.asyncio pool-binds-to-creating-loop failure under
+   multi-loop test runs (resolve_room_audience returned [] via the
+   fire-and-forget guard). Daphne and the ticker each live on one loop for
+   the process lifetime, so production behavior is identical.
+2. Persister XACK ids are decoded to str before acking (test-visible
+   cosmetic consistency with entry_to_row; Redis accepts either).
+3. The persister's stdout lines ('MC persister starting.', drained counts)
+   are block-buffered without a tty and do not appear promptly in docker
+   logs — verified to be byte-for-byte the ticker's own behavior ('Tick
+   engine starting.' is equally absent from its logs). Matches the brief's
+   "matching the ticker's logging style" literally; flagged here for
+   awareness.
+4. The connect record is emitted at the true end of the successful connect
+   path (after send_map), satisfying "after the group adds and presence
+   write". The degenerate character-without-room early return therefore
+   yields an out record but no connect record.
+5. Emit ordering is emit-before-send at every tap (the brief fixes this
+   order for the wrapper; direct sends only say "adjacent").
+6. Ticker send_to_player data: ts is stripped from the nested status/fight
+   payloads as well as the top level (reading "ts stripped" as applying to
+   the captured payload at every level).
+7. Test-suite stream pollution (dev-only, flagged): the ~700 existing tests
+   exercise tapped paths against the container's real Redis, so a full
+   in-container suite run emits ~1.8k records into the live dev mc:events
+   stream (the new capture tests themselves use a recorder and emit
+   nothing). Bounded by MAXLEN; drained into dev MCEvent rows by the
+   persister. No prod exposure (tests never run there). Left for a future
+   ruling if test isolation is wanted.
+
+VERIFICATION OUTCOMES (§8 — all passed)
+1. Full in-container suite: 702 tests, OK — baseline 687 + 15 new
+   (test_mc_sink.py 9, test_mc_persister.py 7 minus the moved pin = 15 net
+   new test methods across the two files; count arithmetic 687 + 15 = 702).
+2. Discipline greps (exact):
+   - channel_layer.group_send in consumers.py → :452 (docstring) and :483,
+     both inside mc_group_send. PASS.
+   - group_send in run_tick_engine.py → :1706 (docstring), :1738
+     (send_to_player), :1767 (broadcast_to_room). PASS.
+   - redis:// in consumers.py → :537 only, the settings-built f-string
+     (#271 proof). PASS.
+3. Live on the dev stack (throwaway character, created and deleted by the
+   verification scripts; connect → look → say → move north → quit):
+   - XLEN mc:events 1806 > 0; XRANGE sample well-formed
+     (kind/actor/audience/data).
+   - MCEvent rows 1806 == XLEN (persister in lockstep); the session's 24
+     records all present, kinds {cmd, connect, disconnect, out}.
+   - say audience = [11] (the room's one connected character); the say cmd
+     row (1787066974492-0) precedes the say broadcast's out row
+     (1787066974506-0) in stream order. Echo-before-cmd ordering observed
+     as the brief documents (correct, not a defect).
+   - connect=1, disconnect=1, quit out=1 for the session.
+   - pong records: 0. verbs records: 0. Records containing a token key: 0.
+   - Resilience: docker stop mc-persister → play → XLEN +13 while rows
+     froze at 1806; docker start → rows caught up 1819/1819 with a
+     stream-wide gap check of 0 missing entries.
+4. Admin (objective half): MCEvent registered; has_add/has_change/
+   has_delete all False. Visual rendering/filters = operator playtest
+   item 2.
+
+DEPLOYS
+make deploy-dev at version start (108f5d0) and again after implementation +
+verification (§7). The dev stack is running the branch build, version
+25.1-DEV, with the mc-persister service up. No production action of any
+kind (Deployment Law).
+
+VOLUME NOTE (first data point for GDD §10.11's unbounded-pending-trigger
+posture): one ~40-second solo non-combat session (connect, look, say, one
+move, quit) produced 24 records. No combat was sampled — the status/fight
+sync events the design expects to dominate row growth will need a combat
+session's numbers. The dev stream also carries the test-suite artifact
+records (deviation 7), which should be discounted from any dev-derived rate.
+
+PENDING DEPLOY-TIME ACTIONS: none. The production deploy at the closeout
+tail (make deploy-prod) builds the new image, runs migration 0050, and
+brings up mc-persister as ordinary compose reconciliation. The prod stream
+starts empty and fills from live play; the persister creates its group on
+first run.
+
+ISSUES: #37 closed (comment naming this brief and fd01e3c); #271 closed
+(comment naming fd9378f). Both in milestone Version 25.1.
+
+OPERATOR PLAYTEST DISPOSITION (#170): OPEN — awaiting the operator's
+playtest against the dev stack (checklist in brief §10). To be recorded
+here verbatim-style when given; the session does not end without it.
