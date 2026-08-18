@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import currency
+from . import mc
 from . import npc_voice
 from .combat_utils import (
     bar_rescale_updates, effective_stats,
@@ -415,6 +416,81 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         await super().send_json(content, close=close)
 
     # ------------------------------------------------------------------
+    # MC creation taps (v25.1, #37 — GDD §10.11)
+    # ------------------------------------------------------------------
+
+    def _mc_room_id(self):
+        """Current room id as tracked by the room group name; None
+        before room entry. Never raises — MC is fire-and-forget."""
+        group = getattr(self, 'room_group', '') or ''
+        if group.startswith('room_'):
+            try:
+                return int(group[len('room_'):])
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _mc_actor(self):
+        char = getattr(self, 'character', None)
+        return (getattr(self, 'character_pk', None),
+                getattr(char, 'name', '') or '')
+
+    async def _mc_personal(self, data):
+        """Personal-out tap: one record, audience = this character.
+        Pre-entry sends (no character yet) are unattributable and emit
+        nothing (rule 9)."""
+        pk = getattr(self, 'character_pk', None)
+        if pk is None:
+            return
+        _, name = self._mc_actor()
+        await mc.mc_emit('out', actor_id=pk, actor_name=name,
+                         room_id=self._mc_room_id(), audience=[pk],
+                         data=data)
+
+    async def mc_group_send(self, group, event):
+        """The tapped broadcast wrapper — the only place
+        ``channel_layer.group_send`` may appear in this file (the
+        choke-point discipline). Resolves the audience at fan-out time
+        honoring the event's exclude semantics, emits one record
+        (payload minus ``ts``, minus ``token`` — never log secrets),
+        then performs the send with the payload unchanged."""
+        audience = []
+        try:
+            if group.startswith('player_'):
+                audience = [int(group[len('player_'):])]
+            elif group.startswith('room_'):
+                room_id = int(group[len('room_'):])
+                exclude_pks = []
+                if event.get('exclude') == self.channel_name:
+                    pk = getattr(self, 'character_pk', None)
+                    if pk is not None:
+                        exclude_pks.append(pk)
+                if event.get('exclude_pk') is not None:
+                    exclude_pks.append(event['exclude_pk'])
+                if event.get('exclude_pks'):
+                    exclude_pks.extend(event['exclude_pks'])
+                audience = await mc.resolve_room_audience(
+                    room_id, exclude_pks=exclude_pks)
+        except Exception:
+            audience = []
+        actor_id, actor_name = self._mc_actor()
+        await mc.mc_emit(
+            'out', actor_id=actor_id, actor_name=actor_name,
+            room_id=self._mc_room_id(), audience=audience,
+            data={k: v for k, v in event.items()
+                  if k not in ('ts', 'token')},
+        )
+        await self.channel_layer.group_send(group, event)
+
+    async def send_status(self, char, room):
+        """The tapped status send — composes the payload, emits its
+        record (the payload as-is minus ``ts``), delivers."""
+        payload = await self._status_payload(char, room)
+        await self._mc_personal(
+            {k: v for k, v in payload.items() if k != 'ts'})
+        await self.send_json(payload)
+
+    # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
@@ -465,7 +541,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # farewell, and closes; this consumer ignores its own broadcast.
         # Fired before the presence write — either interleaving with the
         # old session's guarded presence delete is safe (see arch doc 4.3).
-        await self.channel_layer.group_send(
+        await self.mc_group_send(
             self.player_group,
             {
                 'type': 'player_message',
@@ -514,6 +590,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # client-state sync full-state pattern.
         await self.send_map()
 
+        # v25.1 (#37): presence capture — the successful connect path
+        # ends with its record (rule 9: the no-character and
+        # unauthenticated paths are unattributable and emit nothing).
+        await mc.mc_emit('connect', actor_id=self.character_pk,
+                         actor_name=self.character.name,
+                         room_id=self._mc_room_id(),
+                         audience=[self.character_pk], data={})
+
     async def disconnect(self, code):
         # v22 brief 3 (#57): intent state dies with the intender — every
         # delayed-action task is cancelled silently; no line, no state.
@@ -536,6 +620,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         if getattr(self, 'character', None) is not None:
             await self.touch_last_seen(self.character)
 
+        # v25.1 (#37): presence capture — only when a character was
+        # attached (rule 9).
+        pk = getattr(self, 'character_pk', None)
+        if pk is not None:
+            _, name = self._mc_actor()
+            await mc.mc_emit('disconnect', actor_id=pk, actor_name=name,
+                             room_id=self._mc_room_id(), audience=[pk],
+                             data={'code': code})
+
     # ------------------------------------------------------------------
     # Receive / dispatch
     # ------------------------------------------------------------------
@@ -554,6 +647,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # v20 brief 3 (#19): tab-completion requests are their own message
         # type, never treated as command text.
         if content.get('type') == 'complete':
+            # v25.1 (#37): the complete REQUEST is player intent —
+            # captured; the response is protocol chrome — not.
+            actor_id, actor_name = self._mc_actor()
+            await mc.mc_emit('cmd', actor_id=actor_id,
+                             actor_name=actor_name,
+                             room_id=self._mc_room_id(),
+                             data={'complete': content.get('text', '')})
             await self.handle_complete(content.get('text', ''))
             return
 
@@ -570,6 +670,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         parts = raw.split(None, 1)
         verb = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ''
+
+        # v25.1 (#37): the command tap — one unconditional record per
+        # submitted command, accepted or rejected. No outcome field:
+        # rejections are themselves the immediately following out
+        # records (outcome is stream-adjacent by construction).
+        actor_id, actor_name = self._mc_actor()
+        await mc.mc_emit('cmd', actor_id=actor_id, actor_name=actor_name,
+                         room_id=self._mc_room_id(),
+                         data={'raw': raw, 'verb': verb, 'args': args})
 
         # v22 brief 2 (DD §5): the dying gate — use (self-rescue), say,
         # quit, information, and settings proceed; everything else is a
@@ -591,6 +700,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # gone (admin hard delete is the only deletion surface); reuse
             # the connect-time no-character routing verbatim and close.
             await self.output('No character found. Create one to play.', 'error')
+            # v25.1 (#37): deleted-while-connected — a known character_pk,
+            # so the redirect IS captured (rule 9's carve-out).
+            await self._mc_personal({'type': 'redirect',
+                                     'url': reverse('shyland:create_character')})
             await self.send_json({'type': 'redirect', 'url': reverse('shyland:create_character'),
                                   'ts': envelope_ts()})
             await self.close()
@@ -665,13 +778,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             custom_msg = getattr(room, f'no_exit_{canonical}_msg', '')
             msg = custom_msg if custom_msg else _NO_EXIT_DEFAULTS[canonical]
             # v22 brief 2 (DD §3): the world declined — warn, not error.
-            await self.send_json({
+            payload = {
                 'type': 'output',
                 'category': 'warn',
                 'text': msg,
                 'hint_exits': ', '.join(exits.keys()) if exits else 'none',
-                'ts': envelope_ts(),
-            })
+            }
+            await self._mc_personal(dict(payload))
+            payload['ts'] = envelope_ts()
+            await self.send_json(payload)
             return
 
         # V24.25 (#41, GDD §2.12): the entry gate — refused before any
@@ -684,7 +799,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         char_name = self.character.name
 
-        await self.channel_layer.group_send(self.room_group, {
+        await self.mc_group_send(self.room_group, {
             'type': 'room_message',
             'text': f'{char_name} has left.',
             'category': 'system',
@@ -700,7 +815,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         self.room_group = f'room_{destination.id}'
         await self.channel_layer.group_add(self.room_group, self.channel_name)
 
-        await self.channel_layer.group_send(self.room_group, {
+        await self.mc_group_send(self.room_group, {
             'type': 'room_message',
             'text': f'{char_name} has arrived.',
             'category': 'system',
@@ -922,7 +1037,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # speaker keeps receiving their own broadcast (double vision is
         # intentional; echo-off is the remedy). Bare say prompts via the
         # central fn-10 gate in _dispatch.
-        await self.channel_layer.group_send(self.room_group, {
+        await self.mc_group_send(self.room_group, {
             'type': 'room_message',
             'text': f'{self.character.name}: {text}',
             'category': 'say',
@@ -1266,6 +1381,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # player can die logged out). Tab-closing and quitting are
         # identical in cost.
         await self.output('The world folds itself away behind you. Come back soon.', 'system')
+        await self._mc_personal({'event': 'quit'})
         await self.send_json({'event': 'quit', 'ts': envelope_ts()})
         # Normal close; the disconnect path owns presence delete, group
         # discards, and heartbeat cancellation.
@@ -1302,7 +1418,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             current_count += 1
             taken.append(item)
 
-            await self.channel_layer.group_send(self.room_group, {
+            await self.mc_group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} picks up {display_name}.',
                 'category': 'room',
@@ -1365,7 +1481,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         for item in res.items:
             display_name = get_display_name(item)
             await self.transfer_to_room(item, room)
-            await self.channel_layer.group_send(self.room_group, {
+            await self.mc_group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f'{char.name} drops {display_name}.',
                 'category': 'room',
@@ -1666,7 +1782,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.output(f'You only had {used}.', 'warn')
             room = await self.get_current_room()
             char_fresh = await self.get_character_fresh()
-            await self.send_json(await self._status_payload(char_fresh, room))
+            await self.send_status(char_fresh, room)
 
     @staticmethod
     def _item_aggregatable(item):
@@ -1752,7 +1868,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         room = await self.get_current_room()
         char_fresh = await self.get_character_fresh()
-        await self.send_json(await self._status_payload(char_fresh, room))
+        await self.send_status(char_fresh, room)
 
     @database_sync_to_async
     def _apply_aggregate_heal(self, character, items, deficit):
@@ -2115,7 +2231,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         deleted = await self.check_corpse_empty_and_delete(corpse)
         if deleted:
             name = corpse.display_name
-            await self.channel_layer.group_send(self.room_group, {
+            await self.mc_group_send(self.room_group, {
                 'type': 'room_message',
                 'text': f"{name[0].upper()}{name[1:]} slowly disappears.",
                 'category': 'room',
@@ -2199,7 +2315,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         for text, category in room_lines:
             # The disposal announcement was always a room broadcast, not
             # a personal line; it stays one.
-            await self.channel_layer.group_send(self.room_group, {
+            await self.mc_group_send(self.room_group, {
                 'type': 'room_message',
                 'text': text,
                 'category': category,
@@ -2960,7 +3076,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
 
         room = character.current_room
-        await self.send_json(await self._status_payload(character, room))
+        await self.send_status(character, room)
 
     # v22 brief 2 (DD §10): the settings standard. Six accepted words,
     # case-insensitive; bare = the current-setting sentence (the set
@@ -3004,7 +3120,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
         if value is not None:
             char = await self.get_character_fresh()
-            await self.send_json(await self._status_payload(char, char.current_room))
+            await self.send_status(char, char.current_room)
 
     async def cmd_plunder(self, args):
         # v24.29 (#235): the subject is the setting's own name — unlike
@@ -3028,7 +3144,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             value = self.SETTING_WORDS[arg]
             await self._set_show_timestamps(value)
             char = await self.get_character_fresh()
-            await self.send_json(await self._status_payload(char, char.current_room))
+            await self.send_status(char, char.current_room)
             state = 'on' if value else 'off'
             await self.send_output(f'output timestamps are now {state}.', category='system')
             return
@@ -3456,11 +3572,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         }
 
     async def send_output(self, text, category='system'):
+        await self._mc_personal({'type': 'output', 'text': text,
+                                 'category': category})
         await self.send_json({'type': 'output', 'text': text, 'category': category,
                               'ts': envelope_ts()})
 
     async def broadcast_to_room_exclude(self, text, category='room'):
-        await self.channel_layer.group_send(self.room_group, {
+        await self.mc_group_send(self.room_group, {
             'type': 'room_message',
             'text': text,
             'category': category,
@@ -3484,7 +3602,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
         line = npc_voice.pick(
             npc_voice.KIBITZ_LINES, other=npc_display(other, capitalize=True))
-        await self.channel_layer.group_send(self.room_group, {
+        await self.mc_group_send(self.room_group, {
             'type': 'room_message',
             'text': line,
             'category': 'room',
@@ -3492,6 +3610,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def output(self, text, category='system'):
+        await self._mc_personal({'type': 'output', 'text': text,
+                                 'category': category})
         await self.send_json({'type': 'output', 'text': text, 'category': category,
                               'ts': envelope_ts()})
 
@@ -3560,6 +3680,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         an empty dict is a blank line. Value text still passes the
         client's flag-block colorizer, so item flag blocks keep their
         rarity/chrome colors inside value-colored lines."""
+        await self._mc_personal({'type': 'output', 'category': 'report',
+                                 'lines': lines})
         await self.send_json({'type': 'output', 'category': 'report',
                               'lines': lines, 'ts': envelope_ts()})
 
@@ -3633,7 +3755,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # fields (area_color riding along) so the client can color each
         # to match its location-bar segment; brief mode carries no area
         # prose, matching the old concatenation's behavior.
-        await self.send_json({
+        payload = {
             'type': 'output',
             'category': 'room-render',
             'enter': entering,
@@ -3649,10 +3771,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             'exits': exit_str,
             'who': who_lines,
             'what': what_lines,
-            'ts': envelope_ts(),
-        })
+        }
+        await self._mc_personal(dict(payload))
+        payload['ts'] = envelope_ts()
+        await self.send_json(payload)
 
-        await self.send_json(await self._status_payload(char, room))
+        await self.send_status(char, room)
 
         if entering and npcs:
             await self.schedule_npc_greetings(room, npcs)
@@ -3824,7 +3948,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         """Send the full map state for the character's current MapFrag.
         Called on connect and on every room change (move, flee, travel,
         respawn) — the client discards and fully re-renders each time."""
-        await self.send_json(await self.build_map_payload())
+        payload = await self.build_map_payload()
+        await self._mc_personal(
+            {k: v for k, v in payload.items() if k != 'ts'})
+        await self.send_json(payload)
 
     @database_sync_to_async
     def build_map_payload(self):
@@ -4663,10 +4790,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         """Send the fight-info message for this player's session; None
         means combat has ended for the player and clears the pane."""
         if session is None:
+            await self._mc_personal({'type': 'fight', 'active': False,
+                                     'enemies': []})
             await self.send_json({'type': 'fight', 'active': False,
                                   'enemies': [], 'ts': envelope_ts()})
             return
         enemies = await self._fight_enemies(session)
+        await self._mc_personal({'type': 'fight', 'active': True,
+                                 'enemies': enemies})
         await self.send_json({'type': 'fight', 'active': True,
                               'enemies': enemies, 'ts': envelope_ts()})
 
@@ -4675,7 +4806,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         after a combat-membership transition."""
         char = await self.get_character_fresh()
         room = await self.get_current_room()
-        await self.send_json(await self._status_payload(char, room))
+        await self.send_status(char, room)
 
     @database_sync_to_async
     def npc_in_session(self, session, npc):
