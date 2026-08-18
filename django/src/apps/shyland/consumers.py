@@ -399,8 +399,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         client render order) and guarantees ``ts`` is present. ``ts`` is
         supposed to be stamped at each creation site; stamping it here is
         a fallback and logs a warning so unstamped creation sites get
-        found and fixed. This is the designated tap point for the
-        Firehose Logging milestone (#37/#33)."""
+        found and fixed. This is the envelope stamp — not the Monitoring
+        and Command (MC) capture point (#37/#33): MC taps at creation
+        level."""
         self._seq += 1
         content['seq'] = self._seq
         if 'ts' not in content:
@@ -2962,7 +2963,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # case-insensitive; bare = the current-setting sentence (the set
     # message minus 'now'); set = the 'now' sentence — stateless,
     # idempotent, plain prose. Invalid input is a CLI error showing the
-    # canonical pair (synonyms silently accepted). Fully firehosed:
+    # canonical pair (synonyms silently accepted). Fully captured by MC:
     # stamped like every other event.
     SETTING_WORDS = {
         'on': True, 'yes': True, 'true': True,
@@ -2993,7 +2994,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
     async def cmd_echo(self, args):
         # The client applies the change from the status payload; the
-        # preference is pane-only and never touches the firehose.
+        # preference is pane-only and never touches MC capture.
         value = await self._cmd_setting(
             args, 'echo', 'command echo', 'is',
             lambda c: c.echo_mode, self._set_echo_mode,
