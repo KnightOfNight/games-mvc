@@ -175,8 +175,8 @@ class EngineCompositeTests(TransactionTestCase):
         char, npc, eff = await sync_to_async(setup)()
 
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})), \
              mock.patch('apps.shyland.combat_utils.acuity_damage_modifier',
                         return_value=1.0), \
              mock.patch('apps.shyland.combat_utils.random.uniform',
@@ -204,8 +204,8 @@ class EngineCompositeTests(TransactionTestCase):
         char, npc, eff = await sync_to_async(setup)()
 
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})), \
              mock.patch('apps.shyland.combat_utils.acuity_damage_modifier',
                         return_value=1.0), \
              mock.patch('apps.shyland.combat_utils.random.uniform',
@@ -223,8 +223,8 @@ class EngineCompositeTests(TransactionTestCase):
     async def test_unarmed_path_unchanged_with_zero_weapons(self):
         char, npc = await sync_to_async(make_combat_world)('vcC')
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
 
         # No equipped weapon: the unarmed branch runs — pool flavor (the

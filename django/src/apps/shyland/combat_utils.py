@@ -421,7 +421,11 @@ def composite_weapon_term_detailed(weapons, eff_str, eff_dex):
                 w.equipped_slot, SECONDARY_WEAPON_FACTOR_DEFAULT)
         term = factor * (roll + stat) * dur
         total += term
-        rows.append({'instance': w.pk, 'definition': w.definition_id,
+        # getattr defaults: the pre-v25.2 body never read pk/definition_id,
+        # and existing callers (tests included) pass attribute-shaped
+        # stand-ins — real ItemInstances always carry both.
+        rows.append({'instance': getattr(w, 'pk', None),
+                     'definition': getattr(w, 'definition_id', None),
                      'slot': w.equipped_slot, 'roll': roll, 'stat': stat,
                      'durability': dur, 'factor': factor, 'term': term})
     detail = {'weapons': rows}

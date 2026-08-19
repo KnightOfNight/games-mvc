@@ -851,8 +851,8 @@ class CritProseTests(TransactionTestCase):
         cmd.send_to_player = record_send
         cmd.broadcast_to_room = record_broadcast
 
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='critical'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('critical', {})):
             await cmd.process_combat(1)
 
         all_texts = [t for _, t, _ in player_msgs] + [t for _, t, _ in room_msgs]
