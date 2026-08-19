@@ -139,6 +139,13 @@ make deploy-dev re-run — dev is on the fixed build. Architecture doc header
 hash moved fd01e3c → 345f09d with the §4.19 and header-entry text corrected
 in the same motion. #272 closed on the fix commit.
 
-OPERATOR PLAYTEST DISPOSITION (#170): OPEN — awaiting the operator's
-playtest against the dev stack (checklist in brief §10). To be recorded
-here verbatim-style when given; the session does not end without it.
+PLAYTEST NOTE (2026-08-19): the operator's non-admin test character
+surfaced the designed no-outcome-field property live (a refused sudo's
+cmd record is indistinguishable-by-query from an accepted one; outcome
+is inferred from the adjacent out records) — recorded as #273
+(monitoring-and-command, no milestone, not a blocker; operator expects
+the future agent layer to read perms from the DB at interpretation
+time). No brief-spec defect found.
+
+OPERATOR PLAYTEST DISPOSITION (#170): Operator reports playtest
+successful ("playtest confirmed", 2026-08-19) — terminal.
