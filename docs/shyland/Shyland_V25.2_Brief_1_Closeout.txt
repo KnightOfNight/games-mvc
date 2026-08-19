@@ -1,0 +1,3 @@
+2026-08-19 — implementation session START — Shyland_V25.2_Brief_1_Combat_Instrumentation.md — branch version_25_2
+
+(stub — completed in place at session end)
