@@ -1025,9 +1025,14 @@ class Command(BaseCommand):
         def engage(character):
             """Join/create the character's session with every live aggro
             NPC in the room not already in it — the same set walk-in aggro
-            would engage. Returns (session, newly-added NPCs, fight rows,
-            status) or None when nothing new engages."""
-            from apps.shyland.combat_utils import npc_display_name
+            would engage. Returns (newly-added NPCs, fight rows, status,
+            MC records) or None when nothing new engages. v25.2 (#33): the
+            combat_start/combat_join record is built here (DB context) as
+            a ready-to-emit dict; the caller emits before any send."""
+            from apps.shyland.combat_utils import (
+                combat_snapshot_character, combat_snapshot_npc,
+                npc_display_name,
+            )
             from apps.shyland.models import CombatSession, NpcInstance
 
             room_npcs = list(NpcInstance.objects.filter(
@@ -1046,7 +1051,8 @@ class Command(BaseCommand):
             new_npcs = [n for n in room_npcs if n.pk not in already]
             if not new_npcs:
                 return None
-            if session is None:
+            created = session is None
+            if created:
                 session = CombatSession.objects.create(
                     room_id=character.current_room_id,
                     first_attacker='npc',
@@ -1054,6 +1060,40 @@ class Command(BaseCommand):
                 session.characters.add(character)
             for npc in new_npcs:
                 session.npcs.add(npc)
+
+            # v25.2 (#33): the engagement record — combat_start on create,
+            # combat_join on join; snapshots of the newly added NPCs only.
+            npc_snaps = [combat_snapshot_npc(n) for n in new_npcs]
+            room = character.current_room
+            if created:
+                data = {
+                    'session': session.pk,
+                    'room': session.room_id,
+                    'zone': room.zone.name,
+                    'origin': 'respawn_aggro',
+                    'first_attacker': 'npc',
+                    'character': combat_snapshot_character(character),
+                    'npcs': npc_snaps,
+                }
+                if room.area_id:
+                    data['area'] = room.area.name
+                kind = 'combat_start'
+            else:
+                data = {
+                    'session': session.pk,
+                    'room': session.room_id,
+                    'origin': 'respawn_aggro',
+                    'npcs': npc_snaps,
+                }
+                kind = 'combat_join'
+            records = [{
+                'kind': kind,
+                'actor_id': character.pk,
+                'actor_name': character.name,
+                'room_id': session.room_id,
+                'audience': [],
+                'data': data,
+            }]
             session_npcs = list(session.npcs.filter(is_alive=True)
                                 .order_by('spawned_at', 'pk')
                                 .select_related('definition'))
@@ -1069,17 +1109,24 @@ class Command(BaseCommand):
                 }
                 for n in session_npcs
             ]
-            return new_npcs, fight_rows, self._build_status(character)
+            return new_npcs, fight_rows, self._build_status(character), records
 
         engaged_rooms = {}
         payloads = []
+        mc_records = []
         for character in targets:
             result = await engage(character)
             if result is None:
                 continue
-            new_npcs, fight_rows, status = result
+            new_npcs, fight_rows, status, records = result
             engaged_rooms.setdefault(character.current_room_id, new_npcs)
             payloads.append((character.pk, fight_rows, status))
+            mc_records.extend(records)
+
+        # v25.2 (#33): emit-before-send — every engagement record lands
+        # before the engagement-line broadcasts and fight payloads.
+        for r in mc_records:
+            await mc.mc_emit(**r)
 
         # Engagement lines to the room (dying players never see combat
         # output), then combat state last.
