@@ -124,12 +124,20 @@ class Command(BaseCommand):
             ))
 
         @_dsa
-        def close_session(session):
-            """Close the session and return one (char_pk, status) pair per
-            member — v20 brief 4 (#2): disengagement ends combat for the
-            player, so the fight pane and combat-red state must clear."""
+        def close_session(session, reason):
+            """Close the session and return ((char_pk, status) pairs, MC
+            record) — v20 brief 4 (#2): disengagement ends combat for the
+            player, so the fight pane and combat-red state must clear.
+            v25.2 (#33): reason is 'stale' (the sweep) or 'empty' (the
+            no-participants close); both map to outcome 'disengage'."""
             session.is_active = False
             session.save(update_fields=['is_active'])
+            npcs_remaining = [
+                {'instance': n.pk,
+                 'vitality': [n.vitality_current, n.vitality_max]}
+                for n in session.npcs.filter(is_alive=True)
+                .order_by('spawned_at', 'pk')
+            ]
             # v23 B1 (#25): stale close now releases NPCs like every
             # other end path (deliberate membership alignment — this
             # path previously left NPC rows on the inactive session).
@@ -137,7 +145,22 @@ class Command(BaseCommand):
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
-            return [(c.pk, self._build_status(c)) for c in chars]
+            record = {
+                'kind': 'combat_end',
+                'actor_id': chars[0].pk if chars else None,
+                'actor_name': chars[0].name if chars else '',
+                'room_id': session.room_id,
+                'audience': [],
+                'data': {
+                    'session': session.pk,
+                    'outcome': 'disengage',
+                    'reason': reason,
+                    'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                    'duration_secs': (now - session.started_at).total_seconds(),
+                    'npcs_remaining': npcs_remaining,
+                },
+            }
+            return [(c.pk, self._build_status(c)) for c in chars], record
 
         # v20 brief 4 (#2): the fight-info feed. One payload per session
         # member, sent every engine tick; when the session has just ended,
@@ -180,7 +203,9 @@ class Command(BaseCommand):
 
         stale = await get_stale_sessions()
         for session in stale:
-            payloads = await close_session(session)
+            payloads, mc_record = await close_session(session, 'stale')
+            # v25.2 (#33): emit-before-send.
+            await mc.mc_emit(**mc_record)
             for char_pk, status in payloads:
                 await self.send_to_player(
                     char_pk, '', None, status,
@@ -202,6 +227,9 @@ class Command(BaseCommand):
         def execute_death(character):
             from apps.shyland.models import resolve_home_room
             broken = apply_death_penalties(character)
+            # v25.2 (#33): the death happened where the character lay
+            # dying — captured before respawn moves them home.
+            death_room_id = character.current_room_id
             # v24.26 (#38, GDD §2.11): respawn follows the bond — the
             # effective home room, the Heart when no bond exists. Same
             # resolver as 'home' (one home concept, ruling B5).
@@ -226,19 +254,67 @@ class Command(BaseCommand):
                 is_active=False, removed_by='death'
             )
             CombatAction.objects.filter(character=character, is_processed=False).delete()
+            sessions_closed = []
+            end_records = []
             for session in character.combat_sessions.filter(is_active=True):
                 session.characters.remove(character)
                 if session.characters.count() == 0:
                     session.is_active = False
                     session.save(update_fields=['is_active'])
+                    # v25.2 (#33): npcs_remaining captured before the
+                    # release resets them — the loss leaves them standing.
+                    npcs_remaining = [
+                        {'instance': n.pk,
+                         'vitality': [n.vitality_current, n.vitality_max]}
+                        for n in session.npcs.filter(is_alive=True)
+                        .order_by('spawned_at', 'pk')
+                    ]
                     # v23 B1 (#25): player-death disengagement — the
                     # NPCs the faller was fighting reset to full.
                     release_session_npcs(session)
-            return broken, home
+                    sessions_closed.append(session.pk)
+                    end_records.append({
+                        'kind': 'combat_end',
+                        'actor_id': character.pk,
+                        'actor_name': character.name,
+                        'room_id': session.room_id,
+                        'audience': [],
+                        'data': {
+                            'session': session.pk,
+                            'outcome': 'loss',
+                            'reason': 'death',
+                            'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                            'duration_secs': (now - session.started_at).total_seconds(),
+                            'npcs_remaining': npcs_remaining,
+                        },
+                    })
+            # v25.2 (#33): the death-phase record — the death resolved
+            # (penalties, respawn) before its session consequences.
+            death_data = {
+                'phase': 'death',
+                'character': character.pk,
+                'broken_items': broken,
+                'sessions_closed': sessions_closed,
+            }
+            if home is not None:
+                death_data['home_room'] = home.pk
+            records = [{
+                'kind': 'combat_death',
+                'actor_id': character.pk,
+                'actor_name': character.name,
+                'room_id': death_room_id,
+                'audience': [],
+                'data': death_data,
+            }] + end_records
+            return broken, home, records
 
         dying_chars = await get_expired_dying()
         for character in dying_chars:
-            broken, home = await execute_death(character)
+            broken, home, mc_death_records = await execute_death(character)
+            # v25.2 (#33): emit-before-send — the death record and every
+            # loss close land before the dying loop's sends.
+            for r in mc_death_records:
+                await mc.mc_emit(**r)
             name = character.name
             await self.send_to_player(character.pk, "The darkness takes you.", 'error', None)
             msg = f"You have died and awakened at {home.name if home else 'your home'}."
@@ -302,15 +378,37 @@ class Command(BaseCommand):
         @_dsa
         def self_heal_close(session):
             """v24.19 (#218): standard end pattern for a session holding
-            no living NPCs — close, release, member statuses."""
+            no living NPCs — close, release, member statuses. v25.2 (#33):
+            also returns the combat_end record (disengage/self_heal)."""
             session.is_active = False
             session.focus_npc = None
             session.save(update_fields=['is_active', 'focus_npc'])
+            npcs_remaining = [
+                {'instance': n.pk,
+                 'vitality': [n.vitality_current, n.vitality_max]}
+                for n in session.npcs.filter(is_alive=True)
+                .order_by('spawned_at', 'pk')
+            ]
             release_session_npcs(session)
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
-            return [(c.pk, self._build_status(c)) for c in chars]
+            record = {
+                'kind': 'combat_end',
+                'actor_id': chars[0].pk if chars else None,
+                'actor_name': chars[0].name if chars else '',
+                'room_id': session.room_id,
+                'audience': [],
+                'data': {
+                    'session': session.pk,
+                    'outcome': 'disengage',
+                    'reason': 'self_heal',
+                    'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                    'duration_secs': (now - session.started_at).total_seconds(),
+                    'npcs_remaining': npcs_remaining,
+                },
+            }
+            return [(c.pk, self._build_status(c)) for c in chars], record
 
         sessions = await get_active_sessions()
 
@@ -325,7 +423,9 @@ class Command(BaseCommand):
                 # path — nothing left to do.
                 continue
             if not has_living:
-                payloads = await self_heal_close(session)
+                payloads, mc_record = await self_heal_close(session)
+                # v25.2 (#33): emit-before-send.
+                await mc.mc_emit(**mc_record)
                 for char_pk, status in payloads:
                     await self.send_to_player(
                         char_pk, "Combat has ended.", 'reward', status,
@@ -381,7 +481,9 @@ class Command(BaseCommand):
             npcs = safe_npcs
 
             if not characters or not npcs:
-                payloads = await close_session(session)
+                payloads, mc_record = await close_session(session, 'empty')
+                # v25.2 (#33): emit-before-send.
+                await mc.mc_emit(**mc_record)
                 for char_pk, status in payloads:
                     await self.send_to_player(
                         char_pk, '', None, status,

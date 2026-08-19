@@ -2829,7 +2829,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         npcs = await self.get_session_npcs(session)
         if not npcs:
-            await self.end_combat_session(session)
+            mc_record = await self.end_combat_session(session, reason='flee_empty')
+            # v25.2 (#33): emit-before-send.
+            await mc.mc_emit(**mc_record)
             # v20 brief 4 (#2): combat ended for the player — clear the
             # fight pane and the combat-red state.
             await self.send_fight(None)
@@ -2842,21 +2844,48 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # v22 B5 (#100): the flee contest reads effective DEX (base + gear).
         eff = await self.get_effective_stats(character)
-        success = (eff['dex'] + random.randint(1, 20)) > avg_per
+        # v25.2 (#33): the d20 gets a name — same single roll.
+        die = random.randint(1, 20)
+        success = (eff['dex'] + die) > avg_per
+
+        flee_data = {
+            'session': session.pk,
+            'character': character.pk,
+            'dex': eff['dex'],
+            'die': die,
+            'total': eff['dex'] + die,
+            'npc_avg_per': avg_per,
+            'success': success,
+        }
 
         if success:
             result = await self.get_flee_destination(character)
             if result is None:
+                # The contest won but no exit existed.
+                flee_data['blocked'] = 'nowhere_to_run'
+                await mc.mc_emit(
+                    kind='combat_flee', actor_id=character.pk,
+                    actor_name=character.name, room_id=session.room_id,
+                    audience=[], data=flee_data)
                 await self.send_output("There is nowhere to run!", 'warn')
                 await self.record_flee_attempt(character, session)
                 return
 
             destination, flee_dir = result
+            flee_data['destination'] = destination.pk
+            flee_data['direction'] = flee_dir
+            # v25.2 (#33): the contest record lands before any outcome send.
+            await mc.mc_emit(
+                kind='combat_flee', actor_id=character.pk,
+                actor_name=character.name, room_id=session.room_id,
+                audience=[], data=flee_data)
             await self.send_output("You have successfully fled from your enemies.", 'combat')
             await self.broadcast_to_room_exclude(
                 f"{character.name} fled the room leaving the enemies looking confused.", 'combat'
             )
-            await self.end_combat_session(session)
+            mc_record = await self.end_combat_session(session, reason='flee')
+            # v25.2 (#33): emit-before-send.
+            await mc.mc_emit(**mc_record)
             # v20 brief 4 (#2): flee ends combat for the player — clear the
             # fight pane; a fresh engagement below re-fills it if the flee
             # destination has aggro.
@@ -2899,6 +2928,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_status_refresh()
             await self.send_map()
         else:
+            # v25.2 (#33): the contest record lands before any outcome send.
+            await mc.mc_emit(
+                kind='combat_flee', actor_id=character.pk,
+                actor_name=character.name, room_id=session.room_id,
+                audience=[], data=flee_data)
             # v22 brief 2 (DD §3): a failed flee is the world declining.
             await self.send_output("You tried to flee but your enemies are too strong.", 'warn')
             await self.broadcast_to_room_exclude(
@@ -4876,12 +4910,37 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return list(session.npcs.select_related('definition').all())
 
     @database_sync_to_async
-    def end_combat_session(self, session):
+    def end_combat_session(self, session, reason='flee'):
+        """v25.2 (#33): returns the ready-to-emit combat_end record —
+        flee -> flee/flee, flee_empty -> disengage/flee_empty. The caller
+        emits it before its subsequent sends. npcs_remaining is captured
+        before release_session_npcs resets anything."""
         session.is_active = False
         session.save(update_fields=['is_active'])
+        npcs_remaining = [
+            {'instance': n.pk,
+             'vitality': [n.vitality_current, n.vitality_max]}
+            for n in session.npcs.filter(is_alive=True)
+            .order_by('spawned_at', 'pk')
+        ]
         # v23 B1 (#25): session-end-without-death — surviving NPCs reset
         # to full (last-active-session guard inside the helper).
         release_session_npcs(session)
+        return {
+            'kind': 'combat_end',
+            'actor_id': self.character.pk,
+            'actor_name': self.character.name,
+            'room_id': session.room_id,
+            'audience': [],
+            'data': {
+                'session': session.pk,
+                'outcome': 'flee' if reason == 'flee' else 'disengage',
+                'reason': reason,
+                'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                'duration_secs': (timezone.now() - session.started_at).total_seconds(),
+                'npcs_remaining': npcs_remaining,
+            },
+        }
 
     @database_sync_to_async
     def get_flee_destination(self, character):
