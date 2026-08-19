@@ -125,6 +125,20 @@ first run.
 ISSUES: #37 closed (comment naming this brief and fd01e3c); #271 closed
 (comment naming fd9378f). Both in milestone Version 25.1.
 
+--------------------------------------------------------------------------------
+EMERGENT ADDENDUM (2026-08-19, operator-directed in-session)
+--------------------------------------------------------------------------------
+The operator ruled the second #271 site fixed NOW: filed as emergent #272
+(labels emergent/monitoring-and-command/V25, milestone Version 25.1) and
+fixed in this session — the ticker's _online_character_pks presence reader
+now builds its URL from settings.REDIS_HOST (run_tick_engine.py; commit
+345f09d ← NEW FINAL IMPLEMENTATION HASH; deviation-6's earlier "left as
+found" is superseded by this ruling). No literal redis://redis endpoint
+remains anywhere in the app. Full suite re-run after the fix: 702, OK.
+make deploy-dev re-run — dev is on the fixed build. Architecture doc header
+hash moved fd01e3c → 345f09d with the §4.19 and header-entry text corrected
+in the same motion. #272 closed on the fix commit.
+
 OPERATOR PLAYTEST DISPOSITION (#170): OPEN — awaiting the operator's
 playtest against the dev stack (checklist in brief §10). To be recorded
 here verbatim-style when given; the session does not end without it.
