@@ -987,7 +987,12 @@ class Command(BaseCommand):
             return set()
         if getattr(self, '_presence_redis', None) is None:
             import redis.asyncio as aioredis
-            self._presence_redis = aioredis.from_url('redis://redis:6379')
+            from django.conf import settings
+            # v25.1 (#272, the second #271 site): the endpoint comes from
+            # the one settings constant — presence must never split from
+            # the channel layer's Redis.
+            self._presence_redis = aioredis.from_url(
+                f'redis://{settings.REDIS_HOST}:6379')
         keys = [f'shyland:online:{pk}' for pk in pks]
         values = await self._presence_redis.mget(*keys)
         return {pk for pk, value in zip(pks, values) if value}
