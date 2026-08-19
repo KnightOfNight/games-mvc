@@ -114,6 +114,7 @@ operator's, performed after deploy; never simulate or declare them complete.
 | `postgres` | postgres:16-alpine | Primary database (persistent volume `pgdata`) |
 | `redis` | redis:7-alpine | Django Channels layer — WebSocket routing |
 | `ticker` | same image as `django` | Shyland tick engine (`run_tick_engine` management command) |
+| `mc-persister` | same image as `django` | MC durable-record persister (`run_mc_persister` management command) |
 
 Architecture flow:
 
@@ -420,6 +421,6 @@ For local dev without real certs: `make gen-certs` (requires `make init` first).
 
 **Database:** Single PostgreSQL instance shared by all games. Each game's models live in their own app and migration history. No cross-app foreign keys between game apps — only FK to `auth.User`.
 
-**Redis:** Used exclusively as the Django Channels channel layer. Not a general-purpose cache.
+**Redis:** the Django Channels channel layer, the Shyland presence keys, and the MC event stream (hot tier — Streams, bounded window). Not a general-purpose cache.
 
 **Admin:** Django admin at `/admin/`. Each game registers its models in its own `admin.py`.

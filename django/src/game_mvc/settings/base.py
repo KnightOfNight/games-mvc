@@ -72,6 +72,13 @@ DATABASES = {
     }
 }
 
+# v25.1 (#37/#271): the one Redis endpoint constant — channel layer,
+# defender, presence, and the MC stream all build from it.
+REDIS_HOST = env('REDIS_HOST', default='redis')
+
+# v25.1 (#37): MC hot-tier bound — Streams MAXLEN (approximate) on mc:events.
+MC_STREAM_MAXLEN = env.int('MC_STREAM_MAXLEN', default=100000)
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -79,7 +86,7 @@ CHANNEL_LAYERS = {
             # socket_timeout=None required: redis-py 8.x defaults to 5s socket
             # timeout, which races with channels_redis brpop_timeout=5 and raises
             # TimeoutError instead of returning nil (no message).
-            'hosts': [{'host': env('REDIS_HOST', default='redis'), 'port': 6379, 'socket_timeout': None}],
+            'hosts': [{'host': REDIS_HOST, 'port': 6379, 'socket_timeout': None}],
         },
     },
 }
@@ -121,7 +128,7 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 LOGIN_URL = '/accounts/login/'
 
-DEFENDER_REDIS_URL = f"redis://{env('REDIS_HOST', default='redis')}:6379/1"
+DEFENDER_REDIS_URL = f"redis://{REDIS_HOST}:6379/1"
 DEFENDER_LOGIN_FAILURE_LIMIT = 5
 DEFENDER_COOLOFF_TIME = 300        # 5-minute lockout after limit reached
 DEFENDER_BEHIND_REVERSE_PROXY = True

@@ -3,7 +3,7 @@ from .currency import display as currency_display
 from .models import (
     Area, Archetype, Character, CombatAction, CombatSession, Corpse,
     EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
-    ItemDefinition, ItemInstance, LootTable, LootTableEntry,
+    ItemDefinition, ItemInstance, LootTable, LootTableEntry, MCEvent,
     NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomSpawn, RoomVisit,
     TravelMessage, TravelNode, UnarmedMessage, UnarmedMessagePool, VendorEntry,
     Zone,
@@ -330,3 +330,29 @@ class CombatActionAdmin(admin.ModelAdmin):
     readonly_fields = ['queued_at']
     raw_id_fields   = ['combat_session', 'character', 'npc', 'target_character', 'target_npc', 'item']
     ordering        = ['-queued_at']
+
+
+@admin.register(MCEvent)
+class MCEventAdmin(admin.ModelAdmin):
+    """v25.1 (#37): read-only — the MC record is append-only truth;
+    nothing edits history (this introduces the repo's read-only-admin
+    pattern)."""
+    list_display   = ('ts', 'kind', 'actor_name', 'room_id', 'short_data')
+    list_filter    = ('kind',)
+    search_fields  = ('actor_name', 'data')
+    date_hierarchy = 'ts'
+    ordering       = ('-ts',)
+
+    @admin.display(description='data')
+    def short_data(self, obj):
+        text = str(obj.data)
+        return text if len(text) <= 120 else f'{text[:117]}...'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

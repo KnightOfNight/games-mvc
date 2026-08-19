@@ -1235,3 +1235,26 @@ class DialogueGreetingRecord(models.Model):
 
     def __str__(self):
         return f'{self.character.name} greeted by {self.npc_definition.name}'
+
+
+class MCEvent(models.Model):
+    """The MC durable record (#37). Append-only; no FKs into live tables
+    by design (GDD §10.11) — reseeds delete rows, the record survives."""
+    stream_id = models.CharField(max_length=32, unique=True)
+    ts = models.DateTimeField(db_index=True)
+    kind = models.CharField(max_length=16)
+    actor_id = models.BigIntegerField(null=True, blank=True)
+    actor_name = models.CharField(max_length=64, blank=True, default='')
+    room_id = models.BigIntegerField(null=True, blank=True)
+    audience = models.JSONField(default=list, blank=True)
+    data = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['kind', 'ts']),
+            models.Index(fields=['actor_id', 'ts']),
+            models.Index(fields=['room_id', 'ts']),
+        ]
+
+    def __str__(self):
+        return f'MCEvent {self.stream_id} ({self.kind})'

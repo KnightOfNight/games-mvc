@@ -72,6 +72,23 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  mc-persister:
+    image: shyland-django
+    command: python manage.py run_mc_persister
+    environment:
+      - DJANGO_SETTINGS_MODULE=game_mvc.settings.production
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DOMAIN=${DOMAIN}
+      - HOST_PORT=${HOST_PORT:-40443}
+      - SITE_TITLE=${SITE_TITLE:-game-mvc}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   pgdata:
   ssldata:
