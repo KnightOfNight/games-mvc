@@ -182,16 +182,25 @@ def apply_armor_mitigation(damage, tav):
     return max(1, damage - reduction)
 
 
-def roll_gear_bonus_damage(equipped_items):
+def roll_gear_bonus_damage_detailed(equipped_items):
     """v22 B5 (#68/#100): the gear-bonus damage pool for one landed player
-    hit (hit or critical — never graze/miss). Each equipped item rolls each
+    hit (hit or critical — never graze/miss) — detailed form (v25.2, #33):
+    (total, detail). Each equipped item rolls each
     of its proc-factor stats independently: chance = V × PROC_CHANCE_PER_POINT
     capped at PROC_CHANCE_CAP; success adds randint(1, ceil(V)) — or
     randint(X, X+ceil(V)) when the entry carries a drop-time floor X
     (v24.10, #127). Flat
     electric_damage_bonus values join the pool on every landed hit. The
-    caller renders a nonzero pool as the hit line's parenthetical."""
+    caller renders a nonzero pool as the hit line's parenthetical.
+
+    Detail: one procs entry per proc-factor candidate whether it fired or
+    not ('rolled' present only when it fired); flat = the summed electric
+    bonus. Chance-gate and randint order identical to the pre-v25.2 body
+    (a value <= 0 candidate never consumed randomness and still doesn't).
+    """
     pool = 0.0
+    procs = []
+    flat = 0.0
     for item in equipped_items:
         for entry in (item.rolled_primary_stats or []) + (item.rolled_secondary_stats or []):
             stat = entry.get('stat')
@@ -199,20 +208,36 @@ def roll_gear_bonus_damage(equipped_items):
             if stat is None or value is None:
                 continue
             if stat in PROC_FACTOR_STATS:
-                if value > 0 and random.random() < min(
-                        PROC_CHANCE_CAP, value * PROC_CHANCE_PER_POINT):
+                fired = False
+                chance = 0.0
+                if value > 0:
+                    chance = min(PROC_CHANCE_CAP, value * PROC_CHANCE_PER_POINT)
+                    fired = random.random() < chance
+                proc = {'stat': stat, 'value': value, 'chance': chance,
+                        'fired': fired}
+                if fired:
                     # v24.10 (#127): the proc floor — an entry carrying the
                     # drop-time 'floor' snapshot X pays randint(X, X+⌈V⌉);
                     # chance is untouched (V only). Key absence keeps the
                     # shipped 1..⌈V⌉ path byte-identical.
                     floor = entry.get('floor')
                     if floor is not None:
-                        pool += random.randint(floor, floor + math.ceil(value))
+                        rolled = random.randint(floor, floor + math.ceil(value))
                     else:
-                        pool += random.randint(1, math.ceil(value))
+                        rolled = random.randint(1, math.ceil(value))
+                    pool += rolled
+                    proc['rolled'] = rolled
+                procs.append(proc)
             elif stat == 'electric_damage_bonus':
                 pool += value
-    return int(round(pool))
+                flat += value
+    total = int(round(pool))
+    return total, {'total': total, 'procs': procs, 'flat': flat}
+
+
+def roll_gear_bonus_damage(equipped_items):
+    """The gear-bonus damage pool for one landed hit (see the detailed form)."""
+    return roll_gear_bonus_damage_detailed(equipped_items)[0]
 
 
 def bar_rescale_updates(gear_end=0, gear_str=0, gear_wis=0,
@@ -275,13 +300,23 @@ def acuity_damage_modifier(character):
     return 1.0
 
 
+def roll_initiative_detailed(stat_dex, stat_per):
+    """d10 + DEX + PER, detailed form (v25.2, #33): returns
+    (total, detail) with the roll interior. Same single randint as the
+    plain form — the plain name delegates here and discards the detail,
+    so value and random-stream consumption stay identical."""
+    die = random.randint(1, 10)
+    total = stat_dex + stat_per + die
+    return total, {'dex': stat_dex, 'per': stat_per, 'die': die, 'total': total}
+
+
 def roll_initiative(stat_dex, stat_per):
     """d10 + DEX + PER."""
-    return stat_dex + stat_per + random.randint(1, 10)
+    return roll_initiative_detailed(stat_dex, stat_per)[0]
 
 
-def resolve_hit(attacker_dex, target_dodge, crit_bonus=0.0):
-    """Return 'miss', 'graze', 'hit', or 'critical'.
+def resolve_hit_detailed(attacker_dex, target_dodge, crit_bonus=0.0):
+    """resolve_hit's detailed form (v25.2, #33): (result, detail).
 
     Contested to-hit: d20 + attacker DEX vs static defense
     (TO_HIT_DEFENSE_BASE + defender DEX). Critical is a separate
@@ -289,35 +324,64 @@ def resolve_hit(attacker_dex, target_dodge, crit_bonus=0.0):
     capped at CRIT_CAP. v22 B5 (#100): crit_bonus is the gear
     contribution — summed rolled crit_chance × 0.01, player attacks only —
     added inside the same capped computation.
+
+    Detail carries the roll interior: die, attack_total, defense,
+    margin, result — plus crit_chance and crit_die only when the hit
+    landed and the crit roll ran. Identical random calls in identical
+    order to the pre-v25.2 body.
     """
-    total = random.randint(1, 20) + attacker_dex
+    die = random.randint(1, 20)
+    total = die + attacker_dex
     defense = TO_HIT_DEFENSE_BASE + target_dodge
+    detail = {'die': die, 'attack_total': total, 'defense': defense,
+              'margin': total - defense}
     if total >= defense:
         crit_chance = min(CRIT_CAP, max(CRIT_BASE,
             CRIT_BASE + CRIT_PER_DEX_ADVANTAGE * (attacker_dex - target_dodge)
             + crit_bonus))
-        return 'critical' if random.random() < crit_chance else 'hit'
-    if defense - total <= GRAZE_WINDOW:
-        return 'graze'
-    return 'miss'
+        crit_die = random.random()
+        result = 'critical' if crit_die < crit_chance else 'hit'
+        detail['crit_chance'] = crit_chance
+        detail['crit_die'] = crit_die
+    elif defense - total <= GRAZE_WINDOW:
+        result = 'graze'
+    else:
+        result = 'miss'
+    detail['result'] = result
+    return result, detail
 
 
-def calculate_damage(base_damage, stat_bonus, acuity_mod, durability_mod, hit_result, is_focus_target=True):
-    """
-    Returns final damage as a float (minimum 1).
+def resolve_hit(attacker_dex, target_dodge, crit_bonus=0.0):
+    """Return 'miss', 'graze', 'hit', or 'critical' (see the detailed form)."""
+    return resolve_hit_detailed(attacker_dex, target_dodge, crit_bonus)[0]
 
+
+def calculate_damage_detailed(base_damage, stat_bonus, acuity_mod, durability_mod, hit_result, is_focus_target=True):
+    """calculate_damage's detailed form (v25.2, #33): (final, detail).
+
+    Returns final damage as a float (minimum 1). No randomness.
     Acuity bonus (>1.0) applies only when is_focus_target=True.
     Acuity penalty (<1.0) always applies.
     """
     effective_acuity = acuity_mod if (acuity_mod < 1.0 or is_focus_target) else 1.0
     raw = (base_damage + stat_bonus) * effective_acuity * durability_mod
     hit_multipliers = {'graze': 0.5, 'hit': 1.0, 'critical': 1.5}
-    final = raw * hit_multipliers.get(hit_result, 1.0)
-    return max(1.0, final)
+    multiplier = hit_multipliers.get(hit_result, 1.0)
+    final = max(1.0, raw * multiplier)
+    return final, {'effective_acuity': effective_acuity,
+                   'hit_multiplier': multiplier, 'raw': raw, 'final': final}
 
 
-def composite_weapon_term(weapons, eff_str, eff_dex):
-    """v24.6 (#177/#178): the composite strike's weapon term.
+def calculate_damage(base_damage, stat_bonus, acuity_mod, durability_mod, hit_result, is_focus_target=True):
+    """Final damage as a float, minimum 1 (see the detailed form)."""
+    return calculate_damage_detailed(
+        base_damage, stat_bonus, acuity_mod, durability_mod, hit_result,
+        is_focus_target=is_focus_target)[0]
+
+
+def composite_weapon_term_detailed(weapons, eff_str, eff_dex):
+    """v24.6 (#177/#178): the composite strike's weapon term — detailed
+    form (v25.2, #33): (total, detail).
 
     Sum over the passed weapons (the round's equipped, non-broken set) of
     factor × (damage roll + governing effective stat) × durability, where
@@ -330,6 +394,9 @@ def composite_weapon_term(weapons, eff_str, eff_dex):
     returned term through calculate_damage as base_damage with
     stat_bonus=0 and durability_mod=1.0 — acuity and the graze/crit
     multiplier apply once, to the composite.
+
+    Detail: primary_slot (absent when no weapons) and one row per weapon
+    in iteration order — same order, same one random.uniform each.
     """
     from .item_utils import get_durability_penalty
 
@@ -340,6 +407,7 @@ def composite_weapon_term(weapons, eff_str, eff_dex):
             break
 
     total = 0.0
+    rows = []
     for w in weapons:
         spread = w.damage_spread or 0
         roll = random.uniform(w.damage_midpoint - spread,
@@ -351,8 +419,20 @@ def composite_weapon_term(weapons, eff_str, eff_dex):
         else:
             factor = SECONDARY_WEAPON_SLOT_FACTOR.get(
                 w.equipped_slot, SECONDARY_WEAPON_FACTOR_DEFAULT)
-        total += factor * (roll + stat) * dur
-    return total
+        term = factor * (roll + stat) * dur
+        total += term
+        rows.append({'instance': w.pk, 'definition': w.definition_id,
+                     'slot': w.equipped_slot, 'roll': roll, 'stat': stat,
+                     'durability': dur, 'factor': factor, 'term': term})
+    detail = {'weapons': rows}
+    if primary is not None:
+        detail['primary_slot'] = primary.equipped_slot
+    return total, detail
+
+
+def composite_weapon_term(weapons, eff_str, eff_dex):
+    """The composite strike's weapon term (see the detailed form)."""
+    return composite_weapon_term_detailed(weapons, eff_str, eff_dex)[0]
 
 
 def npc_level(npc_instance):
@@ -481,22 +561,31 @@ def apply_death_penalties(character):
     return broken_items
 
 
-def apply_npc_effects(npc_instance, target_character):
+def apply_npc_effects_detailed(npc_instance, target_character):
     """
-    Roll each NpcEffect for the given NPC and apply those that fire.
-    Returns a list of effect names to append to the attack line.
+    Roll each NpcEffect for the given NPC and apply those that fire —
+    detailed form (v25.2, #33): (messages, candidates).
+    Messages are effect names/sentences to append to the attack line;
+    candidates carries one {name, chance, fired} per NpcEffect row
+    evaluated, fired or not. One random.random() per candidate, exactly
+    as the pre-v25.2 body.
     Synchronous — call from within @database_sync_to_async.
     """
     from .models import NpcEffect
     from .effect_utils import apply_effect_definition, compose_standalone_sentence
 
     messages = []
+    candidates = []
     effects = NpcEffect.objects.filter(
         npc_definition=npc_instance.definition
     ).select_related('effect_definition')
 
     for npc_effect in effects:
-        if random.random() > npc_effect.effect_chance:
+        fired = not (random.random() > npc_effect.effect_chance)
+        candidates.append({'name': npc_effect.effect_definition.name,
+                           'chance': npc_effect.effect_chance,
+                           'fired': fired})
+        if not fired:
             continue
         # v23.3 (#149): the effect layer returns clause pairs now; this
         # path recomposes them via the standalone form so its returned
@@ -510,7 +599,59 @@ def apply_npc_effects(npc_instance, target_character):
         messages.extend(compose_standalone_sentence(p) for p in pairs)
         messages.append(npc_effect.effect_definition.name)
 
-    return messages
+    return messages, candidates
+
+
+def apply_npc_effects(npc_instance, target_character):
+    """Roll and apply each NpcEffect; effect-name messages only (see the
+    detailed form). Synchronous — call from within @database_sync_to_async."""
+    return apply_npc_effects_detailed(npc_instance, target_character)[0]
+
+
+def combat_snapshot_character(character, equipped_items=None):
+    """v25.2 (#33): the combat_start character snapshot (GDD §10.11) —
+    the entering character's full combat-relevant state. Lives here, not
+    in mc.py: game code imports mc, never the reverse. Reuses the
+    effective-stats/gear/TAV readers; pass equipped_items to avoid the
+    one equipped-set query. Synchronous — DB context required."""
+    if equipped_items is None:
+        equipped_items = list(
+            character.inventory.filter(is_equipped=True)
+            .select_related('definition'))
+    return {
+        'id': character.pk,
+        'name': character.name,
+        'level': character.level,
+        'archetype': character.archetype.name if character.archetype_id else None,
+        'origin': character.origin.name if character.origin_id else None,
+        'stats': effective_stats(character, equipped_items),
+        'gear_bonus': gear_stat_bonus(character, equipped_items),
+        'tav': total_armor_value(character, equipped_items),
+        'vitality': [character.vitality_current, character.vitality_max],
+        'acuity': [character.acuity_current, character.acuity_baseline,
+                   character.acuity_band_low, character.acuity_band_high],
+        'longevity': [character.longevity_current, character.longevity_max],
+    }
+
+
+def combat_snapshot_npc(npc):
+    """v25.2 (#33): the combat_start/combat_join NPC snapshot (GDD
+    §10.11). Contest stats via get_npc_stats minus vitality (vitality
+    rides its own [cur, max] pair). Synchronous — DB context required;
+    npc.definition should arrive select_related."""
+    stats = get_npc_stats(npc)
+    stats.pop('vitality', None)
+    return {
+        'instance': npc.pk,
+        'definition': npc.definition_id,
+        'slug': npc.definition.slug,
+        'name': npc.definition.name,
+        'combat_tier': npc.definition.combat_tier,
+        'mk_tier': npc.mk_tier,
+        'level': npc_level(npc),
+        'stats': stats,
+        'vitality': [npc.vitality_current, npc.vitality_max],
+    }
 
 
 def get_unarmed_message(attacker_pool, target_name, attacker_name=None, fallback_slug='default'):
