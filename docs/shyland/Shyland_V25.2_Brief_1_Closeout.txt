@@ -1,3 +1,145 @@
 2026-08-19 — implementation session START — Shyland_V25.2_Brief_1_Combat_Instrumentation.md — branch version_25_2
 
-(stub — completed in place at session end)
+================================================================================
+SHYLAND V25.2 BRIEF 1 — COMBAT INSTRUMENTATION (#33) — CLOSEOUT REPORT
+================================================================================
+Session date: 2026-08-19
+Brief: Shyland_V25.2_Brief_1_Combat_Instrumentation.md (committed f23b20c)
+Branch: version_25_2 (worktree /Users/ctg/src/games-mvc-version_25_2)
+Pre-flight: local dev target confirmed (check_docker_host.py exit 0), posture
+coherent, worktree clean and synced at 8651468 at session start.
+
+--------------------------------------------------------------------------------
+1. TECHNICAL PRE-FLIGHT (#252) — §1 claims diffed against the branch tip
+--------------------------------------------------------------------------------
+Every §1 structural claim was verified against the code before any writing:
+mc_emit signature and XADD shape (mc.py:56/74-77), MC_STREAM_MAXLEN default at
+base.py:80, MCEvent.kind max_length=16 (models.py:1245), the combat constants
+(models.py:6-9), process_combat/execute_actions shapes and all claimed line
+anchors (round gate :342, ordering :430-454, execute_actions :457-824 with the
+4-tuple return and caller flush :826-846, the fall :767-793, kill/sibling
+closes, close_session :127-140, self_heal_close :302-313, execute_death
+:202-237, dying loop :239-274), all six roll helpers' bodies and random-call
+structure (combat_utils.py), CombatSession/NpcInstance fields, start_combat
+:4736-4754 with exactly three callers (:850/:2799/:2884), end_combat_session
+:4820 with two callers (:2823/:2850), the inline flee d20 :2836, ticker engage
+:1024-1072, and the EmitRecorder/FakeStreamClient patterns in test_mc_sink.py.
+
+Result: ZERO load-bearing drift at pre-flight. One cosmetic note: engage's
+docstring claims a 4-tuple return including the session; the code returns the
+3-tuple the brief correctly describes (stale docstring, brief matches code).
+
+HARD STOP (mid-session, #252): one §1 claim proved false in a load-bearing
+way once implementation reached tests. §1/§5.2 claim "the delegation strategy
+keeps all 8 test files untouched and green" — but 17 mock.patch sites across
+those files patch the plain name apps.shyland.combat_utils.resolve_hit to
+force deterministic engine behavior (e.g. test_zombie_sessions force_hits).
+With the engine switched to resolve_hit_detailed (§5.7, enforced by §7.2's
+grep), those patches go dead and the tests go flaky. §2.2 and §5.2 could not
+both hold as written. Implementation stopped; reported to the operator with
+options. OPERATOR RULING (2026-08-19, in-session): option 1 — mechanical
+patch-target update. See deviations.
+
+--------------------------------------------------------------------------------
+2. COMMIT LIST
+--------------------------------------------------------------------------------
+406c434  Step 0: closeout report stub (work-has-started signal)
+61ce4aa  Version start: SHYLAND_VERSION 25.2-DEV, pin test moved same commit
+56515b1  §5.1-5.3: MAXLEN default 250k; six detailed variants; snapshot builders
+af8e722  §5.4-5.5: combat_start/combat_join — consumer + ticker
+3a83e1b  §5.6-5.7: combat_round; combat_action both directions; the fall;
+         execute_actions 5-tuple, internals-first flush
+c1a3ca7  §5.8-5.9: combat_flee; combat_end at every end site
+7b2c32b  §6: test_combat_instrumentation.py (29 tests) + ruled deviation
+         *** FINAL IMPLEMENTATION HASH: 7b2c32b ***
+501c5f7  §9: architecture doc — stamp 25.2, hash moves to 7b2c32b, §4.19
+         combat family (doc-only commit, follows the gated last step)
+
+Version-start make deploy-dev ran after 61ce4aa; the standing §8 make
+deploy-dev ran after 7b2c32b (suite green first). Both against the local dev
+stack only.
+
+--------------------------------------------------------------------------------
+3. DEVIATIONS (none silent)
+--------------------------------------------------------------------------------
+D1 (operator-ruled, the #252 hard stop above): 17 mock.patch sites in 7 test
+   files (test_b5_amendment1 x5, test_gear_combat x5, test_v24_6_brief1 x3,
+   test_command_revamp, test_b2_amendment1, test_zombie_sessions,
+   test_levelup_display) converted mechanically from patching resolve_hit
+   (string returns) to resolve_hit_detailed (tuple returns, empty detail
+   dicts); the two side_effect functions' returns became tuples, their
+   player/NPC discrimination via the crit_bonus kwarg unchanged. Original
+   test intent preserved exactly; no assertion changed.
+D2: composite_weapon_term_detailed's per-weapon rows read pk/definition_id
+   via getattr(..., None) — the pre-v25.2 body never read those attributes,
+   and existing callers (test_v24_6_brief1's MemWeapon fakes) pass
+   attribute-shaped stand-ins without them. Real ItemInstances always carry
+   both; records are unaffected.
+D3 (interpretation note, not a deviation from any stated rule): the player
+   combat_action damage.acuity_mod records the band modifier passed to
+   calculate_damage (acuity_damage_modifier's value); the focus-gated
+   effective multiplier is recoverable from it plus the record's focus flag,
+   and raw/final capture what actually applied.
+D4 (schema conformance note): combat_death death-phase home_room is absent
+   when no home resolves (bare worlds without travel nodes — field absence
+   means not-applicable per §3); the live world always resolves the Heart.
+
+--------------------------------------------------------------------------------
+4. §7 VERIFICATION OUTCOMES
+--------------------------------------------------------------------------------
+7.1 Full in-container suite (path form, docker exec):
+    Ran 731 tests — OK. Suite arithmetic: 702 baseline + 29 new = 731.
+7.2 Discipline greps (single-quoted): 'resolve_hit(' / 'calculate_damage(' /
+    'composite_weapon_term(' / 'roll_gear_bonus_damage(' /
+    'apply_npc_effects(' in run_tick_engine.py — all ZERO hits. mc_emit
+    emission-site inventory = the v25.1 six (out x2 consumer, connect,
+    disconnect, cmd x2, ticker out x2) plus exactly the sites this brief
+    names: consumers :855 (aggro start), :2808 (attack start), :2834
+    (flee_empty end), :2866/:2878/:2932 (combat_flee blocked/success/fail),
+    :2888 (flee end), :2926 (flee_aggro start); ticker :208 (stale close),
+    :317 (death records), :428 (self-heal close), :486 (empty close), :586
+    (combat_round), :1103 (round mc_records flush), :1404 (engage records).
+7.3 In-container settings.MC_STREAM_MAXLEN == 250000 confirmed; .env,
+    .env.dev, .env.prod all carry no MC_STREAM_MAXLEN override (assumption
+    verified as the brief directs).
+7.4 Live dev-stack fight (after §8's deploy, 25.1 throwaway pattern —
+    scripted character + private throwaway zone/room/NPC, created and
+    deleted by the script; the LIVE ticker ran the fight): session 879 ran
+    3 rounds to a win/kill. ALL 13 ASSERTIONS PASS: combat_start present
+    and first; >=1 combat_round; >=2 combat_action with both directions
+    (player-acted actor_id=pk, NPC-acted actor_id NULL); combat_end
+    win/kill; audience == [] on every combat record; data.session on every
+    combat record; per-round stream-id ordering (every combat record's id
+    precedes the round's first out record's id) — all verified in BOTH the
+    Redis stream (XRANGE) and MCEvent rows. Flee case (session 880):
+    contest won with no exit — combat_flee recorded success=true,
+    blocked='nowhere_to_run', die/total/dex/npc_avg_per consistent; the
+    ticker then finished that fight (win/kill combat_end). Cleanup
+    complete; MCEvent rows retained (append-only by design).
+7.5 VOLUME DATA POINT (the number GDD §10.11's retention posture waited
+    for): the 3-round kill fight produced 10 combat records in 9.7s
+    ≈ 1.03 records/sec (1 start, 3 rounds, 5 actions, 1 end), vs 25.1's
+    non-combat baseline of 24 records/40s (0.6/sec).
+
+--------------------------------------------------------------------------------
+5. MIGRATION STATEMENT
+--------------------------------------------------------------------------------
+NO MIGRATION. No model changed anywhere in this brief (§5.10). The persister
+is kind-agnostic and untouched; migration 0050 remains the newest.
+
+--------------------------------------------------------------------------------
+6. PENDING DEPLOY-TIME ACTIONS
+--------------------------------------------------------------------------------
+NONE. The closeout tail's make deploy-prod ships this as an ordinary image
+build + restart; no data actions, no seed, no migration.
+
+--------------------------------------------------------------------------------
+7. ISSUES
+--------------------------------------------------------------------------------
+#33 closed (gated on §7 passing — passed), with a comment naming this brief
+and the final implementation hash 7b2c32b.
+
+--------------------------------------------------------------------------------
+8. OPERATOR PLAYTEST DISPOSITION (#170)
+--------------------------------------------------------------------------------
+(pending — recorded verbatim-style below when the operator rules)
