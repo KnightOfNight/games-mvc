@@ -55,6 +55,28 @@ DEVIATIONS (none silent)
 4. Consumer module docstring reworded once (50c681e) so §7.2's
    grep -n 'Character' verification stays at zero hits — the hit was prose
    in my own docstring, not code.
+5. LIVE_BLOCK_MS is 2000, not the brief's 5000 — found by the operator
+   playtest (step 3: no events after moving). redis-py 8.1.0 (what the
+   image resolves for the requirements pin redis>=5.0) changed its default
+   client-side socket_timeout to 5 seconds; an XREAD whose server-side
+   BLOCK equals the client-side read cap is a coin-flip race every idle
+   cycle, and after ~18 idle cycles (~90s) the client lost, redis-py
+   raised TimeoutError, and the failure handler closed the agent's
+   socket ~3s before the operator's move records landed. A 2s block
+   inside the 5s cap removes the race window entirely. Wire contract
+   unchanged; no test pinned the constant. The playtest-found-fix flow
+   is the workflow's step 4 (a bug against the brief's own spec: fix in
+   the still-open session, redeploy dev, re-playtest).
+
+RELATED FINDING (outside this brief, persister untouched)
+The persister has the same 5s/5s race: run_mc_persister's XREADGROUP
+BLOCK 5000 with the sync client's redis-py 8.1 default socket_timeout=5
+produced 107 "mc persister: redis unavailable (Timeout reading from
+socket); retrying" lines on the dev stack. Self-healing by design
+(RedisError caught, backoff, XREADGROUP redelivers unacked — no data
+loss), but each loss reconnect-churns. Applies wherever the image was
+built with redis-py >= 8 (prod's 25.2 image included, quiet-hours
+idle cycles). Issue callout raised in-session.
 
 §7 VERIFICATION OUTCOMES (all passed)
 1. Full in-container suite (path form, docker exec): Ran 744 tests — OK.

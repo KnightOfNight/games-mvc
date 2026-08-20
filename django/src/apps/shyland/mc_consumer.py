@@ -25,7 +25,11 @@ logger = logging.getLogger('shyland.mc')
 
 MC_PROTOCOL = 1
 REPLAY_BATCH = 500
-LIVE_BLOCK_MS = 5000
+# Must sit comfortably inside the reused client's socket_timeout
+# (redis-py >= 8 defaults it to 5s): an XREAD whose server-side BLOCK
+# equals the client-side read cap is a coin-flip race every idle cycle,
+# and the loser tears down the connection. 2s block, 5s cap, no race.
+LIVE_BLOCK_MS = 2000
 
 
 def _text(value):
