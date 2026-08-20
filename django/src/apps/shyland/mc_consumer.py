@@ -4,8 +4,8 @@ through which remote agents attach to the MC event stream (GDD §10.11).
 Transport only: no inbound frame may cause any game action, ORM write,
 or stream write — the inbound vocabulary is exactly ``attach`` and
 ``ping``. Access is live ``agents.shyland`` membership at connect; the
-gate is the group, not a character — this consumer never queries
-Character. Agents own their cursors: server reads are stateless
+gate is the group, not a character — this consumer never touches the
+character table. Agents own their cursors: server reads are stateless
 XRANGE/XREAD, no consumer groups (those remain the persister's
 mechanism alone), no server-side per-agent state. Gaps are announced,
 never silent. Egress connections are not captured as stream events —
