@@ -553,8 +553,8 @@ class EngineGearTests(TransactionTestCase):
     async def test_zero_pool_line_byte_identical_no_parenthetical(self):
         char, npc = await sync_to_async(make_combat_world)('egA')
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
         out_hits = [t for _, t, c in player_msgs if c == 'combat-hit-out']
         self.assertTrue(out_hits)
@@ -570,8 +570,8 @@ class EngineGearTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
 
         out_hits = [t for _, t, c in player_msgs if c == 'combat-hit-out']
@@ -600,8 +600,8 @@ class EngineGearTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='graze'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('graze', {})):
             await cmd.process_combat(1)
         for _, text, _ in player_msgs:
             self.assertNotIn('(+', text)
@@ -618,8 +618,8 @@ class EngineGearTests(TransactionTestCase):
 
         def player_hits_npc_misses(attacker_dex, target_dodge, crit_bonus=None):
             # The player path passes crit_bonus; the NPC path does not.
-            return 'hit' if crit_bonus is not None else 'miss'
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
+            return ('hit', {}) if crit_bonus is not None else ('miss', {})
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
                         side_effect=player_hits_npc_misses):
             await cmd.process_combat(1)
 
@@ -643,8 +643,8 @@ class EngineGearTests(TransactionTestCase):
         cmd, player_msgs, _ = run_engine_round()
 
         def player_hits_npc_misses(attacker_dex, target_dodge, crit_bonus=None):
-            return 'hit' if crit_bonus is not None else 'miss'
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
+            return ('hit', {}) if crit_bonus is not None else ('miss', {})
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
                         side_effect=player_hits_npc_misses):
             await cmd.process_combat(1)
 

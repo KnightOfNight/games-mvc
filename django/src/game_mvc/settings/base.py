@@ -77,7 +77,8 @@ DATABASES = {
 REDIS_HOST = env('REDIS_HOST', default='redis')
 
 # v25.1 (#37): MC hot-tier bound — Streams MAXLEN (approximate) on mc:events.
-MC_STREAM_MAXLEN = env.int('MC_STREAM_MAXLEN', default=100000)
+# v25.2 (#33, ruling 8): 100k -> 250k for the combat_* family's volume.
+MC_STREAM_MAXLEN = env.int('MC_STREAM_MAXLEN', default=250000)
 
 CHANNEL_LAYERS = {
     'default': {

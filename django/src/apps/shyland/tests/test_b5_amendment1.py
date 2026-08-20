@@ -186,8 +186,8 @@ class IncomingLineTests(TransactionTestCase):
     async def test_unarmored_line_byte_identical(self):
         char, npc = await sync_to_async(make_combat_world)('ipA')
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
         in_hits = self._in_lines(player_msgs)
         self.assertTrue(in_hits)
@@ -201,8 +201,8 @@ class IncomingLineTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})), \
              mock.patch('random.uniform', return_value=20.0):
             await cmd.process_combat(1)
 
@@ -227,8 +227,8 @@ class IncomingLineTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='critical'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('critical', {})), \
              mock.patch('random.uniform', return_value=20.0):
             await cmd.process_combat(1)
         in_crits = self._in_lines(player_msgs, 'combat-crit-in')
@@ -244,8 +244,8 @@ class IncomingLineTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='graze'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('graze', {})), \
              mock.patch('random.uniform', return_value=20.0):
             await cmd.process_combat(1)
         in_hits = self._in_lines(player_msgs)
@@ -263,8 +263,8 @@ class IncomingLineTests(TransactionTestCase):
             return char, npc
         char, npc = await sync_to_async(setup)()
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'), \
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})), \
              mock.patch('random.uniform', return_value=2.0):
             await cmd.process_combat(1)
         in_hits = self._in_lines(player_msgs)

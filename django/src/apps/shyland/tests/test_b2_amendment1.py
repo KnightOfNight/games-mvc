@@ -115,7 +115,7 @@ class VersionLineTests(TransactionTestCase):
         self.assertEqual(lines[-2], {})
         # The pin moves with the version rituals: version start sets
         # N.0-DEV, the closeout ritual sets the release stamp (N.0).
-        self.assertEqual(SHYLAND_VERSION, '25.1')
+        self.assertEqual(SHYLAND_VERSION, '25.2')
 
 
 class CategoryRetagTests(TransactionTestCase):
@@ -194,8 +194,8 @@ class CategoryRetagTests(TransactionTestCase):
         cmd.send_to_player = record_send
         cmd.broadcast_to_room = record_broadcast
 
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
 
         ended = [m for m in player_msgs if m[0] == 'Combat has ended.']

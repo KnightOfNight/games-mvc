@@ -94,9 +94,9 @@ class Command(BaseCommand):
             COMBAT_ROUND_TICKS, DYING_DURATION_SECS, STALE_SESSION_SECS,
         )
         from apps.shyland.combat_utils import (
-            effective_stats, get_npc_stats, roll_initiative, resolve_hit,
-            calculate_damage, get_npc_health_description, apply_death_penalties,
-            apply_npc_effects, xp_for_kill, npc_display, npc_display_name,
+            effective_stats, get_npc_stats, roll_initiative_detailed,
+            get_npc_health_description, apply_death_penalties,
+            xp_for_kill, npc_display, npc_display_name,
             release_session_npcs,
         )
         from apps.shyland.item_utils import create_corpse, get_durability_penalty
@@ -124,12 +124,20 @@ class Command(BaseCommand):
             ))
 
         @_dsa
-        def close_session(session):
-            """Close the session and return one (char_pk, status) pair per
-            member — v20 brief 4 (#2): disengagement ends combat for the
-            player, so the fight pane and combat-red state must clear."""
+        def close_session(session, reason):
+            """Close the session and return ((char_pk, status) pairs, MC
+            record) — v20 brief 4 (#2): disengagement ends combat for the
+            player, so the fight pane and combat-red state must clear.
+            v25.2 (#33): reason is 'stale' (the sweep) or 'empty' (the
+            no-participants close); both map to outcome 'disengage'."""
             session.is_active = False
             session.save(update_fields=['is_active'])
+            npcs_remaining = [
+                {'instance': n.pk,
+                 'vitality': [n.vitality_current, n.vitality_max]}
+                for n in session.npcs.filter(is_alive=True)
+                .order_by('spawned_at', 'pk')
+            ]
             # v23 B1 (#25): stale close now releases NPCs like every
             # other end path (deliberate membership alignment — this
             # path previously left NPC rows on the inactive session).
@@ -137,7 +145,22 @@ class Command(BaseCommand):
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
-            return [(c.pk, self._build_status(c)) for c in chars]
+            record = {
+                'kind': 'combat_end',
+                'actor_id': chars[0].pk if chars else None,
+                'actor_name': chars[0].name if chars else '',
+                'room_id': session.room_id,
+                'audience': [],
+                'data': {
+                    'session': session.pk,
+                    'outcome': 'disengage',
+                    'reason': reason,
+                    'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                    'duration_secs': (now - session.started_at).total_seconds(),
+                    'npcs_remaining': npcs_remaining,
+                },
+            }
+            return [(c.pk, self._build_status(c)) for c in chars], record
 
         # v20 brief 4 (#2): the fight-info feed. One payload per session
         # member, sent every engine tick; when the session has just ended,
@@ -180,7 +203,9 @@ class Command(BaseCommand):
 
         stale = await get_stale_sessions()
         for session in stale:
-            payloads = await close_session(session)
+            payloads, mc_record = await close_session(session, 'stale')
+            # v25.2 (#33): emit-before-send.
+            await mc.mc_emit(**mc_record)
             for char_pk, status in payloads:
                 await self.send_to_player(
                     char_pk, '', None, status,
@@ -202,6 +227,9 @@ class Command(BaseCommand):
         def execute_death(character):
             from apps.shyland.models import resolve_home_room
             broken = apply_death_penalties(character)
+            # v25.2 (#33): the death happened where the character lay
+            # dying — captured before respawn moves them home.
+            death_room_id = character.current_room_id
             # v24.26 (#38, GDD §2.11): respawn follows the bond — the
             # effective home room, the Heart when no bond exists. Same
             # resolver as 'home' (one home concept, ruling B5).
@@ -226,19 +254,67 @@ class Command(BaseCommand):
                 is_active=False, removed_by='death'
             )
             CombatAction.objects.filter(character=character, is_processed=False).delete()
+            sessions_closed = []
+            end_records = []
             for session in character.combat_sessions.filter(is_active=True):
                 session.characters.remove(character)
                 if session.characters.count() == 0:
                     session.is_active = False
                     session.save(update_fields=['is_active'])
+                    # v25.2 (#33): npcs_remaining captured before the
+                    # release resets them — the loss leaves them standing.
+                    npcs_remaining = [
+                        {'instance': n.pk,
+                         'vitality': [n.vitality_current, n.vitality_max]}
+                        for n in session.npcs.filter(is_alive=True)
+                        .order_by('spawned_at', 'pk')
+                    ]
                     # v23 B1 (#25): player-death disengagement — the
                     # NPCs the faller was fighting reset to full.
                     release_session_npcs(session)
-            return broken, home
+                    sessions_closed.append(session.pk)
+                    end_records.append({
+                        'kind': 'combat_end',
+                        'actor_id': character.pk,
+                        'actor_name': character.name,
+                        'room_id': session.room_id,
+                        'audience': [],
+                        'data': {
+                            'session': session.pk,
+                            'outcome': 'loss',
+                            'reason': 'death',
+                            'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                            'duration_secs': (now - session.started_at).total_seconds(),
+                            'npcs_remaining': npcs_remaining,
+                        },
+                    })
+            # v25.2 (#33): the death-phase record — the death resolved
+            # (penalties, respawn) before its session consequences.
+            death_data = {
+                'phase': 'death',
+                'character': character.pk,
+                'broken_items': broken,
+                'sessions_closed': sessions_closed,
+            }
+            if home is not None:
+                death_data['home_room'] = home.pk
+            records = [{
+                'kind': 'combat_death',
+                'actor_id': character.pk,
+                'actor_name': character.name,
+                'room_id': death_room_id,
+                'audience': [],
+                'data': death_data,
+            }] + end_records
+            return broken, home, records
 
         dying_chars = await get_expired_dying()
         for character in dying_chars:
-            broken, home = await execute_death(character)
+            broken, home, mc_death_records = await execute_death(character)
+            # v25.2 (#33): emit-before-send — the death record and every
+            # loss close land before the dying loop's sends.
+            for r in mc_death_records:
+                await mc.mc_emit(**r)
             name = character.name
             await self.send_to_player(character.pk, "The darkness takes you.", 'error', None)
             msg = f"You have died and awakened at {home.name if home else 'your home'}."
@@ -302,15 +378,37 @@ class Command(BaseCommand):
         @_dsa
         def self_heal_close(session):
             """v24.19 (#218): standard end pattern for a session holding
-            no living NPCs — close, release, member statuses."""
+            no living NPCs — close, release, member statuses. v25.2 (#33):
+            also returns the combat_end record (disengage/self_heal)."""
             session.is_active = False
             session.focus_npc = None
             session.save(update_fields=['is_active', 'focus_npc'])
+            npcs_remaining = [
+                {'instance': n.pk,
+                 'vitality': [n.vitality_current, n.vitality_max]}
+                for n in session.npcs.filter(is_alive=True)
+                .order_by('spawned_at', 'pk')
+            ]
             release_session_npcs(session)
             chars = list(session.characters.select_related(
                 'current_room__area', 'current_room__zone',
             ).all())
-            return [(c.pk, self._build_status(c)) for c in chars]
+            record = {
+                'kind': 'combat_end',
+                'actor_id': chars[0].pk if chars else None,
+                'actor_name': chars[0].name if chars else '',
+                'room_id': session.room_id,
+                'audience': [],
+                'data': {
+                    'session': session.pk,
+                    'outcome': 'disengage',
+                    'reason': 'self_heal',
+                    'rounds': session.tick_counter // COMBAT_ROUND_TICKS,
+                    'duration_secs': (now - session.started_at).total_seconds(),
+                    'npcs_remaining': npcs_remaining,
+                },
+            }
+            return [(c.pk, self._build_status(c)) for c in chars], record
 
         sessions = await get_active_sessions()
 
@@ -325,7 +423,9 @@ class Command(BaseCommand):
                 # path — nothing left to do.
                 continue
             if not has_living:
-                payloads = await self_heal_close(session)
+                payloads, mc_record = await self_heal_close(session)
+                # v25.2 (#33): emit-before-send.
+                await mc.mc_emit(**mc_record)
                 for char_pk, status in payloads:
                     await self.send_to_player(
                         char_pk, "Combat has ended.", 'reward', status,
@@ -381,7 +481,9 @@ class Command(BaseCommand):
             npcs = safe_npcs
 
             if not characters or not npcs:
-                payloads = await close_session(session)
+                payloads, mc_record = await close_session(session, 'empty')
+                # v25.2 (#33): emit-before-send.
+                await mc.mc_emit(**mc_record)
                 for char_pk, status in payloads:
                     await self.send_to_player(
                         char_pk, '', None, status,
@@ -429,29 +531,62 @@ class Command(BaseCommand):
 
             is_first_round = (tick_counter == COMBAT_ROUND_TICKS)
             first_attacker = session.first_attacker
+            round_no = tick_counter // COMBAT_ROUND_TICKS
 
             if is_first_round:
                 if first_attacker == 'character':
                     ordered_actions = player_actions + npc_actions
                 else:
                     ordered_actions = npc_actions + player_actions
+                # v25.2 (#33): round 1 orders by first_attacker — no
+                # initiative rolls, so the record carries none.
+                round_data = {
+                    'session': session.pk,
+                    'round': round_no,
+                    'basis': 'first_attacker',
+                    'first_attacker': first_attacker,
+                }
             else:
                 # v22 B5 (#100): initiative reads effective DEX/PER.
                 @_dsa
                 def char_initiative(character):
                     eff = effective_stats(character)
-                    return roll_initiative(eff['dex'], eff['per'])
-                char_init = await char_initiative(character)
+                    return roll_initiative_detailed(eff['dex'], eff['per'])
+                char_init, char_roll = await char_initiative(character)
+                npc_rolls = []
+                for n in npcs:
+                    n_stats = get_npc_stats(n)
+                    n_total, n_detail = roll_initiative_detailed(
+                        n_stats['dex'], n_stats['per'])
+                    npc_rolls.append({'instance': n.pk,
+                                      'dex': n_stats['dex'],
+                                      'per': n_stats['per'],
+                                      'die': n_detail['die'],
+                                      'total': n_total})
                 avg_npc_init = (
-                    sum(
-                        roll_initiative(get_npc_stats(n)['dex'], get_npc_stats(n)['per'])
-                        for n in npcs
-                    ) / len(npcs)
-                ) if npcs else 0
+                    sum(r['total'] for r in npc_rolls) / len(npc_rolls)
+                ) if npc_rolls else 0
                 if char_init >= avg_npc_init:
                     ordered_actions = player_actions + npc_actions
                 else:
                     ordered_actions = npc_actions + player_actions
+                round_data = {
+                    'session': session.pk,
+                    'round': round_no,
+                    'basis': 'initiative',
+                    'character_roll': char_roll,
+                    'npc_rolls': npc_rolls,
+                    'npc_avg': avg_npc_init,
+                    'order': ('character_first' if char_init >= avg_npc_init
+                              else 'npcs_first'),
+                }
+
+            # v25.2 (#33): internals-first — the round record precedes
+            # execute_actions and every player-facing send this round.
+            await mc.mc_emit(
+                kind='combat_round', actor_id=character.pk,
+                actor_name=character.name, room_id=session.room_id,
+                audience=[], data=round_data)
 
             @_dsa
             def execute_actions(session, ordered_actions, character, npcs):
@@ -465,11 +600,13 @@ class Command(BaseCommand):
                 )
                 from apps.shyland.combat_utils import (
                     apply_armor_mitigation, effective_stats, get_npc_stats,
-                    resolve_hit, calculate_damage, acuity_damage_modifier,
-                    get_npc_health_description, apply_npc_effects, xp_for_kill,
+                    resolve_hit_detailed, calculate_damage_detailed,
+                    acuity_damage_modifier,
+                    get_npc_health_description, apply_npc_effects_detailed,
+                    xp_for_kill,
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
-                    npc_display, npc_display_name, roll_gear_bonus_damage,
-                    summed_gear_stat, total_armor_value, composite_weapon_term,
+                    npc_display, npc_display_name, roll_gear_bonus_damage_detailed,
+                    summed_gear_stat, total_armor_value, composite_weapon_term_detailed,
                 )
                 from apps.shyland.item_utils import create_corpse
 
@@ -481,6 +618,23 @@ class Command(BaseCommand):
                 # closed this round — they get their fight-clear payload
                 # after the flush.
                 ended_sessions = []
+                # v25.2 (#33): ready-to-emit combat_* dicts in resolution
+                # order; the caller emits every one before the round's
+                # player-facing sends (internals-first).
+                mc_records = []
+
+                def _mc_rec(kind, data, npc_actor=None):
+                    """Envelope discipline (ruling 6): player-acted records
+                    carry the character; NPC-acted carry actor_id=None with
+                    the definition name (pks live in data)."""
+                    if npc_actor is None:
+                        actor_id, actor_name = character.pk, character.name
+                    else:
+                        actor_id, actor_name = None, npc_actor.definition.name
+                    return {'kind': kind, 'actor_id': actor_id,
+                            'actor_name': actor_name,
+                            'room_id': session.room_id,
+                            'audience': [], 'data': data}
 
                 # v22 B5 (#100): one equipped-set load per round feeds
                 # effective stats, TAV, and the gear wiring — armor and
@@ -524,13 +678,26 @@ class Command(BaseCommand):
                         npc_stats = get_npc_stats(npc)
                         # v22 B5 (#100): effective DEX to hit; gear
                         # crit_chance rides the same capped computation.
-                        hit_result = resolve_hit(eff['dex'], npc_stats['dex'],
-                                                 crit_bonus=gear_crit_bonus)
+                        hit_result, to_hit = resolve_hit_detailed(
+                            eff['dex'], npc_stats['dex'],
+                            crit_bonus=gear_crit_bonus)
+
+                        is_focus = (npc.pk == focus_npc_pk)
+                        action_data = {
+                            'session': session.pk,
+                            'round': round_no,
+                            'target': {'instance': npc.pk,
+                                       'definition': npc.definition_id,
+                                       'mk_tier': npc.mk_tier},
+                            'focus': is_focus,
+                            'to_hit': to_hit,
+                        }
 
                         # v20 brief 5 (#13): semantic combat categories —
                         # the client palette colors these; the server never
                         # sends colors.
                         if hit_result == 'miss':
+                            mc_records.append(_mc_rec('combat_action', action_data))
                             # v23 B5 amendment 1 (#152): your whiff is a warning, not chrome.
                             messages.append((character.pk, f"You miss {display}.", 'combat-miss-out', None))
                             continue
@@ -541,18 +708,18 @@ class Command(BaseCommand):
                             # per its slot factor. Per-weapon stat and
                             # durability live inside the term; acuity and
                             # the hit multiplier apply once, downstream.
-                            base_damage = composite_weapon_term(
+                            base_damage, weapon_detail = composite_weapon_term_detailed(
                                 equipped_weapons, eff['str'], eff['dex'])
                             stat_bonus = 0
                             dur_mod = 1.0
                         else:
                             base_damage = _random.uniform(1, 3)
+                            weapon_detail = None
                             stat_bonus = eff['str']
                             dur_mod = 1.0
 
-                        is_focus = (npc.pk == focus_npc_pk)
                         acuity_mod = acuity_damage_modifier(character)
-                        damage = calculate_damage(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
+                        damage, dmg_detail = calculate_damage_detailed(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
                         damage_int = max(1, int(damage))
 
                         # v22 B5 (#68/#100): landed hits (hit/critical —
@@ -561,10 +728,38 @@ class Command(BaseCommand):
                         # gear's part; zero pool leaves the line
                         # byte-identical to today.
                         landed = hit_result in ('hit', 'critical')
-                        gear_bonus = roll_gear_bonus_damage(equipped_all) if landed else 0
+                        if landed:
+                            gear_bonus, gear_detail = roll_gear_bonus_damage_detailed(equipped_all)
+                        else:
+                            # A graze never rolls the pool — no candidates
+                            # were evaluated, honestly empty.
+                            gear_bonus = 0
+                            gear_detail = {'total': 0, 'procs': [], 'flat': 0.0}
 
+                        damage_data = {
+                            'stat_bonus': stat_bonus,
+                            'acuity_mod': acuity_mod,
+                            'hit_multiplier': dmg_detail['hit_multiplier'],
+                            'raw': dmg_detail['raw'],
+                            'final': dmg_detail['final'],
+                        }
+                        if weapon_detail is not None:
+                            damage_data['weapons'] = weapon_detail['weapons']
+                        else:
+                            damage_data['unarmed_base'] = base_damage
+                        action_data['damage'] = damage_data
+                        action_data['gear_bonus'] = gear_detail
+                        if landed and gear_lifesteal > 0:
+                            action_data['lifesteal'] = gear_lifesteal
+
+                        vit_before = npc.vitality_current
                         npc.vitality_current = max(0, npc.vitality_current - (damage_int + gear_bonus))
                         npc.save(update_fields=['vitality_current'])
+                        action_data['target_vitality'] = [vit_before, npc.vitality_current]
+                        # Kill fields join this same dict below if the blow
+                        # killed — the record is already in the list; the
+                        # emission happens after the round resolves.
+                        mc_records.append(_mc_rec('combat_action', action_data))
 
                         if landed and gear_lifesteal > 0:
                             # Atomic F()-heal clamped to vitality_max; no
@@ -615,6 +810,9 @@ class Command(BaseCommand):
                             xp = xp_for_kill(npc, character)
                             character.xp += xp
                             character.save(update_fields=['xp'])
+                            action_data['kill'] = True
+                            action_data['xp'] = xp
+                            action_data['level_ups'] = 0
 
                             create_corpse(npc, character)
 
@@ -628,6 +826,7 @@ class Command(BaseCommand):
                                 room_messages.append((session.room_id, npc_def.death_message, 'reward', None))
 
                             while character.xp >= xp_for_next_level(character.level):
+                                action_data['level_ups'] += 1
                                 character.level += 1
                                 character.unspent_stat_points += STAT_POINTS_PER_LEVEL
                                 new_vit_max, new_lon_max = recalculate_bars(character)
@@ -682,6 +881,25 @@ class Command(BaseCommand):
                                     other.focus_npc = None
                                     other.save(update_fields=['is_active', 'focus_npc'])
                                     release_session_npcs(other)
+                                    # v25.2 (#33): the sibling session ends
+                                    # by someone else's kill — its own
+                                    # character is the session actor.
+                                    other_char = other_chars[0] if other_chars else None
+                                    mc_records.append({
+                                        'kind': 'combat_end',
+                                        'actor_id': other_char.pk if other_char else None,
+                                        'actor_name': other_char.name if other_char else '',
+                                        'room_id': other.room_id,
+                                        'audience': [],
+                                        'data': {
+                                            'session': other.pk,
+                                            'outcome': 'win',
+                                            'reason': 'sibling_kill',
+                                            'rounds': other.tick_counter // COMBAT_ROUND_TICKS,
+                                            'duration_secs': (_now - other.started_at).total_seconds(),
+                                            'npcs_remaining': [],
+                                        },
+                                    })
                                     for c in other_chars:
                                         messages.append((c.pk, "Combat has ended.", 'reward', None))
                                         # v24.29 (#235): plunder site B —
@@ -707,6 +925,15 @@ class Command(BaseCommand):
                                 # and dead stragglers are filtered, so the
                                 # reset loop is a no-op here by design.
                                 release_session_npcs(session)
+                                # v25.2 (#33): the win close.
+                                mc_records.append(_mc_rec('combat_end', {
+                                    'session': session.pk,
+                                    'outcome': 'win',
+                                    'reason': 'kill',
+                                    'rounds': round_no,
+                                    'duration_secs': (_now - session.started_at).total_seconds(),
+                                    'npcs_remaining': [],
+                                }))
                                 # v22 B2 amendment 1 (#124): a good outcome
                                 # — success-color (the reward class).
                                 messages.append((character.pk, "Combat has ended.", 'reward', None))
@@ -735,7 +962,17 @@ class Command(BaseCommand):
 
                         npc_stats = get_npc_stats(npc)
                         # v22 B5 (#100): effective DEX to dodge.
-                        hit_result = resolve_hit(npc_stats['dex'], eff['dex'])
+                        hit_result, to_hit = resolve_hit_detailed(
+                            npc_stats['dex'], eff['dex'])
+
+                        action_data = {
+                            'session': session.pk,
+                            'round': round_no,
+                            'attacker': {'instance': npc.pk,
+                                         'definition': npc.definition_id,
+                                         'mk_tier': npc.mk_tier},
+                            'to_hit': to_hit,
+                        }
 
                         # v20 brief 5 (#24): attacker references compose
                         # through the display helper — ordinal-aware,
@@ -743,6 +980,7 @@ class Command(BaseCommand):
                         attacker_ref = npc_display_name(npc, live_npcs, capitalize=True)
 
                         if hit_result == 'miss':
+                            mc_records.append(_mc_rec('combat_action', action_data, npc_actor=npc))
                             # v23 B5 amendment 1 (#152): their whiff is good news.
                             messages.append((character.pk, f"{attacker_ref} misses you.", 'combat-miss-in', None))
                             continue
@@ -751,8 +989,9 @@ class Command(BaseCommand):
                             npc_stats['str'] * 0.8,
                             npc_stats['str'] * 1.2,
                         )
-                        damage = calculate_damage(base_damage, 0, 1.0, 1.0, hit_result, is_focus_target=True)
+                        damage, dmg_detail = calculate_damage_detailed(base_damage, 0, 1.0, 1.0, hit_result, is_focus_target=True)
                         damage_int = max(1, int(damage))
+                        pre_mitigation = damage_int
                         # v22 B5 (#100): armor mitigates NPC→player damage
                         # only, after calculate_damage's final value —
                         # deterministic, floored, at least 1 still lands.
@@ -762,9 +1001,36 @@ class Command(BaseCommand):
                         # Armor row and the examine line.)
                         damage_int = apply_armor_mitigation(damage_int, char_tav)
 
+                        action_data['damage'] = {
+                            'base_roll': base_damage,
+                            'str_basis': [npc_stats['str'] * 0.8,
+                                          npc_stats['str'] * 1.2],
+                            'hit_multiplier': dmg_detail['hit_multiplier'],
+                            'raw': dmg_detail['raw'],
+                            'pre_mitigation': pre_mitigation,
+                            'tav': char_tav,
+                            'final': damage_int,
+                        }
+
+                        vit_before = character.vitality_current
                         character.vitality_current = max(0, character.vitality_current - damage_int)
+                        action_data['target_vitality'] = [vit_before, character.vitality_current]
 
                         if character.vitality_current <= 0:
+                            # v25.2 (#33): the blow resolves, then the fall —
+                            # invisible in player output (the fall replaces
+                            # the hit line), fully visible in the stream.
+                            action_data['target_fell'] = True
+                            mc_records.append(_mc_rec('combat_action', action_data, npc_actor=npc))
+                            mc_records.append(_mc_rec('combat_death', {
+                                'session': session.pk,
+                                'round': round_no,
+                                'phase': 'fall',
+                                'character': character.pk,
+                                'killer': {'instance': npc.pk,
+                                           'definition': npc.definition_id,
+                                           'mk_tier': npc.mk_tier},
+                            }))
                             # Falling replaces all combat output for this player —
                             # no hit line for the killing blow either. Effects on
                             # the character are canceled and their own queued
@@ -809,9 +1075,12 @@ class Command(BaseCommand):
                             else:
                                 msg = f"{flavor} for {damage_int} damage."
 
-                            effect_msgs = apply_npc_effects(npc, character)
+                            effect_msgs, effect_candidates = apply_npc_effects_detailed(npc, character)
                             if effect_msgs:
                                 msg += " " + " and ".join(effect_msgs) + "."
+                            action_data['effects'] = effect_candidates
+                            action_data['target_fell'] = False
+                            mc_records.append(_mc_rec('combat_action', action_data, npc_actor=npc))
 
                             # v20 brief 5 (#13): incoming hits are their own
                             # category — attack direction readable at a glance.
@@ -821,11 +1090,17 @@ class Command(BaseCommand):
 
                         statuses.append((character.pk, self._build_status(character)))
 
-                return messages, statuses, room_messages, ended_sessions
+                return messages, statuses, room_messages, ended_sessions, mc_records
 
-            messages, statuses, room_messages, ended_sessions = await execute_actions(
+            messages, statuses, room_messages, ended_sessions, mc_records = await execute_actions(
                 session, ordered_actions, character, npcs
             )
+
+            # v25.2 (#33): internals-first — every combat record this
+            # round produced emits before the round's player-facing sends,
+            # in the exact order actions resolved.
+            for r in mc_records:
+                await mc.mc_emit(**r)
 
             for char_pk, text, category, event in messages:
                 await self.send_to_player(char_pk, text, category, None, event=event)
@@ -1025,9 +1300,14 @@ class Command(BaseCommand):
         def engage(character):
             """Join/create the character's session with every live aggro
             NPC in the room not already in it — the same set walk-in aggro
-            would engage. Returns (session, newly-added NPCs, fight rows,
-            status) or None when nothing new engages."""
-            from apps.shyland.combat_utils import npc_display_name
+            would engage. Returns (newly-added NPCs, fight rows, status,
+            MC records) or None when nothing new engages. v25.2 (#33): the
+            combat_start/combat_join record is built here (DB context) as
+            a ready-to-emit dict; the caller emits before any send."""
+            from apps.shyland.combat_utils import (
+                combat_snapshot_character, combat_snapshot_npc,
+                npc_display_name,
+            )
             from apps.shyland.models import CombatSession, NpcInstance
 
             room_npcs = list(NpcInstance.objects.filter(
@@ -1046,7 +1326,8 @@ class Command(BaseCommand):
             new_npcs = [n for n in room_npcs if n.pk not in already]
             if not new_npcs:
                 return None
-            if session is None:
+            created = session is None
+            if created:
                 session = CombatSession.objects.create(
                     room_id=character.current_room_id,
                     first_attacker='npc',
@@ -1054,6 +1335,40 @@ class Command(BaseCommand):
                 session.characters.add(character)
             for npc in new_npcs:
                 session.npcs.add(npc)
+
+            # v25.2 (#33): the engagement record — combat_start on create,
+            # combat_join on join; snapshots of the newly added NPCs only.
+            npc_snaps = [combat_snapshot_npc(n) for n in new_npcs]
+            room = character.current_room
+            if created:
+                data = {
+                    'session': session.pk,
+                    'room': session.room_id,
+                    'zone': room.zone.name,
+                    'origin': 'respawn_aggro',
+                    'first_attacker': 'npc',
+                    'character': combat_snapshot_character(character),
+                    'npcs': npc_snaps,
+                }
+                if room.area_id:
+                    data['area'] = room.area.name
+                kind = 'combat_start'
+            else:
+                data = {
+                    'session': session.pk,
+                    'room': session.room_id,
+                    'origin': 'respawn_aggro',
+                    'npcs': npc_snaps,
+                }
+                kind = 'combat_join'
+            records = [{
+                'kind': kind,
+                'actor_id': character.pk,
+                'actor_name': character.name,
+                'room_id': session.room_id,
+                'audience': [],
+                'data': data,
+            }]
             session_npcs = list(session.npcs.filter(is_alive=True)
                                 .order_by('spawned_at', 'pk')
                                 .select_related('definition'))
@@ -1069,17 +1384,24 @@ class Command(BaseCommand):
                 }
                 for n in session_npcs
             ]
-            return new_npcs, fight_rows, self._build_status(character)
+            return new_npcs, fight_rows, self._build_status(character), records
 
         engaged_rooms = {}
         payloads = []
+        mc_records = []
         for character in targets:
             result = await engage(character)
             if result is None:
                 continue
-            new_npcs, fight_rows, status = result
+            new_npcs, fight_rows, status, records = result
             engaged_rooms.setdefault(character.current_room_id, new_npcs)
             payloads.append((character.pk, fight_rows, status))
+            mc_records.extend(records)
+
+        # v25.2 (#33): emit-before-send — every engagement record lands
+        # before the engagement-line broadcasts and fight payloads.
+        for r in mc_records:
+            await mc.mc_emit(**r)
 
         # Engagement lines to the room (dying players never see combat
         # output), then combat state last.

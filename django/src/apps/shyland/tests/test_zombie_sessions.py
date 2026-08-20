@@ -70,8 +70,8 @@ class ZombieSessionTestCase(TransactionTestCase):
         if force_hits:
             # Deterministic kills: every swing lands plain (never a miss,
             # never a crit); a 1-hp NPC dies to any landed hit.
-            with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                            return_value='hit'):
+            with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                            return_value=('hit', {})):
                 asyncio.run(cmd.process_combat(tick_number))
         else:
             asyncio.run(cmd.process_combat(tick_number))

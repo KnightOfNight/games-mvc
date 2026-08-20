@@ -32,8 +32,8 @@ class LevelUpMessageTests(TransactionTestCase):
         char, npc = await sync_to_async(setup)()
 
         cmd, player_msgs, _ = run_engine_round()
-        with mock.patch('apps.shyland.combat_utils.resolve_hit',
-                        return_value='hit'):
+        with mock.patch('apps.shyland.combat_utils.resolve_hit_detailed',
+                        return_value=('hit', {})):
             await cmd.process_combat(1)
 
         rewards = [t for pk, t, c in player_msgs
