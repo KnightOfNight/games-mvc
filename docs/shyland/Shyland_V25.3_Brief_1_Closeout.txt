@@ -1,0 +1,3 @@
+2026-08-20 — Implementation session started: Shyland V25.3 Brief 1 — MC Egress (Shyland_V25.3_Brief_1_MC_Egress.md), branch version_25_3.
+
+[STUB — completed in place at session end.]
