@@ -132,5 +132,9 @@ ISSUES
 implementation hash 75031c7.
 
 OPERATOR PLAYTEST DISPOSITION (#170)
-[PENDING — recorded here when the operator gives it. The brief's §10
-checklist targets the dev stack, ready now.]
+Operator reports playtest successful (2026-08-20, in-session:
+"playtest confirmed"). The playtest itself surfaced the LIVE_BLOCK_MS
+race (deviation 5), fixed and redeployed in-session per the workflow's
+step 4; the confirming playtest ran against the fixed build (b812afb
+via make deploy-dev). The nginx/WSS path is thereby proven — the half
+of §7.5's coverage reserved for the operator.
