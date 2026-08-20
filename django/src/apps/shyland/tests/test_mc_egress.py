@@ -72,6 +72,12 @@ class FakeEgressClient:
             entries = entries[:count]
         return entries
 
+    async def xrevrange(self, key, max='+', min='-', count=None):
+        entries = list(reversed(self.window))
+        if count is not None:
+            entries = entries[:count]
+        return entries
+
     async def xread(self, streams, count=None, block=None):
         self.xread_calls.append(dict(streams))
         item = await self.live.get()
@@ -181,8 +187,9 @@ class EgressAttachTests(TransactionTestCase):
                 'actor_id': None, 'actor_name': 'Tess', 'room_id': None,
                 'audience': [3, 9], 'data': {'verb': 'say'},
             })
-            # No replay happened: the first (only) XREAD cursor is $.
-            self.assertEqual(fake.xread_calls[0], {'mc:events': '$'})
+            # No replay happened: the live tail starts at the window's
+            # tail id (the concrete "now" — never $, the reissue race).
+            self.assertEqual(fake.xread_calls[0], {'mc:events': '6-1'})
 
     async def test_resume_replays_after_id_in_order_then_live(self):
         user = await sync_to_async(make_agent)('resume')

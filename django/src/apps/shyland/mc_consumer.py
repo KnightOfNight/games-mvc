@@ -116,8 +116,23 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
             return
         if mtype == 'attach' and not self._attached:
             self._attached = True
+            after = content.get('after')
+            try:
+                client = mc._get_client()
+                # The bare attach's "now" is snapshotted here, inside
+                # attach handling, not in the task: once the attach
+                # frame is processed (observable via a ping/pong fence),
+                # every later emission is guaranteed delivered.
+                live_from = (await self._tail_id(client)
+                             if after is None else None)
+            except Exception:
+                logger.warning(
+                    'shyland mc: egress attach failed (agent=%s)',
+                    self._agent, exc_info=True)
+                await self.close()
+                return
             self._stream_task = asyncio.create_task(
-                self._stream(content.get('after')))
+                self._stream(client, after, live_from))
             return
         # Everything else — a second attach included — draws the error
         # frame and is otherwise ignored; the connection stays open.
@@ -126,11 +141,10 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
     # ------------------------------------------------------------------
     # The stream task: (gap) → replay → live tail.
 
-    async def _stream(self, after):
+    async def _stream(self, client, after, live_from):
         try:
-            client = mc._get_client()
             if after is None:
-                last_id = '$'
+                last_id = live_from
             else:
                 last_id = await self._replay(client, str(after))
             await self._live(client, last_id)
@@ -142,6 +156,16 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
                            self._agent, exc_info=True)
             await self.close()
 
+    async def _tail_id(self, client):
+        """The stream's current tail id — the concrete meaning of "live
+        from now". The live tail always reads from a concrete id, never
+        ``$``: entries landing between an XREAD returning and the next
+        call would be silently dropped under ``$``.
+        """
+        tail = await client.xrevrange(mc.MC_STREAM_KEY, max='+', min='-',
+                                      count=1)
+        return _text(tail[0][0]) if tail else '0-0'
+
     async def _replay(self, client, after):
         """Hot-window replay per §10.11: gap frame when the cursor
         predates the window, then batches from the right start. Returns
@@ -151,7 +175,7 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
         if not oldest:
             await self.send_json({'type': 'gap', 'requested': after,
                                   'oldest': None})
-            return '$'
+            return '0-0'
         oldest_id = _text(oldest[0][0])
         if _id_parts(after) < _id_parts(oldest_id):
             await self.send_json({'type': 'gap', 'requested': after,
