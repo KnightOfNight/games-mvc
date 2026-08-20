@@ -19,8 +19,12 @@ COMMIT LIST (branch version_25_3)
   6da263f  §6: MC egress tests (test_mc_egress.py, 13 tests)
   50c681e  §7.2: docstring wording — keep the Character grep at zero hits
   75031c7  §7: live-tail correctness — concrete tail-id "now" snapshot at
-           attach, never XREAD $   <== FINAL IMPLEMENTATION HASH
-  2c8cad1  §9: architecture doc — stamp 25.3, hash to 75031c7, new §4.20
+           attach, never XREAD $
+  2c8cad1  §9: architecture doc — stamp 25.3, new §4.20
+  563f747  §11: closeout report completed in place
+  b812afb  playtest fix: LIVE_BLOCK_MS 5000 -> 2000 (redis-py 8.1
+           socket_timeout race)   <== FINAL IMPLEMENTATION HASH
+           (arch-doc header hash moved here in the follow-up doc commit)
 
 TECHNICAL PRE-FLIGHT (#252)
 All §1 claims verified against the branch tip before any code was written —
@@ -92,12 +96,16 @@ idle cycles). Issue callout raised in-session.
 4. In-container settings.MC_STREAM_MAXLEN == 250000; no .env* override
    (checked .env, .env.dev, .env.prod — zero hits).
 5. Live dev-stack check (after §8's deploy, the 25.1/25.2 throwaway
-   pattern, against the container's real Redis — no _get_client fake):
-   PASS 1 hello/attach/live — 3 marker events arrived in order
-          (ids 1787249645640-0, 1787249645641-0, 1787249645641-1);
-   PASS 2 resume after the first id replayed the two intervening records
-          in order, then live continued;
-   PASS 3 non-member drew accept-then-close 4403.
+   pattern, against the container's real Redis — no _get_client fake),
+   run twice: at 75031c7 and re-run in full at b812afb (the playtest
+   fix) with an added 20-second idle soak:
+   PASS 1  hello/attach/live — 3 marker events arrived in order;
+   PASS 2  resume after the first id replayed the two intervening
+           records in order, then live continued;
+   PASS 2b (b812afb) 20s idle soak survived — multiple empty block
+           cycles, then the post-soak event delivered (the 5s/5s
+           socket_timeout race would have killed the tail here);
+   PASS 3  non-member drew accept-then-close 4403.
    Throwaway users (v253_b1_throwaway_agent, v253_b1_throwaway_nonmember)
    cleaned up; MCEvent rows are append-only and remain. The nginx/WSS
    path is the operator playtest's half of the coverage (brief §7.5 note).
