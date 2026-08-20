@@ -1,3 +1,106 @@
 2026-08-20 — Implementation session started: Shyland V25.3 Brief 1 — MC Egress (Shyland_V25.3_Brief_1_MC_Egress.md), branch version_25_3.
 
-[STUB — completed in place at session end.]
+================================================================================
+CLOSEOUT REPORT — Shyland V25.3 Brief 1 — MC Egress (#267)
+================================================================================
+
+WHAT SHIPPED
+The MC egress: a read-only WebSocket endpoint (wss://<host>/ws/shyland/mc/,
+MCEgressConsumer in apps/shyland/mc_consumer.py) through which remote agents
+attach to the MC event stream — session auth, live agents.shyland group gate
+(migration 0051), hello/attach protocol, hot-window replay with explicit gap
+semantics, then live tailing. Transport only — no actor, no actuation, no kill
+switch (25.4/#266). Wire protocol per the brief's §3, implemented exactly.
+
+COMMIT LIST (branch version_25_3)
+  96e7c2e  Step 0: closeout report stub — work-has-started signal
+  dc6e7aa  Version start: SHYLAND_VERSION -> 25.3-DEV (pin test moved with it)
+  0b4dd80  §5: migration 0051 (agents.shyland), MCEgressConsumer, routing line
+  6da263f  §6: MC egress tests (test_mc_egress.py, 13 tests)
+  50c681e  §7.2: docstring wording — keep the Character grep at zero hits
+  75031c7  §7: live-tail correctness — concrete tail-id "now" snapshot at
+           attach, never XREAD $   <== FINAL IMPLEMENTATION HASH
+  2c8cad1  §9: architecture doc — stamp 25.3, hash to 75031c7, new §4.20
+
+TECHNICAL PRE-FLIGHT (#252)
+All §1 claims verified against the branch tip before any code was written —
+no load-bearing mismatch. One cosmetic drift: mc.py is 111 lines, the brief
+says 110. Brief process assumptions matched the v37 standing rituals.
+
+MIGRATION STATEMENT
+0051_create_shyland_agents_group — DATA-ONLY (no schema change): forward
+Group.objects.get_or_create(name='agents.shyland'), backward filtered delete,
+the 0034 shape. Applied to the dev stack by §8's make deploy-dev. At the
+closeout tail, make deploy-prod's migrate step applies it as an ordinary
+migration (executor already named by the deploy target itself).
+
+DEVIATIONS (none silent)
+1. Migration dependencies: the brief's §5.1 literal lists only
+   ('shyland', '0050_mcevent'); the file also carries the auth migration
+   dependency ('auth', '0012_alter_user_first_name_max_length'), mirroring
+   the 0034 precedent the same section says to follow exactly.
+2. Live-tail cursor (75031c7): the brief's §3 notation "live from now ($)"
+   is implemented as a concrete tail-id snapshot (XREVRANGE ... COUNT 1,
+   '0-0' when empty), resolved inside attach handling — never XREAD $.
+   Found by §7.5's live check: the $ cursor drops entries landing between
+   XREAD calls, and a task-deferred snapshot misclassifies events emitted
+   immediately after attach as history (the live check timed out exactly
+   there). With the snapshot in attach handling, a ping/pong fence after
+   attach is a hard delivery guarantee. Wire contract unchanged; the brief's
+   own bare-attach + gap-empty flows are the ones exercised.
+3. Stream-task failure posture (unspecified by the brief): a mid-stream
+   Redis failure logs a shyland.mc warning and closes the connection (the
+   agent reconnects), rather than leaving a silently dead socket. Attach-time
+   failure does the same. No game path is affected either way.
+4. Consumer module docstring reworded once (50c681e) so §7.2's
+   grep -n 'Character' verification stays at zero hits — the hit was prose
+   in my own docstring, not code.
+
+§7 VERIFICATION OUTCOMES (all passed)
+1. Full in-container suite (path form, docker exec): Ran 744 tests — OK.
+   Suite arithmetic per §6: 731 previous + 13 new (test_mc_egress.py:
+   3 gate + 2 read-only + 4 attach/replay/gap + 3 entry_to_frame + 1
+   migration) = 744. Green at the final implementation commit.
+2. Grep discipline: 'mc_emit' in mc_consumer.py — zero hits;
+   'agents.shyland' across apps/shyland/ — exactly migration 0051, the
+   consumer's gate check (+ its module docstring), and tests;
+   'Character' in mc_consumer.py — zero hits.
+3. game_mvc/routing.py diff vs pre-brief: exactly one import line + one
+   path line (verified: 2 insertions, nothing else).
+4. In-container settings.MC_STREAM_MAXLEN == 250000; no .env* override
+   (checked .env, .env.dev, .env.prod — zero hits).
+5. Live dev-stack check (after §8's deploy, the 25.1/25.2 throwaway
+   pattern, against the container's real Redis — no _get_client fake):
+   PASS 1 hello/attach/live — 3 marker events arrived in order
+          (ids 1787249645640-0, 1787249645641-0, 1787249645641-1);
+   PASS 2 resume after the first id replayed the two intervening records
+          in order, then live continued;
+   PASS 3 non-member drew accept-then-close 4403.
+   Throwaway users (v253_b1_throwaway_agent, v253_b1_throwaway_nonmember)
+   cleaned up; MCEvent rows are append-only and remain. The nginx/WSS
+   path is the operator playtest's half of the coverage (brief §7.5 note).
+
+§8 DEPLOY
+make deploy-dev run from the worktree after implementation + §7 passed
+(and the version-start deploy before it, per §4). Migration 0051 applied:
+"Applying shyland.0051_create_shyland_agents_group... OK". The dev stack
+runs the final build (75031c7 + arch doc).
+
+PENDING DEPLOY-TIME ACTIONS: none.
+No seed, no data actions; 0051 rides make deploy-prod's ordinary migrate
+step at the closeout tail.
+
+§9 ARCHITECTURE DOC
+Shyland_Architecture_v25.md updated in place at 2c8cad1, gated on all of
+the above passing: stamp -> 25.3, header hash moved to 75031c7
+(architectural change — new consumer, new route, new group), new §4.20
+"The MC egress (mc_consumer.py)", header change-summary row in the
+established per-release voice.
+
+ISSUES
+#267 closed on §7 passing, with a comment naming this brief and the final
+implementation hash 75031c7.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+[PENDING — recorded here when the operator gives it. The brief's §10
+checklist targets the dev stack, ready now.]
