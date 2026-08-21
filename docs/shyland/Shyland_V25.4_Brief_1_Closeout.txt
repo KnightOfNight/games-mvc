@@ -1,1 +1,116 @@
 Session start 2026-08-20 — Shyland_V25.4_Brief_1_MC_Kill_Switch.md — branch version_25_4 (implementation session; stub, completed in place at session end).
+
+================================================================================
+V25.4 BRIEF 1 CLOSEOUT — THE MC KILL SWITCH (#266) + PERSISTER BLOCK_MS (#277)
+================================================================================
+
+WHAT SHIPPED
+The MC kill switch: one lever that silences every AI actor at once (GDD
+§10.11), landing before any actor exists (25.5 ships the first).
+MCKillSwitch database singleton (migration 0052; absent row = alive; config,
+not history), the flip choke point (every actual flip emits one mc_kill
+record via the new mc_emit_sync sync twin; no-change flips emit nothing),
+egress enforcement in MCEgressConsumer (connect gate after membership,
+per-batch replay sever, per-wake live sever — close 4503, fail closed on any
+read error), the mc <status|kill|restore> admin command (admins.shyland-gated,
+fn-18 stealth extended across all six touch points), the editable Django
+admin routed through the choke point, and #277: persister BLOCK_MS 5000 ->
+2000 mirroring b812afb, both block constants test-pinned.
+
+COMMIT LIST (branch version_25_4)
+  3b0e0bb  Step 0: closeout report stub — work-has-started signal
+  e00e50f  Version start: SHYLAND_VERSION 25.3 -> 25.4-DEV (pin test moved)
+  e5f147e  §3–§8: MCKillSwitch + migration 0052, mc_emit_sync, egress
+           enforcement, cmd_mc + stealth wiring, admin, BLOCK_MS fix
+  a7fbbc1  §9: test_mc_kill_switch.py (21 tests; suite 744 -> 765)
+           <== FINAL IMPLEMENTATION HASH (arch-doc header hash)
+  17b291e  §12: architecture doc — stamp 25.4, hash a7fbbc1, new §4.21,
+           touches in §4.1/§4.7/§4.14/§4.19/§4.20
+
+TECHNICAL PRE-FLIGHT (#252)
+All load-bearing claims verified against the code before writing anything:
+version.py:8, pin test line 118, MCEvent at models.py:1240 (file end),
+kind cap 16, mc.py async-only emit + record shape, persister BLOCK_MS=5000
+at line 28 with sync redis import, mc_consumer connect order / 4403 pattern
+/ _replay / _live / LIVE_BLOCK_MS=2000, consumers.py ADMIN_VERBS
+{'sudo','last'} + dispatch gate + verb subtraction + 4-tuple help rows +
+completion branch pattern, admin.py decorator pattern, migrations tail 0051,
+no existing pin on either block constant. Only cosmetic line drift in
+consumers.py citations (±10 lines; HELP_SECTIONS at 1287, handle_complete
+at 3835). No load-bearing mismatch — no hard stop.
+
+DEVIATIONS FROM THE BRIEF
+1. Replay sever return contract: the brief's §5.4 said "the same check per
+   batch iteration" without specifying what _replay returns after severing.
+   Implemented: the sever returns None and _stream treats None as
+   "already closed", so the live tail never starts and no double-close is
+   sent. Judged within the brief's intent (implementation detail, not a
+   design rule); noted for completeness.
+2. Test §9.3 (live sever) as literally specified ("observes close 4503
+   after the switch engages") over-specified delivery order: the engage
+   races the live loop's first top-of-iteration check, so the fed entry may
+   or may not deliver before the close — both orders are correct behavior.
+   The test asserts the guarantee (close 4503 arrives) tolerating either
+   order. One suite run failed on the strict form before the fix; green
+   after.
+No other deviations. GDD source untouched (design landed it at b376a8c);
+no make gdd needed (no GDD change this session).
+
+VERIFICATION (§10) — ALL PASS
+V1  Full in-container suite (path form): 765 tests, OK. Expected 744 + this
+    brief's tests only; actual 744 + 21 = 765. ✓
+V2  run_mc_persister.py BLOCK_MS: 2000, with the #277 comment. ✓
+V3  grep mc_emit in mc_consumer.py: zero hits (egress never emits; the
+    switch read is ORM). ✓
+V4  grep is_killed|MCKillSwitch in run_mc_persister.py + run_tick_engine.py:
+    zero hits (no switch awareness in persister/ticker). ✓
+V5  Live dev-stack check after make deploy-dev (the 25.1–25.3 throwaway
+    pattern: in-container, real Redis + DB, throwaway agent user
+    v254_b1_throwaway_agent, removed after):
+    V5a engaged (shell flip) -> agent attach accept-then-close 4503 ✓
+    V5b restored -> hello/attach/live event flows (ping/pong fence, marker
+        event delivered) ✓
+    V5c kill while attached -> severed 4503 immediately (<2s) ✓
+    (The in-game mc kill/restore command surface and the nginx/WSS path are
+    the operator playtest's half, per the 25.3 precedent.)
+V6  Persister logs over an 11-minute idle soak on the deployed dev stack:
+    zero 'Timeout reading from socket' lines (#277 fixed). ✓
+V7  MCEvent mc_kill rows: exactly 4 new rows for the 4 actual flips
+    performed in V5 (killed True/False/True/False), surface='shell',
+    actor_name='v254_verify' on each; no rows for no-change flips (pinned
+    in the suite). ✓
+Switch left in resting state: not engaged (alive). MCEvent rows from
+verification remain (append-only, per precedent).
+
+STANDING REQUIREMENTS
+- Version constant: opening act done — 25.3 -> 25.4-DEV, own commit, pin
+  test moved (e00e50f), version-start make deploy-dev run.
+- In-session dev deploy: make deploy-dev run again after implementation +
+  verification (migration 0052 applied on dev; stack refreshed).
+- Push cadence: pushed at every step boundary, branch only.
+
+PENDING DEPLOY-TIME ACTIONS: none.
+Migration 0052 rides the ordinary closeout-tail make deploy-prod; the
+switch's designed initial state is the absent-row default (alive); no seed
+change, no data action. (Executor checkpoint satisfied vacuously.)
+
+ISSUES
+#266 closed (verification-passed comment) — founding ticket, milestone
+Version 25.4. #277 closed (verification-passed comment) — dependency riding
+the release, milestone Version 25.4. Milestone 56 = {#266, #277} both closed.
+
+ARCHITECTURE DOC
+Shyland_Architecture_v25.md updated in place at 17b291e, gated on all of
+the above passing: stamp -> 25.4, header hash moved to a7fbbc1
+(architectural change: new model, new command surface, egress enforcement),
+new §4.21 "The MC kill switch", kill-switch gates block added to §4.20,
+touches in §4.1 (models pointer), §4.7 (editable-config exception), §4.14
+(three admin commands + mc entry), §4.19 (BLOCK 2000 + #277).
+
+OPERATOR PLAYTEST DISPOSITION
+PENDING — awaiting operator playtest per the brief's §11 checklist against
+the dev stack. (This line is completed in place before session end per
+#170; the session cannot end without a disposition.)
+
+FINAL COMMIT HASH: recorded at session end below.
+================================================================================
