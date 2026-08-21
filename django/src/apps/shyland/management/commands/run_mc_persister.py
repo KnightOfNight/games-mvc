@@ -25,7 +25,11 @@ logger = logging.getLogger('shyland.mc')
 GROUP = 'persister'
 CONSUMER = 'worker-1'
 BATCH_COUNT = 500
-BLOCK_MS = 5000
+# Must sit comfortably inside the client's socket_timeout (redis-py
+# >= 8 defaults it to 5s): a server-side BLOCK equal to the client
+# read cap is a coin-flip race every idle cycle (#277). 2s block,
+# 5s cap, no race — the b812afb egress fix, mirrored.
+BLOCK_MS = 2000
 # Pending entries idle longer than this are reclaimed (crash recovery).
 AUTOCLAIM_IDLE_MS = 60000
 DB_RETRY_SECONDS = 5

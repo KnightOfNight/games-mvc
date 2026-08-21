@@ -73,6 +73,22 @@ def entry_to_frame(stream_id, fields):
     return frame
 
 
+@database_sync_to_async
+def _switch_killed():
+    from apps.shyland.models import MCKillSwitch
+    return MCKillSwitch.is_killed()
+
+
+async def switch_killed():
+    """v25.4 (#266): the kill-switch read, fresh every call. Fail
+    closed: any failure to read = killed. (Not the character table —
+    the consumer's no-character-table law is untouched.)"""
+    try:
+        return await _switch_killed()
+    except Exception:
+        return True
+
+
 class MCEgressConsumer(AsyncJsonWebsocketConsumer):
     """The §10.11 egress endpoint at ``ws/shyland/mc/``."""
 
@@ -90,6 +106,12 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
             # Accept-then-close so the code reaches the client.
             await self.accept()
             await self.close(code=4403)
+            return
+        # v25.4 (#266): the kill switch — checked after membership, so a
+        # non-member sees 4403 either way (the switch leaks nothing).
+        if await switch_killed():
+            await self.accept()
+            await self.close(code=4503)
             return
         self._agent = user.username
         await self.accept()
@@ -151,6 +173,9 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
                 last_id = live_from
             else:
                 last_id = await self._replay(client, str(after))
+                if last_id is None:
+                    # Severed mid-replay (kill switch) — already closed.
+                    return
             await self._live(client, last_id)
         except asyncio.CancelledError:
             raise
@@ -191,6 +216,12 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
             cursor = after
         last_id = cursor
         while True:
+            # v25.4 (#266): a kill during a long catch-up severs per
+            # batch — replay never outlives the switch. None tells
+            # _stream the connection is already closed.
+            if await switch_killed():
+                await self.close(code=4503)
+                return None
             batch = await client.xrange(mc.MC_STREAM_KEY, min=f'({cursor}',
                                         max='+', count=REPLAY_BATCH)
             if not batch:
@@ -210,6 +241,12 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
 
     async def _live(self, client, last_id):
         while True:
+            # v25.4 (#266): the live sever — the loop wakes at least
+            # every LIVE_BLOCK_MS, so a hung or rogue agent is cut
+            # within ~2s without its cooperation. Fail closed.
+            if await switch_killed():
+                await self.close(code=4503)
+                return
             result = await client.xread({mc.MC_STREAM_KEY: last_id},
                                         count=REPLAY_BATCH,
                                         block=LIVE_BLOCK_MS)

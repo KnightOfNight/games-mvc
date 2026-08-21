@@ -4,6 +4,7 @@ from .models import (
     Area, Archetype, Character, CombatAction, CombatSession, Corpse,
     EffectComponent, EffectComponentInstance, EffectDefinition, EffectInstance,
     ItemDefinition, ItemInstance, LootTable, LootTableEntry, MCEvent,
+    MCKillSwitch,
     NpcDefinition, NpcEffect, NpcInstance, Origin, Room, RoomSpawn, RoomVisit,
     TravelMessage, TravelNode, UnarmedMessage, UnarmedMessagePool, VendorEntry,
     Zone,
@@ -356,3 +357,26 @@ class MCEventAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(MCKillSwitch)
+class MCKillSwitchAdmin(admin.ModelAdmin):
+    """v25.4 (#266): the kill switch is config, not history — editable
+    by design (the read-only-admin pattern governs MCEvent). Saves
+    route through MCKillSwitch.flip so every flip emits its mc_kill
+    record regardless of surface."""
+    list_display = ('killed', 'flipped_at', 'flipped_by')
+    fields = ('killed',)
+    readonly_fields = ()
+
+    def has_add_permission(self, request):
+        return not MCKillSwitch.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        # No super() — flip performs the write (get_or_create pk=1 +
+        # save), keeping the no-change-no-emit rule intact even here.
+        MCKillSwitch.flip(obj.killed, by=request.user.username,
+                          surface='django-admin')

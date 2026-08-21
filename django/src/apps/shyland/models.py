@@ -2,6 +2,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 COMBAT_ROUND_TICKS    = 3
 DYING_DURATION_SECS   = 30
@@ -1258,3 +1259,47 @@ class MCEvent(models.Model):
 
     def __str__(self):
         return f'MCEvent {self.stream_id} ({self.kind})'
+
+
+class MCKillSwitch(models.Model):
+    """v25.4 (#266): the MC kill switch singleton — one lever that
+    silences every AI actor at once (GDD §10.11). Config, not history:
+    editable surfaces are sanctioned (the mc admin command, the shell
+    helper, the Django admin); the append-only rule governs MCEvent,
+    not this row. Row pk=1 always; absent row = alive. Enforcement
+    points read fresh and fail closed on any read error.
+
+    Shell helper (the sanctioned out-of-band flip, via make shell):
+        from apps.shyland.models import MCKillSwitch
+        MCKillSwitch.flip(True, by='<operator>', surface='shell')
+    """
+    killed = models.BooleanField(default=False)
+    flipped_at = models.DateTimeField(null=True, blank=True)
+    flipped_by = models.CharField(max_length=64, blank=True, default='')
+
+    @classmethod
+    def is_killed(cls):
+        """Fresh read, no cache. Raises on DB failure — enforcement
+        sites catch and treat any error as killed (fail closed)."""
+        return bool(cls.objects.filter(pk=1)
+                    .values_list('killed', flat=True).first())
+
+    @classmethod
+    def flip(cls, killed, *, by, surface, actor_id=None):
+        """THE flip choke point — every surface routes here. Returns
+        True if the state changed. Every actual change emits one
+        mc_kill record; a no-change flip emits nothing."""
+        from apps.shyland.mc import mc_emit_sync
+        row, _created = cls.objects.get_or_create(pk=1)
+        if row.killed == bool(killed):
+            return False
+        row.killed = bool(killed)
+        row.flipped_at = timezone.now()
+        row.flipped_by = by or ''
+        row.save(update_fields=['killed', 'flipped_at', 'flipped_by'])
+        mc_emit_sync('mc_kill', actor_id=actor_id, actor_name=by or '',
+                     data={'killed': bool(killed), 'surface': surface})
+        return True
+
+    def __str__(self):
+        return f'MC kill switch: {"engaged" if self.killed else "not engaged"}'
