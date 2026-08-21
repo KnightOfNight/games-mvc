@@ -349,6 +349,15 @@ class MCEventAdmin(admin.ModelAdmin):
         text = str(obj.data)
         return text if len(text) <= 120 else f'{text[:117]}...'
 
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(MCKillSwitch)
 class MCKillSwitchAdmin(admin.ModelAdmin):
@@ -371,12 +380,3 @@ class MCKillSwitchAdmin(admin.ModelAdmin):
         # save), keeping the no-change-no-emit rule intact even here.
         MCKillSwitch.flip(obj.killed, by=request.user.username,
                           surface='django-admin')
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

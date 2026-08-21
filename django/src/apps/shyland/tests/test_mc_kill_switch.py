@@ -10,14 +10,17 @@ from unittest import mock
 
 from asgiref.sync import sync_to_async
 from channels.testing import WebsocketCommunicator
+from django.contrib import admin
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase, TestCase, TransactionTestCase
+from django.test import (
+    RequestFactory, SimpleTestCase, TestCase, TransactionTestCase,
+)
 
 from apps.shyland import mc_consumer
 from apps.shyland.consumers import SkylandConsumer
 from apps.shyland.management.commands import run_mc_persister
 from apps.shyland.mc_consumer import MC_PROTOCOL, MCEgressConsumer
-from apps.shyland.models import MCKillSwitch
+from apps.shyland.models import MCEvent, MCKillSwitch
 from apps.shyland.tests.test_command_revamp import (
     make_character, make_stub_consumer, make_world, outputs,
 )
@@ -308,6 +311,54 @@ class SurfaceWiringTests(TransactionTestCase):
         self.assertEqual(await self._complete(char, 'mc '),
                          ['kill', 'restore', 'status'])
         self.assertEqual(await self._complete(char, 'mc k'), ['kill'])
+
+
+class AdminSurfaceTests(TestCase):
+    """§7 + playtest finding (2026-08-21): the v25.4 admin edit briefly
+    split MCEventAdmin — its read-only permission trio landed inside
+    MCKillSwitchAdmin, flipping both surfaces (events editable, switch
+    frozen). Both admins' permission contracts are pinned here."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_superuser(
+            username='ks_admin_super', email='x@example.com', password='x')
+
+    def _request(self):
+        request = RequestFactory().get('/admin/')
+        request.user = self.superuser
+        return request
+
+    def test_mcevent_admin_is_read_only(self):
+        model_admin = admin.site._registry[MCEvent]
+        request = self._request()
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_change_permission(request))
+        self.assertFalse(model_admin.has_delete_permission(request))
+
+    def test_kill_switch_admin_is_editable_config(self):
+        model_admin = admin.site._registry[MCKillSwitch]
+        request = self._request()
+        # Editable (config, not history) — never deletable; addable only
+        # while no row exists.
+        self.assertTrue(model_admin.has_change_permission(request))
+        self.assertTrue(model_admin.has_add_permission(request))
+        MCKillSwitch.objects.create(pk=1)
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_delete_permission(request))
+
+    def test_admin_save_routes_through_flip(self):
+        model_admin = admin.site._registry[MCKillSwitch]
+        with mock.patch('apps.shyland.mc.mc_emit_sync') as emit:
+            obj = MCKillSwitch(killed=True)
+            model_admin.save_model(self._request(), obj, form=None,
+                                   change=False)
+        row = MCKillSwitch.objects.get(pk=1)
+        self.assertTrue(row.killed)
+        self.assertEqual(row.flipped_by, 'ks_admin_super')
+        self.assertEqual(emit.call_count, 1)
+        self.assertEqual(emit.call_args[1]['data'],
+                         {'killed': True, 'surface': 'django-admin'})
 
 
 class BlockConstantPinTests(SimpleTestCase):
