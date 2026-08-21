@@ -23,9 +23,12 @@ COMMIT LIST (branch version_25_4)
   e5f147e  §3–§8: MCKillSwitch + migration 0052, mc_emit_sync, egress
            enforcement, cmd_mc + stealth wiring, admin, BLOCK_MS fix
   a7fbbc1  §9: test_mc_kill_switch.py (21 tests; suite 744 -> 765)
-           <== FINAL IMPLEMENTATION HASH (arch-doc header hash)
-  17b291e  §12: architecture doc — stamp 25.4, hash a7fbbc1, new §4.21,
+  17b291e  §12: architecture doc — stamp 25.4, new §4.21,
            touches in §4.1/§4.7/§4.14/§4.19/§4.20
+  64a49bf  playtest fix: un-split MCEventAdmin (admin permission trio
+           restored; both admin contracts pinned; suite 765 -> 768)
+           <== FINAL IMPLEMENTATION HASH
+           (arch-doc header hash moved here in the follow-up doc commit)
 
 TECHNICAL PRE-FLIGHT (#252)
 All load-bearing claims verified against the code before writing anything:
@@ -53,12 +56,28 @@ DEVIATIONS FROM THE BRIEF
    The test asserts the guarantee (close 4503 arrives) tolerating either
    order. One suite run failed on the strict form before the fix; green
    after.
+3. PLAYTEST-FOUND DEFECT, FIXED IN-SESSION (64a49bf): the §7 admin
+   registration edit anchored its insertion at the end of MCEventAdmin's
+   short_data method — but MCEventAdmin's three read-only permission
+   methods sat AFTER short_data, so the new MCKillSwitchAdmin class was
+   wedged between MCEventAdmin's body and its permission trio. Result
+   (operator playtest, checklist step 6): MC events became
+   addable/editable and the kill switch froze read-only — both admin
+   surfaces flipped. Fix: the trio restored to MCEventAdmin, the stray
+   duplicates removed from MCKillSwitchAdmin; both admins' permission
+   contracts now test-pinned (AdminSurfaceTests: MCEvent add/change/
+   delete all False; switch change True / add only-while-no-row /
+   delete False; admin save routes through flip with surface=
+   'django-admin' and one emit). Suite 765 -> 768; make deploy-dev
+   rerun; live permission check on the deployed stack confirmed both
+   surfaces per design; operator re-playtested successfully.
 No other deviations. GDD source untouched (design landed it at b376a8c);
 no make gdd needed (no GDD change this session).
 
 VERIFICATION (§10) — ALL PASS
-V1  Full in-container suite (path form): 765 tests, OK. Expected 744 + this
-    brief's tests only; actual 744 + 21 = 765. ✓
+V1  Full in-container suite (path form): 765 tests, OK at a7fbbc1
+    (744 + this brief's 21); 768 OK at 64a49bf after the playtest fix
+    added the 3 admin-contract pins. All growth is this brief's tests. ✓
 V2  run_mc_persister.py BLOCK_MS: 2000, with the #277 comment. ✓
 V3  grep mc_emit in mc_consumer.py: zero hits (egress never emits; the
     switch read is ORM). ✓
@@ -101,16 +120,27 @@ the release, milestone Version 25.4. Milestone 56 = {#266, #277} both closed.
 
 ARCHITECTURE DOC
 Shyland_Architecture_v25.md updated in place at 17b291e, gated on all of
-the above passing: stamp -> 25.4, header hash moved to a7fbbc1
-(architectural change: new model, new command surface, egress enforcement),
-new §4.21 "The MC kill switch", kill-switch gates block added to §4.20,
-touches in §4.1 (models pointer), §4.7 (editable-config exception), §4.14
-(three admin commands + mc entry), §4.19 (BLOCK 2000 + #277).
+the above passing: stamp -> 25.4, new §4.21 "The MC kill switch",
+kill-switch gates block added to §4.20, touches in §4.1 (models pointer),
+§4.7 (editable-config exception), §4.14 (three admin commands + mc entry),
+§4.19 (BLOCK 2000 + #277). Header hash moved to 64a49bf in the follow-up
+doc commit after the playtest fix (architectural change: new model, new
+command surface, egress enforcement; the final hash lands the admin-
+registration fix), suite count corrected to 768 in the version paragraph.
+
+SIDE ARTIFACTS (operator-directed, outside the release)
+Issue #279 filed: the MC test-agent client (operator-side tail harness).
+The tool lives at ~/src/games-mvc-agents/ on the operator dev machine —
+deliberately NOT in the repo, not part of this release (operator ruling
+2026-08-21); gained a kill-switch reconnect loop (retry every 60s, resume
+from last seen id) during the playtest. Recorded on #279.
 
 OPERATOR PLAYTEST DISPOSITION
-PENDING — awaiting operator playtest per the brief's §11 checklist against
-the dev stack. (This line is completed in place before session end per
-#170; the session cannot end without a disposition.)
+Operator reports playtest successful (2026-08-21, in-conversation:
+"we're good. playtest confirmed."). Full §11 checklist against the dev
+stack, including the kill-switch refuse/sever observed live through the
+#279 agent harness and the admin surface re-test after the 64a49bf fix.
 
-FINAL COMMIT HASH: recorded at session end below.
+FINAL COMMIT HASH: 64a49bf (final implementation);
+this report completed in place in the session-end doc commit.
 ================================================================================
