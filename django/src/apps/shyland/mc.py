@@ -12,6 +12,7 @@ import json
 import logging
 import time
 
+import redis as sync_redis
 import redis.asyncio as aioredis
 from channels.db import database_sync_to_async
 from django.conf import settings
@@ -75,6 +76,31 @@ async def mc_emit(kind, *, actor_id=None, actor_name='', room_id=None,
             MC_STREAM_KEY, record,
             maxlen=settings.MC_STREAM_MAXLEN, approximate=True,
         )
+    except Exception:
+        _warn('shyland mc: emit failed — record dropped (kind=%s)', kind)
+
+
+def mc_emit_sync(kind, *, actor_id=None, actor_name='', room_id=None,
+                 audience=(), data=None):
+    """Sync twin of mc_emit for sync creation sites (v25.4: the kill
+    switch flip — shell, Django admin, and the command's ORM path).
+    Identical record shape and fire-and-forget law; builds a
+    short-lived sync client per call (flips are rare by definition)."""
+    try:
+        record = {
+            'kind': kind,
+            'actor_id': '' if actor_id is None else str(actor_id),
+            'actor_name': actor_name or '',
+            'room_id': '' if room_id is None else str(room_id),
+            'audience': json.dumps(list(audience)),
+            'data': json.dumps(data or {}),
+        }
+        client = sync_redis.Redis(host=settings.REDIS_HOST, port=6379, db=0)
+        try:
+            client.xadd(MC_STREAM_KEY, record,
+                        maxlen=settings.MC_STREAM_MAXLEN, approximate=True)
+        finally:
+            client.close()
     except Exception:
         _warn('shyland mc: emit failed — record dropped (kind=%s)', kind)
 

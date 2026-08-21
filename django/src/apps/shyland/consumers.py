@@ -44,7 +44,8 @@ from .item_utils import (
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
-    ItemInstance, NpcInstance, PendingDialogueResponse, Room, RoomSpawn,
+    ItemInstance, MCKillSwitch, NpcInstance, PendingDialogueResponse,
+    Room, RoomSpawn,
     RoomVisit, TravelMessage, TravelNode, VendorEntry, Zone, ZoneCompletion,
     COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
     FLEE_COOLDOWN_TICKS, resolve_home_node, resolve_home_room,
@@ -297,6 +298,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'cancel': ('cmd_cancel', True),
         'last': ('cmd_last', False),
         'sudo': ('cmd_sudo', True),
+        # v25.4 (#266): the MC kill switch (GDD §9.1 fn 22).
+        'mc': ('cmd_mc', True),
     }
 
     # v22 brief 3 (DD §12, fn 18): admin commands. Membership in the
@@ -304,7 +307,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # caching, revocation is instant. For non-members these commands do
     # not exist: absent from help and completion, and attempts answer the
     # standard unknown-command line byte-identically.
-    ADMIN_VERBS = {'sudo', 'last'}
+    ADMIN_VERBS = {'sudo', 'last', 'mc'}
 
     # ------------------------------------------------------------------
     # v22 brief 2 (DD §5): the state-gating matrix, applied centrally in
@@ -340,6 +343,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     DYING_ALLOWED = {
         'use', 'heal', 'say', 'quit', 'cancel', 'sudo',
         'help', '?', 'inventory', 'inv', 'last', 'list', 'look', 'l',
+        'mc',
         'stats', 'wallet', 'who',
         'brief', 'echo', 'plunder', 'timestamps',
     }
@@ -1297,6 +1301,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('heal', 'heal', 'Drink healing draughts until your vitality is full.'),
             ('home', 'home', 'Return home after a short delay.'),
             ('loot', 'loot [all] | <NPC>', 'Loot every corpse here, or one named corpse.'),
+            ('mc', 'mc <status|kill|restore>', 'The MC kill switch.', True),
             ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
             ('quit', 'quit', 'Leave the game.'),
             ('repair', 'repair all | <item>', 'Have a repairer fix your gear.'),
@@ -3299,6 +3304,40 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # arguments' journey to a listener is #33/#37's future.
         return
 
+    async def cmd_mc(self, args):
+        # v25.4 (#266): the MC kill switch (GDD §10.11, §9.1 fn 22).
+        # Closed subcommand vocabulary, prefix-matched (first letters are
+        # distinct, ambiguity impossible). Renderings never vary.
+        sub = args.strip().lower()
+        matches = ([s for s in ('status', 'kill', 'restore')
+                    if s.startswith(sub)] if sub else [])
+        if len(matches) != 1:
+            await self.send_output('Usage: mc <status|kill|restore>', 'error')
+            return
+        action = matches[0]
+        if action == 'status':
+            killed = await database_sync_to_async(MCKillSwitch.is_killed)()
+            state = ('engaged — all AI actors are silenced.' if killed
+                     else 'not engaged — AI actors may act.')
+            await self.send_report_lines([{'k': 'MC kill switch:', 'v': f' {state}'}])
+            return
+        engage = (action == 'kill')
+        changed = await database_sync_to_async(MCKillSwitch.flip)(
+            engage, by=self.character.name, surface='command',
+            actor_id=self.character.pk)
+        if engage:
+            if changed:
+                await self.send_output(
+                    'MC kill switch engaged. All AI actors are silenced.', 'success')
+            else:
+                await self.send_output('The kill switch is already engaged.', 'warn')
+        else:
+            if changed:
+                await self.send_output(
+                    'MC kill switch released. AI actors may act again.', 'success')
+            else:
+                await self.send_output('The kill switch is not engaged.', 'warn')
+
     async def cmd_cancel(self, args):
         # Chart fn 12: optional argument matching a running delayed
         # action's name. Allowed in ALL states — the escape hatch is
@@ -3867,6 +3906,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     options = await self._complete_travel(arg_text)
                 elif head == 'loot':
                     options = await self._complete_loot(arg_text)
+                elif head == 'mc':
+                    # v25.4 (#266): membership-gated — completion never
+                    # leaks the pool to non-members (fn 18).
+                    if await self.check_shyland_admin():
+                        options = self._complete_words(
+                            arg_text, ['kill', 'restore', 'status'],
+                            first_only=True)
                 elif verb is not None:
                     candidates = await self._completion_candidates(verb)
                     options = grammar_complete(verb, arg_text, candidates)
