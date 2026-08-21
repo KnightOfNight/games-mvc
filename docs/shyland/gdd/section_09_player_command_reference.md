@@ -163,7 +163,7 @@ The Django auth Group **`admins.shyland`** grants in-game admin. `sudo`, `last`,
 
 - **`sudo <anything>`** (#112) — speak to the watcher: the command echoes like any command, and the game never responds — no output, no acknowledgment, by design. The arguments' journey to a listener arrives with MC (#33/#37).
 - **`last`** (#88) — the roster: a Kind-3 `Last seen...` table (`Character / Status / Last seen`), the composite character line (`Shy-Guy - Level 10 Highborn Blade`), Online/Offline from presence, and three time forms — `never` (no recorded connect), `since <ISO-8601 UTC>` (online), bare stamp (offline) — ordered online-by-recency, then offline-by-recency, then never. Every character's last-connect is recorded at websocket accept regardless of who can read it.
-- **`mc <status|kill|restore>`** (v25.4, #266, pending implementation) — the MC kill switch (Section 10.11). `status` reports the switch state; `kill` silences every AI actor at once; `restore` brings them back. Flips are recorded as `mc_kill` stream events.
+- **`mc <status|kill|restore>`** (v25.4, #266) — the MC kill switch (Section 10.11). `status` reports the switch state; `kill` silences every AI actor at once; `restore` brings them back. Flips are recorded as `mc_kill` stream events.
 
 #### Delayed Actions and `cancel` (v22)
 
