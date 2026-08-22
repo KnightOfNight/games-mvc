@@ -300,6 +300,11 @@ class Character(models.Model):
     # v22 brief 3 (#88): written at every websocket accept — the data
     # accrues for all players regardless of who can read `last`.
     last_connect = models.DateTimeField(null=True, blank=True)
+    # v25.5 (#281): the strip/dress round-trip's memory — written by the
+    # agent door's strip action ([{"instance_id": pk, "slot": code}, ...]
+    # before any unequip), consumed (set to null) by every dress attempt
+    # whatever its outcome. Null = no outfit held.
+    outfit_snapshot = models.JSONField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
