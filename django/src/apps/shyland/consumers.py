@@ -22,7 +22,7 @@ from . import npc_voice
 from .combat_utils import (
     bar_rescale_updates, effective_stats,
     flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
-    release_session_npcs,
+    release_session_npcs, rescale_bars_for_gear,
 )
 from .command_grammar import (
     RARITY_RANK, Resolution, complete as grammar_complete,
@@ -48,7 +48,8 @@ from .models import (
     Room, RoomSpawn,
     RoomVisit, TravelMessage, TravelNode, VendorEntry, Zone, ZoneCompletion,
     COMBAT_ROUND_TICKS, DIALOGUE_FIRST_DELAY_TICKS, DIALOGUE_STAGGER_TICKS,
-    FLEE_COOLDOWN_TICKS, resolve_home_node, resolve_home_room,
+    FLEE_COOLDOWN_TICKS, record_room_visit_sync, resolve_home_node,
+    resolve_home_room,
 )
 
 # v22 brief 2 (DD §9): the re-authored anatomical order, head to feet —
@@ -3616,6 +3617,29 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if zone_completed:
                 await self.announce_zone_completion(room.zone.name)
             await self.send_map()
+        elif event_type == 'moved':
+            # v25.5 (#281): the agent door moved this character —
+            # modeled on the respawn branch: re-seat groups, record the
+            # visit (the door defers it to this branch for online
+            # targets, so a first visit announces zone completion
+            # exactly like a walked arrival), full room render, map.
+            char = await self.get_character_fresh()
+            await self.channel_layer.group_discard(self.room_group, self.channel_name)
+            self.room_group = f'room_{char.current_room_id}'
+            await self.channel_layer.group_add(self.room_group, self.channel_name)
+            self.last_direction = None
+            room = await self.get_current_room()
+            first_visit, zone_completed = await self.record_room_visit(char, room)
+            await self.send_room_description(room, entering=True,
+                                             first_visit=first_visit)
+            if zone_completed:
+                await self.announce_zone_completion(room.zone.name)
+            await self.send_map()
+        elif event_type == 'refresh_status':
+            # v25.5 (#281): the agent door mutated this character's
+            # gear (strip/dress) — re-sync the status pane from DB
+            # truth; the narration line already rode this event.
+            await self.send_status_refresh()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -4222,28 +4246,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def record_room_visit(self, character, room):
         """Record the fog-of-war visit for an arrival, returning whether it
-        was the first. v20 brief 1 amendment 2 (#50): visits land at arrival
-        time in every arrival path, independent of room-description
-        rendering — an aggro ambush that skips the description must not skip
-        the visit.
-
-        V24.25 (#41, GDD §2.12): this choke point is also where keys are
-        minted — a first visit covering the zone's last unseen room creates
-        the character's permanent ZoneCompletion. Returns (first_visit,
-        zone_completed); zone_completed is True only when the completion row
-        was newly created (a pre-existing row — the grandfather migration —
-        suppresses the announcement), and the check runs only on a first
-        visit — revisits cost nothing."""
-        _, created = RoomVisit.objects.get_or_create(character=character, room=room)
-        zone_completed = False
-        if created:
-            zone = room.zone
-            visited = RoomVisit.objects.filter(
-                character=character, room__zone=zone).count()
-            if visited == zone.rooms.count():
-                _, zone_completed = ZoneCompletion.objects.get_or_create(
-                    character=character, zone=zone)
-        return created, zone_completed
+        was the first. v25.5 (#281): the body lives in
+        models.record_room_visit_sync, shared with the agent door — see it
+        for the #50 arrival law and the #41 key-minting rules."""
+        return record_room_visit_sync(character, room)
 
     async def announce_zone_completion(self, zone_name):
         """V24.25 (#41): the unlock announcement — reward voice, after the
@@ -4472,15 +4478,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return effective_stats(character)
 
     def _rescale_bars_for_gear(self, character):
-        """v22 B5 (#110): the bar law at gear mutations. One atomic
-        .update() recomputes both maxima from effective stats (gear sums
-        from the post-mutation equipped set, stat fields as F() DB truth)
-        and rescales both currents to preserve fill fraction. Sync — call
-        from within @database_sync_to_async, after the item write."""
-        gear = gear_stat_bonus(character)
-        Character.objects.filter(pk=character.pk).update(
-            **bar_rescale_updates(
-                gear_end=gear['end'], gear_str=gear['str'], gear_wis=gear['wis']))
+        """v25.5 (#281): the body lives in
+        combat_utils.rescale_bars_for_gear, shared with the agent door —
+        see it for the #110 bar law."""
+        rescale_bars_for_gear(character)
 
     @database_sync_to_async
     def equip_item(self, item, slot, character):

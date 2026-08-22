@@ -240,6 +240,21 @@ def roll_gear_bonus_damage(equipped_items):
     return roll_gear_bonus_damage_detailed(equipped_items)[0]
 
 
+def rescale_bars_for_gear(character):
+    """v22 B5 (#110): the bar law at gear mutations. One atomic
+    .update() recomputes both maxima from effective stats (gear sums
+    from the post-mutation equipped set, stat fields as F() DB truth)
+    and rescales both currents to preserve fill fraction. Sync — call
+    from within @database_sync_to_async, after the item write.
+    v25.5 (#281): extracted from SkylandConsumer so the agent door's
+    strip/dress run the exact same mutation."""
+    from .models import Character
+    gear = gear_stat_bonus(character)
+    Character.objects.filter(pk=character.pk).update(
+        **bar_rescale_updates(
+            gear_end=gear['end'], gear_str=gear['str'], gear_wis=gear['wis']))
+
+
 def bar_rescale_updates(gear_end=0, gear_str=0, gear_wis=0,
                         end_delta=0, str_delta=0, wis_delta=0):
     """v22 B5 (#110): the bar law. Returns the field→expression dict for

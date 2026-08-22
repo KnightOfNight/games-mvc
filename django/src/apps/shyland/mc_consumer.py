@@ -1,15 +1,29 @@
-"""v25.3 (#267): the MC egress — the read-only WebSocket endpoint
-through which remote agents attach to the MC event stream (GDD §10.11).
+"""v25.3 (#267): the MC egress — the WebSocket endpoint through which
+remote agents attach to the MC event stream (GDD §10.11).
 
-Transport only: no inbound frame may cause any game action, ORM write,
-or stream write — the inbound vocabulary is exactly ``attach`` and
-``ping``. Access is live ``agents.shyland`` membership at connect; the
-gate is the group, not a character — this consumer never touches the
-character table. Agents own their cursors: server reads are stateless
-XRANGE/XREAD, no consumer groups (those remain the persister's
-mechanism alone), no server-side per-agent state. Gaps are announced,
-never silent. Egress connections are not captured as stream events —
-attach/detach get ``shyland.mc`` logger lines only.
+v25.5 (#281): the agent door — the endpoint grows from a read-only
+tail into three vocabularies on one authenticated connection:
+``tail`` (``attach``/``ping``, byte-identical to v25.3), ``query``,
+and ``action``. The v25.3 read-only law is hereby superseded for the
+connection and narrows to the tail: the tail itself still causes no
+game action, but ``query``/``action`` frames (dispatched through
+``mc_door``) read and mutate the world — every processed frame on the
+record as an ``agent_query``/``agent_action`` stream event, every
+player-visible effect line an ``out`` record at creation. Frames are
+processed serially per connection (Channels delivers ``receive_json``
+sequentially) — that serialization is the day-one rate discipline,
+recorded deliberately (#261/#268 own per-agent scopes and limits).
+
+Access is live ``agents.shyland`` membership at connect; the gate is
+the group, not a character. The kill switch covers the whole door:
+every query/action frame checks it fresh before processing (fail
+closed); killed ⇒ close 4503, same as the tail sever. Agents own
+their cursors: server reads are stateless XRANGE/XREAD, no consumer
+groups (those remain the persister's mechanism alone), no server-side
+per-agent state. Gaps are announced, never silent. Egress
+*connections* are still not captured as stream events —
+attach/detach/tail get ``shyland.mc`` logger lines only; queries and
+actions are game-facing activity and are on the record.
 """
 
 import asyncio
@@ -19,11 +33,13 @@ import logging
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from apps.shyland import mc
+from apps.shyland import mc, mc_door
 
 logger = logging.getLogger('shyland.mc')
 
-MC_PROTOCOL = 1
+MC_PROTOCOL = 2
+# The §4 frame contract: client ids echo back verbatim, capped.
+MAX_FRAME_ID_LEN = 64
 REPLAY_BATCH = 500
 # Must sit comfortably inside the reused client's socket_timeout
 # (redis-py >= 8 defaults it to 5s): an XREAD whose server-side BLOCK
@@ -160,9 +176,81 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
             self._stream_task = asyncio.create_task(
                 self._stream(client, after, live_from))
             return
+        if mtype in ('query', 'action'):
+            # v25.5 (#281): kill switch first, fresh, per frame — the
+            # switch covers the whole door, fail closed (v25.4 law).
+            if await switch_killed():
+                await self.close(code=4503)
+                return
+            await self._handle_request(mtype, content)
+            return
         # Everything else — a second attach included — draws the error
         # frame and is otherwise ignored; the connection stays open.
-        await self.send_json({'type': 'error', 'error': 'read-only'})
+        # (v25.5: the string was 'read-only' in protocol 1; the ruled
+        # supersession renames it now that the door answers frames.)
+        await self.send_json({'type': 'error', 'error': 'unknown-frame'})
+
+    async def _handle_request(self, mtype, content):
+        """One §4 request frame → one result frame → one MC record.
+
+        Missing/non-string ``id`` ⇒ ``bad-frame`` with ``id: null``;
+        unknown kinds ⇒ ``unknown-query``/``unknown-action``; malformed
+        params ⇒ ``bad-params`` (handlers raise DoorError); anything
+        unexpected ⇒ ``internal`` — the frame is refused, the
+        connection survives. The record is emitted after processing,
+        fire-and-forget, with the §6 envelope discipline (actor_name =
+        the agent's username, everything else empty)."""
+        kind_key = 'q' if mtype == 'query' else 'act'
+        kind = content.get(kind_key)
+        params = content.get('params')
+        if params is None:
+            params = {}
+        handlers = (mc_door.QUERY_HANDLERS if mtype == 'query'
+                    else mc_door.ACTION_HANDLERS)
+        frame_id = content.get('id')
+        ok, data, error, detail = False, None, None, ''
+        if (not isinstance(frame_id, str)
+                or len(frame_id) > MAX_FRAME_ID_LEN):
+            frame_id = None
+            error = 'bad-frame'
+            detail = (f"'id' must be a string of at most "
+                      f'{MAX_FRAME_ID_LEN} characters.')
+        elif not isinstance(kind, str) or kind not in handlers:
+            error = ('unknown-query' if mtype == 'query'
+                     else 'unknown-action')
+            detail = f'Unknown {kind_key!s} {kind!r}.'
+        elif not isinstance(params, dict):
+            error = 'bad-params'
+            detail = "'params' must be an object."
+        else:
+            try:
+                data = await handlers[kind](params, self._agent)
+                ok = True
+            except mc_door.DoorError as exc:
+                error, detail = exc.code, exc.detail
+            except Exception:
+                logger.warning(
+                    'shyland mc: %s handler failed (agent=%s, kind=%s)',
+                    mtype, self._agent, kind, exc_info=True)
+                error = 'internal'
+                detail = ('The door hit an unexpected error; the frame '
+                          'was refused.')
+        result = {'type': 'result', 'id': frame_id, 'ok': ok}
+        if ok:
+            result['data'] = data
+        else:
+            result['error'] = error
+            if detail:
+                result['detail'] = detail
+        await self.send_json(result)
+        record = {kind_key: kind, 'params': params, 'ok': ok}
+        if not ok:
+            record['error'] = error
+        elif mtype == 'action':
+            record['result'] = data
+        await mc.mc_emit(
+            'agent_query' if mtype == 'query' else 'agent_action',
+            actor_name=self._agent, data=record)
 
     # ------------------------------------------------------------------
     # The stream task: (gap) → replay → live tail.

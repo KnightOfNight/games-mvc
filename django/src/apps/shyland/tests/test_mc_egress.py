@@ -153,7 +153,10 @@ class EgressReadOnlyTests(TransactionTestCase):
             await comm.receive_json_from(timeout=10)  # hello
             await comm.send_json_to({'type': 'say', 'text': 'hi'})
             error = await comm.receive_json_from(timeout=10)
-            self.assertEqual(error, {'type': 'error', 'error': 'read-only'})
+            # v25.5 (#281): 'read-only' → 'unknown-frame', the ruled
+            # supersession — the door now answers query/action frames.
+            self.assertEqual(error, {'type': 'error',
+                                     'error': 'unknown-frame'})
             await comm.send_json_to({'type': 'ping', 'nonce': 7})
             pong = await comm.receive_json_from(timeout=10)
             self.assertEqual(pong, {'type': 'pong', 'nonce': 7})
@@ -165,7 +168,9 @@ class EgressReadOnlyTests(TransactionTestCase):
             await comm.send_json_to({'type': 'attach'})
             await comm.send_json_to({'type': 'attach'})
             error = await comm.receive_json_from(timeout=10)
-            self.assertEqual(error, {'type': 'error', 'error': 'read-only'})
+            # v25.5 (#281): the ruled supersession of the read-only string.
+            self.assertEqual(error, {'type': 'error',
+                                     'error': 'unknown-frame'})
 
 
 class EgressAttachTests(TransactionTestCase):

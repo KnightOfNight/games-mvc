@@ -235,6 +235,13 @@ class Archetype(models.Model):
         return self.name
 
 
+# v25.5 (#281, GDD §3): bot names join the name law — the sudo bot and
+# Sirius speak under these names, so no player character may hold them.
+# The creator refuses them with the NPC-collision sentence (no-leak:
+# bots and NPCs indistinguishable in refusal).
+RESERVED_BOT_NAMES = frozenset({'sudo', 'sirius'})
+
+
 class Character(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='shyland_character')
     name = models.CharField(max_length=20)
@@ -300,6 +307,11 @@ class Character(models.Model):
     # v22 brief 3 (#88): written at every websocket accept — the data
     # accrues for all players regardless of who can read `last`.
     last_connect = models.DateTimeField(null=True, blank=True)
+    # v25.5 (#281): the strip/dress round-trip's memory — written by the
+    # agent door's strip action ([{"instance_id": pk, "slot": code}, ...]
+    # before any unequip), consumed (set to null) by every dress attempt
+    # whatever its outcome. Null = no outfit held.
+    outfit_snapshot = models.JSONField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
 
@@ -341,6 +353,28 @@ class ZoneCompletion(models.Model):
 
     class Meta:
         unique_together = ('character', 'zone')
+
+
+def record_room_visit_sync(character, room):
+    """The arrival choke point as a plain function. v20 brief 1
+    amendment 2 (#50): visits land at arrival time in every arrival
+    path, independent of room-description rendering. V24.25 (#41, GDD
+    §2.12): also where keys are minted — a first visit covering the
+    zone's last unseen room creates the permanent ZoneCompletion;
+    zone_completed is True only when the row was newly created, and the
+    check runs only on a first visit. Returns (first_visit,
+    zone_completed). v25.5 (#281): extracted from SkylandConsumer so the
+    agent door's move action records arrivals identically."""
+    _, created = RoomVisit.objects.get_or_create(character=character, room=room)
+    zone_completed = False
+    if created:
+        zone = room.zone
+        visited = RoomVisit.objects.filter(
+            character=character, room__zone=zone).count()
+        if visited == zone.rooms.count():
+            _, zone_completed = ZoneCompletion.objects.get_or_create(
+                character=character, zone=zone)
+    return created, zone_completed
 
 
 class EffectDefinition(models.Model):
