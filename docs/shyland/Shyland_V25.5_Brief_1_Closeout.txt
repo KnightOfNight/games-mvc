@@ -126,4 +126,36 @@ directs it).
 
 SUITE COUNT: 807 (was 768; +39 in test_mc_agent_door.py).
 
-OPERATOR PLAYTEST DISPOSITION: (recorded at session end, below)
+OPERATOR PLAYTEST (2026-08-22, dev stack, all ten checklist items)
+Driver: mc_door_agent.py — a new interactive send-frame harness built
+in-session in ~/src/games-mvc-agents/ (operator tooling per #268/#279,
+not repo code; readline prompt, in-line responses, auto-exit on server
+close). All ten items passed: protocol-2 hello + tail; commands parity;
+who/where/character parity; answer (sudo voice to the admin, not-admin
+refusal, offline delivered:false); gift and create_artifact to two
+different characters (the artifact name-uniqueness refusal exercised and
+confirmed as designed); strip/dress with fill-fraction invariance and
+in-game narration; move both directions with full render + witness
+lines; the kill-switch loop (live sever ~2s, reconnect refused,
+restore resumes); MC record check verified from the MCEvent table
+(all agent_query/agent_action records attributed agent-smith including
+error paths; the answer's out record with the target pk audience).
+
+Playtest findings, all filed and none a defect against this brief:
+- #282: 'answer' delivery gate must become per-agent context (sudo =
+  admins only, Sirius = anyone) — operator direction recorded on the
+  issue; cross-refs on #261/#268. The not-admin refusal observed is
+  this brief's ruled #273 behavior.
+- #283: NPC first-contact greetings broadcast room-wide in second
+  person — bystanders read the 'you' as addressed to them. Pre-existing
+  (walk-in parity verified in code); the admin move merely surfaced it.
+- #284: nginx login rate limit (zone=login 5r/m burst=3) blocks
+  agent-testing/bot-reconnect login patterns; proposal burst=10
+  recorded, CHANGE NOTHING NOW ruled by the operator — nothing touched.
+- Operator ruling, no action item: the kill switch does not proactively
+  sever idle, never-attached door connections — they are refused at
+  their next frame (fail-closed holds; "they learn soon enough on
+  their own if they've been blocked"). Deliberately not filed.
+
+OPERATOR PLAYTEST DISPOSITION: Operator reports playtest successful
+("the entire playtest is joy" — operator, verbatim, 2026-08-22).
