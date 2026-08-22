@@ -235,6 +235,13 @@ class Archetype(models.Model):
         return self.name
 
 
+# v25.5 (#281, GDD §3): bot names join the name law — the sudo bot and
+# Sirius speak under these names, so no player character may hold them.
+# The creator refuses them with the NPC-collision sentence (no-leak:
+# bots and NPCs indistinguishable in refusal).
+RESERVED_BOT_NAMES = frozenset({'sudo', 'sirius'})
+
+
 class Character(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='shyland_character')
     name = models.CharField(max_length=20)

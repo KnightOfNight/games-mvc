@@ -3617,6 +3617,29 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if zone_completed:
                 await self.announce_zone_completion(room.zone.name)
             await self.send_map()
+        elif event_type == 'moved':
+            # v25.5 (#281): the agent door moved this character —
+            # modeled on the respawn branch: re-seat groups, record the
+            # visit (the door defers it to this branch for online
+            # targets, so a first visit announces zone completion
+            # exactly like a walked arrival), full room render, map.
+            char = await self.get_character_fresh()
+            await self.channel_layer.group_discard(self.room_group, self.channel_name)
+            self.room_group = f'room_{char.current_room_id}'
+            await self.channel_layer.group_add(self.room_group, self.channel_name)
+            self.last_direction = None
+            room = await self.get_current_room()
+            first_visit, zone_completed = await self.record_room_visit(char, room)
+            await self.send_room_description(room, entering=True,
+                                             first_visit=first_visit)
+            if zone_completed:
+                await self.announce_zone_completion(room.zone.name)
+            await self.send_map()
+        elif event_type == 'refresh_status':
+            # v25.5 (#281): the agent door mutated this character's
+            # gear (strip/dress) — re-sync the status pane from DB
+            # truth; the narration line already rode this event.
+            await self.send_status_refresh()
 
     # ------------------------------------------------------------------
     # Helpers

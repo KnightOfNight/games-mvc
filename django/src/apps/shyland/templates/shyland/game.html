@@ -33,6 +33,11 @@
        red — deliberate reuse. Amendment 2 re-unified agro-color with it;
        the dual naming survives for future divergence. */
     --error: #E24B4A;
+    /* v25.5 (#281, GDD §10): the sudo bot's talking color — error-red's
+       hex under a separable name (the documented reuse pattern above);
+       the two may diverge in the future. Door code and the .msg-sudo
+       rule must use --sudo-color, never --error. */
+    --sudo-color: #E24B4A;
     /* v20 brief 4 (#1): location-bar fixed colors — room name near-white,
        colon separators neutral gray. Zone/area colors arrive from the
        server per message. (v22 brief 2 / DD §2: the old chrome gray is
@@ -143,6 +148,9 @@
   .seg-say   { color: var(--say-color); }
   .seg-reward { color: var(--loot-color); }
   .msg-say     { color: var(--say-color); }      /* speech, player and NPC (DD §13) */
+  /* v25.5 (#281): the sudo bot's answers — attributed speech in the
+     sudo talking color; stamped (answers are events, not renderings). */
+  .msg-sudo    { color: var(--sudo-color); }
   .msg-combat  { color: var(--hit-out-color); }  /* engagement / generic combat */
   .msg-combat-hit-out  { color: var(--hit-out-color); }  /* your hit */
   .msg-combat-crit-out { color: var(--crit-out-color); font-weight: bold; } /* your crit */

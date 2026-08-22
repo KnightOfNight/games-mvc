@@ -1,7 +1,9 @@
 from better_profanity import profanity
 from django import forms
 
-from .models import Archetype, Character, NpcDefinition, Origin
+from .models import (
+    RESERVED_BOT_NAMES, Archetype, Character, NpcDefinition, Origin,
+)
 
 
 class CharacterCreationForm(forms.Form):
@@ -32,6 +34,12 @@ class CharacterCreationForm(forms.Form):
         # alongside the uniqueness and profanity checks; the other
         # enforcement edge lives in seed_world._verify.
         if NpcDefinition.objects.filter(name__iexact=name).exists():
+            raise forms.ValidationError('That name belongs to the world already.')
+
+        # v25.5 (#281, GDD §3): bot names join the name law. Same
+        # sentence as the NPC check — no-leak: bots and NPCs
+        # indistinguishable in refusal.
+        if name.lower() in RESERVED_BOT_NAMES:
             raise forms.ValidationError('That name belongs to the world already.')
 
         if name != self.vetted_name and profanity.contains_profanity(name):
