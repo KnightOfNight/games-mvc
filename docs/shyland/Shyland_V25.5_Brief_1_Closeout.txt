@@ -1,1 +1,129 @@
 2026-08-22 — implementation session start: Shyland_V25.5_Brief_1_Agent_Door.md on branch version_25_5 (stub; completed in place at session end)
+
+================================================================================
+SHYLAND V25.5 BRIEF 1 — THE AGENT DOOR — CLOSEOUT REPORT
+================================================================================
+Brief: Shyland_V25.5_Brief_1_Agent_Door.md (committed 8ee1fb7)
+Branch: version_25_5   Session: implementation, 2026-08-22
+Issues: #281 (founding, CLOSED) · #273 (dependency, CLOSED) — both closed with
+verification-passed comments, gated on the full suite passing.
+
+TECHNICAL PRE-FLIGHT (#252)
+Every load-bearing structural claim in the brief was diffed against the code at
+the branch tip before any work: version.py:8 ("25.4"), MC_PROTOCOL=1, the
+switch_killed fail-closed helper, the agents.shyland gate, the 'read-only'
+error string, clean_name and the NPC refusal sentence, gift=True soulbind and
+the artifact prohibition in generate_item_instance, the rolled-entry shape,
+item_ref, mc_group_send, presence keys, parse_presence_name, the connect verb
+derivation, the cmd_move broadcast shapes, the respawn branch,
+record_room_visit's return tuple, _rescale_bars_for_gear, equip_item soulbind,
+all model choice sets/fields, MCKillSwitch, the game.html palette (#E24B4A
+already licensed; UNSTAMPED_CATEGORIES; FLAG_RE), the seed rarity-word law,
+and the set-based palette test. NO LOAD-BEARING MISMATCHES. One range
+imprecision only: record_room_visit's body runs to consumers.py:4246 (zone
+completion counting included), not 4221-4230 — the claim content was accurate.
+
+WHAT SHIPPED (commits, in order; every step pushed at its boundary)
+  298390b  Step 0 closeout stub (work-has-started signal)
+  f7f0004  SHYLAND_VERSION -> "25.5-DEV" + pin test, same commit (opening act);
+           version-start make deploy-dev run
+  78cbe3d  Character.outfit_snapshot (JSONField null/blank/default None) +
+           migration 0053, applied on dev
+  f0d2e0d  Shared-machinery extraction, behavior byte-identical:
+           _rescale_bars_for_gear -> combat_utils.rescale_bars_for_gear;
+           record_room_visit body -> models.record_room_visit_sync returning
+           (first_visit, zone_completed); consumer wrappers delegate.
+           Full suite 768 green after extraction.
+  de143e6  The door: mc_door.py (six queries, six actions, DoorError, the
+           audited send helper, the artifact builder/validator, narration
+           senders; import direction held — only mc_consumer imports it);
+           mc_consumer.py MC_PROTOCOL 2, query/action dispatch with per-frame
+           fresh kill-switch check (killed => close 4503), unknown-frame
+           supersession, module docstring rewritten (read-only law narrowed to
+           the tail); consumers.py 'moved' player_message branch (respawn-
+           modeled) + 'refresh_status' sibling; RESERVED_BOT_NAMES
+           frozenset({'sudo','sirius'}) in models.py + creation-form refusal
+           with the NPC-collision sentence (no-leak); game.html --sudo-color:
+           #E24B4A + .msg-sudo (no new palette literal; sudo NOT added to
+           UNSTAMPED_CATEGORIES — answers are events, stamped)
+  2a50579  tests/test_mc_agent_door.py (39 tests, full brief-§8 coverage) +
+           the two ruled 'read-only' -> 'unknown-frame' pin updates in
+           test_mc_egress.py
+  22f2e87  Architecture doc (last, gated): stamp 25.5, header hash 2a50579
+           (architectural change), §4.20 door vocabularies/protocol 2/frame
+           contract, new §4.22 (mc_door), §4.21 kill-switch coverage
+           extension, §4.1 models pointers, §4.16 sudo palette row, §4.14 sudo
+           note, §7 bullets annotated, suite count 807
+
+FINAL IMPLEMENTATION COMMIT HASH: 22f2e87
+(This report's completion commit follows it on the branch.)
+
+VERIFICATION
+Full in-container suite via the path form (docker exec, python manage.py test
+apps/shyland/tests): 807 tests, OK — up from 768 (39 new). Run twice green:
+after the extraction step (768) and after the full implementation (807).
+Coverage per brief §8: frame contract (unknown-frame, bad-frame id:null,
+unknown-query/-action, non-member 4403 unchanged, kill-switch sever 4503 on
+query AND action frames); every query kind happy + not-found; commands equals
+the connect-time derivation exactly; is_admin flips live; answer admin-gate /
+sudo category + 'sudo: ' text / offline delivered:false / out + agent_action
+records; gift soulbound-to-recipient / artifact-requires-create / Mk-mismatch
+as invalid-item / lands over capacity; create_artifact per-key spec
+validation, case-insensitive name-taken, rarity-word refusal, artifact rarity
++ soulbound + sell-guard predicate, mystery pairing; strip/dress snapshot-
+before-unequip, exact-slot round trip, fill-fraction invariance both ways
+(bar law), snapshot always consumed, missing reporting, nothing-equipped/
+no-outfit; move online (broadcast shapes pk-excluded, moved event) and
+offline (DB + visit only), in-combat refusal, to_room_id form, exactly-one-
+destination; moved branch end-to-end over a real socket (visit recorded, long
+render, map); name reservation sudo/Sudo/SUDO/sirius/Sirius refused +
+no-existing-collision pins; --sudo-color/.msg-sudo/MC_PROTOCOL==2 pins.
+
+DEV STACK
+make deploy-dev run twice (version start and after verification); dev runs
+the brief's build. agent-smith: already existed on dev, usable password
+already set, agents.shyland membership confirmed (nothing created; the brief's
+"create if absent" was not needed). §7.7 implementation-time check against
+the dev DB: zero Character/NpcDefinition rows named sudo or sirius (iexact).
+
+DEVIATIONS AND RECORDED DECISIONS (none silent)
+1. test_mc_egress.py pins 'read-only' -> 'unknown-frame': the brief-ruled
+   supersession, not drift (brief §4).
+2. Move visit sequencing: the brief has the door "record the visit" AND the
+   moved branch "record the visit + announce zone completion". Recording in
+   both places would make the branch's announce dead code (the door's row
+   would always precede it). Implemented the respawn division of labor: the
+   door records the visit only for OFFLINE targets; online targets' visit is
+   recorded by their consumer's moved branch, so a first visit announces zone
+   completion exactly like a walked arrival. A disconnect between the
+   presence check and delivery self-heals at next connect (the #50
+   connect-time visit).
+3. Strip/dress "status refresh" mechanism (brief specifies the outcome, not
+   the path): a 'refresh_status' player_message branch beside 'moved' calls
+   send_status_refresh() — the narration line rides the same event.
+4. Same-room move (target moved to the room they already occupy): the
+   left/arrived broadcasts are suppressed (both would land in one room about
+   a player who never left); the moved line + full re-render still sent.
+5. 'internal' result error code (not in the brief's vocabulary): an
+   unexpected handler exception refuses the frame with error 'internal' and
+   keeps the connection alive, logged — defensive, so a server bug cannot
+   kill the door or hang a frame.
+6. Unidentifiable artifacts are created is_identified=False (the mystery
+   name/description cannot render otherwise); identified artifacts
+   is_identified=True. Interpretation of the §5.4 table, asserted in test.
+7. create_artifact validation is strict: unknown spec keys, damage keys on
+   non-weapons, and armor_base on non-armor are refused bad-params (the
+   table's requirement column read as exhaustive).
+8. Gift/artifact result data shapes ({item_id} / {definition_id, item_id},
+   move {room:{...}}): the brief left action result data unspecified except
+   answer/strip/dress; minimal useful shapes chosen and pinned in tests.
+
+PENDING DEPLOY-TIME ACTIONS: none.
+Migration 0053 rides the ordinary closeout-tail make deploy-prod. No seed
+change, no data action. Production agent accounts are NOT created in this
+release — that is the 25.6 attach window (executor: the operator, when 25.6
+directs it).
+
+SUITE COUNT: 807 (was 768; +39 in test_mc_agent_door.py).
+
+OPERATOR PLAYTEST DISPOSITION: (recorded at session end, below)
