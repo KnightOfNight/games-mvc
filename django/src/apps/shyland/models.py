@@ -348,6 +348,28 @@ class ZoneCompletion(models.Model):
         unique_together = ('character', 'zone')
 
 
+def record_room_visit_sync(character, room):
+    """The arrival choke point as a plain function. v20 brief 1
+    amendment 2 (#50): visits land at arrival time in every arrival
+    path, independent of room-description rendering. V24.25 (#41, GDD
+    §2.12): also where keys are minted — a first visit covering the
+    zone's last unseen room creates the permanent ZoneCompletion;
+    zone_completed is True only when the row was newly created, and the
+    check runs only on a first visit. Returns (first_visit,
+    zone_completed). v25.5 (#281): extracted from SkylandConsumer so the
+    agent door's move action records arrivals identically."""
+    _, created = RoomVisit.objects.get_or_create(character=character, room=room)
+    zone_completed = False
+    if created:
+        zone = room.zone
+        visited = RoomVisit.objects.filter(
+            character=character, room__zone=zone).count()
+        if visited == zone.rooms.count():
+            _, zone_completed = ZoneCompletion.objects.get_or_create(
+                character=character, zone=zone)
+    return created, zone_completed
+
+
 class EffectDefinition(models.Model):
     name        = models.CharField(max_length=200)
     slug        = models.SlugField(unique=True)
