@@ -1,0 +1,3 @@
+2026-08-23 — session start: implementation of Shyland_V25.6_Brief_1_The_Sudo_Bot on branch version_25_6.
+
+[STUB — completed in place at session close.]
