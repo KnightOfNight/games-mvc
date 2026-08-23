@@ -1,0 +1,4 @@
+# Direct dependencies for the MC agent tooling (agents/).
+# The V25.6 sudo-bot brief adds `anthropic` (the model SDK) when the bot lands.
+requests
+websockets
