@@ -624,8 +624,11 @@ class SudoBot:
         # Cost discipline only (brief §5.4): the authoritative gate is
         # the door's answer action. Drop silently on false or failure.
         result = await self.door_request('is_admin', {'name': actor_name})
-        if not result.get('ok') or not result['data'].get('is_admin'):
-            log.info('is_admin pre-check dropped request from %s', actor_name)
+        is_admin = result.get('ok') and result['data'].get('is_admin')
+        log.info('is_admin pre-check for %s: %s', actor_name,
+                 is_admin if result.get('ok') else
+                 f"query failed ({result.get('error')})")
+        if not is_admin:
             return
 
         history = self.convos.model_history(actor_name)
