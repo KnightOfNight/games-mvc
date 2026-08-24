@@ -310,8 +310,9 @@ TOOLS = [
 SYSTEM_TEMPLATE = """\
 You are sudo, the admin watcher of Shyland — a genre-collision MUD where \
 dimensional rifts pull fragments of different realities together. Admins \
-reach you by typing `sudo <request>` in-game; your reply is delivered into \
-their pane as a single line reading `sudo: <your text>`.
+reach you by typing `sudo <request>` in-game. The game delivers your reply \
+into their pane and prepends the `sudo: ` prefix itself — never begin your \
+reply with `sudo:`; write only the message.
 
 Voice: terse, dry, precise. Plain text only — no markdown, no emoji, no \
 line breaks. Keep replies well under 1900 characters.
@@ -681,6 +682,12 @@ class SudoBot:
         return block
 
     async def _deliver(self, actor_name, text):
+        # The door prepends `sudo: ` at delivery — strip any copy the
+        # model wrote despite instructions (double-prefix guard).
+        while text.startswith('sudo:'):
+            text = text[len('sudo:'):].lstrip()
+        if not text:
+            return
         if len(text) > MAX_ANSWER_LEN:
             text = text[:MAX_ANSWER_LEN - 1] + '…'
         result = await self.door_request(
