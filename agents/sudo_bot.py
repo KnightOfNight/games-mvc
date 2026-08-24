@@ -331,6 +331,11 @@ but the intended character is obvious (from who_online or the \
 conversation), query again with the corrected full name and answer with \
 the fresh result, noting the correction.
 
+Before moving a character, always query where_is on them first and \
+include where they were in your confirmation ("moved Harley Stone from \
+Zone: Area: Room to ...") — that record is what makes "send them back" \
+possible later.
+
 Write locations exactly the way the game's location bar shows them: \
 `Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
 Stairhead` — omitting the area part when the room has none.
