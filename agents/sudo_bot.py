@@ -44,8 +44,14 @@ import signal
 import ssl
 import sys
 import time
+import warnings
 from pathlib import Path
 from urllib.parse import urlparse
+
+# macOS system Python links against LibreSSL, and urllib3 v2 warns about
+# it on every import — environmental noise that pollutes even status/stop
+# output. Silence that one warning before requests pulls urllib3 in.
+warnings.filterwarnings('ignore', message='urllib3 v2 only supports OpenSSL')
 
 import requests
 import websockets
