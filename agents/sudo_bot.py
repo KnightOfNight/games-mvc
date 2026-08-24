@@ -961,7 +961,9 @@ def main():
         help="provider selector ('ollama' reserved)")
     run_parser.add_argument(
         '--max-tokens', type=int, default=int(env('SUDO_BOT_MAX_TOKENS',
-                                                  '1000')))
+                                                  '5000')),
+        help='per model request; caps thinking + response together '
+             '(operator-ruled 5000, 2026-08-24 — 1000 starved thinking)')
     run_parser.add_argument(
         '--convo-timeout', type=int,
         default=int(env('SUDO_BOT_CONVO_TIMEOUT', '600')),
