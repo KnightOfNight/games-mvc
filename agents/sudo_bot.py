@@ -849,6 +849,15 @@ def cmd_stop():
     return 0
 
 
+def _refuse(message):
+    """A pre-flight refusal must be visible under the documented nohup
+    line (stderr redirected away): stderr for a foreground run, the log
+    file always."""
+    print(message, file=sys.stderr)
+    log.error('refusing to start: %s', message)
+    return 1
+
+
 def cmd_run(cfg):
     # Project convention: all log lines are UTC-stamped, marked with Z.
     logging.Formatter.converter = time.gmtime
@@ -858,18 +867,15 @@ def cmd_run(cfg):
         datefmt='%Y-%m-%d %H:%M:%SZ')
     existing = _read_pid()
     if existing and _pid_alive(existing):
-        print(f'sudo bot already running (pid {existing})', file=sys.stderr)
-        return 1
+        return _refuse(f'sudo bot already running (pid {existing})')
 
     password_file = Path(cfg.password_file)
     try:
         cfg.password = password_file.read_text().strip()
     except OSError:
-        print(f'cannot read password file {password_file}', file=sys.stderr)
-        return 1
+        return _refuse(f'cannot read password file {password_file}')
     if not cfg.password:
-        print(f'password file {password_file} is empty', file=sys.stderr)
-        return 1
+        return _refuse(f'password file {password_file} is empty')
 
     if cfg.insecure:
         import urllib3
@@ -878,8 +884,7 @@ def cmd_run(cfg):
     try:
         brain = make_brain(cfg.brain, cfg.model, cfg.max_tokens)
     except SystemExit as exc:
-        print(exc, file=sys.stderr)
-        return 1
+        return _refuse(str(exc))
     convos = ConversationStore(CONVO_FILE, cfg.convo_timeout, cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
 
