@@ -1,3 +1,144 @@
 2026-08-23 — session start: implementation of Shyland_V25.6_Brief_1_The_Sudo_Bot on branch version_25_6.
 
-[STUB — completed in place at session close.]
+================================================================================
+V25.6 BRIEF 1 — THE SUDO BOT — CLOSEOUT REPORT
+Completed 2026-08-24. Final commit: 4a743f4 (architecture doc; final
+implementation commit 37deb96 — the architecture header hash).
+================================================================================
+
+WHAT SHIPPED
+- agents/sudo_bot.py — the first live MC actor (#262): standalone process,
+  never part of the Django image. Logs in as agent-sudo (cookie reused across
+  reconnects, #284 bot-side), attaches to the MC door (protocol 2 verified,
+  refuse-to-run otherwise), builds its system prompt from the live verb list
+  (query commands — the ruled decline mechanism, zero hardcoded command
+  names), reacts to admin sudo cmd records (is_admin pre-check as cost
+  discipline), parses with a model behind the provider-agnostic Brain
+  interface (ClaudeBrain on claude-sonnet-5 / StubBrain deterministic /
+  ollama reserved), executes tool proposals as door frames (loop cap 8,
+  tools = door vocabulary minus answer/is_admin, schemas mirror mc_door
+  param shapes), and answers via action answer (2000-char truncation,
+  door-prefix aware). Bounded bot-side conversations (20 exchanges, 600s
+  quiet expiry, JSON-persisted, gitignored), silent patient 4503 retry
+  (backoff 2s-60s, one log line per cycle), run/status/stop via pidfile,
+  UTC-Z logging, secrets as files/env only.
+- agents/requirements.txt gains anthropic; agents/.gitignore grows *.pid and
+  .sudo_bot_conversations.json.
+- nginx/conf/default.conf.template: login burst 3 -> 10 (#284, shared
+  surface, operator-acknowledged 2026-08-23; rate 5r/m untouched).
+- SHYLAND_VERSION 25.5 -> 25.6-DEV (version-start, own commit, pin test
+  moved with it).
+- Architecture doc updated in place: stamp 25.6, hash moves to 37deb96 (new
+  top-level component), new Section 4.23 (bot-side counterpart), #284 note
+  in Section 2.1.
+
+STEP LOG (all pushed at step boundaries)
+- eae3d9c Step 0: closeout stub (work-has-started signal)
+- 578ef0c Step 1: version constant 25.6-DEV + pin test; version-start
+  make deploy-dev run
+- effc24a Steps 2-3: the bot + anthropic dependency + gitignore
+- 662c9ec Step 4: nginx login burst 3 -> 10 (#284)
+- 3597dd7..a683ce5, 37deb96: playtest findings fixed in-session (below)
+- 4a743f4 Architecture doc (last, gated step)
+
+VERIFICATION (brief §8 — all passed)
+1. Full in-container suite: 807 tests OK (path form via docker exec), no
+   count regression from the branch's 807 baseline; pin test green at
+   25.6-DEV. Re-run green after every in-session fix.
+2. git check-ignore passes for agents/.secrets/agent-sudo, the pidfile, the
+   log, and the conversation file; git status clean of all runtime files
+   throughout.
+3. Stub-brain end-to-end against the dev stack: 17/17 checks (harness
+   /tmp/sudo_e2e.py, throwaway): bot start/attach, status subcommand, play
+   client as dev-only admin, sudo request -> cmd record spotted -> is_admin
+   pre-check -> door round trip -> answer delivered {delivered: true} ->
+   sudo-category pane line; clean SIGTERM shutdown, pidfile removed,
+   conversations persisted.
+4. Kill-switch drill: mc kill -> bot severed 4503, quiet retry (one log line
+   per cycle); mc restore -> unaided reattach; fresh sudo round-trips.
+   Both 3 and 4 re-run 17/17 after the venv rebuild (below).
+
+DEV PROVISIONING (dev stack only)
+- agent-sudo Django user created, password from operator-supplied
+  agents/.secrets/agent-sudo (never echoed), joined agents.shyland, no
+  Character (bots are never characters).
+- Dev-only test fixtures created for the objective e2e: user sudo-e2e
+  (admins.shyland) with character Stubtester (Heart of the Convergence).
+  Left in place on dev; dev-only, ships nowhere.
+- Operator-side venv: agents/venvs/mc-agent, rebuilt by the operator on
+  Python 3.14.7 mid-session (anthropic 1.0.0, requests 2.34.2,
+  websockets 17.0.1); e2e re-verified on the new runtime.
+
+OPERATOR PLAYTEST DISPOSITION
+Operator reports playtest successful ("playtest confirmed", 2026-08-24,
+real model claude-sonnet-5 against the dev stack).
+
+Playtest findings FIXED in-session (each committed + pushed at the finding):
+- eb3b62d UTC log timestamps (project convention, recorded to memory)
+- 3b31e16 pre-flight refusals logged (invisible-exit on double start)
+- 4749803 urllib3 LibreSSL import warning silenced (CLI noise)
+- 46030b1 double sudo-prefix (prompt + defensive strip at delivery)
+- 18be909 locations in location-bar grammar (Zone: Area: Room)
+- 63815b2 fresh queries over stale conversation memory (near-miss names
+  re-queried with the corrected full name)
+- 7d31166 speaker identity stamped on every request turn ([Name] prefix;
+  first-person requests resolve)
+- a683ce5 --max-tokens default 1000 -> 5000 (operator-ruled, below)
+- 37deb96 origin captured (where_is) before every move; origin named in the
+  confirmation so "send them back" survives in conversation memory
+
+Playtest findings FILED for design (door-vocabulary gaps, one capability
+set, operator direction recorded on each):
+- #287 no item-removal action (complete removal, artifacts included)
+- #288 no targeted equip/unequip (strip all-or-nothing; dress
+  snapshot-only) — retitled to carry both halves
+- #289 no mutation action (created artifacts/items cannot be edited)
+- #290 no room-directory query (rooms unreachable except through
+  characters; move result carries no origin)
+
+DEVIATIONS FROM THE BRIEF
+1. --max-tokens default is 5000, not the brief table's 1000 —
+   operator-ruled in the playtest conversation (2026-08-24) after Sonnet
+   5's default-on adaptive thinking (thinking counts against max_tokens)
+   starved a think-heavy request into truncation, surfacing as silence.
+2. Conversation persistence stores exchanges as plain text (request +
+   final answer), not provider-shaped content blocks — deliberately
+   provider-neutral (the brief's "structure reusable by future bots");
+   within-request tool traffic is passed verbatim and not persisted.
+3. The stub e2e (§8.3) was driven by a scripted play client under a
+   dev-only test admin (sudo-e2e/Stubtester) rather than a browser — the
+   brief offers "browser or the play client"; the scripted path is the
+   objectively verifiable one.
+4. Brief §5.1's log default named agents/sudo_bot.log relative to the repo;
+   implemented relative to the agents/ directory (identical when run from
+   the repo root; robust from anywhere).
+5. Beyond-brief poli­sh, all operator-directed in the playtest: UTC-Z log
+   stamps, logged pre-flight refusals, urllib3 warning filter, speaker
+   stamp, location grammar, fresh-query and origin-capture prompt rules.
+
+PENDING DEPLOY-TIME ACTIONS
+- Production agent-sudo account provisioning (create user, set password,
+  join agents.shyland) — executor: THE OPERATOR, in the closeout tail's
+  deploy window (the release's prod attach window). No seed, no migration;
+  a human act by design.
+- (The nginx burst change needs no separate action — it rides the ordinary
+  prod deploy bounce. Verified live on dev nginx: zone=login burst=10.)
+- (The bot itself deploys nowhere — it runs operator-side from the repo
+  checkout; production use additionally needs ANTHROPIC_API_KEY and the
+  agent-sudo password file on the bot host.)
+
+ISSUES
+- Closed (gated on §8 verification + the playtest disposition): #262
+  (founding — shipped), #279 (in-repo agents harness proven against dev),
+  #284 (bot-side cookie reuse + nginx burst, dev-verified).
+- Filed: #287, #288, #289, #290 (door-vocabulary design set, above).
+
+NOTES FOR THE CLOSEOUT SESSION
+- Milestone 58 (Version 25.6) issue set {#262, #279, #284} fully closed.
+- GDD untouched (implementation session; no make gdd needed — no GDD
+  source change landed on this branch this session).
+- Dev stack is running the 25.6-DEV build with the nginx change (deploy-dev
+  run twice: version-start and post-implementation).
+- The suite baseline remains 807 (no new tests: the bot lives outside the
+  Django tree; its e2e harness is operator-side by design).
+================================================================================
