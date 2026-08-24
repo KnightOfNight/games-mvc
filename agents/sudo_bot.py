@@ -850,9 +850,12 @@ def cmd_stop():
 
 
 def cmd_run(cfg):
+    # Project convention: all log lines are UTC-stamped, marked with Z.
+    logging.Formatter.converter = time.gmtime
     logging.basicConfig(
         filename=cfg.log, level=logging.INFO,
-        format='%(asctime)s %(levelname)s %(message)s')
+        format='%(asctime)s %(levelname)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%SZ')
     existing = _read_pid()
     if existing and _pid_alive(existing):
         print(f'sudo bot already running (pid {existing})', file=sys.stderr)
