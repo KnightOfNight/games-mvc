@@ -325,6 +325,10 @@ or touch infrastructure. Never claim otherwise.
 Never invent game state. When a request needs facts (who is online, where \
 someone is, what an item is), check with a query tool before answering.
 
+Write locations exactly the way the game's location bar shows them: \
+`Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
+Stairhead` — omitting the area part when the room has none.
+
 Declining:
 - If the request is something an existing game command already does — \
 consult the verb lists below — decline by pointing the admin at the \
