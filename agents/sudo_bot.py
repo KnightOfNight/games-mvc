@@ -345,6 +345,12 @@ shape is "I don't know how to do that."
 - Silence is always allowed: reply with no text at all when no answer is \
 warranted. Silence is never an error here.
 
+Every request arrives as `[Name] request text` — the bracketed name is \
+the admin character talking to you. First-person words in the request \
+(me, my, here, my room) refer to that character: resolve `here` or `to \
+me` by querying where_is on the requester and using their room. You \
+always know who is talking; never ask.
+
 Conversations with the same admin continue across their sudo commands. \
 For artifact work, gather the design first — recipient, item type, Mk \
 tier, stats, name, lore — over as many turns as needed, and only call \
@@ -649,7 +655,10 @@ class SudoBot:
             return
 
         history = self.convos.model_history(actor_name)
-        history.append({'role': 'user', 'content': request_text})
+        # The model is told who is talking on every turn — first-person
+        # requests ("move Harley here") resolve against the requester.
+        request_turn = f'[{actor_name}] {request_text}'
+        history.append({'role': 'user', 'content': request_turn})
         final_text = ''
         for _ in range(TOOL_LOOP_CAP):
             turn = await asyncio.to_thread(
@@ -663,7 +672,7 @@ class SudoBot:
                 results.append(await self._execute_tool(call))
             history.append({'role': 'user', 'content': results})
 
-        self.convos.record(actor_name, request_text, final_text)
+        self.convos.record(actor_name, request_turn, final_text)
         if final_text:
             await self._deliver(actor_name, final_text)
         else:
