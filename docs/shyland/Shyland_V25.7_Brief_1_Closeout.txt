@@ -1,0 +1,3 @@
+2026-08-25 — Implementation session START — Brief: Shyland_V25.7_Brief_1_Granular_Item_Control — Branch: version_25_7
+
+[stub — completed in place at session end]
