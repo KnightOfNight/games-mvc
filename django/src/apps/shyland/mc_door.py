@@ -1033,13 +1033,13 @@ def _edit_item(char, item_id, changes):
     with transaction.atomic():
         item = _owned_item(char, item_id)
         defn = item.definition
-        is_artifact = item.rarity == ItemInstance.ARTIFACT
+        artifact_rarity = item.rarity == ItemInstance.ARTIFACT
         definition_changed = False
         for key in changes:
             if key in INSTANCE_EDIT_KEYS:
                 continue
             if key in ARTIFACT_DEFINITION_EDIT_KEYS:
-                if not is_artifact:
+                if not artifact_rarity:
                     raise DoorError(
                         'not-artifact',
                         f"'{key}' edits the definition — {defn.name!r} is "
