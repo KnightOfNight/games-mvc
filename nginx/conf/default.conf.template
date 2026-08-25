@@ -25,7 +25,7 @@ server {
     }
 
     location /accounts/login/ {
-        limit_req zone=login burst=3 nodelay;
+        limit_req zone=login burst=10 nodelay;
         proxy_pass http://django:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

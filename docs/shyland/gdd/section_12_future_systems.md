@@ -12,7 +12,7 @@ These are explicitly deferred — not in scope for v1, documented here for futur
 | Secondary-stat curves vs Mk band growth (#130) | Flat-value gear effects that matter at Mk 1 shrink toward irrelevance by Mk 3 if curves stay as seeded (midpoints grow +0.2/band while NPC numbers roughly double). A retune, not a rework — audit when Mk 2 content is designed, same era as #104. |
 | Mk-2 NPC HP scaling (#104) | NPC vitality does not scale with level/Mk tier (contest stats do) — the first Mk 2 spawn authored would carry level-12+ contest stats with Mk 1 HP. MUST be resolved before any Mk 2 content exists; blocks Mk 2 spawn authoring. |
 | Player macro/alias system (#125) | Client- or server-side command aliases. Unruled; filed during B3 planning. |
-| MC — the Monitoring half (#33, #37) | Universal event capture: every command, every output, every event through creation-level taps into the MC sink (Section 10.11). sudo (#262) begins listening with it. |
+| MC — the Monitoring half (#33, #37) | Universal event capture: every command, every output, every event through creation-level taps into the MC sink (Section 10.11). sudo (#262) is its first live listener — the sudo bot (v25.6). |
 |**Mounts**                             |Deferred. Super user teleportation covers testing needs in v1.                                                                     |
 |**Housing**                            |Deferred. No player housing in v1.                                                                                                 |
 |**Auction House**                      |Permanently excluded. Items are soulbound; no player item trading ever.                                                            |

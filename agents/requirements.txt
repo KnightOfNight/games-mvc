@@ -1,0 +1,5 @@
+# Direct dependencies for the MC agent tooling (agents/).
+requests
+websockets
+# The sudo bot's model SDK (V25.6, #262).
+anthropic
