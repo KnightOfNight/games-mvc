@@ -35,12 +35,12 @@ from .loot_utils import sweep_corpses
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
 from .item_utils import (
-    bag_pct, carry_capacity, compose_item_line, format_slot_name,
-    generate_item_instance,
+    bag_pct, carry_capacity, compose_item_line, equip_candidates,
+    format_slot_name, generate_item_instance,
     get_display_name, get_display_name_with_tier, get_display_description,
     get_durability_penalty, get_item_flags, get_item_suffix, get_item_value,
     get_repair_cost, get_repair_success_chance, get_sale_price, item_ref,
-    parse_corpse_noun, STAT_LABELS,
+    parse_corpse_noun, SLOT_CAPACITY, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
@@ -62,8 +62,8 @@ SLOT_ORDER = [
 ]
 SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
 
-# RING is the only slot a character has two of.
-SLOT_CAPACITY = {'RING': 2}
+# SLOT_CAPACITY (RING is the only slot a character has two of) lives in
+# item_utils since v25.7 (#288), shared with the agent door.
 
 # v23 B2 (#18): the item types that stack in the inventory display.
 # Wear-free interchangeable types stack; per-instance-identity types
@@ -1530,34 +1530,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         equipped_items = await self.get_equipped_items(char)
 
-        # One candidate per way the item could go on: (slot, items displaced).
-        # A two-handed item claims both hands from any slot it occupies; a
-        # one-handed item going into a hand conflicts with any equipped
-        # two-handed item, wherever that item sits (including RANGED).
-        candidates = []
-        for slot in defn.valid_slots:
-            occupants = [i for i in equipped_items if i.equipped_slot == slot]
-            capacity = SLOT_CAPACITY.get(slot, 1)
-
-            if defn.is_two_handed:
-                extras = [
-                    i for i in equipped_items
-                    if i.equipped_slot in ('MAIN_HAND', 'OFF_HAND')
-                    or i.definition.is_two_handed
-                ]
-            elif slot in ('MAIN_HAND', 'OFF_HAND'):
-                extras = [i for i in equipped_items if i.definition.is_two_handed]
-            else:
-                extras = []
-
-            base_sets = [[]] if len(occupants) < capacity else [[o] for o in occupants]
-            for base in base_sets:
-                displaced, seen = [], set()
-                for equipped in base + extras:
-                    if equipped.pk not in seen:
-                        seen.add(equipped.pk)
-                        displaced.append(equipped)
-                candidates.append((slot, displaced))
+        # One candidate per way the item could go on: (slot, items
+        # displaced) — the algorithm lives in item_utils.equip_candidates
+        # since v25.7 (#288), shared with the agent door.
+        candidates = equip_candidates(defn, equipped_items)
 
         # A slot the item can occupy without displacing anything wins outright.
         free = next(((slot, d) for slot, d in candidates if not d), None)

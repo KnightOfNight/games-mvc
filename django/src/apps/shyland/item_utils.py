@@ -20,6 +20,9 @@ SLOT_DISPLAY_NAMES = {
     'BACK':       'Back',
 }
 
+# RING is the only slot a character has two of.
+SLOT_CAPACITY = {'RING': 2}
+
 STAT_LABELS = {
     'str': 'Strength',
     'dex': 'Dexterity',
@@ -170,6 +173,41 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
 
 def format_slot_name(slot_str):
     return SLOT_DISPLAY_NAMES.get(slot_str.upper(), slot_str.title())
+
+
+def equip_candidates(definition, equipped_items):
+    """v25.7 (#288): the slot-resolution candidate computation, lifted
+    verbatim from ``cmd_equip`` so the agent door shares the player's
+    algorithm. One candidate per way the item could go on:
+    ``(slot, items displaced)``. A two-handed item claims both hands
+    from any slot it occupies; a one-handed item going into a hand
+    conflicts with any equipped two-handed item, wherever that item
+    sits (including RANGED)."""
+    candidates = []
+    for slot in definition.valid_slots:
+        occupants = [i for i in equipped_items if i.equipped_slot == slot]
+        capacity = SLOT_CAPACITY.get(slot, 1)
+
+        if definition.is_two_handed:
+            extras = [
+                i for i in equipped_items
+                if i.equipped_slot in ('MAIN_HAND', 'OFF_HAND')
+                or i.definition.is_two_handed
+            ]
+        elif slot in ('MAIN_HAND', 'OFF_HAND'):
+            extras = [i for i in equipped_items if i.definition.is_two_handed]
+        else:
+            extras = []
+
+        base_sets = [[]] if len(occupants) < capacity else [[o] for o in occupants]
+        for base in base_sets:
+            displaced, seen = [], set()
+            for equipped in base + extras:
+                if equipped.pk not in seen:
+                    seen.add(equipped.pk)
+                    displaced.append(equipped)
+            candidates.append((slot, displaced))
+    return candidates
 
 
 def get_display_name(item):
