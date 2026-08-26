@@ -1,0 +1,188 @@
+2026-08-25 — Implementation session START — Brief: Shyland_V25.7_Brief_1_Granular_Item_Control — Branch: version_25_7
+
+================================================================================
+V25.7 BRIEF 1 CLOSEOUT REPORT — Granular Item Control
+================================================================================
+Session: implementation, 2026-08-25 → 2026-08-26, worktree ../games-mvc-version_25_7
+Brief:   Shyland_V25.7_Brief_1_Granular_Item_Control.md (verified verbatim at
+         branch tip a13bee3; committed by the design session at bfa6669)
+Final implementation commit: 6ab5777 (architecture doc; last code commit bf9c6a4)
+This report's completion commit follows it on the branch.
+
+--------------------------------------------------------------------------------
+OPERATOR PLAYTEST DISPOSITION (#170)
+--------------------------------------------------------------------------------
+Operator reports playtest successful. (In-conversation, 2026-08-26 —
+"playtest confirmed".)
+
+--------------------------------------------------------------------------------
+TECHNICAL PRE-FLIGHT (#252)
+--------------------------------------------------------------------------------
+Every load-bearing claim in brief §2 diffed against the code at tip a13bee3
+before any work: dispatch tables (mc_door.py:730/739), consumer-side record
+emission + kill switch, ItemInstance fields (owner related_name 'inventory',
+definition CASCADE), latent active_curse (zero non-model references), death-
+teardown pattern (run_tick_engine.py:248-255), cmd_equip candidate block
+(consumers.py:1537-1560), SLOT_CAPACITY (:66), _unequip_blocked_reason guards
+(cursed + bag capacity only), equip_item/unequip_item (:4486-4500), disposal
+precedents, artifact validators, bot frozensets/TOOLS/django_login/
+_execute_tool, driver kind tuples, 962-line test file, version pin sites.
+ZERO MISMATCHES — no hard stop.
+
+--------------------------------------------------------------------------------
+COMMIT LEDGER (branch version_25_7, all pushed)
+--------------------------------------------------------------------------------
+7a3c101  Step 0: closeout report stub (work-has-started signal)
+5e7963d  Version start: SHYLAND_VERSION 25.7-DEV + pin test (own commit),
+         followed by the version-start make deploy-dev
+b9aa92f  #288 extraction: equip_candidates + SLOT_CAPACITY -> item_utils
+         (pure lift; player behavior byte-identical)
+79889e3  Door item vocabulary: inventory/item queries + remove_item/
+         edit_item/equip_item/unequip_item (#287/#288/#289/#293)
+cf66456  §5 door test coverage: 33 new tests; suite 840 green in-container
+bfe601d  Bot-side: #292 URL normalization + Location diagnostic; six new
+         TOOLS + prompt laws; mc_door_agent.py kinds appended
+bf9c6a4  #295: agents/botctl.py (new file, executable)
+6ab5777  Architecture doc: stamp 25.7, header hash -> bf9c6a4
+
+--------------------------------------------------------------------------------
+IMPLEMENTATION SUMMARY
+--------------------------------------------------------------------------------
+Game side (no model change, no migration, no seed — as briefed):
+- item_utils.py: equip_candidates(definition, equipped_items) lifted verbatim
+  from cmd_equip; SLOT_CAPACITY moved alongside; consumers.py imports both
+  back and cmd_equip consumes the helper. Existing player-side equip tests
+  pass UNMODIFIED (zero test edits — the brief's byte-identical requirement).
+- mc_door.py queries: 'inventory' (uncapped owner-wide roster, equipped
+  included and flagged; ITEMS_CAP stays a catalog concern) and 'item' (full
+  fidelity, true state — curse/identification flags as stored; owner/room
+  holder context).
+- mc_door.py actions: shared addressing (_owned_item: name + item_id;
+  not-found / not-owner naming the actual state; no string resolution on any
+  write path), one transaction.atomic() per mutation, narration via
+  _send_player_line only when online (category system; item_ref composed
+  before deletion).
+  * remove_item (#287): destruction never transfer, _strip posture; curse
+    ends with the item (death-teardown pattern, removed_by='item-removed');
+    artifact removal deletes the definition (CASCADE; freed-name law);
+    bar-law rescale + refresh_status only when target was equipped.
+  * edit_item (#289): raw-set whitelists — instance-side any rarity
+    (mk_tier, rarity, rolled stats via the artifact-creation validators,
+    damage pair both-or-neither-null, durability_current maintaining
+    is_broken == (durability == 0)); definition-side artifact-only
+    (not-artifact refusal; rename re-runs the unique-name law excluding
+    self, name-taken on collision). Unknown key refuses the whole request;
+    no partial application; item_type not editable.
+  * equip_item (#288): candidates via equip_candidates; explicit slot
+    validated against valid_slots (bad-slot); free candidate wins; minimal
+    candidates deduped by displaced-set — >1 distinct set = 'ambiguous'
+    naming each option (slot + item + id); one set proceeds even at size 2
+    (two-hander = one option, not ambiguity). Structural rules hold;
+    protective guards yield; re-soulbind; ONE rescale; outfit_snapshot
+    never touched.
+  * unequip_item (#288): not-equipped guard only; cursed comes off;
+    over-capacity accepted (#275); curse effects untouched; snapshot
+    untouched.
+- Consumer-side inheritance confirmed: new kinds draw MC records and the
+  kill switch with zero extra wiring.
+
+Bot side:
+- sudo_bot.py: cmd_run normalizes --url once (rstrip('/') — #292); refused-
+  login warning appends the Location header (the double-slash tell).
+  QUERY_KINDS/ACTION_KINDS grown to 8/10; six TOOLS schemas mirroring the
+  door shapes (_execute_tool unchanged — verified generic); system prompt
+  extended with the two item laws (resolve via inventory/item before any
+  write, never guess an id; destructive/mutating actions on explicitly
+  admin-named targets only — ambiguity relayed, never picked).
+- mc_door_agent.py: kind tuples appended (REPL generic, no other change).
+- agents/botctl.py (#295, NEW, executable): stdlib-only, system-python-3.9
+  compatible, list-argv, never shell=True, self-locating (repo root from
+  __file__ — the copy you run is the checkout it manages). Targets prod
+  (https://games.magrathea.com) / dev (https://emma.private.magrathea.com
+  + --insecure, dev only) in one constants block, both rstripped at use.
+  Per-bot derivation (module/log/key file); key in child env only; start/
+  stop gated on bounded ~10s status polls + short log tail; status passes
+  the bot's exit code through; missing venv names its exact fix, never
+  auto-installs. Operator's $HOME wrappers untouched (operator retires
+  them personally).
+
+Architecture doc (last, gated — all verification passing first):
+- Updated in place: header hash 37deb96 -> bf9c6a4, new Version 25.7
+  changelog paragraph, §4.22 heading + queries + new item-actions
+  paragraph, §4.23 #292 + tools + prompt laws, NEW §4.24 (botctl).
+
+--------------------------------------------------------------------------------
+VERIFICATION (brief §7 — all four legs passed)
+--------------------------------------------------------------------------------
+1. Full in-container suite: 840 tests, OK (path form via docker exec).
+   Up from 807 at session start (33 new door tests). Re-run green on the
+   deployed dev build after the final make deploy-dev.
+2. make deploy-dev: clean; migrate a no-op by design (no migration shipped).
+3. Driver spot-checks (mc_door_agent.py as agent-smith against dev, item
+   3480 seeded onto Stubtester via generate_item_instance):
+   inventory (count 1, flags) -> item (full fidelity) -> edit_item mk_tier
+   1->3 (raw set; rolled stats untouched) -> item (mk 3) -> remove_item
+   (definition_removed false) -> inventory (count 0). All six frames drew
+   MCEvent records attributed to agent-smith (agent_query/agent_action,
+   ok=True), persisted by mc-persister.
+4. botctl.py dev cycle: status (down, exit 1) -> start (bot logged in as
+   agent-sudo, attached; exit 0) -> status (running, exit 0) -> stop
+   (SIGTERM, gated poll, clean shutdown; exit 0) -> status (down, exit 1).
+   Honest exit codes throughout. restart/status/tail additionally proven
+   in operator playtest (checklist item 9).
+
+--------------------------------------------------------------------------------
+ISSUES
+--------------------------------------------------------------------------------
+Closed (gated on verification, all with shipped-receipt comments,
+2026-08-25): #287 (remove_item, founding), #293 (inventory/item queries),
+#288 (equip_item/unequip_item + extraction), #289 (edit_item),
+#292 (bot URL normalization), #295 (botctl.py).
+Milestone Version 25.7: all six members closed 6/6.
+
+Filed during the playtest window (design-lane, not this release's scope):
+- #296 — sudo inventory reports unreadable comma prose; answer path needs a
+  game-rendered report delivery (operator-directed filing; no code change
+  made, per "change nothing for now").
+- #297 — curse system live loop unbuilt; needed for new zones; rule with
+  #80 (operator-directed filing from the playtest-window conversation).
+
+--------------------------------------------------------------------------------
+DEVIATIONS
+--------------------------------------------------------------------------------
+None against the brief's spec. Implementation notes (recorded, not
+deviations):
+- _edit_item's artifact-check local is named artifact_rarity, not
+  is_artifact: the field-removal literal scan (test_npc_voice
+  FieldRemovalTests, #146) forbids the removed field's exact spelling in
+  app sources.
+- The cmd_equip extraction forced ZERO test edits (the brief's expected-none
+  expectation held).
+- Worktree agents runtime provisioned for §7.4 on explicit in-conversation
+  operator approval: venv created (python3 -m venv + pip install -r
+  agents/requirements.txt) and .secrets copied from the main checkout
+  (file copy only; no credential values read, printed, or logged).
+
+--------------------------------------------------------------------------------
+PENDING DEPLOY-TIME ACTIONS
+--------------------------------------------------------------------------------
+NONE. No migration, no seed, no production-side data action. Production
+receives this release as code alone at the closeout tail's make deploy-prod.
+(Prod bot restart after deploy is the operator's standing action, outside
+this brief's scope. The prod checkout needs no new provisioning: botctl.py
+arrives with the merge; the existing main-checkout venv and .secrets
+already satisfy it.)
+
+--------------------------------------------------------------------------------
+DEV-STACK STATE AT SESSION END
+--------------------------------------------------------------------------------
+Local dev stack running the 25.7-DEV build (last make deploy-dev
+2026-08-25, post-implementation); suite 840 green on that build; sudo bot
+stopped (started/stopped via botctl during verification and operator
+playtest). Transient dev data: driver-check item 3480 created and removed
+by the check itself; operator playtest artifacts as the operator left them.
+
+Session ended via the implementation-session-end ritual; issues report
+committed on the branch as the formal end artifact (the commit following
+this report's).
+================================================================================

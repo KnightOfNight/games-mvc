@@ -29,8 +29,10 @@ from apps.shyland.forms import CharacterCreationForm
 from apps.shyland.item_utils import carry_capacity
 from apps.shyland.mc_consumer import MC_PROTOCOL, MCEgressConsumer
 from apps.shyland.models import (
-    RESERVED_BOT_NAMES, Archetype, Character, CombatSession, ItemDefinition,
-    ItemInstance, NpcDefinition, Origin, RoomVisit,
+    RESERVED_BOT_NAMES, Archetype, Character, CombatSession,
+    EffectComponent, EffectComponentInstance, EffectDefinition,
+    EffectInstance, ItemDefinition, ItemInstance, NpcDefinition, Origin,
+    RoomVisit,
 )
 from apps.shyland.tests.test_mc_egress import FakeEgressClient, make_agent
 from apps.shyland.tests.test_mc_kill_switch import engage_switch
@@ -960,3 +962,863 @@ class BotNameReservationTests(TestCase):
                 Character.objects.filter(name__iexact=name).exists())
             self.assertFalse(
                 NpcDefinition.objects.filter(name__iexact=name).exists())
+
+
+# ----------------------------------------------------------------------
+# Granular item control (v25.7 — #287/#288/#289/#293)
+# ----------------------------------------------------------------------
+
+def make_carried(prefix, char, name, item_type='accessory', slots=None,
+                 **inst_kwargs):
+    """One owned instance over its own definition."""
+    defn = make_equippable(prefix, name, item_type,
+                           ['NECK'] if slots is None else slots)
+    return ItemInstance.objects.create(
+        definition=defn, owner=char, mk_tier=1, rarity='common',
+        **inst_kwargs)
+
+
+def make_cursed(prefix, char, item):
+    """Wire a live curse onto an instance the way the admin would:
+    ``active_curse`` is admin-set data (no code path populates it)."""
+    effect_defn = EffectDefinition.objects.create(
+        name=f'{prefix} Test Curse', slug=f'{prefix}-test-curse')
+    component = EffectComponent.objects.create(
+        definition=effect_defn, component_type='curse_generic',
+        magnitude_base=1.0)
+    instance = EffectInstance.objects.create(
+        definition=effect_defn, target=char)
+    EffectComponentInstance.objects.create(
+        effect_instance=instance, component=component, magnitude=1.0)
+    item.is_cursed = True
+    item.active_curse = instance
+    item.save()
+    return instance
+
+
+def pin_bars(char):
+    """The strip/dress bar-law fixture shape: clean fractions."""
+    Character.objects.filter(pk=char.pk).update(
+        vitality_current=50, vitality_max=100,
+        longevity_current=30, longevity_max=100)
+
+
+def bar_fractions(char):
+    char.refresh_from_db()
+    return (char.vitality_current / char.vitality_max,
+            char.longevity_current / char.longevity_max)
+
+
+class DoorInventoryQueryTests(DoorTestBase):
+
+    async def test_roster_equipped_and_carried_uncapped(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_inv')
+
+        def build():
+            worn = make_carried('door_inv', char, 'Test Torc',
+                                is_equipped=True, equipped_slot='NECK')
+            bulk_defn = make_equippable('door_inv', 'Test Invpebble',
+                                        'material', [])
+            carried = [
+                ItemInstance.objects.create(
+                    definition=bulk_defn, owner=char, mk_tier=1,
+                    rarity='common')
+                for _ in range(51)
+            ]
+            return worn, carried
+        worn, carried = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'i1', 'q': 'inventory',
+                'params': {'name': char.name}})
+            self.assertTrue(result['ok'])
+            data = result['data']
+            self.assertEqual(data['character_id'], char.pk)
+            self.assertEqual(data['character_name'], char.name)
+            # Uncapped: 52 > ITEMS_CAP, every instance present.
+            self.assertEqual(data['count'], 52)
+            self.assertEqual(len(data['items']), 52)
+            self.assertNotIn('truncated', data)
+            rows = {row['id']: row for row in data['items']}
+            self.assertEqual(set(rows),
+                             {worn.pk} | {i.pk for i in carried})
+            worn_row = rows[worn.pk]
+            self.assertEqual(worn_row['name'], 'Test Torc')
+            self.assertEqual(worn_row['item_type'], 'accessory')
+            self.assertEqual(worn_row['mk_tier'], 1)
+            self.assertEqual(worn_row['rarity'], 'common')
+            self.assertEqual(worn_row['durability_current'], 100.0)
+            self.assertFalse(worn_row['is_broken'])
+            self.assertFalse(worn_row['is_soulbound'])
+            self.assertTrue(worn_row['is_equipped'])
+            self.assertEqual(worn_row['equipped_slot'], 'NECK')
+            carried_row = rows[carried[0].pk]
+            self.assertFalse(carried_row['is_equipped'])
+            self.assertEqual(carried_row['equipped_slot'], '')
+
+    async def test_unknown_character_not_found(self):
+        agent = await sync_to_async(make_agent)('door_inv2')
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'i1', 'q': 'inventory',
+                'params': {'name': 'Nobody Such'}})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-found')
+
+    async def test_empty_inventory_count_zero(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_inv3')
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'i1', 'q': 'inventory',
+                'params': {'name': char.name}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data']['count'], 0)
+            self.assertEqual(result['data']['items'], [])
+
+
+class DoorItemQueryTests(DoorTestBase):
+
+    async def test_full_fidelity_true_state(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_itq')
+
+        def build():
+            item = make_carried(
+                'door_itq', char, 'Test Veiled Band',
+                rolled_primary_stats=[{'stat': 'str', 'value': 3}],
+                rolled_secondary_stats=[{'stat': 'crit_chance', 'value': 1}],
+                is_identified=False, is_unidentifiable=True)
+            make_cursed('door_itq', char, item)
+            return item
+        item = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'q1', 'q': 'item',
+                'params': {'item_id': item.pk}})
+            self.assertTrue(result['ok'])
+            data = result['data']
+            # True state: the definition's real name despite the veil,
+            # curse and identification flags exactly as stored.
+            self.assertEqual(data['name'], 'Test Veiled Band')
+            self.assertEqual(data['rolled_primary_stats'],
+                             [{'stat': 'str', 'value': 3}])
+            self.assertEqual(data['rolled_secondary_stats'],
+                             [{'stat': 'crit_chance', 'value': 1}])
+            self.assertIsNone(data['damage_midpoint'])
+            self.assertIsNone(data['damage_spread'])
+            self.assertTrue(data['is_cursed'])
+            self.assertFalse(data['curse_identified'])
+            self.assertFalse(data['is_identified'])
+            self.assertTrue(data['is_unidentifiable'])
+            self.assertEqual(data['owner'],
+                             {'id': char.pk, 'name': char.name})
+            self.assertIsNone(data['room'])
+
+    async def test_room_floor_instance_owner_null_room_present(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_itq2')
+
+        def build():
+            defn = make_equippable('door_itq2', 'Test Floor Coin',
+                                   'material', [])
+            return ItemInstance.objects.create(
+                definition=defn, current_room=room_a, mk_tier=1,
+                rarity='common')
+        item = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'q1', 'q': 'item',
+                'params': {'item_id': item.pk}})
+            self.assertTrue(result['ok'])
+            self.assertIsNone(result['data']['owner'])
+            self.assertEqual(result['data']['room']['id'], room_a.id)
+            self.assertEqual(result['data']['room']['zone'], zone.name)
+
+    async def test_unknown_id_not_found(self):
+        agent = await sync_to_async(make_agent)('door_itq3')
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'query', 'id': 'q1', 'q': 'item',
+                'params': {'item_id': 999999}})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-found')
+
+
+class DoorItemWriteAddressingTests(DoorTestBase):
+    """The §4 shared addressing law across every write kind."""
+
+    WRITE_FRAMES = (
+        ('remove_item', {}),
+        ('edit_item', {'changes': {'mk_tier': 2}}),
+        ('equip_item', {}),
+        ('unequip_item', {}),
+    )
+
+    async def test_wrong_owner_refused_on_every_write_kind(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_own')
+        other = await sync_to_async(make_character)('door_own2', room_b)
+        item = await sync_to_async(make_carried)(
+            'door_own', other, 'Test Other Band')
+        floor = await sync_to_async(
+            lambda: ItemInstance.objects.create(
+                definition=make_equippable('door_own', 'Test Floor Band',
+                                           'accessory', ['NECK']),
+                current_room=room_a, mk_tier=1, rarity='common'))()
+        async with self.door(agent) as comm:
+            for act, extra in self.WRITE_FRAMES:
+                for target, state_word in ((item, other.name),
+                                           (floor, 'no character')):
+                    result = await request(comm, {
+                        'type': 'action', 'id': f'{act}-{target.pk}',
+                        'act': act,
+                        'params': dict({'name': char.name,
+                                        'item_id': target.pk}, **extra)})
+                    self.assertFalse(result['ok'], act)
+                    self.assertEqual(result['error'], 'not-owner', act)
+                    # The detail names the actual state.
+                    self.assertIn(state_word, result['detail'], act)
+
+    async def test_stale_id_not_found_on_every_write_kind(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_stale')
+        async with self.door(agent) as comm:
+            for act, extra in self.WRITE_FRAMES:
+                result = await request(comm, {
+                    'type': 'action', 'id': f's-{act}', 'act': act,
+                    'params': dict({'name': char.name, 'item_id': 999999},
+                                   **extra)})
+                self.assertFalse(result['ok'], act)
+                self.assertEqual(result['error'], 'not-found', act)
+
+    async def test_malformed_params_bad_params(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_mal')
+        item = await sync_to_async(make_carried)(
+            'door_mal', char, 'Test Malformed Band')
+        async with self.door(agent) as comm:
+            frames = (
+                # item_id missing / non-int.
+                {'act': 'remove_item', 'params': {'name': char.name}},
+                {'act': 'remove_item',
+                 'params': {'name': char.name, 'item_id': 'seven'}},
+                # changes missing / empty / not an object.
+                {'act': 'edit_item',
+                 'params': {'name': char.name, 'item_id': item.pk}},
+                {'act': 'edit_item',
+                 'params': {'name': char.name, 'item_id': item.pk,
+                            'changes': {}}},
+                {'act': 'edit_item',
+                 'params': {'name': char.name, 'item_id': item.pk,
+                            'changes': 'mk_tier'}},
+                # slot present but not a string.
+                {'act': 'equip_item',
+                 'params': {'name': char.name, 'item_id': item.pk,
+                            'slot': 7}},
+                # character name missing.
+                {'act': 'unequip_item', 'params': {'item_id': item.pk}},
+            )
+            for n, frame in enumerate(frames):
+                result = await request(comm, {
+                    'type': 'action', 'id': f'm{n}', 'act': frame['act'],
+                    'params': frame['params']})
+                self.assertFalse(result['ok'], frame)
+                self.assertEqual(result['error'], 'bad-params', frame)
+
+
+class DoorRemoveItemTests(DoorTestBase):
+
+    async def _create_artifact(self, comm, char, spec, frame_id='ca'):
+        return await request(comm, {
+            'type': 'action', 'id': frame_id, 'act': 'create_artifact',
+            'params': {'to': char.name, 'spec': spec}})
+
+    async def test_ordinary_removal_definition_survives(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_rm1')
+        item = await sync_to_async(make_carried)(
+            'door_rm1', char, 'Test Doomed Band')
+        defn_pk = item.definition_id
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'r1', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': item.pk}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item.pk,
+                              'definition_removed': False})
+        self.assertFalse(await sync_to_async(
+            ItemInstance.objects.filter(pk=item.pk).exists)())
+        self.assertTrue(await sync_to_async(
+            ItemDefinition.objects.filter(pk=defn_pk).exists)())
+
+    async def test_artifact_removal_frees_the_name(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_rm2')
+        async with self.door(agent) as comm:
+            spec = full_weapon_spec('Test Reforged Blade')
+            result = await self._create_artifact(comm, char, spec, 'c1')
+            self.assertTrue(result['ok'])
+            item_id = result['data']['item_id']
+            defn_id = result['data']['definition_id']
+            result = await request(comm, {
+                'type': 'action', 'id': 'r1', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': item_id}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item_id,
+                              'definition_removed': True})
+            self.assertFalse(await sync_to_async(
+                ItemDefinition.objects.filter(pk=defn_id).exists)())
+            self.assertFalse(await sync_to_async(
+                ItemInstance.objects.filter(pk=item_id).exists)())
+            # The freed-name law: the same name creates again.
+            result = await self._create_artifact(comm, char, spec, 'c2')
+            self.assertTrue(result['ok'],
+                            'Removed artifact name must be re-authorable.')
+
+    async def test_equipped_target_rescales_bars(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_rm3')
+
+        def build():
+            item = make_carried(
+                'door_rm3', char, 'Test End Cuirass', item_type='armor',
+                slots=['CHEST'], is_equipped=True, equipped_slot='CHEST',
+                rolled_primary_stats=[{'stat': 'end', 'value': 5}])
+            pin_bars(char)
+            return item
+        item = await sync_to_async(build)()
+        vit_before, lon_before = await sync_to_async(bar_fractions)(char)
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'r1', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': item.pk}})
+            self.assertTrue(result['ok'])
+        # The bar law: fill fraction invariant under the max change.
+        vit_after, lon_after = await sync_to_async(bar_fractions)(char)
+        self.assertLess(abs(vit_after - vit_before), 0.01)
+        self.assertLess(abs(lon_after - lon_before), 0.01)
+
+    async def test_cursed_target_curse_ends_with_the_item(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_rm4')
+
+        def build():
+            item = make_carried('door_rm4', char, 'Test Cursed Band')
+            curse = make_cursed('door_rm4', char, item)
+            return item, curse
+        item, curse = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'r1', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': item.pk}})
+            self.assertTrue(result['ok'])
+
+        def state():
+            curse.refresh_from_db()
+            component = curse.component_instances.get()
+            return (curse.is_active, curse.removed_by,
+                    component.is_active, component.removed_by)
+        ei_active, ei_by, ci_active, ci_by = await sync_to_async(state)()
+        self.assertFalse(ei_active)
+        self.assertEqual(ei_by, 'item-removed')
+        self.assertFalse(ci_active)
+        self.assertEqual(ci_by, 'item-removed')
+
+    async def test_online_narration_events_and_offline_silence(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_rm5')
+
+        def build():
+            carried = make_carried('door_rm5', char, 'Test Plain Band')
+            worn = make_carried(
+                'door_rm5', char, 'Test Worn Band', slots=['NECK'],
+                is_equipped=True, equipped_slot='NECK')
+            return carried, worn
+        carried, worn = await sync_to_async(build)()
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            await request(comm, {
+                'type': 'action', 'id': 'r1', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': carried.pk}})
+            group, event = layer.sent[0]
+            self.assertEqual(group, f'player_{char.pk}')
+            self.assertEqual(
+                event['text'],
+                'An admin has taken the Test Plain Band Mk 1 from you.')
+            self.assertEqual(event['category'], 'system')
+            # Unequipped target: no status refresh rides along.
+            self.assertNotIn('event', event)
+            await request(comm, {
+                'type': 'action', 'id': 'r2', 'act': 'remove_item',
+                'params': {'name': char.name, 'item_id': worn.pk}})
+            group, event = layer.sent[1]
+            self.assertEqual(event['event'], 'refresh_status')
+        # Offline: the mutation lands silently.
+        other = await sync_to_async(make_character)('door_rm5b', room_b)
+        silent = await sync_to_async(make_carried)(
+            'door_rm5', other, 'Test Silent Band')
+        layer2 = RecordingLayer()
+        async with self.door(agent, FakeDoorClient(), layer2) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'r3', 'act': 'remove_item',
+                'params': {'name': other.name, 'item_id': silent.pk}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(layer2.sent, [])
+
+
+class DoorEditItemTests(DoorTestBase):
+
+    async def _create_artifact(self, comm, char, spec, frame_id='ca'):
+        return await request(comm, {
+            'type': 'action', 'id': frame_id, 'act': 'create_artifact',
+            'params': {'to': char.name, 'spec': spec}})
+
+    async def _edit(self, comm, char, item_id, changes, frame_id='e1'):
+        return await request(comm, {
+            'type': 'action', 'id': frame_id, 'act': 'edit_item',
+            'params': {'name': char.name, 'item_id': item_id,
+                       'changes': changes}})
+
+    async def test_mk_tier_raw_set_lands(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed1')
+        item = await sync_to_async(make_carried)(
+            'door_ed1', char, 'Test Tunable Band',
+            rolled_primary_stats=[{'stat': 'str', 'value': 3}])
+        async with self.door(agent) as comm:
+            result = await self._edit(comm, char, item.pk, {'mk_tier': 3})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item.pk, 'changed': ['mk_tier'],
+                              'definition_changed': False})
+        await sync_to_async(item.refresh_from_db)()
+        self.assertEqual(item.mk_tier, 3)
+        # Raw set: nothing re-rolls.
+        self.assertEqual(item.rolled_primary_stats,
+                         [{'stat': 'str', 'value': 3}])
+
+    async def test_unknown_key_refuses_whole(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed2')
+        item = await sync_to_async(make_carried)(
+            'door_ed2', char, 'Test Guarded Band')
+        async with self.door(agent) as comm:
+            result = await self._edit(
+                comm, char, item.pk, {'mk_tier': 5, 'bogus_key': 1})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'bad-params')
+            self.assertIn('bogus_key', result['detail'])
+        await sync_to_async(item.refresh_from_db)()
+        # No partial application: the whitelisted key did not land.
+        self.assertEqual(item.mk_tier, 1)
+
+    async def test_definition_key_on_non_artifact_refused(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed3')
+        item = await sync_to_async(make_carried)(
+            'door_ed3', char, 'Test Template Band')
+        async with self.door(agent) as comm:
+            result = await self._edit(
+                comm, char, item.pk, {'name': 'Test Renamed Band'})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-artifact')
+
+    async def test_artifact_rename_collision_and_self_rename(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed4')
+        await sync_to_async(make_equippable)(
+            'door_ed4', 'Test Occupied Blade', 'weapon', ['MAIN_HAND'])
+        async with self.door(agent) as comm:
+            result = await self._create_artifact(
+                comm, char, full_weapon_spec('Test Protean Blade'))
+            self.assertTrue(result['ok'])
+            item_id = result['data']['item_id']
+            defn_id = result['data']['definition_id']
+            # Rename: name and slug both move.
+            result = await self._edit(
+                comm, char, item_id, {'name': 'Test Shifted Blade'}, 'e1')
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item_id, 'changed': ['name'],
+                              'definition_changed': True})
+            defn = await sync_to_async(ItemDefinition.objects.get)(pk=defn_id)
+            self.assertEqual(defn.name, 'Test Shifted Blade')
+            self.assertEqual(defn.slug, 'test-shifted-blade')
+            # Collision (case-insensitive) refuses.
+            result = await self._edit(
+                comm, char, item_id, {'name': 'test occupied blade'}, 'e2')
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'name-taken')
+            # Self-rename to the same name is allowed.
+            result = await self._edit(
+                comm, char, item_id, {'name': 'Test Shifted Blade'}, 'e3')
+            self.assertTrue(result['ok'])
+
+    async def test_durability_zero_sets_broken(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed5')
+        item = await sync_to_async(make_carried)(
+            'door_ed5', char, 'Test Brittle Band')
+        async with self.door(agent) as comm:
+            result = await self._edit(
+                comm, char, item.pk, {'durability_current': 0})
+            self.assertTrue(result['ok'])
+            await sync_to_async(item.refresh_from_db)()
+            self.assertEqual(item.durability_current, 0.0)
+            self.assertTrue(item.is_broken)
+            result = await self._edit(
+                comm, char, item.pk, {'durability_current': 40.5}, 'e2')
+            self.assertTrue(result['ok'])
+            await sync_to_async(item.refresh_from_db)()
+            self.assertEqual(item.durability_current, 40.5)
+            self.assertFalse(item.is_broken)
+
+    async def test_equipped_edit_rescales_bars_and_refreshes(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_ed6')
+
+        def build():
+            item = make_carried(
+                'door_ed6', char, 'Test Growth Cuirass', item_type='armor',
+                slots=['CHEST'], is_equipped=True, equipped_slot='CHEST',
+                rolled_primary_stats=[{'stat': 'end', 'value': 5}])
+            pin_bars(char)
+            return item
+        item = await sync_to_async(build)()
+        vit_before, lon_before = await sync_to_async(bar_fractions)(char)
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            result = await self._edit(
+                comm, char, item.pk,
+                {'rolled_primary_stats': [{'stat': 'end', 'value': 25}]})
+            self.assertTrue(result['ok'])
+            group, event = layer.sent[0]
+            self.assertEqual(
+                event['text'],
+                'An admin has altered the Test Growth Cuirass Mk 1.')
+            self.assertEqual(event['event'], 'refresh_status')
+        vit_after, lon_after = await sync_to_async(bar_fractions)(char)
+        self.assertLess(abs(vit_after - vit_before), 0.01)
+        self.assertLess(abs(lon_after - lon_before), 0.01)
+        await sync_to_async(item.refresh_from_db)()
+        self.assertEqual(item.rolled_primary_stats,
+                         [{'stat': 'end', 'value': 25}])
+
+
+class DoorEquipItemTests(DoorTestBase):
+
+    async def _equip(self, comm, char, item_id, slot=None, frame_id='q1'):
+        params = {'name': char.name, 'item_id': item_id}
+        if slot is not None:
+            params['slot'] = slot
+        return await request(comm, {
+            'type': 'action', 'id': frame_id, 'act': 'equip_item',
+            'params': params})
+
+    async def test_free_slot_auto(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq1')
+        item = await sync_to_async(make_carried)(
+            'door_eq1', char, 'Test Free Torc')
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, item.pk)
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item.pk, 'slot': 'NECK',
+                              'displaced': []})
+        await sync_to_async(item.refresh_from_db)()
+        self.assertTrue(item.is_equipped)
+        self.assertEqual(item.equipped_slot, 'NECK')
+
+    async def test_explicit_slot_displaces_that_occupant(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq2')
+
+        def build():
+            occupant = make_carried(
+                'door_eq2', char, 'Test Neck Holder', slots=['NECK'],
+                is_equipped=True, equipped_slot='NECK')
+            item = make_carried('door_eq2', char, 'Test Twin Band',
+                                slots=['NECK', 'WAIST'])
+            return occupant, item
+        occupant, item = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, item.pk, slot='NECK')
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'item_id': item.pk, 'slot': 'NECK',
+                              'displaced': [occupant.pk]})
+
+        def state():
+            occupant.refresh_from_db()
+            item.refresh_from_db()
+        await sync_to_async(state)()
+        self.assertFalse(occupant.is_equipped)
+        self.assertEqual(occupant.equipped_slot, '')
+        self.assertTrue(item.is_equipped)
+        self.assertEqual(item.equipped_slot, 'NECK')
+
+    async def test_invalid_slot_and_unequippable(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq3')
+        item = await sync_to_async(make_carried)(
+            'door_eq3', char, 'Test Slotted Torc')
+        lump = await sync_to_async(make_carried)(
+            'door_eq3', char, 'Test Slotless Lump', item_type='material',
+            slots=[])
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, item.pk, slot='HEAD')
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'bad-slot')
+            self.assertIn('NECK', result['detail'])
+            result = await self._equip(comm, char, lump.pk, frame_id='q2')
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'bad-slot')
+
+    async def test_two_rings_full_is_ambiguous_naming_both(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq4')
+
+        def build():
+            ring_defn = make_equippable('door_eq4', 'Test Ring',
+                                        'accessory', ['RING'])
+            worn = [
+                ItemInstance.objects.create(
+                    definition=ring_defn, owner=char, mk_tier=1,
+                    rarity='common', is_equipped=True, equipped_slot='RING')
+                for _ in range(2)
+            ]
+            third = ItemInstance.objects.create(
+                definition=ring_defn, owner=char, mk_tier=1, rarity='common')
+            return worn, third
+        worn, third = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, third.pk)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'ambiguous')
+            # Structured enough to act on: both options named with ids.
+            for option in worn:
+                self.assertIn(f'(id {option.pk})', result['detail'])
+        await sync_to_async(third.refresh_from_db)()
+        self.assertFalse(third.is_equipped)
+
+    async def test_displaces_cursed_occupant_admin_style(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq5')
+
+        def build():
+            occupant = make_carried(
+                'door_eq5', char, 'Test Cursed Holder', slots=['NECK'],
+                is_equipped=True, equipped_slot='NECK', is_cursed=True)
+            item = make_carried('door_eq5', char, 'Test Clean Torc')
+            return occupant, item
+        occupant, item = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, item.pk)
+            self.assertTrue(
+                result['ok'],
+                'Protective guards yield admin-side: cursed comes off.')
+            self.assertEqual(result['data']['displaced'], [occupant.pk])
+        await sync_to_async(occupant.refresh_from_db)()
+        self.assertFalse(occupant.is_equipped)
+
+    async def test_two_hander_displaces_both_hands(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq6')
+
+        def build():
+            main = make_carried(
+                'door_eq6', char, 'Test Main Saber', item_type='weapon',
+                slots=['MAIN_HAND'], is_equipped=True,
+                equipped_slot='MAIN_HAND')
+            off = make_carried(
+                'door_eq6', char, 'Test Off Dagger', item_type='weapon',
+                slots=['OFF_HAND'], is_equipped=True,
+                equipped_slot='OFF_HAND')
+            two_hander_defn = make_equippable(
+                'door_eq6', 'Test Great Maul', 'weapon', ['MAIN_HAND'],
+                is_two_handed=True)
+            maul = ItemInstance.objects.create(
+                definition=two_hander_defn, owner=char, mk_tier=1,
+                rarity='common')
+            return main, off, maul
+        main, off, maul = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, maul.pk)
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data']['slot'], 'MAIN_HAND')
+            self.assertEqual(set(result['data']['displaced']),
+                             {main.pk, off.pk})
+
+        def state():
+            main.refresh_from_db()
+            off.refresh_from_db()
+            maul.refresh_from_db()
+        await sync_to_async(state)()
+        self.assertFalse(main.is_equipped)
+        self.assertFalse(off.is_equipped)
+        self.assertTrue(maul.is_equipped)
+
+    async def test_re_soulbind_snapshot_untouched_and_narration(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq7')
+        sentinel = [{'instance_id': 999999, 'slot': 'HEAD'}]
+
+        def build():
+            item = make_carried('door_eq7', char, 'Test Binding Torc')
+            Character.objects.filter(pk=char.pk).update(
+                outfit_snapshot=sentinel)
+            return item
+        item = await sync_to_async(build)()
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            result = await self._equip(comm, char, item.pk)
+            self.assertTrue(result['ok'])
+            group, event = layer.sent[0]
+            self.assertEqual(
+                event['text'],
+                'An admin has equipped the Test Binding Torc Mk 1 on you.')
+            self.assertEqual(event['event'], 'refresh_status')
+
+        def state():
+            item.refresh_from_db()
+            char.refresh_from_db()
+        await sync_to_async(state)()
+        # Byte-consistent with equip_item/_dress: equip re-soulbinds.
+        self.assertTrue(item.is_soulbound)
+        self.assertEqual(item.soulbound_to_id, char.pk)
+        # outfit_snapshot is never read, written, or consumed.
+        self.assertEqual(char.outfit_snapshot, sentinel)
+
+    async def test_already_equipped_refused(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_eq8')
+        item = await sync_to_async(make_carried)(
+            'door_eq8', char, 'Test Settled Torc', is_equipped=True,
+            equipped_slot='NECK')
+        async with self.door(agent) as comm:
+            result = await self._equip(comm, char, item.pk)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'already-equipped')
+
+
+class DoorUnequipItemTests(DoorTestBase):
+
+    async def _unequip(self, comm, char, item_id, frame_id='u1'):
+        return await request(comm, {
+            'type': 'action', 'id': frame_id, 'act': 'unequip_item',
+            'params': {'name': char.name, 'item_id': item_id}})
+
+    async def test_happy_path_with_narration_and_snapshot_untouched(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_uq1')
+        sentinel = [{'instance_id': 999999, 'slot': 'HEAD'}]
+
+        def build():
+            item = make_carried(
+                'door_uq1', char, 'Test Shed Cuirass', item_type='armor',
+                slots=['CHEST'], is_equipped=True, equipped_slot='CHEST',
+                rolled_primary_stats=[{'stat': 'end', 'value': 5}])
+            Character.objects.filter(pk=char.pk).update(
+                outfit_snapshot=sentinel)
+            pin_bars(char)
+            return item
+        item = await sync_to_async(build)()
+        vit_before, lon_before = await sync_to_async(bar_fractions)(char)
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            result = await self._unequip(comm, char, item.pk)
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'], {'item_id': item.pk})
+            group, event = layer.sent[0]
+            self.assertEqual(
+                event['text'],
+                'An admin has unequipped the Test Shed Cuirass Mk 1; '
+                'it is in your inventory.')
+            self.assertEqual(event['category'], 'system')
+            self.assertEqual(event['event'], 'refresh_status')
+
+        def state():
+            item.refresh_from_db()
+            char.refresh_from_db()
+        await sync_to_async(state)()
+        self.assertFalse(item.is_equipped)
+        self.assertEqual(item.equipped_slot, '')
+        self.assertEqual(char.outfit_snapshot, sentinel)
+        vit_after, lon_after = await sync_to_async(bar_fractions)(char)
+        self.assertLess(abs(vit_after - vit_before), 0.01)
+        self.assertLess(abs(lon_after - lon_before), 0.01)
+
+    async def test_cursed_comes_off_effects_untouched(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_uq2')
+
+        def build():
+            item = make_carried(
+                'door_uq2', char, 'Test Clinging Band', is_equipped=True,
+                equipped_slot='NECK')
+            curse = make_cursed('door_uq2', char, item)
+            return item, curse
+        item, curse = await sync_to_async(build)()
+        async with self.door(agent) as comm:
+            result = await self._unequip(comm, char, item.pk)
+            self.assertTrue(result['ok'],
+                            'No protective guards: cursed comes off.')
+
+        def state():
+            item.refresh_from_db()
+            curse.refresh_from_db()
+        await sync_to_async(state)()
+        self.assertFalse(item.is_equipped)
+        # Unequip is not removal: the curse effects stay live.
+        self.assertTrue(curse.is_active)
+        self.assertEqual(curse.removed_by, '')
+        self.assertTrue(item.is_cursed)
+
+    async def test_not_equipped_refused(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_uq3')
+        item = await sync_to_async(make_carried)(
+            'door_uq3', char, 'Test Pocket Band')
+        async with self.door(agent) as comm:
+            result = await self._unequip(comm, char, item.pk)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-equipped')
+
+
+class DoorNewKindsKillSwitchTests(DoorTestBase):
+    """The consumer-level gate covers the v25.7 kinds — prove it."""
+
+    async def test_killed_switch_severs_new_query_kind_4503(self):
+        agent = await sync_to_async(make_agent)('door_nk1')
+        async with self.door(agent) as comm:
+            await sync_to_async(engage_switch)()
+            await comm.send_json_to({
+                'type': 'query', 'id': '1', 'q': 'inventory',
+                'params': {'name': 'anyone'}})
+            message = await comm.receive_output(timeout=10)
+            self.assertEqual(message['type'], 'websocket.close')
+            self.assertEqual(message['code'], 4503)
+
+    async def test_killed_switch_severs_new_action_kind_4503(self):
+        agent = await sync_to_async(make_agent)('door_nk2')
+        async with self.door(agent) as comm:
+            await sync_to_async(engage_switch)()
+            await comm.send_json_to({
+                'type': 'action', 'id': '1', 'act': 'remove_item',
+                'params': {'name': 'anyone', 'item_id': 1}})
+            message = await comm.receive_output(timeout=10)
+            self.assertEqual(message['type'], 'websocket.close')
+            self.assertEqual(message['code'], 4503)

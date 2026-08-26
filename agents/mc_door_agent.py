@@ -70,8 +70,9 @@ CLOSE_MEANINGS = {
 }
 
 QUERY_KINDS = ('commands', 'who_online', 'where_is', 'character', 'items',
-               'is_admin')
-ACTION_KINDS = ('answer', 'gift', 'create_artifact', 'strip', 'dress', 'move')
+               'is_admin', 'inventory', 'item')
+ACTION_KINDS = ('answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
+                'remove_item', 'edit_item', 'equip_item', 'unequip_item')
 
 
 def log(line):

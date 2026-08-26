@@ -83,9 +83,11 @@ CLOSE_MEANINGS = {
 }
 
 QUERY_KINDS = frozenset(
-    {'commands', 'who_online', 'where_is', 'character', 'items', 'is_admin'})
+    {'commands', 'who_online', 'where_is', 'character', 'items', 'is_admin',
+     'inventory', 'item'})
 ACTION_KINDS = frozenset(
-    {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move'})
+    {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
+     'remove_item', 'edit_item', 'equip_item', 'unequip_item'})
 
 log = logging.getLogger('sudo_bot')
 
@@ -101,6 +103,7 @@ ITEM_TYPES = ['weapon', 'armor', 'accessory', 'consumable', 'bag',
               'readable', 'key', 'material']
 GENRE_TAGS = ['fantasy', 'cyber', 'wasteland', 'gothic', 'steam', 'cosmic']
 GIFT_RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary']
+ALL_RARITIES = GIFT_RARITIES + ['artifact']
 SLOT_CODES = ['MAIN_HAND', 'OFF_HAND', 'RANGED', 'HEAD', 'NECK', 'SHOULDERS',
               'CHEST', 'HANDS', 'WAIST', 'LEGS', 'FEET', 'RING', 'BACK']
 
@@ -302,6 +305,165 @@ TOOLS = [
             'required': ['name'],
         },
     },
+    {
+        'name': 'inventory',
+        'description': ('Every item instance a character owns — carried '
+                        'and equipped both, uncapped: id, slug, name, '
+                        'item_type, Mk tier, rarity, durability, broken/'
+                        'soulbound/equipped flags and slot. The state '
+                        'report to consult before any item action; item '
+                        'writes take the instance ids this returns.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'name': {'type': 'string',
+                                    'description': 'Character name.'}},
+            'required': ['name'],
+        },
+    },
+    {
+        'name': 'item',
+        'description': ('One item instance at full fidelity by id: the '
+                        'roster fields plus rolled stats, damage pair, '
+                        'curse and identification true state (mystery '
+                        'veils do not apply to you), and holder context '
+                        '(owner or room).'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'item_id': {'type': 'integer',
+                                       'description': 'Instance id.'}},
+            'required': ['item_id'],
+        },
+    },
+    {
+        'name': 'remove_item',
+        'description': ('Destroy an item instance a character owns — '
+                        'destruction, never transfer. Any curse ends with '
+                        'the item. Removing an artifact deletes its '
+                        'definition too, freeing the unique name for '
+                        're-authoring. Takes the instance id from '
+                        'inventory; a stale id is refused.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string', 'description': 'Owner name.'},
+                'item_id': {'type': 'integer',
+                            'description': 'Instance id (from inventory).'},
+            },
+            'required': ['name', 'item_id'],
+        },
+    },
+    {
+        'name': 'edit_item',
+        'description': ('Raw-set fields on an owned item instance: the '
+                        "admin's values land exactly; nothing re-rolls. "
+                        'Instance fields (any item): mk_tier, rarity, '
+                        'rolled stats, damage pair (both or neither null), '
+                        'durability_current. Definition fields (artifacts '
+                        'only — ordinary definitions are shared '
+                        'templates): name, description, base_value, '
+                        'valid_slots, is_two_handed, armor_base, mystery '
+                        'fields, genre_tag; renames must stay unique. Any '
+                        'unknown key refuses the whole edit.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string', 'description': 'Owner name.'},
+                'item_id': {'type': 'integer',
+                            'description': 'Instance id (from inventory).'},
+                'changes': {
+                    'type': 'object',
+                    'description': 'Whitelisted fields to set, raw.',
+                    'properties': {
+                        'mk_tier': {'type': 'integer',
+                                    'description': 'Mk tier, >= 1.'},
+                        'rarity': {'type': 'string', 'enum': ALL_RARITIES},
+                        'rolled_primary_stats': {
+                            'type': 'array', 'items': _PRIMARY_STAT_ENTRY},
+                        'rolled_secondary_stats': {
+                            'type': 'array', 'items': _STAT_ENTRY},
+                        'damage_midpoint': {
+                            'type': ['number', 'null'],
+                            'description': 'Weapons; null clears the pair.'},
+                        'damage_spread': {
+                            'type': ['number', 'null'],
+                            'description': 'Weapons; null clears the pair.'},
+                        'durability_current': {
+                            'type': 'number',
+                            'description': '0-100; 0 marks the item broken.'},
+                        'name': {'type': 'string',
+                                 'description': 'Artifact definitions only; '
+                                                'unique, <= 200 chars, no '
+                                                'leading rarity word.'},
+                        'description': {'type': 'string',
+                                        'description': 'Artifact definitions '
+                                                       'only.'},
+                        'base_value': {'type': 'integer',
+                                       'description': 'Artifact definitions '
+                                                      'only; copper, >= 0.'},
+                        'valid_slots': {
+                            'type': 'array',
+                            'items': {'type': 'string', 'enum': SLOT_CODES},
+                            'description': 'Artifact definitions only.'},
+                        'is_two_handed': {'type': 'boolean',
+                                          'description': 'Artifact '
+                                                         'definitions only.'},
+                        'armor_base': {'type': 'number',
+                                       'description': 'Artifact armor '
+                                                      'definitions only.'},
+                        'mystery_name': {'type': 'string',
+                                         'description': 'Artifact '
+                                                        'definitions only.'},
+                        'mystery_description': {
+                            'type': 'string',
+                            'description': 'Artifact definitions only.'},
+                        'genre_tag': {'type': 'string', 'enum': GENRE_TAGS,
+                                      'description': 'Artifact definitions '
+                                                     'only.'},
+                    },
+                },
+            },
+            'required': ['name', 'item_id', 'changes'],
+        },
+    },
+    {
+        'name': 'equip_item',
+        'description': ('Equip a specific carried item by instance id, '
+                        'optionally into a named slot. Structural rules '
+                        'hold (valid slots, capacity, two-hander '
+                        'geometry); protective guards yield (a cursed '
+                        'occupant comes off, capacity is ignored). An '
+                        'ambiguous displacement is refused with the '
+                        'options — relay the choice to the admin or retry '
+                        'with an explicit slot. Equipping soulbinds to '
+                        'the wearer.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string', 'description': 'Owner name.'},
+                'item_id': {'type': 'integer',
+                            'description': 'Instance id (from inventory).'},
+                'slot': {'type': 'string', 'enum': SLOT_CODES,
+                         'description': 'Optional target slot.'},
+            },
+            'required': ['name', 'item_id'],
+        },
+    },
+    {
+        'name': 'unequip_item',
+        'description': ('Unequip a specific equipped item by instance id '
+                        'into the inventory. No protective guards: cursed '
+                        'comes off, over-capacity is accepted. Curse '
+                        'effects are untouched — unequip is not removal.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string', 'description': 'Owner name.'},
+                'item_id': {'type': 'integer',
+                            'description': 'Instance id (from inventory).'},
+            },
+            'required': ['name', 'item_id'],
+        },
+    },
 ]
 
 # sudo's persona and standing orders (brief §2 rules 5-7; decline
@@ -361,6 +523,16 @@ For artifact work, gather the design first — recipient, item type, Mk \
 tier, stats, name, lore — over as many turns as needed, and only call \
 create_artifact when the design is settled. For ordinary gifts, find the \
 definition with the items tool and use gift.
+
+Item work runs on instance ids. Always resolve items through inventory \
+(and item where detail matters) before proposing any item write — never \
+guess an id, never reuse one from an earlier turn without re-checking. \
+remove_item destroys (never transfers; a removed artifact's name frees); \
+edit_item sets values exactly as given; equip_item and unequip_item \
+bypass protective guards but never structural rules. Destructive and \
+mutating item actions act only on a target the admin explicitly named: \
+when a description matches several items, or an equip would displace one \
+of several, relay the options and ask — never pick for the admin.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
@@ -551,8 +723,13 @@ def django_login(base_url, username, password, verify):
     except requests.RequestException as exc:
         raise LoginError(f'login POST failed: {exc.__class__.__name__}')
     if resp.status_code != 302 or not session.cookies.get('sessionid'):
-        raise LoginError(
-            f'login refused for {username!r} (HTTP {resp.status_code})')
+        detail = f'login refused for {username!r} (HTTP {resp.status_code})'
+        # v25.7 (#292): the redirect target names the actual URL hit —
+        # a double-slash Location is the trailing-slash tell.
+        location = resp.headers.get('Location')
+        if location:
+            detail += f' (Location: {location})'
+        raise LoginError(detail)
     return '; '.join(f'{c.name}={c.value}' for c in session.cookies)
 
 
@@ -896,6 +1073,10 @@ def _refuse(message):
 
 
 def cmd_run(cfg):
+    # v25.7 (#292): normalize once at config time — a trailing slash on
+    # --url composes a double-slash login POST whose 302 masquerades as
+    # a credential failure. One rstrip covers login and WebSocket URLs.
+    cfg.url = cfg.url.rstrip('/')
     # Project convention: all log lines are UTC-stamped, marked with Z.
     logging.Formatter.converter = time.gmtime
     logging.basicConfig(

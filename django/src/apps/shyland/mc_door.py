@@ -27,10 +27,12 @@ from . import mc
 from .combat_utils import effective_stats, rescale_bars_for_gear
 from .consumers import DIRECTIONS, SkylandConsumer, parse_presence_name
 from .envelope import envelope_ts
-from .item_utils import SLOT_DISPLAY_NAMES, generate_item_instance, item_ref
+from .item_utils import (
+    SLOT_DISPLAY_NAMES, equip_candidates, generate_item_instance, item_ref,
+)
 from .models import (
-    Character, CombatSession, ItemDefinition, ItemInstance, Room,
-    record_room_visit_sync,
+    Character, CombatSession, EffectInstance, ItemDefinition, ItemInstance,
+    Room, record_room_visit_sync,
 )
 
 logger = logging.getLogger('shyland.mc')
@@ -273,6 +275,79 @@ def _is_admin(char):
 async def q_is_admin(params, agent_name):
     char = await _resolve_character(params)
     return {'is_admin': await _is_admin(char)}
+
+
+def _item_row(item):
+    """v25.7 (#293): the inventory-roster row — the shared field set the
+    ``inventory`` query lists and the ``item`` query extends. Names come
+    from the definition: admin reads show true state (the no-leak rule
+    governs world speech, which queries never touch)."""
+    d = item.definition
+    return {
+        'id': item.pk,
+        'slug': d.slug,
+        'name': d.name,
+        'item_type': d.item_type,
+        'mk_tier': item.mk_tier,
+        'rarity': item.rarity,
+        'durability_current': item.durability_current,
+        'is_broken': item.is_broken,
+        'is_soulbound': item.is_soulbound,
+        'is_equipped': item.is_equipped,
+        'equipped_slot': item.equipped_slot,
+    }
+
+
+@database_sync_to_async
+def _inventory_payload(char):
+    items = list(char.inventory.select_related('definition').order_by('pk'))
+    return {
+        'character_id': char.pk,
+        'character_name': char.name,
+        'count': len(items),
+        'items': [_item_row(i) for i in items],
+    }
+
+
+async def q_inventory(params, agent_name):
+    """v25.7 (#293): the owner-wide state report — uncapped, every
+    instance the character owns, equipped included (deliberately unlike
+    the player ``inventory`` command's protective pools). ``ITEMS_CAP``
+    remains a catalog (``items``) concern."""
+    char = await _resolve_character(params)
+    return await _inventory_payload(char)
+
+
+@database_sync_to_async
+def _item_payload(item_id):
+    item = (ItemInstance.objects
+            .select_related('definition', 'owner',
+                            'current_room__zone', 'current_room__area')
+            .filter(pk=item_id).first())
+    if item is None:
+        raise DoorError('not-found', f'No item instance with id {item_id}.')
+    row = _item_row(item)
+    row.update({
+        'rolled_primary_stats': item.rolled_primary_stats,
+        'rolled_secondary_stats': item.rolled_secondary_stats,
+        'damage_midpoint': item.damage_midpoint,
+        'damage_spread': item.damage_spread,
+        'is_cursed': item.is_cursed,
+        'curse_identified': item.curse_identified,
+        'is_identified': item.is_identified,
+        'is_unidentifiable': item.is_unidentifiable,
+        'owner': ({'id': item.owner_id, 'name': item.owner.name}
+                  if item.owner_id else None),
+        'room': _room_dict(item.current_room),
+    })
+    return row
+
+
+async def q_item(params, agent_name):
+    """v25.7 (#293/#289): one instance at full fidelity, true state —
+    curse and identification flags exactly as stored."""
+    item_id = _require_int(params.get('item_id'), 'item_id')
+    return await _item_payload(item_id)
 
 
 # ----------------------------------------------------------------------
@@ -724,6 +799,396 @@ async def a_move(params, agent_name):
 
 
 # ----------------------------------------------------------------------
+# Granular item control (v25.7 — #287/#288/#289/#293)
+# ----------------------------------------------------------------------
+
+def _owned_item(char, item_id):
+    """The shared write-path addressing law (§4 of the v25.7 brief):
+    the instance must exist and be owned by the named character — a
+    stale id is a refusal, never a guess. Sync; call inside the
+    handler's atomic block."""
+    item = (ItemInstance.objects
+            .select_related('definition', 'owner')
+            .filter(pk=item_id).first())
+    if item is None:
+        raise DoorError('not-found', f'No item instance with id {item_id}.')
+    if item.owner_id != char.pk:
+        if item.owner_id is None:
+            raise DoorError(
+                'not-owner',
+                f'Item {item_id} is owned by no character '
+                f'(room floor or corpse).')
+        raise DoorError(
+            'not-owner',
+            f'Item {item_id} is owned by {item.owner.name}, '
+            f'not {char.name}.')
+    return item
+
+
+@database_sync_to_async
+def _remove_item(char, item_id):
+    """#287: destruction, never transfer — the ``_strip`` posture (no
+    combat gate, no protective guards). An artifact removal deletes the
+    definition too (the CASCADE takes the instance), freeing the unique
+    name for re-authoring. The curse ends with the item (operator-ruled):
+    the death-teardown pattern applied to one effect."""
+    with transaction.atomic():
+        item = _owned_item(char, item_id)
+        ref = item_ref(item)
+        if item.active_curse_id is not None:
+            item.active_curse.component_instances.filter(
+                is_active=True).update(
+                    is_active=False, removed_by='item-removed')
+            EffectInstance.objects.filter(pk=item.active_curse_id).update(
+                is_active=False, removed_by='item-removed')
+        was_equipped = item.is_equipped
+        if item.rarity == ItemInstance.ARTIFACT:
+            item.definition.delete()
+            definition_removed = True
+        else:
+            item.delete()
+            definition_removed = False
+        if was_equipped:
+            # The bar law binds every max-changing mutation.
+            rescale_bars_for_gear(char)
+    return ref, was_equipped, definition_removed
+
+
+async def a_remove_item(params, agent_name):
+    char = await _resolve_character(params)
+    item_id = _require_int(params.get('item_id'), 'item_id')
+    ref, was_equipped, definition_removed = await _remove_item(char, item_id)
+    if await _presence_online(char.pk):
+        await _send_player_line(
+            char.pk, f'An admin has taken {ref} from you.', 'system',
+            agent_name=agent_name,
+            event='refresh_status' if was_equipped else None)
+    return {'item_id': item_id, 'definition_removed': definition_removed}
+
+
+# The #289 raw-set whitelists: the admin's values land exactly; nothing
+# re-rolls or re-derives. ``item_type`` is deliberately not editable.
+INSTANCE_EDIT_KEYS = frozenset({
+    'mk_tier', 'rarity', 'rolled_primary_stats', 'rolled_secondary_stats',
+    'damage_midpoint', 'damage_spread', 'durability_current',
+})
+ARTIFACT_DEFINITION_EDIT_KEYS = frozenset({
+    'name', 'description', 'base_value', 'valid_slots', 'is_two_handed',
+    'armor_base', 'mystery_name', 'mystery_description', 'genre_tag',
+})
+
+
+def _edit_instance_fields(item, changes):
+    if 'mk_tier' in changes:
+        item.mk_tier = _require_int(changes['mk_tier'], 'mk_tier', minimum=1)
+    if 'rarity' in changes:
+        rarity = changes['rarity']
+        if rarity not in {code for code, _ in ItemInstance.RARITY_CHOICES}:
+            raise DoorError('bad-params', f'Unknown rarity {rarity!r}.')
+        item.rarity = rarity
+    if 'rolled_primary_stats' in changes:
+        item.rolled_primary_stats = _validate_stat_entries(
+            changes['rolled_primary_stats'], 'rolled_primary_stats',
+            allow_floor=True)
+    if 'rolled_secondary_stats' in changes:
+        item.rolled_secondary_stats = _validate_stat_entries(
+            changes['rolled_secondary_stats'], 'rolled_secondary_stats',
+            allow_floor=False)
+    for key in ('damage_midpoint', 'damage_spread'):
+        if key in changes:
+            value = changes[key]
+            if value is not None:
+                if (isinstance(value, bool)
+                        or not isinstance(value, (int, float)) or value < 0):
+                    raise DoorError(
+                        'bad-params',
+                        f"'{key}' must be a number >= 0, or null.")
+                value = float(value)
+            setattr(item, key, value)
+    if (item.damage_midpoint is None) != (item.damage_spread is None):
+        raise DoorError(
+            'bad-params',
+            "'damage_midpoint' and 'damage_spread' must be both set or "
+            'both null after the edit.')
+    if 'durability_current' in changes:
+        value = changes['durability_current']
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not 0 <= value <= 100):
+            raise DoorError(
+                'bad-params',
+                "'durability_current' must be a number between 0 and 100.")
+        item.durability_current = float(value)
+        # The invariant the durability system maintains everywhere.
+        item.is_broken = (item.durability_current == 0)
+
+
+def _edit_definition_fields(item, defn, changes):
+    """Artifact-only definition edits, validated by the same rules
+    ``_validate_artifact_spec`` applies at creation. A rename re-runs
+    the unique-name law excluding the definition itself."""
+    if 'name' in changes:
+        name = changes['name']
+        if not isinstance(name, str) or not name.strip():
+            raise DoorError('bad-params', "'name' must be a non-empty string.")
+        name = name.strip()
+        if len(name) > 200:
+            raise DoorError('bad-params',
+                            "'name' must be at most 200 characters.")
+        if name.split()[0].lower() in RARITY_WORDS:
+            raise DoorError(
+                'bad-params',
+                'Artifact names may not begin with a rarity word — rarity '
+                'words are a closed grammar vocabulary (the #22 authoring '
+                'law).')
+        if (ItemDefinition.objects.exclude(pk=defn.pk)
+                .filter(name__iexact=name).exists()):
+            raise DoorError(
+                'name-taken',
+                f'An item definition named {name!r} already exists.')
+        slug = slugify(name)
+        if not slug:
+            raise DoorError('bad-params', "'name' yields an empty slug.")
+        if (ItemDefinition.objects.exclude(pk=defn.pk)
+                .filter(slug=slug).exists()):
+            raise DoorError('name-taken', f'Slug {slug!r} already exists.')
+        defn.name = name
+        defn.slug = slug
+    if 'description' in changes:
+        description = changes['description']
+        if not isinstance(description, str) or not description.strip():
+            raise DoorError('bad-params', "'description' must be non-empty text.")
+        defn.description = description
+    if 'base_value' in changes:
+        defn.base_value = _require_int(
+            changes['base_value'], 'base_value', minimum=0)
+    if 'valid_slots' in changes:
+        valid_slots = changes['valid_slots']
+        if not isinstance(valid_slots, list) or any(
+                slot not in SLOT_DISPLAY_NAMES for slot in valid_slots):
+            raise DoorError('bad-params',
+                            "'valid_slots' must be a list of slot codes.")
+        if defn.item_type in EQUIPPABLE_TYPES:
+            if not valid_slots:
+                raise DoorError(
+                    'bad-params',
+                    f"'valid_slots' is required non-empty for "
+                    f'{defn.item_type}.')
+        elif valid_slots:
+            raise DoorError('bad-params',
+                            f"'valid_slots' must be [] for {defn.item_type}.")
+        defn.valid_slots = valid_slots
+    if 'is_two_handed' in changes:
+        if not isinstance(changes['is_two_handed'], bool):
+            raise DoorError('bad-params', "'is_two_handed' must be a boolean.")
+        defn.is_two_handed = changes['is_two_handed']
+    if 'armor_base' in changes:
+        armor_base = changes['armor_base']
+        if defn.item_type == ItemDefinition.ARMOR:
+            if armor_base is None:
+                armor_base = 0.0
+            elif (isinstance(armor_base, bool)
+                    or not isinstance(armor_base, (int, float))
+                    or armor_base < 0):
+                raise DoorError('bad-params',
+                                "'armor_base' must be a float >= 0.")
+            defn.armor_base = float(armor_base)
+        elif armor_base is not None:
+            raise DoorError('bad-params',
+                            "'armor_base' applies to armor only.")
+        else:
+            defn.armor_base = 0.0
+    if 'genre_tag' in changes:
+        genre_tag = changes['genre_tag']
+        if genre_tag not in {code for code, _
+                             in ItemDefinition.GENRE_TAG_CHOICES}:
+            raise DoorError('bad-params', f'Unknown genre_tag {genre_tag!r}.')
+        defn.genre_tag = genre_tag
+    if 'mystery_name' in changes or 'mystery_description' in changes:
+        for key in ('mystery_name', 'mystery_description'):
+            if key in changes:
+                if not isinstance(changes[key], str):
+                    raise DoorError('bad-params', f"'{key}' must be a string.")
+                setattr(defn, key, changes[key])
+        # The creation coupling, judged on the post-edit state.
+        has_both = (defn.mystery_name.strip()
+                    and defn.mystery_description.strip())
+        has_any = (defn.mystery_name or defn.mystery_description)
+        if item.is_unidentifiable and not has_both:
+            raise DoorError(
+                'bad-params',
+                "'mystery_name' and 'mystery_description' must both be "
+                'non-empty while the instance is unidentifiable.')
+        if has_any and not item.is_unidentifiable:
+            raise DoorError(
+                'bad-params',
+                "'mystery_name'/'mystery_description' apply only to an "
+                'unidentifiable instance.')
+
+
+@database_sync_to_async
+def _edit_item(char, item_id, changes):
+    """#289: whole-request semantics — any key outside the applicable
+    whitelists refuses everything (the atomic block guarantees no
+    partial application)."""
+    with transaction.atomic():
+        item = _owned_item(char, item_id)
+        defn = item.definition
+        artifact_rarity = item.rarity == ItemInstance.ARTIFACT
+        definition_changed = False
+        for key in changes:
+            if key in INSTANCE_EDIT_KEYS:
+                continue
+            if key in ARTIFACT_DEFINITION_EDIT_KEYS:
+                if not artifact_rarity:
+                    raise DoorError(
+                        'not-artifact',
+                        f"'{key}' edits the definition — {defn.name!r} is "
+                        f'a shared template; definition-side edits apply '
+                        f'to artifacts only.')
+                definition_changed = True
+                continue
+            raise DoorError('bad-params', f'Unknown edit key {key!r}.')
+        _edit_instance_fields(item, changes)
+        if definition_changed:
+            _edit_definition_fields(item, defn, changes)
+            defn.save()
+        item.save()
+        was_equipped = item.is_equipped
+        if was_equipped:
+            rescale_bars_for_gear(char)
+        # Composed after the edit, so a rename shows the new name.
+        ref = item_ref(item)
+    return ref, was_equipped, definition_changed
+
+
+async def a_edit_item(params, agent_name):
+    char = await _resolve_character(params)
+    item_id = _require_int(params.get('item_id'), 'item_id')
+    changes = params.get('changes')
+    if not isinstance(changes, dict) or not changes:
+        raise DoorError('bad-params', "'changes' must be a non-empty object.")
+    ref, was_equipped, definition_changed = await _edit_item(
+        char, item_id, changes)
+    if await _presence_online(char.pk):
+        await _send_player_line(
+            char.pk, f'An admin has altered {ref}.', 'system',
+            agent_name=agent_name,
+            event='refresh_status' if was_equipped else None)
+    return {'item_id': item_id, 'changed': sorted(changes),
+            'definition_changed': definition_changed}
+
+
+@database_sync_to_async
+def _equip_item_admin(char, item_id, slot):
+    """#288: targeted equip through the player's own slot-resolution
+    algorithm (``equip_candidates``). Structural rules always hold
+    (valid slots, capacity, two-hander geometry); protective guards
+    yield (the ``_strip`` precedent: cursed comes off, capacity
+    ignored). ``outfit_snapshot`` is never read, written, or consumed."""
+    with transaction.atomic():
+        item = _owned_item(char, item_id)
+        if item.is_equipped:
+            raise DoorError('already-equipped',
+                            f'{item_ref(item)} is already equipped.')
+        defn = item.definition
+        if slot is not None and slot not in defn.valid_slots:
+            valid = ', '.join(defn.valid_slots) or '(none — not equippable)'
+            raise DoorError('bad-slot',
+                            f'Valid slots for {defn.name}: {valid}.')
+        equipped_items = list(
+            char.inventory.filter(is_equipped=True)
+            .select_related('definition'))
+        candidates = equip_candidates(defn, equipped_items)
+        if slot is not None:
+            candidates = [(s, d) for s, d in candidates if s == slot]
+        if not candidates:
+            raise DoorError('bad-slot', f'{defn.name} is not equippable.')
+        free = next(((s, d) for s, d in candidates if not d), None)
+        if free is not None:
+            target_slot, displaced = free
+        else:
+            min_size = min(len(d) for _, d in candidates)
+            minimal = [(s, d) for s, d in candidates if len(d) == min_size]
+            # Candidates displacing the same set are one option; distinct
+            # sets are the admin's choice — refuse, structured enough for
+            # the bot to ask or retry with an explicit slot.
+            distinct = {}
+            for s, d in minimal:
+                distinct.setdefault(frozenset(i.pk for i in d), (s, d))
+            if len(distinct) > 1:
+                options = '; '.join(
+                    f'{s}: ' + ' + '.join(
+                        f'{item_ref(i)} (id {i.pk})' for i in d)
+                    for s, d in distinct.values())
+                raise DoorError(
+                    'ambiguous',
+                    f'Equipping would displace one of: {options}. Name a '
+                    f'slot or unequip the chosen item first.')
+            target_slot, displaced = next(iter(distinct.values()))
+        for equipped in displaced:
+            # Flags only — protective guards bypassed admin-style.
+            equipped.is_equipped = False
+            equipped.equipped_slot = ''
+            equipped.save()
+        # Byte-consistent with equip_item/_dress: equip re-soulbinds.
+        item.is_equipped = True
+        item.equipped_slot = target_slot
+        item.is_soulbound = True
+        item.soulbound_to = char
+        item.save()
+        rescale_bars_for_gear(char)
+        ref = item_ref(item)
+    return ref, target_slot, [i.pk for i in displaced]
+
+
+async def a_equip_item(params, agent_name):
+    char = await _resolve_character(params)
+    item_id = _require_int(params.get('item_id'), 'item_id')
+    slot = params.get('slot')
+    if slot is not None:
+        if not isinstance(slot, str) or not slot.strip():
+            raise DoorError('bad-params',
+                            "'slot' must be a non-empty string.")
+        slot = slot.strip()
+    ref, target_slot, displaced = await _equip_item_admin(char, item_id, slot)
+    if await _presence_online(char.pk):
+        await _send_player_line(
+            char.pk, f'An admin has equipped {ref} on you.', 'system',
+            agent_name=agent_name, event='refresh_status')
+    return {'item_id': item_id, 'slot': target_slot, 'displaced': displaced}
+
+
+@database_sync_to_async
+def _unequip_item_admin(char, item_id):
+    """#288: targeted unequip — no protective guards (cursed comes off;
+    over-capacity accepted, the #275 acceptance). Curse *effects*
+    untouched — unequip is not removal. ``outfit_snapshot`` untouched."""
+    with transaction.atomic():
+        item = _owned_item(char, item_id)
+        if not item.is_equipped:
+            raise DoorError('not-equipped',
+                            f'{item_ref(item)} is not equipped.')
+        item.is_equipped = False
+        item.equipped_slot = ''
+        item.save()
+        rescale_bars_for_gear(char)
+        ref = item_ref(item)
+    return ref
+
+
+async def a_unequip_item(params, agent_name):
+    char = await _resolve_character(params)
+    item_id = _require_int(params.get('item_id'), 'item_id')
+    ref = await _unequip_item_admin(char, item_id)
+    if await _presence_online(char.pk):
+        await _send_player_line(
+            char.pk,
+            f'An admin has unequipped {ref}; it is in your inventory.',
+            'system', agent_name=agent_name, event='refresh_status')
+    return {'item_id': item_id}
+
+
+# ----------------------------------------------------------------------
 # Dispatch (§4) — the consumer resolves kinds through these tables.
 # ----------------------------------------------------------------------
 
@@ -734,6 +1199,8 @@ QUERY_HANDLERS = {
     'character': q_character,
     'items': q_items,
     'is_admin': q_is_admin,
+    'inventory': q_inventory,
+    'item': q_item,
 }
 
 ACTION_HANDLERS = {
@@ -743,4 +1210,8 @@ ACTION_HANDLERS = {
     'strip': a_strip,
     'dress': a_dress,
     'move': a_move,
+    'remove_item': a_remove_item,
+    'edit_item': a_edit_item,
+    'equip_item': a_equip_item,
+    'unequip_item': a_unequip_item,
 }
