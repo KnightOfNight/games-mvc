@@ -613,7 +613,7 @@ A node becomes an available destination the moment the player sees its room. **R
 
 The Heart of the Convergence reveals at first login — every character is born there — but the network starts empty of anywhere to *go*. The destination list grows as the player explores. A brand-new player standing at the Obelisk with zero destinations is a natural lore beat: the Obelisk has nothing to show them yet.
 
-A player deep in a zone therefore has three ways out: walk, `home` (the hearth command, to their attuned node), or push forward to the summit obelisk — and once they reach any checkpoint, its shard relays them to a revealed obelisk (v24.26, #30). (The once-planned recall scroll is retired — v24.26, #38: `home` plus attunement covers the entire command-driven-return need; killed, not deferred.) Conquering a zone's obelisk is what turns that zone from a place you trek through into a place you command.
+A player deep in a zone therefore has four ways out: walk, `home` (the hearth command, to their attuned node), push forward to the summit obelisk, or reach any checkpoint, whose shard relays them to a revealed obelisk (v24.26, #30). (The once-planned recall scroll is retired — v24.26, #38: `home` plus attunement covers the entire command-driven-return need; killed, not deferred.) Conquering a zone's obelisk is what turns that zone from a place you trek through into a place you command.
 
 #### The `travel` Command
 
