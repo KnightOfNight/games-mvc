@@ -70,9 +70,11 @@ CLOSE_MEANINGS = {
 }
 
 QUERY_KINDS = ('commands', 'who_online', 'where_is', 'character', 'items',
-               'is_admin', 'inventory', 'item')
+               'is_admin', 'inventory', 'item', 'memories', 'memory',
+               'rooms', 'events', 'event')
 ACTION_KINDS = ('answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
-                'remove_item', 'edit_item', 'equip_item', 'unequip_item')
+                'remove_item', 'edit_item', 'equip_item', 'unequip_item',
+                'remember', 'forget', 'report')
 
 
 def log(line):
