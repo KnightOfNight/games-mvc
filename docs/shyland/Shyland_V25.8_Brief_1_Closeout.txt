@@ -87,7 +87,10 @@ DEVIATIONS / NOTES
 5. Scaffolding left in place, gitignored, for the operator's playtest item 6:
    agents/venvs and agents/.secrets in the worktree are SYMLINKS to the main
    checkout's copies (created for the coexistence check; nothing installed,
-   nothing copied). Remove freely if unwanted.
+   nothing copied). Remove freely if unwanted. The two agents/.gitignore
+   entries dropped their trailing slashes (.secrets/ -> .secrets, venvs/ ->
+   venvs) so the symlink form is ignored like the directory form — same
+   ignore surface, symlink-tolerant.
 6. Scratch dev-only admin account v258-verify / character "V258 Verify"
    (admins.shyland) created on the dev stack for the driver check; inventory
    left empty. Dev-only state; harmless to keep or delete.

@@ -1,9 +1,9 @@
 # Agent-side runtime state — never committed.
 # Credentials (game passwords, API keys): names/files live here on the bot host only.
-.secrets/
+.secrets
 # Python virtualenvs are machine-specific — recreate from requirements.txt:
 #   python3 -m venv venvs/mc-agent && venvs/mc-agent/bin/pip install -r requirements.txt
-venvs/
+venvs
 # Bot-local history/logs (conversation persistence is bot-side by ruling, #262)
 *.log
 *.pid
