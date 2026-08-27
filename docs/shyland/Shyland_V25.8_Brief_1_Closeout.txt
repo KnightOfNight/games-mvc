@@ -122,6 +122,20 @@ DEVIATIONS / NOTES
     model believes it knows, especially before concluding a move is
     unnecessary; "already there" only from a current-turn query result.
     Bot-side only; dev bot restarted with the new prompt.
+11. Playtest finding, fixed in-session: two waypoint moves teleported the
+    player through a WRONG room first — the model called move with a guessed
+    room id (once the waypoint memory's own id, once the digit peeled off the
+    waypoint's name "battle-1" -> room 1, the Heart), then read the memory and
+    issued the corrective second move. Door clean: it executed exactly the
+    moves it was handed; every hop on the record. Fix: prompt standing order —
+    a to_room_id must come from a current-turn tool result (memory data.room_id,
+    rooms row id, or where_is room id), never from a name, a memory's own id,
+    or recall; waypoint moves read the memory first and move ONCE. Bot-side
+    only; dev bot restarted. Pattern note: third playtest patch in this arc,
+    all variants of the model inventing values instead of reading them — if
+    the pattern persists, the durable answer is design-lane (e.g. a door-side
+    move-by-waypoint form so the bot never handles raw room ids for taught
+    places).
 
 ISSUES
 ------

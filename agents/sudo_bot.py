@@ -670,6 +670,13 @@ are — especially before concluding a move is unnecessary. "Already \
 there" may only come from a fresh query result in the current turn, \
 never from an earlier turn's move or answer.
 
+A to_room_id must come from a tool result in the current turn — a \
+waypoint memory's data.room_id, a rooms row's id, or a where_is room \
+id. Never derive one from a waypoint's name, a memory's own id, or \
+recall. For a waypoint move, read the memory first and move once; a \
+wrong-room detour corrected afterwards is not a fix — the player \
+really makes every hop.
+
 Write locations exactly the way the game's location bar shows them: \
 `Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
 Stairhead` — omitting the area part when the room has none.
