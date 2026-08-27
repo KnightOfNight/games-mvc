@@ -58,8 +58,15 @@ import websockets
 
 AGENTS_DIR = Path(__file__).resolve().parent
 
-PIDFILE = AGENTS_DIR / '.sudo_bot.pid'
-CONVO_FILE = AGENTS_DIR / '.sudo_bot_conversations.json'
+# v25.8 (#299): state files are (bot, target)-scoped — one checkout can
+# host a dev-facing and a prod-facing bot side by side, and a dev stop
+# is incapable of touching the prod bot's pidfile by construction.
+def pidfile(target):
+    return AGENTS_DIR / f'.sudo_bot.{target}.pid'
+
+
+def convo_file(target):
+    return AGENTS_DIR / f'.sudo_bot_conversations.{target}.json'
 
 # The door's protocol version (mc_consumer.MC_PROTOCOL) — anything else
 # is a world this bot was not written for, and it refuses to run.
@@ -1195,9 +1202,9 @@ class SudoBot:
 # CLI: run / status / stop through the pidfile
 # ----------------------------------------------------------------------
 
-def _read_pid():
+def _read_pid(target):
     try:
-        return int(PIDFILE.read_text().strip())
+        return int(pidfile(target).read_text().strip())
     except (OSError, ValueError):
         return None
 
@@ -1210,19 +1217,19 @@ def _pid_alive(pid):
         return False
 
 
-def cmd_status():
-    pid = _read_pid()
+def cmd_status(target):
+    pid = _read_pid(target)
     if pid and _pid_alive(pid):
-        print(f'sudo bot running (pid {pid})')
+        print(f'sudo bot ({target}) running (pid {pid})')
         return 0
-    print('sudo bot not running')
+    print(f'sudo bot ({target}) not running')
     return 1
 
 
-def cmd_stop():
-    pid = _read_pid()
+def cmd_stop(target):
+    pid = _read_pid(target)
     if not pid or not _pid_alive(pid):
-        print('sudo bot not running')
+        print(f'sudo bot ({target}) not running')
         return 1
     os.kill(pid, signal.SIGTERM)
     print(f'sent SIGTERM to pid {pid}')
@@ -1249,9 +1256,10 @@ def cmd_run(cfg):
         filename=cfg.log, level=logging.INFO,
         format='%(asctime)s %(levelname)s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%SZ')
-    existing = _read_pid()
+    existing = _read_pid(cfg.target)
     if existing and _pid_alive(existing):
-        return _refuse(f'sudo bot already running (pid {existing})')
+        return _refuse(f'sudo bot ({cfg.target}) already running '
+                       f'(pid {existing})')
 
     password_file = Path(cfg.password_file)
     try:
@@ -1269,17 +1277,19 @@ def cmd_run(cfg):
         brain = make_brain(cfg.brain, cfg.model, cfg.max_tokens)
     except SystemExit as exc:
         return _refuse(str(exc))
-    convos = ConversationStore(CONVO_FILE, cfg.convo_timeout, cfg.history_max)
+    convos = ConversationStore(convo_file(cfg.target), cfg.convo_timeout,
+                               cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
 
-    PIDFILE.write_text(str(os.getpid()))
-    log.info('sudo bot starting: url=%s username=%s brain=%s model=%s',
-             cfg.url, cfg.username, cfg.brain, cfg.model)
+    pidfile(cfg.target).write_text(str(os.getpid()))
+    log.info('sudo bot starting: target=%s url=%s username=%s brain=%s '
+             'model=%s',
+             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model)
     try:
         return asyncio.run(bot.run())
     finally:
         try:
-            PIDFILE.unlink()
+            pidfile(cfg.target).unlink()
         except OSError:
             pass
 
@@ -1290,6 +1300,10 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     run_parser = sub.add_parser('run', help='run the bot in the foreground')
     env = os.environ.get
+    run_parser.add_argument(
+        '--target', required=True, choices=['dev', 'prod'],
+        help='which stack this bot faces — scopes the pid/conversation '
+             'state files (#299)')
     run_parser.add_argument(
         '--url', default=env('SUDO_BOT_URL'),
         help='base URL, e.g. https://localhost:40443')
@@ -1324,14 +1338,18 @@ def main():
         '--history-max', type=int, default=int(env('SUDO_BOT_HISTORY_MAX',
                                                    '20')),
         help='max retained exchanges per admin conversation')
-    sub.add_parser('status', help='is a bot running?')
-    sub.add_parser('stop', help='SIGTERM the running bot')
+    status_parser = sub.add_parser('status', help='is a bot running?')
+    stop_parser = sub.add_parser('stop', help='SIGTERM the running bot')
+    for sub_parser in (status_parser, stop_parser):
+        sub_parser.add_argument(
+            '--target', required=True, choices=['dev', 'prod'],
+            help='which target-scoped bot to address (#299)')
 
     args = parser.parse_args()
     if args.command == 'status':
-        sys.exit(cmd_status())
+        sys.exit(cmd_status(args.target))
     if args.command == 'stop':
-        sys.exit(cmd_stop())
+        sys.exit(cmd_stop(args.target))
     if not args.url:
         parser.error('--url is required (or SUDO_BOT_URL)')
     sys.exit(cmd_run(args))

@@ -13,10 +13,15 @@ prod, the current version worktree for dev. No baked-in absolute paths.
 Usage:
     botctl.py <prod|dev> <start|stop|restart|status|tail> [--bot NAME]
 
-Per --bot NAME (default sudo), the manager derives:
+Per (--bot NAME, target) — default bot sudo — the manager derives
+(v25.8, #299: state is (bot, target)-scoped, so one checkout can host a
+dev-facing and a prod-facing bot side by side and a dev stop can never
+touch the prod bot):
     module    agents/<name>_bot.py
-    log       agents/<name>_bot.log
+    log       agents/<name>_bot.<target>.log
     key file  agents/.secrets/anthropic-api-key.<name>
+    pid file  agents/.<name>_bot.<target>.pid        (bot-owned)
+    convos    agents/.<name>_bot_conversations.<target>.json (bot-owned)
 
 The key is read at start and placed in the child environment only —
 never argv, never echoed, never logged. This file contains no secret
@@ -59,11 +64,17 @@ def say(line):
 
 
 class BotPaths:
-    def __init__(self, name):
+    def __init__(self, name, target):
         self.name = name
+        self.target = target
         self.module = AGENTS_DIR / f'{name}_bot.py'
-        self.log = AGENTS_DIR / f'{name}_bot.log'
+        self.log = AGENTS_DIR / f'{name}_bot.{target}.log'
         self.key_file = AGENTS_DIR / '.secrets' / f'anthropic-api-key.{name}'
+        # Bot-owned (the bot derives them from its own --target); listed
+        # here so humans debugging state files have the one map (#299).
+        self.pid_file = AGENTS_DIR / f'.{name}_bot.{target}.pid'
+        self.convo_file = (AGENTS_DIR
+                           / f'.{name}_bot_conversations.{target}.json')
 
 
 def fail(message):
@@ -97,7 +108,8 @@ def bot_status(paths, quiet=False):
     kwargs = {}
     if quiet:
         kwargs = {'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL}
-    return bot_command(paths, 'status', **kwargs).returncode
+    return bot_command(paths, 'status', '--target', paths.target,
+                       **kwargs).returncode
 
 
 def poll_status(paths, want_running):
@@ -134,7 +146,7 @@ def cmd_start(target, paths):
     env['ANTHROPIC_API_KEY'] = key
     url = TARGETS[target]['url'].rstrip('/')
     argv = [str(VENV_PYTHON), str(paths.module), 'run',
-            '--url', url, '--log', str(paths.log)]
+            '--target', target, '--url', url, '--log', str(paths.log)]
     if TARGETS[target]['insecure']:
         argv.append('--insecure')
     say(f'starting {paths.name} bot against {target} ({url})')
@@ -153,22 +165,22 @@ def cmd_start(target, paths):
     return 0
 
 
-def cmd_stop(paths):
+def cmd_stop(target, paths):
     rc = check_prereqs(paths, need_key=False)
     if rc:
         return rc
     if bot_status(paths, quiet=True) != 0:
-        say(f'{paths.name} bot not running — nothing to stop')
+        say(f'{paths.name} bot ({target}) not running — nothing to stop')
         return 1
-    result = bot_command(paths, 'stop')
+    result = bot_command(paths, 'stop', '--target', target)
     if result.returncode != 0:
         return result.returncode
     if not poll_status(paths, want_running=False):
-        say(f'{paths.name} bot still up after '
+        say(f'{paths.name} bot ({target}) still up after '
             f'{int(STATUS_POLL_TRIES * STATUS_POLL_DELAY)}s')
         short_tail(paths)
         return 1
-    say(f'{paths.name} bot stopped')
+    say(f'{paths.name} bot ({target}) stopped')
     short_tail(paths)
     return 0
 
@@ -178,20 +190,21 @@ def cmd_restart(target, paths):
     if rc:
         return rc
     if bot_status(paths, quiet=True) == 0:
-        rc = cmd_stop(paths)
+        rc = cmd_stop(target, paths)
         if rc:
             return rc
     else:
-        say(f'{paths.name} bot not running — going straight to start')
+        say(f'{paths.name} bot ({target}) not running — going straight '
+            f'to start')
     return cmd_start(target, paths)
 
 
-def cmd_status(paths):
+def cmd_status(target, paths):
     rc = check_prereqs(paths, need_key=False)
     if rc:
         return rc
     # Pass-through: the bot's own status line and exit code are the
-    # answer.
+    # answer (target-scoped since #299).
     return bot_status(paths)
 
 
@@ -217,15 +230,15 @@ def main():
     parser.add_argument('--bot', default='sudo',
                         help='bot name (default: sudo)')
     args = parser.parse_args()
-    paths = BotPaths(args.bot)
+    paths = BotPaths(args.bot, args.target)
     if args.command == 'start':
         return cmd_start(args.target, paths)
     if args.command == 'stop':
-        return cmd_stop(paths)
+        return cmd_stop(args.target, paths)
     if args.command == 'restart':
         return cmd_restart(args.target, paths)
     if args.command == 'status':
-        return cmd_status(paths)
+        return cmd_status(args.target, paths)
     return cmd_tail(paths)
 
 

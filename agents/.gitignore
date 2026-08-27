@@ -7,5 +7,5 @@ venvs/
 # Bot-local history/logs (conversation persistence is bot-side by ruling, #262)
 *.log
 *.pid
-.sudo_bot_conversations.json
+.sudo_bot_conversations*.json
 __pycache__/
