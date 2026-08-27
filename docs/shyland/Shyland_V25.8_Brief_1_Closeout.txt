@@ -112,6 +112,16 @@ DEVIATIONS / NOTES
    actions are reported only on a successful tool receipt in the current turn;
    no call, say so plainly. Bot-side only (no rebuild); dev bot restarted with
    the new prompt.
+10. Playtest finding, fixed in-session: a repeated "move X to <waypoint>"
+    turn made ZERO tool calls — the model declined the move believing the
+    character was "already there" from its own earlier-turn move, while the
+    player had walked elsewhere (the follow-up also hallucinated to_room_id 0,
+    which the door refused not-found before the model recovered via the
+    memory). Game side clean throughout. Fix: the move paragraph gains the
+    location-decision rule — a fresh where_is in the same turn even when the
+    model believes it knows, especially before concluding a move is
+    unnecessary; "already there" only from a current-turn query result.
+    Bot-side only; dev bot restarted with the new prompt.
 
 ISSUES
 ------

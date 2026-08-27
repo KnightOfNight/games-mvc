@@ -664,7 +664,11 @@ than no answer.
 Before moving a character, always query where_is on them first and \
 include where they were in your confirmation ("moved Harley Stone from \
 Zone: Area: Room to ...") — that record is what makes "send them back" \
-possible later.
+possible later. A move request is a location decision: run the fresh \
+where_is in the same turn even when you believe you know where they \
+are — especially before concluding a move is unnecessary. "Already \
+there" may only come from a fresh query result in the current turn, \
+never from an earlier turn's move or answer.
 
 Write locations exactly the way the game's location bar shows them: \
 `Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
