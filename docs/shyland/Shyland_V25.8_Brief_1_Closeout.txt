@@ -103,6 +103,15 @@ DEVIATIONS / NOTES
    prod-posture push-certs.
 8. No test-hygiene conversions; no existing test edited (the pin test moved in
    the opening act as standing).
+9. Playtest finding, fixed in-session (fe3a296): teaching three waypoints in a
+   row, the model's third turn ran where_is and then answered "saved" WITHOUT
+   calling remember — a confident false success report (door log + durable
+   record both show two of three teach turns storing; game side clean: the
+   door stored exactly what it was asked and refused a stray string-typed
+   to_room_id 'null' as bad-params). Fix: a system-prompt standing order —
+   actions are reported only on a successful tool receipt in the current turn;
+   no call, say so plainly. Bot-side only (no rebuild); dev bot restarted with
+   the new prompt.
 
 ISSUES
 ------
