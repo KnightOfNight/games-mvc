@@ -803,6 +803,9 @@ async def a_move(params, agent_name):
         if destination is None:
             raise DoorError('not-found', f'No room with id {room_id}.')
     origin_room_id = char.current_room_id
+    # v25.8 (#290): the receipt's origin — captured before the move,
+    # already select_related through _character_by_name.
+    origin_room = char.current_room
     online = await _presence_online(char.pk)
     await _move_character(char, destination, record_visit=not online)
     if online:
@@ -826,7 +829,8 @@ async def a_move(params, agent_name):
         await _send_player_line(
             char.pk, 'An admin moved you to a new room.', 'system',
             agent_name=agent_name, event='moved')
-    return {'room': _room_dict(destination)}
+    return {'room': _room_dict(destination),
+            'from_room': _room_dict(origin_room)}
 
 
 # ----------------------------------------------------------------------
@@ -1459,6 +1463,31 @@ async def q_memory(params, agent_name):
 
 
 # ----------------------------------------------------------------------
+# Rooms (v25.8 — #290)
+# ----------------------------------------------------------------------
+
+@database_sync_to_async
+def _rooms_payload(contains, zone_contains):
+    qs = (Room.objects.select_related('zone', 'area')
+          .filter(name__icontains=contains))
+    if zone_contains:
+        qs = qs.filter(zone__name__icontains=zone_contains)
+    rows = list(qs.order_by('zone__name', 'name')[:LIST_CAP])
+    return {'rooms': [_room_dict(r) for r in rows], 'count': len(rows)}
+
+
+async def q_rooms(params, agent_name):
+    """#290: the room directory — case-insensitive substring against
+    the room name, optional zone narrowing. Duplicate names across
+    zones are simply multiple rows."""
+    contains = _require_str(params, 'name')
+    zone = params.get('zone')
+    if zone is not None and not isinstance(zone, str):
+        raise DoorError('bad-params', "'zone' must be a string.")
+    return await _rooms_payload(contains, (zone or '').strip())
+
+
+# ----------------------------------------------------------------------
 # Dispatch (§4) — the consumer resolves kinds through these tables.
 # ----------------------------------------------------------------------
 
@@ -1473,6 +1502,7 @@ QUERY_HANDLERS = {
     'item': q_item,
     'memories': q_memories,
     'memory': q_memory,
+    'rooms': q_rooms,
 }
 
 ACTION_HANDLERS = {
