@@ -132,10 +132,11 @@ DEVIATIONS / NOTES
     rooms row id, or where_is room id), never from a name, a memory's own id,
     or recall; waypoint moves read the memory first and move ONCE. Bot-side
     only; dev bot restarted. Pattern note: third playtest patch in this arc,
-    all variants of the model inventing values instead of reading them — if
-    the pattern persists, the durable answer is design-lane (e.g. a door-side
-    move-by-waypoint form so the bot never handles raw room ids for taught
-    places).
+    all variants of the model inventing values instead of reading them —
+    filed as #302 (operator-directed framing: the bot must NEVER invent a
+    value it should read from the database; make receipts structural, not
+    behavioral). The three prompt standing orders are the mitigation of
+    record until #302 is ruled.
 
 ISSUES
 ------
