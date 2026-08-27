@@ -84,10 +84,11 @@ CLOSE_MEANINGS = {
 
 QUERY_KINDS = frozenset(
     {'commands', 'who_online', 'where_is', 'character', 'items', 'is_admin',
-     'inventory', 'item'})
+     'inventory', 'item', 'memories', 'memory', 'rooms', 'events', 'event'})
 ACTION_KINDS = frozenset(
     {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
-     'remove_item', 'edit_item', 'equip_item', 'unequip_item'})
+     'remove_item', 'edit_item', 'equip_item', 'unequip_item',
+     'remember', 'forget', 'report'})
 
 log = logging.getLogger('sudo_bot')
 
@@ -464,6 +465,160 @@ TOOLS = [
             'required': ['name', 'item_id'],
         },
     },
+    {
+        'name': 'remember',
+        'description': ('Store a durable named fact. Kinds: waypoint '
+                        '{room_id}, bundle {lines: [[slug, mk_tier, rarity, '
+                        'quantity], ...]} (1-50 lines, no artifacts). '
+                        'Overwrites an existing name of the same kind and '
+                        'says so (result: created or replaced). Names <= 60 '
+                        'chars. Pass taught_by so the record shows who '
+                        'taught it.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string', 'enum': ['waypoint', 'bundle']},
+                'name': {'type': 'string',
+                         'description': 'Memory name, <= 60 chars.'},
+                'data': {
+                    'type': 'object',
+                    'description': "waypoint: {'room_id': <int>}; bundle: "
+                                   "{'lines': [[slug, mk_tier, rarity, "
+                                   'quantity], ...]}.'},
+                'taught_by': {'type': 'string',
+                              'description': "The teaching admin's "
+                                             'character name (audit).'},
+            },
+            'required': ['kind', 'name', 'data'],
+        },
+    },
+    {
+        'name': 'forget',
+        'description': ('Delete one stored memory by id — never by name; '
+                        'look the id up with memories/memory first. Returns '
+                        'what was forgotten.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'id': {'type': 'integer',
+                                  'description': 'Memory id.'}},
+            'required': ['id'],
+        },
+    },
+    {
+        'name': 'memories',
+        'description': ('List stored memories, newest-first, up to 50: id, '
+                        'kind, name, and a live summary (waypoints show '
+                        'their current Zone: Area: Room; bundles their line '
+                        'count). Optional filters: kind, name substring, '
+                        'since/until (ISO-8601).'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string', 'enum': ['waypoint', 'bundle']},
+                'name': {'type': 'string',
+                         'description': 'Name substring filter.'},
+                'since': {'type': 'string',
+                          'description': 'ISO-8601 lower bound.'},
+                'until': {'type': 'string',
+                          'description': 'ISO-8601 upper bound.'},
+            },
+        },
+    },
+    {
+        'name': 'memory',
+        'description': ('One stored memory in full by id: kind, name, data '
+                        '(bundles rendered with labeled fields), taught_by, '
+                        'created/updated stamps.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'id': {'type': 'integer',
+                                  'description': 'Memory id.'}},
+            'required': ['id'],
+        },
+    },
+    {
+        'name': 'rooms',
+        'description': ('Search rooms by name substring (case-insensitive), '
+                        'optionally narrowed by zone name substring. Up to '
+                        '50 rows ordered by zone then room: id, name, area, '
+                        "zone. A room's id is what waypoints and move's "
+                        'to_room_id take.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string',
+                         'description': 'Room name substring.'},
+                'zone': {'type': 'string',
+                         'description': 'Zone name substring.'},
+            },
+            'required': ['name'],
+        },
+    },
+    {
+        'name': 'events',
+        'description': ('Search the durable game record (MC events), '
+                        'newest-first, up to 50 rows: stream_id, ts, kind, '
+                        'actor_name, room_id, and a 120-char gist. Filters: '
+                        'kind (exact), actor (id or name), room_id, text '
+                        '(substring of the record payload), since/until '
+                        '(ISO-8601; defaults: until=now, since=until-24h). '
+                        'text search allows spans up to 7 days — walk '
+                        'backwards window by window for older history. Use '
+                        'event for one record in full.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string',
+                         'description': 'Record kind, exact.'},
+                'actor': {'type': ['integer', 'string'],
+                          'description': 'Actor id or name.'},
+                'room_id': {'type': 'integer'},
+                'text': {'type': 'string',
+                         'description': 'Payload substring.'},
+                'since': {'type': 'string',
+                          'description': 'ISO-8601 lower bound.'},
+                'until': {'type': 'string',
+                          'description': 'ISO-8601 upper bound.'},
+            },
+        },
+    },
+    {
+        'name': 'event',
+        'description': ('One durable record in full by stream_id: ts, kind, '
+                        'actor, room, audience, and the whole data '
+                        'payload.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'stream_id': {'type': 'string',
+                                         'description': 'Record stream id '
+                                                        '(from events).'}},
+            'required': ['stream_id'],
+        },
+    },
+    {
+        'name': 'report',
+        'description': ('Deliver a game-rendered state report of a '
+                        "character into the requesting admin's pane: a "
+                        'sudo leader line plus the same equipment and '
+                        'inventory rendering the player equip/inv commands '
+                        'produce, colors included. Prefer this over '
+                        'hand-writing a roster when an admin asks to see '
+                        "someone's inventory. kind: inventory (the only "
+                        'kind for now). Offline admin: delivered false, '
+                        'never an error.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'to': {'type': 'string',
+                       'description': 'The requesting admin (the report '
+                                      'lands in their pane).'},
+                'character': {'type': 'string',
+                              'description': 'The character to report on.'},
+                'kind': {'type': 'string', 'enum': ['inventory']},
+            },
+            'required': ['to', 'character', 'kind'],
+        },
+    },
 ]
 
 # sudo's persona and standing orders (brief §2 rules 5-7; decline
@@ -533,6 +688,17 @@ bypass protective guards but never structural rules. Destructive and \
 mutating item actions act only on a target the admin explicitly named: \
 when a description matches several items, or an equip would displace one \
 of several, relay the options and ask — never pick for the admin.
+
+Taught facts go in durable memory, not conversation: when an admin \
+teaches you a place, store a waypoint; a set of items to hand out \
+together is a bundle. Replaying a bundle is ordinary gift calls, one \
+per line — fresh generation every time. forget takes a memory id — \
+look it up with memories first, never guess. "What happened" questions \
+are answered from the durable record: search events (and event for one \
+record's full detail) with time windows, walking backwards from now — \
+not from conversation memory. When an admin asks to see a character's \
+inventory or equipment, prefer the report action — the game renders the \
+report into their pane itself — over hand-writing a roster.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
