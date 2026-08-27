@@ -94,10 +94,13 @@ DEVIATIONS / NOTES
 6. Scratch dev-only admin account v258-verify / character "V258 Verify"
    (admins.shyland) created on the dev stack for the driver check; inventory
    left empty. Dev-only state; harmless to keep or delete.
-7. Mid-session operator info: new wildcard cert uploaded to the main checkout's
-   ssl/. Synced into the worktree ssl/ (the post-checkout hook's propagation,
-   done by hand) and live on dev after deploy-dev — serving notAfter
-   2026-09-25.
+7. Mid-session operator info: renewed wildcard cert uploaded to the main
+   checkout's ssl/. Synced into the worktree ssl/ (the post-checkout hook's
+   propagation, done by hand), pushed into the game-mvc_ssldata volume via
+   make push-certs (dev posture, guard-checked), nginx restarted — dev now
+   serves the renewed cert (notBefore 2026-08-27, notAfter 2027-03-13).
+   Production untouched; its volume receives the cert at the operator's next
+   prod-posture push-certs.
 8. No test-hygiene conversions; no existing test edited (the pin test moved in
    the opening act as standing).
 
