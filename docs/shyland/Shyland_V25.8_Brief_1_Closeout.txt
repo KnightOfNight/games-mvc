@@ -4,7 +4,9 @@ CLOSEOUT REPORT — V25.8 Brief 1: Bot Memory and Record Search
 =============================================================
 
 Branch: version_25_8
-Final implementation commit (arch-doc hash of record): 7d4701a
+Final implementation commit (arch-doc hash of record): 7752dd7 (pre-playtest
+implementation tip 7d4701a; the final hash lands the three playtest-found
+bot-side prompt fixes — deviations 9-11)
 Architecture doc commit: 2905d2d
 Suite: 865 green in-container (was 840; +25 = tests/test_v25_8_brief1.py exactly)
 Migration: 0054_agentmemory generated in-container, applied on dev (showmigrations [X])
