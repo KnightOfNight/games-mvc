@@ -35,12 +35,15 @@ from .loot_utils import sweep_corpses
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
 from .item_utils import (
-    bag_pct, carry_capacity, compose_item_line, equip_candidates,
+    bag_pct, carry_capacity, compose_item_line, details_cell,
+    equip_candidates, equipment_doll_lines,
     format_slot_name, generate_item_instance,
     get_display_name, get_display_name_with_tier, get_display_description,
     get_durability_penalty, get_item_flags, get_item_suffix, get_item_value,
-    get_repair_cost, get_repair_success_chance, get_sale_price, item_ref,
-    parse_corpse_noun, SLOT_CAPACITY, STAT_LABELS,
+    get_repair_cost, get_repair_success_chance, get_sale_price,
+    inventory_table_lines, item_ref,
+    parse_corpse_noun, slot_cell, table_lines,
+    SLOT_CAPACITY, SLOT_ORDER, STACKABLE_ITEM_TYPES, STAT_LABELS,
 )
 from .models import (
     Character, CombatSession, DialogueEntry, DialogueGreetingRecord,
@@ -52,23 +55,11 @@ from .models import (
     resolve_home_room,
 )
 
-# v22 brief 2 (DD §9): the re-authored anatomical order, head to feet —
-# the Equipment paper-doll renders every slot in this order (RING twice,
-# per SLOT_CAPACITY).
-SLOT_ORDER = [
-    'HEAD', 'NECK', 'SHOULDERS', 'BACK', 'CHEST',
-    'MAIN_HAND', 'OFF_HAND', 'RANGED', 'HANDS', 'RING',
-    'WAIST', 'LEGS', 'FEET',
-]
+# SLOT_ORDER (the paper-doll's anatomical order), STACKABLE_ITEM_TYPES,
+# and SLOT_CAPACITY live in item_utils since v25.8 (#296) / v25.7
+# (#288), shared with the agent door; imported above for local use and
+# for the callers that import them from here.
 SLOT_RANK = {s: i for i, s in enumerate(SLOT_ORDER)}
-
-# SLOT_CAPACITY (RING is the only slot a character has two of) lives in
-# item_utils since v25.7 (#288), shared with the agent door.
-
-# v23 B2 (#18): the item types that stack in the inventory display.
-# Wear-free interchangeable types stack; per-instance-identity types
-# (durability, rolled stats — weapon/armor/accessory/bag) never stack.
-STACKABLE_ITEM_TYPES = {'consumable', 'material', 'readable', 'key'}
 
 # v23 B4 (#40): the kibitz and pity-repair pools moved to npc_voice.py
 # with every other flavor pool; selection goes through npc_voice.pick.
@@ -1082,134 +1073,24 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     # words). Widths derive from rendered text; the font is monospace.
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _table_lines(headers, rows, indent='  ', gap='   ', min_widths=None):
-        """Seg-form report lines for a table. A cell is a plain string
-        (value voice) or a list of (text, voice) tuples. `min_widths`
-        (v22 B2 amendment 3) seeds the column widths so several tables
-        can share identical column x-geometry."""
-        def cell_text(cell):
-            if isinstance(cell, str):
-                return cell
-            return ''.join(t for t, _ in cell)
-
-        widths = [len(h) for h in headers]
-        if min_widths is not None:
-            widths = [max(w, m) for w, m in zip(widths, min_widths)]
-        for row in rows:
-            for i, cell in enumerate(row):
-                widths[i] = max(widths[i], len(cell_text(cell)))
-
-        header_text = indent + gap.join(
-            h.ljust(widths[i]) for i, h in enumerate(headers)
-        ).rstrip()
-        lines = [{'segs': [{'t': header_text, 'c': 'muted'}]}]
-        for row in rows:
-            segs = [{'t': indent, 'c': 'value'}]
-            for i, cell in enumerate(row):
-                if isinstance(cell, str):
-                    segs.append({'t': cell, 'c': 'value'})
-                else:
-                    segs.extend({'t': t, 'c': c} for t, c in cell)
-                if i < len(row) - 1:
-                    pad = widths[i] - len(cell_text(cell))
-                    segs.append({'t': ' ' * pad + gap, 'c': 'value'})
-            lines.append({'segs': segs})
-        return lines
-
-    @staticmethod
-    def _details_cell(item):
-        """DD §9: Details = durability + flags, no brackets —
-        '90%, Uncommon, Bound'. The durability voice derives from the
-        mechanical durability band (never its own thresholds): no
-        penalty → value, penalty bands → say, broken → error. Rarity
-        words are always rarity-colored in information output."""
-        segs = []
-        # #80: durability is gated on identification like rarity below —
-        # the veil hides everything but Bound|Unbound.
-        if item.is_identified and item.definition.takes_durability_loss:
-            if item.is_broken:
-                voice = 'error'
-            elif get_durability_penalty(item) > 0:
-                voice = 'say'
-            else:
-                voice = 'value'
-            segs.append((f'{int(round(item.durability_current))}%', voice))
-        if item.is_identified:
-            if segs:
-                segs.append((', ', 'value'))
-            segs.append((item.rarity.capitalize(), f'rar-{item.rarity}'))
-        if segs:
-            segs.append((', ', 'value'))
-        segs.append(('Bound' if item.is_soulbound else 'Unbound', 'flag-chrome'))
-        return segs
+    # v25.8 (#296): the table/cell/doll compositions live in item_utils
+    # (the equip_candidates precedent) so the agent door's `report`
+    # action renders through the same code. These delegates keep the
+    # consumer-side names tests and call sites use.
+    _table_lines = staticmethod(table_lines)
+    _details_cell = staticmethod(details_cell)
 
     def _wallet_line(self, char):
         """DD §9: THE wallet line — one renderer shared by `wallet` and
         inv's Wallet section, byte-identical output."""
         return {'k': 'Wallet:', 'v': f' {self.format_wallet(char)}'}
 
-    @staticmethod
-    def _slot_cell(defn):
-        """v22 brief 2 amendment 1 (#123): the Slot cell for listing
-        tables — the sentence-case label of the item's equip slot when
-        slotted, muted '-' when slotless. v24.7 brief 1 (#194, GDD
-        §6.11): two-handed weapons append the word — 'Ranged
-        (two-handed)' — inherited by every caller. v24.8 brief 1 (#197,
-        GDD §6.11): all valid slots render, joined with '/', in authored
-        valid_slots order — 'Main hand/Off hand' — with the two-handed
-        word appended once after the full joined label."""
-        if defn.valid_slots:
-            label = '/'.join(format_slot_name(s) for s in defn.valid_slots)
-            if defn.item_type == 'weapon' and defn.is_two_handed:
-                return f'{label} (two-handed)'
-            return label
-        return [('-', 'muted')]
+    _slot_cell = staticmethod(slot_cell)
 
     def _equipment_doll_lines(self, equipped):
-        """v22 brief 2 (DD §9): Equipment paper-doll — every slot always
-        shown, anatomical order, sentence-case labels, muted '-' for
-        empties. Header punctuation law: ellipsis = structure below.
-        v24.7 brief 1 (#195, GDD §6.11): THE shared composition — `inv`
-        and bare `equip` both render through this helper, byte-identical.
-        v24.7 brief 1 (#176): a hand row with no direct occupant while a
-        two-handed item is equipped in any other slot is a consumed row,
-        never a free one — the consumer's name-with-tier and
-        '(two-handed)', both muted; the item's home row stays its real
-        location with normal rendering."""
-        lines = [{'k': 'Equipment...'}]
-        by_slot = {}
-        for item in equipped:
-            by_slot.setdefault(item.equipped_slot, []).append(item)
-        # Hand-claiming invariant: at most one two-handed item is ever
-        # equipped, whatever slot it occupies (GDD §3.6).
-        two_hander = next(
-            (i for i in equipped if i.definition.is_two_handed), None)
-        doll_rows = []
-        for slot in SLOT_ORDER:
-            occupants = by_slot.get(slot, [])
-            for i in range(SLOT_CAPACITY.get(slot, 1)):
-                label = format_slot_name(slot)
-                if i < len(occupants):
-                    item = occupants[i]
-                    doll_rows.append([
-                        label,
-                        get_display_name_with_tier(item),
-                        self._details_cell(item),
-                    ])
-                elif (slot in ('MAIN_HAND', 'OFF_HAND')
-                        and two_hander is not None):
-                    doll_rows.append([
-                        label,
-                        [(get_display_name_with_tier(two_hander), 'muted')],
-                        [('(two-handed)', 'muted')],
-                    ])
-                else:
-                    doll_rows.append([
-                        label, [('-', 'muted')], [('-', 'muted')],
-                    ])
-        lines += self._table_lines(['Slot', 'Name', 'Details'], doll_rows)
-        return lines
+        """v25.8 (#296): delegate — the paper-doll composition lives in
+        item_utils.equipment_doll_lines, shared with the agent door."""
+        return equipment_doll_lines(equipped)
 
     async def cmd_inventory(self):
         items = await self.get_inventory()
@@ -1220,57 +1101,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         # v24.23 (#215): capacity via the single helper — effective STR
         # base (#100) scaled by the summed equipped-bag percentages.
+        # The equipped set feeds the capacity numbers only — the render
+        # is the Inventory table alone (item_utils.inventory_table_lines
+        # since v25.8, shared with the agent door's report).
         max_carry = carry_capacity(char, equipped)
         current_carry = len(unequipped)
 
-        # v24.16 (#208): the render is the Inventory table alone — the
-        # paper-doll belongs to bare `equip`, the money line to `wallet`.
-        # The equipped set above still feeds the capacity numbers.
-        # Inventory table: Quantity after Name, Slot empty unless slotted
-        # (unequipped items never are), flat alphabetical by name.
-        # v23 B2 (#18): all STACKABLE_ITEM_TYPES group on (definition,
-        # mk_tier, rarity, soulbound state) — the trailing sort-key
-        # components exist only to make same-group rows adjacent;
-        # alphabetical-by-name stays the visible order.
-        lines = [{'k': f'Inventory ({current_carry}/{max_carry})...'}]
-        unequipped_sorted = sorted(
-            unequipped,
-            key=lambda i: (
-                get_display_name_with_tier(i).lower(),
-                i.definition_id, i.mk_tier, i.rarity, i.is_soulbound,
-            ),
-        )
-        inv_rows = []
-        idx = 0
-        while idx < len(unequipped_sorted):
-            item = unequipped_sorted[idx]
-            count = 1
-            if item.definition.item_type in STACKABLE_ITEM_TYPES:
-                j = idx + 1
-                while j < len(unequipped_sorted):
-                    other = unequipped_sorted[j]
-                    if (other.definition_id == item.definition_id
-                            and other.mk_tier == item.mk_tier
-                            and other.rarity == item.rarity
-                            and other.is_soulbound == item.is_soulbound):
-                        count += 1
-                        j += 1
-                    else:
-                        break
-                idx = j
-            else:
-                idx += 1
-            # Amendment 1 (#123): the Slot cell names the item's equip
-            # slot (slotless items show the muted '-').
-            inv_rows.append([
-                self._slot_cell(item.definition),
-                get_display_name_with_tier(item),
-                str(count),
-                self._details_cell(item),
-            ])
-        lines += self._table_lines(
-            ['Slot', 'Name', 'Quantity', 'Details'], inv_rows,
-        )
+        lines = inventory_table_lines(unequipped, current_carry, max_carry)
 
         # v20 brief 2 amendment 1 (#56): state reports carry 'report'
         # (unstamped on the client) — inventory, wallet, help, who, stats,
@@ -3567,6 +3404,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 'type': 'output',
                 'text': event['text'],
                 'category': event.get('category', 'system'),
+            }
+            if ts is not None:
+                payload['ts'] = ts
+            await self.send_json(payload)
+        # v25.8 (#296): structured report lines from the agent door —
+        # delivered to the client exactly as send_report_lines sends its
+        # own (same category, same seg-form line shape).
+        if event.get('lines') is not None:
+            payload = {
+                'type': 'output',
+                'category': event.get('category', 'report'),
+                'lines': event['lines'],
             }
             if ts is not None:
                 payload['ts'] = ts

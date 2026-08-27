@@ -33,7 +33,9 @@ from .combat_utils import effective_stats, rescale_bars_for_gear
 from .consumers import DIRECTIONS, SkylandConsumer, parse_presence_name
 from .envelope import envelope_ts
 from .item_utils import (
-    SLOT_DISPLAY_NAMES, equip_candidates, generate_item_instance, item_ref,
+    SLOT_DISPLAY_NAMES, carry_capacity, equip_candidates,
+    equipment_doll_lines, generate_item_instance, inventory_table_lines,
+    item_ref,
 )
 from .models import (
     AgentMemory, Character, CombatSession, EffectInstance, ItemDefinition,
@@ -1595,6 +1597,68 @@ async def q_event(params, agent_name):
 
 
 # ----------------------------------------------------------------------
+# Rendered report (v25.8 — #296)
+# ----------------------------------------------------------------------
+
+REPORT_KINDS = ('inventory',)
+
+
+@database_sync_to_async
+def _report_lines(char):
+    """The sections, composed by the code the player's bare ``equip``
+    and ``inv`` render through (item_utils since v25.8) — byte-identical
+    lines. The two fetches mirror the player paths: get_equipped_items
+    for the doll, the inventory split for the table."""
+    equipped = list(ItemInstance.objects
+                    .filter(owner=char, is_equipped=True)
+                    .select_related('definition'))
+    unequipped = list(ItemInstance.objects
+                      .filter(owner=char, is_equipped=False)
+                      .select_related('definition'))
+    doll = equipment_doll_lines(equipped)
+    inv = inventory_table_lines(unequipped, len(unequipped),
+                                carry_capacity(char, equipped))
+    return len(equipped) + len(unequipped), doll, inv
+
+
+async def a_report(params, agent_name):
+    """#296: the game-rendered state report — a door-composed leader in
+    the sudo voice, then the equipped and carried sections through the
+    shared player compositions, delivered privately to the requesting
+    admin's pane only (never a room broadcast). Offline is ``ok: true,
+    delivered: false`` — the a_answer posture."""
+    to = await _resolve_character(params, key='to')
+    kind = _require_str(params, 'kind')
+    if kind not in REPORT_KINDS:
+        raise DoorError(
+            'bad-params',
+            f'Unknown report kind {kind!r} — kinds: '
+            f'{", ".join(REPORT_KINDS)}.')
+    target = await _resolve_character(params, key='character')
+    if not await _is_admin(to):
+        raise DoorError(
+            'not-admin',
+            f'{to.name} is not an admin; reports deliver only to '
+            f'admins.shyland members.')
+    item_count, doll_lines, inv_lines = await _report_lines(target)
+    delivered = await _presence_online(to.pk)
+    if delivered:
+        # Words carry identity; the sudo color reinforces (§5.1). The
+        # sections ride the player report category — same colors, same
+        # flag blocks as the inv/equip commands.
+        await _send_player_line(
+            to.pk, f'sudo: {target.name} ({item_count} items total)',
+            'sudo', agent_name=agent_name)
+        for lines in (doll_lines, inv_lines):
+            await audited_send(
+                f'player_{to.pk}',
+                {'type': 'player_message', 'category': 'report',
+                 'lines': lines, 'ts': envelope_ts()},
+                agent_name=agent_name)
+    return {'delivered': delivered, 'item_count': item_count}
+
+
+# ----------------------------------------------------------------------
 # Dispatch (§4) — the consumer resolves kinds through these tables.
 # ----------------------------------------------------------------------
 
@@ -1627,4 +1691,5 @@ ACTION_HANDLERS = {
     'unequip_item': a_unequip_item,
     'remember': a_remember,
     'forget': a_forget,
+    'report': a_report,
 }
