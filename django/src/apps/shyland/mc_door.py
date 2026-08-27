@@ -1488,6 +1488,113 @@ async def q_rooms(params, agent_name):
 
 
 # ----------------------------------------------------------------------
+# Record search (v25.8 — #300)
+# ----------------------------------------------------------------------
+
+EVENT_GIST_LEN = 120
+EVENT_DEFAULT_WINDOW = timedelta(hours=24)
+EVENT_TEXT_WINDOW_MAX = timedelta(days=7)
+
+
+def _event_row(event):
+    return {
+        'stream_id': event.stream_id,
+        'ts': event.ts.isoformat(),
+        'kind': event.kind,
+        'actor_name': event.actor_name,
+        'room_id': event.room_id,
+        'gist': json.dumps(event.data)[:EVENT_GIST_LEN],
+    }
+
+
+@database_sync_to_async
+def _events_payload(kind, actor, room_id, text, since, until):
+    """Indexed fields bound the scan (the composite (kind, ts) /
+    (actor_id, ts) / (room_id, ts) indexes are the point); ``text`` is
+    applied inside that bounded, newest-first walk."""
+    qs = MCEvent.objects.filter(ts__gte=since, ts__lte=until)
+    if kind is not None:
+        qs = qs.filter(kind=kind)
+    if actor is not None:
+        if isinstance(actor, int):
+            qs = qs.filter(actor_id=actor)
+        else:
+            qs = qs.filter(actor_name__iexact=actor)
+    if room_id is not None:
+        qs = qs.filter(room_id=room_id)
+    qs = qs.order_by('-ts')
+    if text:
+        needle = text.lower()
+        rows = []
+        for event in qs.iterator():
+            if needle in json.dumps(event.data).lower():
+                rows.append(event)
+                if len(rows) >= LIST_CAP:
+                    break
+    else:
+        rows = list(qs[:LIST_CAP])
+    return {'events': [_event_row(e) for e in rows], 'count': len(rows)}
+
+
+async def q_events(params, agent_name):
+    """#300: the record is the journal — time-windowed search over
+    MCEvent. Defaults: until = now, since = until - 24h. A ``text``
+    search must run inside a <= 7-day span (legible refusal — walk
+    backwards in windows)."""
+    kind = params.get('kind')
+    if kind is not None and not isinstance(kind, str):
+        raise DoorError('bad-params', "'kind' must be a string.")
+    actor = params.get('actor')
+    if actor is not None:
+        if isinstance(actor, bool) or not isinstance(actor, (int, str)):
+            raise DoorError('bad-params',
+                            "'actor' must be an integer id or a name.")
+        if isinstance(actor, str) and not actor.strip():
+            raise DoorError('bad-params', "'actor' must be non-empty.")
+    room_id = params.get('room_id')
+    if room_id is not None:
+        room_id = _require_int(room_id, 'room_id')
+    text = params.get('text')
+    if text is not None and (not isinstance(text, str) or not text):
+        raise DoorError('bad-params', "'text' must be a non-empty string.")
+    until = _parse_when(params, 'until')
+    if until is None:
+        until = timezone.now()
+    since = _parse_when(params, 'since')
+    if since is None:
+        since = until - EVENT_DEFAULT_WINDOW
+    if text and until - since > EVENT_TEXT_WINDOW_MAX:
+        raise DoorError(
+            'bad-params',
+            'text search runs in windows of up to 7 days — narrow the '
+            'window and walk backwards.')
+    return await _events_payload(kind, actor, room_id, text, since, until)
+
+
+@database_sync_to_async
+def _event_payload(stream_id):
+    event = MCEvent.objects.filter(stream_id=stream_id).first()
+    if event is None:
+        raise DoorError('not-found', f'No record with stream id '
+                                     f'{stream_id!r}.')
+    return {
+        'stream_id': event.stream_id,
+        'ts': event.ts.isoformat(),
+        'kind': event.kind,
+        'actor_id': event.actor_id,
+        'actor_name': event.actor_name,
+        'room_id': event.room_id,
+        'audience': event.audience,
+        'data': event.data,
+    }
+
+
+async def q_event(params, agent_name):
+    stream_id = _require_str(params, 'stream_id')
+    return await _event_payload(stream_id)
+
+
+# ----------------------------------------------------------------------
 # Dispatch (§4) — the consumer resolves kinds through these tables.
 # ----------------------------------------------------------------------
 
@@ -1503,6 +1610,8 @@ QUERY_HANDLERS = {
     'memories': q_memories,
     'memory': q_memory,
     'rooms': q_rooms,
+    'events': q_events,
+    'event': q_event,
 }
 
 ACTION_HANDLERS = {
