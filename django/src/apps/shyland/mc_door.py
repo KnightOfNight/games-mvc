@@ -16,11 +16,16 @@ the world's standard colors (#261); bots talk in their talking color
 (category ``sudo``) only.
 """
 
+import json
 import logging
+from datetime import timedelta, timezone as dt_timezone
 
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 
 from . import mc
@@ -31,14 +36,22 @@ from .item_utils import (
     SLOT_DISPLAY_NAMES, equip_candidates, generate_item_instance, item_ref,
 )
 from .models import (
-    Character, CombatSession, EffectInstance, ItemDefinition, ItemInstance,
-    Room, record_room_visit_sync,
+    AgentMemory, Character, CombatSession, EffectInstance, ItemDefinition,
+    ItemInstance, MCEvent, Room, record_room_visit_sync,
 )
 
 logger = logging.getLogger('shyland.mc')
 
 MAX_ANSWER_LEN = 2000
 ITEMS_CAP = 50
+# v25.8 (#290/#300): rooms/events list results — the §3 preamble cap.
+LIST_CAP = 50
+# v25.8 (#294): the memory caps, all refused legibly — never truncated.
+MEMORY_MAX_PAYLOAD_BYTES = 4096      # serialized JSON, checked at teach
+MEMORY_MAX_ROWS_PER_AGENT = 262144   # = 1 GiB / 4 KiB (operator-ruled)
+MEMORY_MAX_NAME_LEN = 60
+MEMORY_MAX_BUNDLE_LINES = 50
+MEMORY_LIST_CAP = 50
 STAT_KEYS = ('str', 'dex', 'end', 'int', 'wis', 'per')
 # The v20 #22 authoring law, enforced at runtime for hand-authored
 # artifact names (seed_world enforces the same law for seeded names).
@@ -77,6 +90,24 @@ def _require_int(value, key, *, minimum=None):
     if minimum is not None and value < minimum:
         raise DoorError('bad-params', f"'{key}' must be >= {minimum}.")
     return value
+
+
+def _parse_when(params, key):
+    """v25.8 (#294/#300): optional ISO-8601 window bound. Naive stamps
+    are read as UTC (the project's log law); absent is None."""
+    value = params.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise DoorError('bad-params',
+                        f"'{key}' must be an ISO-8601 timestamp string.")
+    parsed = parse_datetime(value)
+    if parsed is None:
+        raise DoorError('bad-params',
+                        f"'{key}' must be an ISO-8601 timestamp.")
+    if timezone.is_naive(parsed):
+        parsed = parsed.replace(tzinfo=dt_timezone.utc)
+    return parsed
 
 
 @database_sync_to_async
@@ -1189,6 +1220,245 @@ async def a_unequip_item(params, agent_name):
 
 
 # ----------------------------------------------------------------------
+# Agent memory (v25.8 — #294)
+# ----------------------------------------------------------------------
+
+MEMORY_KINDS = {code for code, _ in AgentMemory.KIND_CHOICES}
+
+
+def _agent_user(agent_name):
+    """The requesting bot's own User row — every memory verb scopes to
+    it; one bot never reads or forgets another's store. Sync; call
+    inside the handler's database context."""
+    return User.objects.get(username=agent_name)
+
+
+def _validate_memory_data(kind, data):
+    """Kind-aware validation at teach time — kinds own their payload
+    shapes (§3.1). Returns the normalized stored form. Sync (existence
+    checks hit the DB)."""
+    if kind == AgentMemory.KIND_WAYPOINT:
+        if not isinstance(data, dict) or set(data) != {'room_id'}:
+            raise DoorError(
+                'bad-params',
+                "waypoint 'data' must be exactly {'room_id': <int>}.")
+        room_id = _require_int(data.get('room_id'), 'room_id')
+        if not Room.objects.filter(pk=room_id).exists():
+            raise DoorError('not-found', f'No room with id {room_id}.')
+        # The room PK and nothing else — no path snapshot, nothing
+        # duplicative that can go stale (operator-ruled).
+        return {'room_id': room_id}
+    if not isinstance(data, dict) or set(data) != {'lines'}:
+        raise DoorError(
+            'bad-params',
+            "bundle 'data' must be exactly "
+            "{'lines': [[slug, mk_tier, rarity, quantity], ...]}.")
+    lines = data['lines']
+    if not isinstance(lines, list) or not lines:
+        raise DoorError('bad-params', "'lines' must be a non-empty list.")
+    if len(lines) > MEMORY_MAX_BUNDLE_LINES:
+        raise DoorError(
+            'too-many-lines',
+            f'Bundles hold at most {MEMORY_MAX_BUNDLE_LINES} lines.')
+    rarities = {code for code, _ in ItemInstance.RARITY_CHOICES}
+    cleaned = []
+    for i, line in enumerate(lines):
+        if not isinstance(line, list) or len(line) != 4:
+            raise DoorError(
+                'bad-params',
+                f'Line {i}: each bundle line is '
+                f'[slug, mk_tier, rarity, quantity].')
+        slug, mk_tier, rarity, quantity = line
+        if (not isinstance(slug, str)
+                or not ItemDefinition.objects.filter(slug=slug).exists()):
+            raise DoorError('not-found',
+                            f'Line {i}: no item definition with slug '
+                            f'{slug!r}.')
+        mk_tier = _require_int(mk_tier, f'line {i} mk_tier', minimum=1)
+        quantity = _require_int(quantity, f'line {i} quantity', minimum=1)
+        if not isinstance(rarity, str):
+            raise DoorError('bad-params',
+                            f"Line {i}: 'rarity' must be a string.")
+        if rarity == ItemInstance.ARTIFACT:
+            # The same law a_gift applies — bundles replay gift, and
+            # gift refuses artifacts.
+            raise DoorError(
+                'bad-params',
+                f'Line {i}: artifact rarity is refused — bundles replay '
+                f'gift, and gift refuses artifacts.')
+        if rarity not in rarities:
+            raise DoorError('bad-params',
+                            f'Line {i}: unknown rarity {rarity!r}.')
+        cleaned.append([slug, mk_tier, rarity, quantity])
+    return {'lines': cleaned}
+
+
+@database_sync_to_async
+def _remember(agent_name, kind, name, data, taught_by_name):
+    agent = _agent_user(agent_name)
+    data = _validate_memory_data(kind, data)
+    raw = json.dumps(data).encode()
+    if len(raw) > MEMORY_MAX_PAYLOAD_BYTES:
+        raise DoorError(
+            'payload-too-large',
+            f'Serialized data is {len(raw)} bytes; the cap is '
+            f'{MEMORY_MAX_PAYLOAD_BYTES}.')
+    taught_by = None
+    if taught_by_name:
+        # Audit, not authorization: unresolvable or absent is null.
+        teacher = (Character.objects.select_related('user')
+                   .filter(name__iexact=taught_by_name).first())
+        if teacher is not None:
+            taught_by = teacher.user
+    with transaction.atomic():
+        row = (AgentMemory.objects
+               .filter(agent=agent, kind=kind, name__iexact=name).first())
+        if row is not None:
+            # The upsert law: replace takes the new casing too.
+            row.name = name
+            row.data = data
+            row.taught_by = taught_by
+            row.save(update_fields=['name', 'data', 'taught_by',
+                                    'updated_at'])
+            return row.pk, 'replaced'
+        if (AgentMemory.objects.filter(agent=agent).count()
+                >= MEMORY_MAX_ROWS_PER_AGENT):
+            raise DoorError(
+                'memory-full',
+                f'The store holds {MEMORY_MAX_ROWS_PER_AGENT} rows '
+                f'already — forget something first.')
+        row = AgentMemory.objects.create(
+            agent=agent, kind=kind, name=name, data=data,
+            taught_by=taught_by)
+        return row.pk, 'created'
+
+
+async def a_remember(params, agent_name):
+    """#294: teach — upsert by (agent, kind, name) case-insensitive.
+    Cap violations are distinct legible errors, never silent
+    truncation."""
+    kind = _require_str(params, 'kind')
+    if kind not in MEMORY_KINDS:
+        raise DoorError(
+            'bad-params',
+            f'Unknown memory kind {kind!r} — declared kinds: '
+            f'{", ".join(sorted(MEMORY_KINDS))}.')
+    name = _require_str(params, 'name', max_len=MEMORY_MAX_NAME_LEN)
+    taught_by = params.get('taught_by')
+    if taught_by is not None and not isinstance(taught_by, str):
+        raise DoorError('bad-params', "'taught_by' must be a string.")
+    pk, result = await _remember(agent_name, kind, name,
+                                 params.get('data'), taught_by)
+    return {'id': pk, 'result': result}
+
+
+@database_sync_to_async
+def _forget(agent_name, memory_id):
+    agent = _agent_user(agent_name)
+    row = AgentMemory.objects.filter(agent=agent, pk=memory_id).first()
+    if row is None:
+        raise DoorError('not-found', f'No memory with id {memory_id}.')
+    info = {'id': row.pk, 'kind': row.kind, 'name': row.name}
+    row.delete()
+    return info
+
+
+async def a_forget(params, agent_name):
+    """#294: by PK only, never by name — read-before-delete, the door's
+    mutation discipline."""
+    memory_id = _require_int(params.get('id'), 'id')
+    return {'forgotten': await _forget(agent_name, memory_id)}
+
+
+def _memory_summary(row, rooms):
+    """The list-row summary, rendered live: waypoint resolves its room
+    now (never a stored snapshot); bundle counts its lines."""
+    if row.kind == AgentMemory.KIND_WAYPOINT:
+        room = rooms.get(row.data.get('room_id'))
+        if room is None:
+            return '(room no longer exists)'
+        if room.area_id:
+            return f'{room.zone.name}: {room.area.name}: {room.name}'
+        return f'{room.zone.name}: {room.name}'
+    return f"{len(row.data.get('lines', []))} lines"
+
+
+@database_sync_to_async
+def _memories_payload(agent_name, kind, contains, since, until):
+    agent = _agent_user(agent_name)
+    qs = AgentMemory.objects.filter(agent=agent)
+    if kind is not None:
+        qs = qs.filter(kind=kind)
+    if contains:
+        qs = qs.filter(name__icontains=contains)
+    if since is not None:
+        qs = qs.filter(created_at__gte=since)
+    if until is not None:
+        qs = qs.filter(created_at__lte=until)
+    rows = list(qs.order_by('-created_at')[:MEMORY_LIST_CAP])
+    room_ids = [r.data.get('room_id') for r in rows
+                if r.kind == AgentMemory.KIND_WAYPOINT]
+    rooms = (Room.objects.select_related('zone', 'area')
+             .in_bulk([rid for rid in room_ids if isinstance(rid, int)]))
+    return {
+        'memories': [
+            {'id': r.pk, 'kind': r.kind, 'name': r.name,
+             'summary': _memory_summary(r, rooms)}
+            for r in rows
+        ],
+        'count': len(rows),
+    }
+
+
+async def q_memories(params, agent_name):
+    """#294: the store listing — newest-first, capped, summaries
+    rendered live (one joined room query for every waypoint row)."""
+    kind = params.get('kind')
+    if kind is not None and kind not in MEMORY_KINDS:
+        raise DoorError('bad-params', f'Unknown memory kind {kind!r}.')
+    contains = params.get('name', '')
+    if contains is None:
+        contains = ''
+    if not isinstance(contains, str):
+        raise DoorError('bad-params', "'name' must be a string.")
+    since = _parse_when(params, 'since')
+    until = _parse_when(params, 'until')
+    return await _memories_payload(agent_name, kind, contains, since, until)
+
+
+@database_sync_to_async
+def _memory_payload(agent_name, memory_id):
+    agent = _agent_user(agent_name)
+    row = (AgentMemory.objects.select_related('taught_by')
+           .filter(agent=agent, pk=memory_id).first())
+    if row is None:
+        raise DoorError('not-found', f'No memory with id {memory_id}.')
+    data = row.data
+    if row.kind == AgentMemory.KIND_BUNDLE:
+        # The stored form is positional; the rendered detail is legible.
+        data = {'lines': [
+            {'slug': l[0], 'mk_tier': l[1], 'rarity': l[2],
+             'quantity': l[3]}
+            for l in row.data.get('lines', [])
+            if isinstance(l, list) and len(l) == 4
+        ]}
+    return {
+        'id': row.pk,
+        'kind': row.kind,
+        'name': row.name,
+        'data': data,
+        'taught_by': row.taught_by.username if row.taught_by_id else None,
+        'created_at': row.created_at.isoformat(),
+        'updated_at': row.updated_at.isoformat(),
+    }
+
+
+async def q_memory(params, agent_name):
+    memory_id = _require_int(params.get('id'), 'id')
+    return await _memory_payload(agent_name, memory_id)
+
+
+# ----------------------------------------------------------------------
 # Dispatch (§4) — the consumer resolves kinds through these tables.
 # ----------------------------------------------------------------------
 
@@ -1201,6 +1471,8 @@ QUERY_HANDLERS = {
     'is_admin': q_is_admin,
     'inventory': q_inventory,
     'item': q_item,
+    'memories': q_memories,
+    'memory': q_memory,
 }
 
 ACTION_HANDLERS = {
@@ -1214,4 +1486,6 @@ ACTION_HANDLERS = {
     'edit_item': a_edit_item,
     'equip_item': a_equip_item,
     'unequip_item': a_unequip_item,
+    'remember': a_remember,
+    'forget': a_forget,
 }
