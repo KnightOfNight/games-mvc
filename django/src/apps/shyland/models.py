@@ -1337,3 +1337,34 @@ class MCKillSwitch(models.Model):
 
     def __str__(self):
         return f'MC kill switch: {"engaged" if self.killed else "not engaged"}'
+
+
+class AgentMemory(models.Model):
+    """Generic per-bot durable storage (#294, v25.8). One row per taught
+    fact. Kinds own their payload shapes; the door validates per kind at
+    teach time. Shared namespace per (agent, kind) across all admins."""
+    KIND_WAYPOINT = 'waypoint'
+    KIND_BUNDLE = 'bundle'
+    KIND_CHOICES = [(KIND_WAYPOINT, 'Waypoint'), (KIND_BUNDLE, 'Bundle')]
+
+    agent = models.ForeignKey(User, on_delete=models.CASCADE,
+                              related_name='agent_memories')
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    name = models.CharField(max_length=60)
+    data = models.JSONField(default=dict, blank=True)
+    taught_by = models.ForeignKey(User, null=True, blank=True,
+                                  on_delete=models.SET_NULL,
+                                  related_name='taught_agent_memories')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                'agent', 'kind', Lower('name'),
+                name='agentmemory_unique_agent_kind_name_ci'),
+        ]
+        indexes = [models.Index(fields=['agent', 'created_at'])]
+
+    def __str__(self):
+        return f'AgentMemory {self.pk}: {self.kind} {self.name!r}'

@@ -1,0 +1,159 @@
+2026-08-27 — implementation session started: Shyland_V25.8_Brief_1_Bot_Memory_And_Record_Search on branch version_25_8
+
+CLOSEOUT REPORT — V25.8 Brief 1: Bot Memory and Record Search
+=============================================================
+
+Branch: version_25_8
+Final implementation commit (arch-doc hash of record): 7752dd7 (pre-playtest
+implementation tip 7d4701a; the final hash lands the three playtest-found
+bot-side prompt fixes — deviations 9-11)
+Architecture doc commit: 2905d2d
+Suite: 865 green in-container (was 840; +25 = tests/test_v25_8_brief1.py exactly)
+Migration: 0054_agentmemory generated in-container, applied on dev (showmigrations [X])
+
+WHAT SHIPPED
+------------
+- #294  AgentMemory model (migration 0054) + door verbs memories/memory/remember/forget:
+        kind-aware teach validation (waypoint room-PK-only; bundle gift-law lines,
+        artifacts refused), CI upsert created/replaced, legible cap refusals
+        (memory-full 262144 / payload-too-large 4096 / too-many-lines 50),
+        forget by PK only, live-rendered waypoint summaries, per-agent store scoping.
+- #290  rooms query (CI substring + zone narrowing, zone-then-room order, cap 50);
+        a_move result gains from_room (origin captured before the move).
+- #300  events windowed MC-record search (until=now / since=until-24h defaults;
+        text search bounded to <=7-day spans with the walk-backwards refusal;
+        indexed filters bound the scan; newest-first; cap 50; 120-char gist);
+        event = the full record by stream_id.
+- #296  report action (kind inventory): a_answer admin gate + offline posture;
+        door-composed sudo leader (name + live item count); equipped then carried
+        sections through the player compositions extracted to item_utils
+        (table_lines, details_cell, slot_cell, equipment_doll_lines,
+        inventory_table_lines; SLOT_ORDER + STACKABLE_ITEM_TYPES moved alongside);
+        consumer keeps thin delegates — player-facing output byte-identical,
+        pre-existing rendering tests passed with ZERO edits (the 25.7 bar met);
+        player_message gains the structured-lines branch; delivery private to the
+        recipient's pane only.
+- §4.1  sudo_bot.py: eight new tools + the durable-memory / record-search /
+        prefer-report system-prompt standing orders.
+- #299  (bot, target)-scoped state: sudo_bot.py pid/convo files derive from a
+        required --target {dev,prod} on run/status/stop; botctl BotPaths(name,
+        target) with the <target>-suffixed log, stop/status passing the target;
+        agents/.gitignore convo line widened to .sudo_bot_conversations*.json.
+- Driver: agents/mc_door_agent.py kinds catalog extended with the eight verbs.
+
+VERIFICATION (brief §6 — all passed)
+------------------------------------
+1. Full suite in-container (path form): 865 tests, OK. Grew from 840 by exactly
+   the 25 new tests.
+2. Migration 0054 applied on dev (showmigrations: [X] 0054_agentmemory).
+3. Deterministic driver check, 31/31 checks PASSED live against the dev stack
+   (throwaway /tmp harness over the door + a live player-door session as the
+   online admin; agent-smith as the agent; scratch admin character "V258 Verify"
+   created on dev for the run): rooms search shape/order; waypoint teach ->
+   list (live path summary) -> detail (taught_by resolved); move away/back with
+   from_room correct in both directions; 2-line bundle teach -> labeled detail ->
+   replay as fresh gift calls; equip of a gifted item; forget both by id -> store
+   empty; events search returned the just-emitted remember/move/forget/gift/
+   equip_item records end-to-end through the live persister; event by stream_id;
+   report delivered into the live player pane — sudo leader with live count,
+   then Equipment..., then Inventory (1/100)..., in order, in the player report
+   category; cleanup (unequip + remove_item) left the scratch character empty.
+4. Two-target coexistence (#299), no prod-pointed bot ever started: dev bot
+   launched via the worktree botctl (stub brain via SUDO_BOT_BRAIN — zero model
+   calls); dev status = running (exit 0) while prod status = not-running
+   (exit 1); prod stop = no-op leaving the dev bot untouched; state files
+   carried the dev suffix (.sudo_bot.dev.pid, sudo_bot.dev.log); dev stop
+   cleaned the pidfile.
+5. make deploy-dev run after verification passed; dev stack on the brief build.
+
+DEVIATIONS / NOTES
+------------------
+1. Brief §3.4 discrepancy (flagged in-session, resolved to the operative
+   directive): the brief calls the carried section "the inventory listing
+   composition over compose_item_line (item_utils.py:316)". In the code the
+   player inv listing renders a TABLE (_table_lines over
+   get_display_name_with_tier + _details_cell); compose_item_line serves the
+   ground/loot listing sites. The brief's operative requirement — byte-identical
+   to the player inv/equip renderings, existing tests as the guard, playtest
+   item 5 — is stated three times and is unambiguous, so the real inv/equip
+   compositions were extracted and reused. Judged a mis-attribution, not a
+   load-bearing mismatch (nothing in the build rests on the false clause).
+2. MEMORY_MAX_ROWS_PER_AGENT is enforced on CREATE only — a same-name replace
+   never trips memory-full (a replace cannot grow the store; refusing it would
+   deadlock a full store). Test-pinned.
+3. #299 target argument implemented as a required --target option on
+   run/status/stop (the brief offered option-vs-positional as implementer's
+   choice; botctl is the only caller and passes it explicitly).
+4. botctl cmd_stop/cmd_status take (target, paths) per the brief's sketch;
+   BotPaths also carries the target (single source for path derivation).
+5. Scaffolding left in place, gitignored, for the operator's playtest item 6:
+   agents/venvs and agents/.secrets in the worktree are SYMLINKS to the main
+   checkout's copies (created for the coexistence check; nothing installed,
+   nothing copied). Remove freely if unwanted. The two agents/.gitignore
+   entries dropped their trailing slashes (.secrets/ -> .secrets, venvs/ ->
+   venvs) so the symlink form is ignored like the directory form — same
+   ignore surface, symlink-tolerant.
+6. Scratch dev-only admin account v258-verify / character "V258 Verify"
+   (admins.shyland) created on the dev stack for the driver check; inventory
+   left empty. Dev-only state; harmless to keep or delete.
+7. Mid-session operator info: renewed wildcard cert uploaded to the main
+   checkout's ssl/. Synced into the worktree ssl/ (the post-checkout hook's
+   propagation, done by hand), pushed into the game-mvc_ssldata volume via
+   make push-certs (dev posture, guard-checked), nginx restarted — dev now
+   serves the renewed cert (notBefore 2026-08-27, notAfter 2027-03-13).
+   Production untouched; its volume receives the cert at the operator's next
+   prod-posture push-certs.
+8. No test-hygiene conversions; no existing test edited (the pin test moved in
+   the opening act as standing).
+9. Playtest finding, fixed in-session (fe3a296): teaching three waypoints in a
+   row, the model's third turn ran where_is and then answered "saved" WITHOUT
+   calling remember — a confident false success report (door log + durable
+   record both show two of three teach turns storing; game side clean: the
+   door stored exactly what it was asked and refused a stray string-typed
+   to_room_id 'null' as bad-params). Fix: a system-prompt standing order —
+   actions are reported only on a successful tool receipt in the current turn;
+   no call, say so plainly. Bot-side only (no rebuild); dev bot restarted with
+   the new prompt.
+10. Playtest finding, fixed in-session: a repeated "move X to <waypoint>"
+    turn made ZERO tool calls — the model declined the move believing the
+    character was "already there" from its own earlier-turn move, while the
+    player had walked elsewhere (the follow-up also hallucinated to_room_id 0,
+    which the door refused not-found before the model recovered via the
+    memory). Game side clean throughout. Fix: the move paragraph gains the
+    location-decision rule — a fresh where_is in the same turn even when the
+    model believes it knows, especially before concluding a move is
+    unnecessary; "already there" only from a current-turn query result.
+    Bot-side only; dev bot restarted with the new prompt.
+11. Playtest finding, fixed in-session: two waypoint moves teleported the
+    player through a WRONG room first — the model called move with a guessed
+    room id (once the waypoint memory's own id, once the digit peeled off the
+    waypoint's name "battle-1" -> room 1, the Heart), then read the memory and
+    issued the corrective second move. Door clean: it executed exactly the
+    moves it was handed; every hop on the record. Fix: prompt standing order —
+    a to_room_id must come from a current-turn tool result (memory data.room_id,
+    rooms row id, or where_is room id), never from a name, a memory's own id,
+    or recall; waypoint moves read the memory first and move ONCE. Bot-side
+    only; dev bot restarted. Pattern note: third playtest patch in this arc,
+    all variants of the model inventing values instead of reading them —
+    filed as #302 (operator-directed framing: the bot must NEVER invent a
+    value it should read from the database; make receipts structural, not
+    behavioral). The three prompt standing orders are the mitigation of
+    record until #302 is ruled.
+
+ISSUES
+------
+#294, #290, #296, #299, #300 closed with closing comments naming the brief and
+commit 7d4701a (gated on verification passing).
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+Operator reports playtest successful (2026-08-27, "playtest confirmed" —
+given after the three in-session bot-side fixes of deviations 9-11 were
+applied, the dev bot restarted with each, and the failure shapes re-tested).
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None expected. Migration 0054 rides make deploy-prod automatically; no seed
+change, no production-side data action. (Prod bot restart after deploy remains
+the operator's standing action — the restarted bot must be launched with the
+new required --target prod argument, which the updated botctl passes itself.)

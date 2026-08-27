@@ -459,3 +459,202 @@ def parse_corpse_noun(noun_str, corpse_list):
     if index > len(matches):
         return ('bad_index', None)
     return ('single', matches[index - 1])
+
+
+# ----------------------------------------------------------------------
+# v25.8 (#296): the report compositions — extracted from SkylandConsumer
+# (the equip_candidates precedent, v25.7) so the agent door's `report`
+# action renders through the same code as the player's `inv` and bare
+# `equip`. The consumer keeps thin delegates under its original names;
+# player-facing output is byte-identical (existing tests are the guard).
+# ----------------------------------------------------------------------
+
+# v22 brief 2 (DD §9): the re-authored anatomical order, head to feet —
+# the Equipment paper-doll renders every slot in this order (RING twice,
+# per SLOT_CAPACITY).
+SLOT_ORDER = [
+    'HEAD', 'NECK', 'SHOULDERS', 'BACK', 'CHEST',
+    'MAIN_HAND', 'OFF_HAND', 'RANGED', 'HANDS', 'RING',
+    'WAIST', 'LEGS', 'FEET',
+]
+
+# v23 B2 (#18): the item types that stack in the inventory display.
+# Wear-free interchangeable types stack; per-instance-identity types
+# (durability, rolled stats — weapon/armor/accessory/bag) never stack.
+STACKABLE_ITEM_TYPES = {'consumable', 'material', 'readable', 'key'}
+
+
+def table_lines(headers, rows, indent='  ', gap='   ', min_widths=None):
+    """Seg-form report lines for a table. A cell is a plain string
+    (value voice) or a list of (text, voice) tuples. `min_widths`
+    (v22 B2 amendment 3) seeds the column widths so several tables
+    can share identical column x-geometry."""
+    def cell_text(cell):
+        if isinstance(cell, str):
+            return cell
+        return ''.join(t for t, _ in cell)
+
+    widths = [len(h) for h in headers]
+    if min_widths is not None:
+        widths = [max(w, m) for w, m in zip(widths, min_widths)]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell_text(cell)))
+
+    header_text = indent + gap.join(
+        h.ljust(widths[i]) for i, h in enumerate(headers)
+    ).rstrip()
+    lines = [{'segs': [{'t': header_text, 'c': 'muted'}]}]
+    for row in rows:
+        segs = [{'t': indent, 'c': 'value'}]
+        for i, cell in enumerate(row):
+            if isinstance(cell, str):
+                segs.append({'t': cell, 'c': 'value'})
+            else:
+                segs.extend({'t': t, 'c': c} for t, c in cell)
+            if i < len(row) - 1:
+                pad = widths[i] - len(cell_text(cell))
+                segs.append({'t': ' ' * pad + gap, 'c': 'value'})
+        lines.append({'segs': segs})
+    return lines
+
+
+def details_cell(item):
+    """DD §9: Details = durability + flags, no brackets —
+    '90%, Uncommon, Bound'. The durability voice derives from the
+    mechanical durability band (never its own thresholds): no
+    penalty → value, penalty bands → say, broken → error. Rarity
+    words are always rarity-colored in information output."""
+    segs = []
+    # #80: durability is gated on identification like rarity below —
+    # the veil hides everything but Bound|Unbound.
+    if item.is_identified and item.definition.takes_durability_loss:
+        if item.is_broken:
+            voice = 'error'
+        elif get_durability_penalty(item) > 0:
+            voice = 'say'
+        else:
+            voice = 'value'
+        segs.append((f'{int(round(item.durability_current))}%', voice))
+    if item.is_identified:
+        if segs:
+            segs.append((', ', 'value'))
+        segs.append((item.rarity.capitalize(), f'rar-{item.rarity}'))
+    if segs:
+        segs.append((', ', 'value'))
+    segs.append(('Bound' if item.is_soulbound else 'Unbound', 'flag-chrome'))
+    return segs
+
+
+def slot_cell(defn):
+    """v22 brief 2 amendment 1 (#123): the Slot cell for listing
+    tables — the sentence-case label of the item's equip slot when
+    slotted, muted '-' when slotless. v24.7 brief 1 (#194, GDD
+    §6.11): two-handed weapons append the word — 'Ranged
+    (two-handed)' — inherited by every caller. v24.8 brief 1 (#197,
+    GDD §6.11): all valid slots render, joined with '/', in authored
+    valid_slots order — 'Main hand/Off hand' — with the two-handed
+    word appended once after the full joined label."""
+    if defn.valid_slots:
+        label = '/'.join(format_slot_name(s) for s in defn.valid_slots)
+        if defn.item_type == 'weapon' and defn.is_two_handed:
+            return f'{label} (two-handed)'
+        return label
+    return [('-', 'muted')]
+
+
+def equipment_doll_lines(equipped):
+    """v22 brief 2 (DD §9): Equipment paper-doll — every slot always
+    shown, anatomical order, sentence-case labels, muted '-' for
+    empties. Header punctuation law: ellipsis = structure below.
+    v24.7 brief 1 (#195, GDD §6.11): THE shared composition — `inv`
+    and bare `equip` both render through this helper, byte-identical.
+    v24.7 brief 1 (#176): a hand row with no direct occupant while a
+    two-handed item is equipped in any other slot is a consumed row,
+    never a free one — the consumer's name-with-tier and
+    '(two-handed)', both muted; the item's home row stays its real
+    location with normal rendering."""
+    lines = [{'k': 'Equipment...'}]
+    by_slot = {}
+    for item in equipped:
+        by_slot.setdefault(item.equipped_slot, []).append(item)
+    # Hand-claiming invariant: at most one two-handed item is ever
+    # equipped, whatever slot it occupies (GDD §3.6).
+    two_hander = next(
+        (i for i in equipped if i.definition.is_two_handed), None)
+    doll_rows = []
+    for slot in SLOT_ORDER:
+        occupants = by_slot.get(slot, [])
+        for i in range(SLOT_CAPACITY.get(slot, 1)):
+            label = format_slot_name(slot)
+            if i < len(occupants):
+                item = occupants[i]
+                doll_rows.append([
+                    label,
+                    get_display_name_with_tier(item),
+                    details_cell(item),
+                ])
+            elif (slot in ('MAIN_HAND', 'OFF_HAND')
+                    and two_hander is not None):
+                doll_rows.append([
+                    label,
+                    [(get_display_name_with_tier(two_hander), 'muted')],
+                    [('(two-handed)', 'muted')],
+                ])
+            else:
+                doll_rows.append([
+                    label, [('-', 'muted')], [('-', 'muted')],
+                ])
+    lines += table_lines(['Slot', 'Name', 'Details'], doll_rows)
+    return lines
+
+
+def inventory_table_lines(unequipped, current_carry, max_carry):
+    """v24.16 (#208): the `inv` render — the Inventory table alone (the
+    paper-doll belongs to bare `equip`, the money line to `wallet`).
+    Quantity after Name, Slot empty unless slotted (unequipped items
+    never are), flat alphabetical by name. v23 B2 (#18): all
+    STACKABLE_ITEM_TYPES group on (definition, mk_tier, rarity,
+    soulbound state) — the trailing sort-key components exist only to
+    make same-group rows adjacent; alphabetical-by-name stays the
+    visible order."""
+    lines = [{'k': f'Inventory ({current_carry}/{max_carry})...'}]
+    unequipped_sorted = sorted(
+        unequipped,
+        key=lambda i: (
+            get_display_name_with_tier(i).lower(),
+            i.definition_id, i.mk_tier, i.rarity, i.is_soulbound,
+        ),
+    )
+    inv_rows = []
+    idx = 0
+    while idx < len(unequipped_sorted):
+        item = unequipped_sorted[idx]
+        count = 1
+        if item.definition.item_type in STACKABLE_ITEM_TYPES:
+            j = idx + 1
+            while j < len(unequipped_sorted):
+                other = unequipped_sorted[j]
+                if (other.definition_id == item.definition_id
+                        and other.mk_tier == item.mk_tier
+                        and other.rarity == item.rarity
+                        and other.is_soulbound == item.is_soulbound):
+                    count += 1
+                    j += 1
+                else:
+                    break
+            idx = j
+        else:
+            idx += 1
+        # Amendment 1 (#123): the Slot cell names the item's equip
+        # slot (slotless items show the muted '-').
+        inv_rows.append([
+            slot_cell(item.definition),
+            get_display_name_with_tier(item),
+            str(count),
+            details_cell(item),
+        ])
+    lines += table_lines(
+        ['Slot', 'Name', 'Quantity', 'Details'], inv_rows,
+    )
+    return lines

@@ -58,8 +58,15 @@ import websockets
 
 AGENTS_DIR = Path(__file__).resolve().parent
 
-PIDFILE = AGENTS_DIR / '.sudo_bot.pid'
-CONVO_FILE = AGENTS_DIR / '.sudo_bot_conversations.json'
+# v25.8 (#299): state files are (bot, target)-scoped — one checkout can
+# host a dev-facing and a prod-facing bot side by side, and a dev stop
+# is incapable of touching the prod bot's pidfile by construction.
+def pidfile(target):
+    return AGENTS_DIR / f'.sudo_bot.{target}.pid'
+
+
+def convo_file(target):
+    return AGENTS_DIR / f'.sudo_bot_conversations.{target}.json'
 
 # The door's protocol version (mc_consumer.MC_PROTOCOL) — anything else
 # is a world this bot was not written for, and it refuses to run.
@@ -84,10 +91,11 @@ CLOSE_MEANINGS = {
 
 QUERY_KINDS = frozenset(
     {'commands', 'who_online', 'where_is', 'character', 'items', 'is_admin',
-     'inventory', 'item'})
+     'inventory', 'item', 'memories', 'memory', 'rooms', 'events', 'event'})
 ACTION_KINDS = frozenset(
     {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
-     'remove_item', 'edit_item', 'equip_item', 'unequip_item'})
+     'remove_item', 'edit_item', 'equip_item', 'unequip_item',
+     'remember', 'forget', 'report'})
 
 log = logging.getLogger('sudo_bot')
 
@@ -464,6 +472,160 @@ TOOLS = [
             'required': ['name', 'item_id'],
         },
     },
+    {
+        'name': 'remember',
+        'description': ('Store a durable named fact. Kinds: waypoint '
+                        '{room_id}, bundle {lines: [[slug, mk_tier, rarity, '
+                        'quantity], ...]} (1-50 lines, no artifacts). '
+                        'Overwrites an existing name of the same kind and '
+                        'says so (result: created or replaced). Names <= 60 '
+                        'chars. Pass taught_by so the record shows who '
+                        'taught it.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string', 'enum': ['waypoint', 'bundle']},
+                'name': {'type': 'string',
+                         'description': 'Memory name, <= 60 chars.'},
+                'data': {
+                    'type': 'object',
+                    'description': "waypoint: {'room_id': <int>}; bundle: "
+                                   "{'lines': [[slug, mk_tier, rarity, "
+                                   'quantity], ...]}.'},
+                'taught_by': {'type': 'string',
+                              'description': "The teaching admin's "
+                                             'character name (audit).'},
+            },
+            'required': ['kind', 'name', 'data'],
+        },
+    },
+    {
+        'name': 'forget',
+        'description': ('Delete one stored memory by id — never by name; '
+                        'look the id up with memories/memory first. Returns '
+                        'what was forgotten.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'id': {'type': 'integer',
+                                  'description': 'Memory id.'}},
+            'required': ['id'],
+        },
+    },
+    {
+        'name': 'memories',
+        'description': ('List stored memories, newest-first, up to 50: id, '
+                        'kind, name, and a live summary (waypoints show '
+                        'their current Zone: Area: Room; bundles their line '
+                        'count). Optional filters: kind, name substring, '
+                        'since/until (ISO-8601).'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string', 'enum': ['waypoint', 'bundle']},
+                'name': {'type': 'string',
+                         'description': 'Name substring filter.'},
+                'since': {'type': 'string',
+                          'description': 'ISO-8601 lower bound.'},
+                'until': {'type': 'string',
+                          'description': 'ISO-8601 upper bound.'},
+            },
+        },
+    },
+    {
+        'name': 'memory',
+        'description': ('One stored memory in full by id: kind, name, data '
+                        '(bundles rendered with labeled fields), taught_by, '
+                        'created/updated stamps.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'id': {'type': 'integer',
+                                  'description': 'Memory id.'}},
+            'required': ['id'],
+        },
+    },
+    {
+        'name': 'rooms',
+        'description': ('Search rooms by name substring (case-insensitive), '
+                        'optionally narrowed by zone name substring. Up to '
+                        '50 rows ordered by zone then room: id, name, area, '
+                        "zone. A room's id is what waypoints and move's "
+                        'to_room_id take.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'name': {'type': 'string',
+                         'description': 'Room name substring.'},
+                'zone': {'type': 'string',
+                         'description': 'Zone name substring.'},
+            },
+            'required': ['name'],
+        },
+    },
+    {
+        'name': 'events',
+        'description': ('Search the durable game record (MC events), '
+                        'newest-first, up to 50 rows: stream_id, ts, kind, '
+                        'actor_name, room_id, and a 120-char gist. Filters: '
+                        'kind (exact), actor (id or name), room_id, text '
+                        '(substring of the record payload), since/until '
+                        '(ISO-8601; defaults: until=now, since=until-24h). '
+                        'text search allows spans up to 7 days — walk '
+                        'backwards window by window for older history. Use '
+                        'event for one record in full.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string',
+                         'description': 'Record kind, exact.'},
+                'actor': {'type': ['integer', 'string'],
+                          'description': 'Actor id or name.'},
+                'room_id': {'type': 'integer'},
+                'text': {'type': 'string',
+                         'description': 'Payload substring.'},
+                'since': {'type': 'string',
+                          'description': 'ISO-8601 lower bound.'},
+                'until': {'type': 'string',
+                          'description': 'ISO-8601 upper bound.'},
+            },
+        },
+    },
+    {
+        'name': 'event',
+        'description': ('One durable record in full by stream_id: ts, kind, '
+                        'actor, room, audience, and the whole data '
+                        'payload.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {'stream_id': {'type': 'string',
+                                         'description': 'Record stream id '
+                                                        '(from events).'}},
+            'required': ['stream_id'],
+        },
+    },
+    {
+        'name': 'report',
+        'description': ('Deliver a game-rendered state report of a '
+                        "character into the requesting admin's pane: a "
+                        'sudo leader line plus the same equipment and '
+                        'inventory rendering the player equip/inv commands '
+                        'produce, colors included. Prefer this over '
+                        'hand-writing a roster when an admin asks to see '
+                        "someone's inventory. kind: inventory (the only "
+                        'kind for now). Offline admin: delivered false, '
+                        'never an error.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'to': {'type': 'string',
+                       'description': 'The requesting admin (the report '
+                                      'lands in their pane).'},
+                'character': {'type': 'string',
+                              'description': 'The character to report on.'},
+                'kind': {'type': 'string', 'enum': ['inventory']},
+            },
+            'required': ['to', 'character', 'kind'],
+        },
+    },
 ]
 
 # sudo's persona and standing orders (brief §2 rules 5-7; decline
@@ -493,10 +655,27 @@ but the intended character is obvious (from who_online or the \
 conversation), query again with the corrected full name and answer with \
 the fresh result, noting the correction.
 
+Your reports of your own actions are receipts, not intentions: never \
+say you remembered, moved, gave, equipped, or changed anything unless a \
+successful tool result for that exact call is in the current turn. If \
+you did not make the call, say so plainly — a false "saved" is worse \
+than no answer.
+
 Before moving a character, always query where_is on them first and \
 include where they were in your confirmation ("moved Harley Stone from \
 Zone: Area: Room to ...") — that record is what makes "send them back" \
-possible later.
+possible later. A move request is a location decision: run the fresh \
+where_is in the same turn even when you believe you know where they \
+are — especially before concluding a move is unnecessary. "Already \
+there" may only come from a fresh query result in the current turn, \
+never from an earlier turn's move or answer.
+
+A to_room_id must come from a tool result in the current turn — a \
+waypoint memory's data.room_id, a rooms row's id, or a where_is room \
+id. Never derive one from a waypoint's name, a memory's own id, or \
+recall. For a waypoint move, read the memory first and move once; a \
+wrong-room detour corrected afterwards is not a fix — the player \
+really makes every hop.
 
 Write locations exactly the way the game's location bar shows them: \
 `Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
@@ -533,6 +712,17 @@ bypass protective guards but never structural rules. Destructive and \
 mutating item actions act only on a target the admin explicitly named: \
 when a description matches several items, or an equip would displace one \
 of several, relay the options and ask — never pick for the admin.
+
+Taught facts go in durable memory, not conversation: when an admin \
+teaches you a place, store a waypoint; a set of items to hand out \
+together is a bundle. Replaying a bundle is ordinary gift calls, one \
+per line — fresh generation every time. forget takes a memory id — \
+look it up with memories first, never guess. "What happened" questions \
+are answered from the durable record: search events (and event for one \
+record's full detail) with time windows, walking backwards from now — \
+not from conversation memory. When an admin asks to see a character's \
+inventory or equipment, prefer the report action — the game renders the \
+report into their pane itself — over hand-writing a roster.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
@@ -1029,9 +1219,9 @@ class SudoBot:
 # CLI: run / status / stop through the pidfile
 # ----------------------------------------------------------------------
 
-def _read_pid():
+def _read_pid(target):
     try:
-        return int(PIDFILE.read_text().strip())
+        return int(pidfile(target).read_text().strip())
     except (OSError, ValueError):
         return None
 
@@ -1044,19 +1234,19 @@ def _pid_alive(pid):
         return False
 
 
-def cmd_status():
-    pid = _read_pid()
+def cmd_status(target):
+    pid = _read_pid(target)
     if pid and _pid_alive(pid):
-        print(f'sudo bot running (pid {pid})')
+        print(f'sudo bot ({target}) running (pid {pid})')
         return 0
-    print('sudo bot not running')
+    print(f'sudo bot ({target}) not running')
     return 1
 
 
-def cmd_stop():
-    pid = _read_pid()
+def cmd_stop(target):
+    pid = _read_pid(target)
     if not pid or not _pid_alive(pid):
-        print('sudo bot not running')
+        print(f'sudo bot ({target}) not running')
         return 1
     os.kill(pid, signal.SIGTERM)
     print(f'sent SIGTERM to pid {pid}')
@@ -1083,9 +1273,10 @@ def cmd_run(cfg):
         filename=cfg.log, level=logging.INFO,
         format='%(asctime)s %(levelname)s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%SZ')
-    existing = _read_pid()
+    existing = _read_pid(cfg.target)
     if existing and _pid_alive(existing):
-        return _refuse(f'sudo bot already running (pid {existing})')
+        return _refuse(f'sudo bot ({cfg.target}) already running '
+                       f'(pid {existing})')
 
     password_file = Path(cfg.password_file)
     try:
@@ -1103,17 +1294,19 @@ def cmd_run(cfg):
         brain = make_brain(cfg.brain, cfg.model, cfg.max_tokens)
     except SystemExit as exc:
         return _refuse(str(exc))
-    convos = ConversationStore(CONVO_FILE, cfg.convo_timeout, cfg.history_max)
+    convos = ConversationStore(convo_file(cfg.target), cfg.convo_timeout,
+                               cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
 
-    PIDFILE.write_text(str(os.getpid()))
-    log.info('sudo bot starting: url=%s username=%s brain=%s model=%s',
-             cfg.url, cfg.username, cfg.brain, cfg.model)
+    pidfile(cfg.target).write_text(str(os.getpid()))
+    log.info('sudo bot starting: target=%s url=%s username=%s brain=%s '
+             'model=%s',
+             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model)
     try:
         return asyncio.run(bot.run())
     finally:
         try:
-            PIDFILE.unlink()
+            pidfile(cfg.target).unlink()
         except OSError:
             pass
 
@@ -1124,6 +1317,10 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     run_parser = sub.add_parser('run', help='run the bot in the foreground')
     env = os.environ.get
+    run_parser.add_argument(
+        '--target', required=True, choices=['dev', 'prod'],
+        help='which stack this bot faces — scopes the pid/conversation '
+             'state files (#299)')
     run_parser.add_argument(
         '--url', default=env('SUDO_BOT_URL'),
         help='base URL, e.g. https://localhost:40443')
@@ -1158,14 +1355,18 @@ def main():
         '--history-max', type=int, default=int(env('SUDO_BOT_HISTORY_MAX',
                                                    '20')),
         help='max retained exchanges per admin conversation')
-    sub.add_parser('status', help='is a bot running?')
-    sub.add_parser('stop', help='SIGTERM the running bot')
+    status_parser = sub.add_parser('status', help='is a bot running?')
+    stop_parser = sub.add_parser('stop', help='SIGTERM the running bot')
+    for sub_parser in (status_parser, stop_parser):
+        sub_parser.add_argument(
+            '--target', required=True, choices=['dev', 'prod'],
+            help='which target-scoped bot to address (#299)')
 
     args = parser.parse_args()
     if args.command == 'status':
-        sys.exit(cmd_status())
+        sys.exit(cmd_status(args.target))
     if args.command == 'stop':
-        sys.exit(cmd_stop())
+        sys.exit(cmd_stop(args.target))
     if not args.url:
         parser.error('--url is required (or SUDO_BOT_URL)')
     sys.exit(cmd_run(args))
