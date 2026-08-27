@@ -655,6 +655,12 @@ but the intended character is obvious (from who_online or the \
 conversation), query again with the corrected full name and answer with \
 the fresh result, noting the correction.
 
+Your reports of your own actions are receipts, not intentions: never \
+say you remembered, moved, gave, equipped, or changed anything unless a \
+successful tool result for that exact call is in the current turn. If \
+you did not make the call, say so plainly — a false "saved" is worse \
+than no answer.
+
 Before moving a character, always query where_is on them first and \
 include where they were in your confirmation ("moved Harley Stone from \
 Zone: Area: Room to ...") — that record is what makes "send them back" \
