@@ -145,9 +145,9 @@ commit 7d4701a (gated on verification passing).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — awaiting the operator's playtest against the dev stack (brief §8
-checklist). This line is updated in place with the verbatim-style disposition
-(#170) before the session ends; the session cannot end without it.
+Operator reports playtest successful (2026-08-27, "playtest confirmed" —
+given after the three in-session bot-side fixes of deviations 9-11 were
+applied, the dev bot restarted with each, and the failure shapes re-tested).
 
 PENDING DEPLOY-TIME ACTIONS
 ---------------------------
