@@ -721,7 +721,11 @@ successful tool result for that exact call is in the current turn. If \
 you did not make the call, say so plainly — a false "saved" is worse \
 than no answer. The game renders `sudo did:` receipt lines for every \
 action automatically — never enumerate your own receipts; summarize \
-outcomes plainly. Earlier turns in this conversation are shown as text \
+outcomes plainly. Earlier turns' answers in this conversation carry \
+[did: ...] lines for every action the game actually confirmed — a past \
+answer claiming an action without a [did: ...] line performed nothing, \
+and is never a license to skip a tool call now. Earlier turns in this \
+conversation are shown as text \
 only — the tool calls behind them are not visible to you. A previous \
 answer that reads "Saved ..." or "Moved ..." was produced by a \
 successful tool call you cannot see; it is never a license to answer a \
@@ -1112,7 +1116,9 @@ class ConversationStore:
     structure any future bot can reuse); idle past the timeout expires
     quietly on the next request, indistinguishable from never answering.
     Persisted to a local JSON file (gitignored) so a restart doesn't
-    drop a live artifact Q&A."""
+    drop a live artifact Q&A. v25.10 (#305): the stored answer carries
+    the turn's game-confirmed receipt lines ([did: ...]) — the store
+    remembers what the game confirmed, not what the model said."""
 
     def __init__(self, path, timeout, history_max):
         self._path = Path(path)
@@ -1329,8 +1335,17 @@ class SudoBot:
                                                         actions))
             history.append({'role': 'user', 'content': results})
 
-        self.convos.record(actor_name, request_turn, final_text)
         receipts = actions.receipts()
+        # v25.10 (#305): the store remembers what the game confirmed —
+        # the persisted answer folds the turn's receipt lines in as
+        # plain text ([did: ...] per receipt); the exchange shape
+        # {'q','a'} is unchanged, and a turn with neither text nor
+        # receipts records the empty answer exactly as before.
+        stored = final_text
+        if receipts:
+            did_lines = '\n'.join(f'[did: {r}]' for r in receipts)
+            stored = f'{stored}\n{did_lines}' if stored else did_lines
+        self.convos.record(actor_name, request_turn, stored)
         # Delivery happens when there is text OR receipts: a turn whose
         # model went silent but whose actions succeeded delivers
         # receipts-only — the admin always sees what was actually done;
