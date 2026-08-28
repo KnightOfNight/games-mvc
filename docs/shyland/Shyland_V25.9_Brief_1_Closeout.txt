@@ -132,10 +132,34 @@ DEVIATIONS / NOTES
    guard; server-side one-attach-per-agent-account singleton, the #302
    spirit).
 
+8. Playtest finding, fixed in-session (a73fbb0): on the operator's third
+   quick waypoint teach ("remember this location as 'one-up'"), the
+   model answered `Saved waypoint "one-up" at ...` WITHOUT calling
+   remember (log: where_is -> end_turn, 0 receipts; store verified — no
+   'one-up' row). THE MACHINERY WORKED: the false claim shipped with no
+   `sudo did:` line, and the operator caught it from the missing receipt
+   alone — the delivery-side layer doing exactly what #302 built it for.
+   Root cause is mechanistic, not just model flakiness: ConversationStore
+   replays history as plain text q/a pairs (the ruled 25.6 shape), so by
+   the third teach the model's visible history showed two prior
+   teach->"Saved ..." exchanges with no tool calls in sight — its own
+   stripped transcript taught it that a text-only "Saved" is a complete
+   response (the replay trap). Fix (bot-side only, the 25.8 precedent):
+   one added standing order naming the trap — earlier turns are text
+   only, the tool calls behind them invisible; a prior "Saved ..." is
+   never a license to answer an action request with text alone; every
+   action request requires its own tool call in the current turn. Dev
+   bot restarted with the new prompt. Note: the operator's 'one-up'
+   waypoint was NOT saved and needs re-teaching. A structural fix for
+   the replay shape (persisting tool blocks in history, or annotating
+   replayed answers) would change the ruled conversation-store design —
+   design-lane if the prompt order proves insufficient.
+
 ISSUES
 ------
 #302 closed with a closing comment naming this brief and commit 6e2f446
-(gated on §7 passing). No other issue touched.
+(gated on §7 passing). No other issue touched by the brief; #304 filed
+mid-session (two-dev-bots incident, deviation 7).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
