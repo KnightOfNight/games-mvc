@@ -26,7 +26,9 @@ Verification (§10, all passed):
 
 Issues closed (gated on verification 1-7): #301, #304, #305, #306 — each with a comment naming this brief and verifying commit 66896ca. Milestone Version 25.10 (#62) issue set closed.
 
-Operator-directed addition (in-conversation, 2026-08-28, beyond the brief): botctl's dev target no longer passes --insecure — the renewed wildcard cert is live on dev, so both targets now verify TLS fully (the flag mechanism kept for any future target that needs it). Proven live: dev bot restarted without the flag, logged in and attached cleanly; no --insecure in the running argv.
+Operator-directed additions (in-conversation, 2026-08-28, beyond the brief):
+- botctl's dev target no longer passes --insecure — the renewed wildcard cert is live on dev, so both targets now verify TLS fully (the flag mechanism kept for any future target that needs it). Proven live: dev bot restarted without the flag, logged in and attached cleanly; no --insecure in the running argv.
+- The ~/.shyland/ pid and conversation filenames dropped their leading period (sudo_bot.<target>.pid, sudo_bot_conversations.<target>.json; botctl's {name}-generalized forms likewise) — state in a dedicated runtime directory needs no hiding. The dev bot was stopped through old-name code first (the transition discipline), the conversation file renamed to carry history, and the bot restarted: ~/.shyland/ now holds exactly sudo_bot.dev.pid, sudo_bot_conversations.dev.json, sudo_bot.dev.log. Dotted-name references earlier in this report describe verification as it ran at the time.
 
 Deviations: none from the brief's specification. Notes:
 - New-test count is 14, not 15 — see verification 1 (scenario 15 is a zero-edit regression pass by design, not a new test).

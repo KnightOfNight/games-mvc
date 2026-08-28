@@ -23,8 +23,8 @@ checkout-scoped):
     key file    agents/.secrets/anthropic-api-key.<name>
     token file  agents/.secrets/github-token.<name>    (optional, #301)
     log         ~/.shyland/<name>_bot.<target>.log
-    pid file    ~/.shyland/.<name>_bot.<target>.pid        (bot-owned)
-    convos      ~/.shyland/.<name>_bot_conversations.<target>.json
+    pid file    ~/.shyland/<name>_bot.<target>.pid         (bot-owned)
+    convos      ~/.shyland/<name>_bot_conversations.<target>.json
                 (bot-owned)
 
 The key (and the GitHub token, when its file exists and is non-empty)
@@ -85,9 +85,9 @@ class BotPaths:
                                   / f'github-token.{name}')
         # Bot-owned (the bot derives them from its own --target); listed
         # here so humans debugging state files have the one map (#299).
-        self.pid_file = RUNTIME_DIR / f'.{name}_bot.{target}.pid'
+        self.pid_file = RUNTIME_DIR / f'{name}_bot.{target}.pid'
         self.convo_file = (RUNTIME_DIR
-                           / f'.{name}_bot_conversations.{target}.json')
+                           / f'{name}_bot_conversations.{target}.json')
 
 
 def fail(message):

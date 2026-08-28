@@ -24,8 +24,8 @@ Design rules (brief §2, binding):
 
 Runtime state (v25.10, #304): pid/log/conversation files live in the
 central runtime directory ~/.shyland/, shared by every checkout —
-    pid       ~/.shyland/.sudo_bot.<target>.pid
-    convos    ~/.shyland/.sudo_bot_conversations.<target>.json
+    pid       ~/.shyland/sudo_bot.<target>.pid
+    convos    ~/.shyland/sudo_bot_conversations.<target>.json
     log       ~/.shyland/sudo_bot.log        (default)
 Code and secrets stay checkout-scoped (agents/, agents/.secrets/).
 
@@ -73,11 +73,11 @@ RUNTIME_DIR = Path.home() / '.shyland'
 # host a dev-facing and a prod-facing bot side by side, and a dev stop
 # is incapable of touching the prod bot's pidfile by construction.
 def pidfile(target):
-    return RUNTIME_DIR / f'.sudo_bot.{target}.pid'
+    return RUNTIME_DIR / f'sudo_bot.{target}.pid'
 
 
 def convo_file(target):
-    return RUNTIME_DIR / f'.sudo_bot_conversations.{target}.json'
+    return RUNTIME_DIR / f'sudo_bot_conversations.{target}.json'
 
 # The door's protocol version (mc_consumer.MC_PROTOCOL) — anything else
 # is a world this bot was not written for, and it refuses to run.
