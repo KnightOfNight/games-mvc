@@ -192,9 +192,16 @@ should generalize; the specific waypoint listing ruled fine-for-now).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
-PENDING — the brief §10 checklist targets the dev stack (deployed, dev
-bot running on the new code); awaiting the operator's playtest and
-disposition. [This line is completed in place before the session ends.]
+Operator reports playtest successful (2026-08-28, "playtest confirmed"
+— given after the two in-session bot-side fixes of deviations 8-9 were
+applied with the dev bot restarted on each, the poisoned conversation
+store reset, and the failure shape re-tested: one-up re-taught with its
+receipt, subsequent teaches all receipted). Checklist item 6 (the log
+skim): ZERO unreceipted-id refusals across the playtest's 19 live sudo
+requests — the model never attempted an invented id; the refusal
+machinery's proof remains the deterministic driver (§7.3 a/c). Playtest
+findings #304/#305/#306 filed design-lane (deviations 7-9 and the
+ISSUES section); none is a defect against this brief's spec.
 
 PENDING DEPLOY-TIME ACTIONS
 ---------------------------
