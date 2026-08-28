@@ -22,6 +22,13 @@ Design rules (brief §2, binding):
   - Secrets (the model API key, the game password) are named env vars /
     files under agents/.secrets/ — never committed, printed, or logged.
 
+Runtime state (v25.10, #304): pid/log/conversation files live in the
+central runtime directory ~/.shyland/, shared by every checkout —
+    pid       ~/.shyland/.sudo_bot.<target>.pid
+    convos    ~/.shyland/.sudo_bot_conversations.<target>.json
+    log       ~/.shyland/sudo_bot.log        (default)
+Code and secrets stay checkout-scoped (agents/, agents/.secrets/).
+
 Subcommands:
     run      foreground event loop (detach with nohup, below)
     status   report whether a bot is running (via the pidfile)
@@ -57,16 +64,20 @@ import requests
 import websockets
 
 AGENTS_DIR = Path(__file__).resolve().parent
+# v25.10 (#304): the central runtime directory — state files live here,
+# shared by every checkout, so two checkouts' bots see each other's
+# pidfiles (the door's 4409 backs this up structurally).
+RUNTIME_DIR = Path.home() / '.shyland'
 
 # v25.8 (#299): state files are (bot, target)-scoped — one checkout can
 # host a dev-facing and a prod-facing bot side by side, and a dev stop
 # is incapable of touching the prod bot's pidfile by construction.
 def pidfile(target):
-    return AGENTS_DIR / f'.sudo_bot.{target}.pid'
+    return RUNTIME_DIR / f'.sudo_bot.{target}.pid'
 
 
 def convo_file(target):
-    return AGENTS_DIR / f'.sudo_bot_conversations.{target}.json'
+    return RUNTIME_DIR / f'.sudo_bot_conversations.{target}.json'
 
 # The door's protocol version (mc_consumer.MC_PROTOCOL) — anything else
 # is a world this bot was not written for, and it refuses to run.
@@ -1604,6 +1615,7 @@ def cmd_run(cfg):
                                cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
 
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     pidfile(cfg.target).write_text(str(os.getpid()))
     log.info('sudo bot starting: target=%s url=%s username=%s brain=%s '
              'model=%s',
@@ -1641,7 +1653,8 @@ def main():
         '--insecure', action='store_true',
         help='accept self-signed certs (dev stack only)')
     run_parser.add_argument(
-        '--log', default=env('SUDO_BOT_LOG', str(AGENTS_DIR / 'sudo_bot.log')))
+        '--log', default=env('SUDO_BOT_LOG',
+                             str(RUNTIME_DIR / 'sudo_bot.log')))
     run_parser.add_argument(
         '--model', default=env('SUDO_BOT_MODEL', 'claude-sonnet-5'))
     run_parser.add_argument(

@@ -16,12 +16,15 @@ Usage:
 Per (--bot NAME, target) — default bot sudo — the manager derives
 (v25.8, #299: state is (bot, target)-scoped, so one checkout can host a
 dev-facing and a prod-facing bot side by side and a dev stop can never
-touch the prod bot):
-    module    agents/<name>_bot.py
-    log       agents/<name>_bot.<target>.log
-    key file  agents/.secrets/anthropic-api-key.<name>
-    pid file  agents/.<name>_bot.<target>.pid        (bot-owned)
-    convos    agents/.<name>_bot_conversations.<target>.json (bot-owned)
+touch the prod bot; v25.10, #304: runtime state moves to the central
+~/.shyland/ directory, shared by every checkout — code and secrets stay
+checkout-scoped):
+    module      agents/<name>_bot.py
+    key file    agents/.secrets/anthropic-api-key.<name>
+    log         ~/.shyland/<name>_bot.<target>.log
+    pid file    ~/.shyland/.<name>_bot.<target>.pid        (bot-owned)
+    convos      ~/.shyland/.<name>_bot_conversations.<target>.json
+                (bot-owned)
 
 The key is read at start and placed in the child environment only —
 never argv, never echoed, never logged. This file contains no secret
@@ -39,6 +42,9 @@ from pathlib import Path
 AGENTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENTS_DIR.parent
 VENV_PYTHON = AGENTS_DIR / 'venvs' / 'mc-agent' / 'bin' / 'python'
+# v25.10 (#304): the central runtime directory — pid/log/convo state
+# shared by every checkout; code and secrets stay checkout-scoped.
+RUNTIME_DIR = Path.home() / '.shyland'
 
 # ----------------------------------------------------------------------
 # Targets — the two stacks a bot can face. dev runs self-signed certs,
@@ -68,12 +74,12 @@ class BotPaths:
         self.name = name
         self.target = target
         self.module = AGENTS_DIR / f'{name}_bot.py'
-        self.log = AGENTS_DIR / f'{name}_bot.{target}.log'
+        self.log = RUNTIME_DIR / f'{name}_bot.{target}.log'
         self.key_file = AGENTS_DIR / '.secrets' / f'anthropic-api-key.{name}'
         # Bot-owned (the bot derives them from its own --target); listed
         # here so humans debugging state files have the one map (#299).
-        self.pid_file = AGENTS_DIR / f'.{name}_bot.{target}.pid'
-        self.convo_file = (AGENTS_DIR
+        self.pid_file = RUNTIME_DIR / f'.{name}_bot.{target}.pid'
+        self.convo_file = (RUNTIME_DIR
                            / f'.{name}_bot_conversations.{target}.json')
 
 
@@ -150,6 +156,7 @@ def cmd_start(target, paths):
     if TARGETS[target]['insecure']:
         argv.append('--insecure')
     say(f'starting {paths.name} bot against {target} ({url})')
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with open(paths.log, 'ab') as log_fh:
         subprocess.Popen(
             argv, cwd=str(REPO_ROOT), env=env, start_new_session=True,
