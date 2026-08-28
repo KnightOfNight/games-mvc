@@ -155,6 +155,26 @@ DEVIATIONS / NOTES
    replayed answers) would change the ruled conversation-store design —
    design-lane if the prompt order proves insufficient.
 
+9. Playtest finding, second variant (the poisoned history): after the
+   deviation-8 restart, the operator's re-teach of 'one-up' failed AGAIN
+   — this time with ZERO tool calls (log 14:57:28: straight end_turn,
+   0 receipts). Mechanism: the conversation store persists across
+   restarts by design, so the model's history still contained its own
+   earlier false "Saved waypoint 'one-up'" claim — the lie became ground
+   truth ("already saved"), self-reinforcing. The subsequent teaches
+   (two-up, three-up, green-start) all landed correctly with receipts
+   under the new standing order — only the poisoned name failed. The
+   operator's "list all waypoints" then returned the honest store (no
+   one-up), which is how the discrepancy surfaced: the receipts + honest
+   queries made the poison visible. Remediation in-session: dev bot
+   stopped, the dev conversation file deleted (bot-owned gitignored
+   runtime state), bot restarted fresh. STRUCTURAL FINDING for design:
+   the conversation store records the model's prose as the exchange
+   record, but the prose can be false — the delivered exchange now
+   includes machinery receipts, and persisting them with the answer (or
+   otherwise marking unbacked claims) would make the replayed history
+   truthful; changes the ruled 25.6 store shape, so design-lane.
+
 ISSUES
 ------
 #302 closed with a closing comment naming this brief and commit 6e2f446
