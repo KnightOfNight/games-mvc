@@ -90,6 +90,7 @@ BACKOFF_CAP = 60
 
 CLOSE_MEANINGS = {
     4403: 'not authorized (agents.shyland membership required)',
+    4409: 'refused: another connection for this account is already attached',
     4503: 'killed (the MC kill switch is engaged)',
 }
 
