@@ -173,13 +173,16 @@ DEVIATIONS / NOTES
    record, but the prose can be false — the delivered exchange now
    includes machinery receipts, and persisting them with the answer (or
    otherwise marking unbacked claims) would make the replayed history
-   truthful; changes the ruled 25.6 store shape, so design-lane.
+   truthful; changes the ruled 25.6 store shape, so design-lane — FILED
+   as #305 (operator-directed) with three direction candidates,
+   persist-receipts-with-the-answer recommended.
 
 ISSUES
 ------
 #302 closed with a closing comment naming this brief and commit 6e2f446
-(gated on §7 passing). No other issue touched by the brief; #304 filed
-mid-session (two-dev-bots incident, deviation 7).
+(gated on §7 passing). No other issue touched by the brief; #304 (two-
+dev-bots incident, deviation 7) and #305 (conversation-store poisoning,
+deviation 9) filed mid-session at the operator's direction.
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
