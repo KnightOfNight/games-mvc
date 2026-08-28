@@ -643,14 +643,19 @@ TOOLS = [
     },
     {
         'name': 'report',
-        'description': ('Deliver a game-rendered state report of a '
-                        "character into the requesting admin's pane: a "
-                        'sudo leader line plus the same equipment and '
-                        'inventory rendering the player equip/inv commands '
-                        'produce, colors included. Prefer this over '
-                        'hand-writing a roster when an admin asks to see '
-                        "someone's inventory. kind: inventory (the only "
-                        'kind for now). Offline admin: delivered false, '
+        'description': ('Deliver a game-rendered state report into the '
+                        "requesting admin's pane: a sudo leader line plus "
+                        'sections the game composes itself, colors '
+                        'included. Prefer this over hand-writing a roster '
+                        "when an admin asks to see someone's inventory — "
+                        'and memory/waypoint listings and memory detail '
+                        'are reports too: prefer them whenever an admin '
+                        'asks to *see* what you know. kinds: inventory '
+                        '(the player equip/inv rendering; character '
+                        'required), waypoints (your waypoint store), '
+                        'memories (your whole store), memory (one row in '
+                        'detail; id required). The game validates '
+                        'authoritatively. Offline admin: delivered false, '
                         'never an error.'),
         'input_schema': {
             'type': 'object',
@@ -659,10 +664,15 @@ TOOLS = [
                        'description': 'The requesting admin (the report '
                                       'lands in their pane).'},
                 'character': {'type': 'string',
-                              'description': 'The character to report on.'},
-                'kind': {'type': 'string', 'enum': ['inventory']},
+                              'description': 'The character to report on '
+                                             '(inventory kind only).'},
+                'kind': {'type': 'string',
+                         'enum': ['inventory', 'waypoints', 'memories',
+                                  'memory']},
+                'id': {'type': 'integer',
+                       'description': 'The memory id (memory kind only).'},
             },
-            'required': ['to', 'character', 'kind'],
+            'required': ['to', 'kind'],
         },
     },
 ]
@@ -770,7 +780,12 @@ are answered from the durable record: search events (and event for one \
 record's full detail) with time windows, walking backwards from now — \
 not from conversation memory. When an admin asks to see a character's \
 inventory or equipment, prefer the report action — the game renders the \
-report into their pane itself — over hand-writing a roster.
+report into their pane itself — over hand-writing a roster. The same \
+goes for your own store: when an admin asks what waypoints or memories \
+exist, or for one memory's detail, use report (kinds waypoints, \
+memories, memory) — the game renders the listing itself, \
+deterministically; use the memories/memory queries only when the data \
+feeds your own next step rather than the admin's eyes.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
@@ -921,7 +936,11 @@ def _compose_receipt(name, params, data):
     if name == 'report':
         status = ('delivered' if data.get('delivered')
                   else 'not delivered (offline)')
-        return (f"report on {params.get('character')} to "
+        # v25.10 (#306): kind-aware — ' on X' only when a character was
+        # passed; the listing kinds must never render 'on None'.
+        on = (f" on {params.get('character')}"
+              if params.get('character') is not None else '')
+        return (f"report ({params.get('kind')}){on} to "
                 f"{params.get('to')}: {status}")
     return ''
 

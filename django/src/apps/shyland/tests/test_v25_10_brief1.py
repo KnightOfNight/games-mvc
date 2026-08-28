@@ -17,8 +17,19 @@ from django.test import TransactionTestCase
 
 from apps.shyland import mc_consumer
 from apps.shyland.mc_consumer import MC_PROTOCOL, MCEgressConsumer
+from apps.shyland.models import AgentMemory
+from apps.shyland.tests.test_mc_agent_door import (
+    DoorTestBase, FakeDoorClient, RecordingLayer, make_equippable, request,
+)
 from apps.shyland.tests.test_mc_egress import make_agent
 from apps.shyland.tests.test_mc_kill_switch import engage_switch
+from apps.shyland.tests.test_new_commands import grant_admin
+from apps.shyland.tests.test_room_visits import make_character
+
+
+async def report(comm, params, frame_id='1'):
+    return await request(comm, {'type': 'action', 'id': frame_id,
+                                'act': 'report', 'params': params})
 
 
 async def bare_connect(user):
@@ -126,3 +137,195 @@ class AttachSingletonTests(TransactionTestCase):
         # 4403 never releases a claim it never held.
         self.assertEqual(mc_consumer.ATTACHED[user.username],
                          'occupied!fake')
+
+
+# ----------------------------------------------------------------------
+# §6 (#306): the report family grows
+# ----------------------------------------------------------------------
+
+class ReportFamilyTests(DoorTestBase):
+
+    def _report_fixture(self, prefix):
+        agent, zone, room_a, room_b, char = self._fixture(prefix)
+        admin = make_character(f'{prefix}_adm', room_a)
+        grant_admin(admin)
+        return agent, zone, room_a, room_b, char, admin
+
+    def _teach(self, agent, kind, name, data, taught_by=None):
+        return AgentMemory.objects.create(
+            agent=agent, kind=kind, name=name, data=data,
+            taught_by=taught_by)
+
+    async def test_unknown_kind_names_all_four(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_uk')
+        async with self.door(agent) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'wallet'})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'bad-params')
+            for kind in ('inventory', 'waypoints', 'memories', 'memory'):
+                self.assertIn(kind, result['detail'])
+
+    async def test_waypoints_empty_store_leader_alone(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_e')
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        fake.set_online(admin)
+        async with self.door(agent, fake, layer) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'waypoints'})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'delivered': True, 'count': 0})
+        # The leader alone is the report — no lines frame.
+        events = [event for _, event in layer.sent]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['text'], 'sudo: 0 waypoints')
+        self.assertEqual(events[0]['category'], 'sudo')
+
+    async def test_waypoints_rows_with_dangling_room(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_wp')
+        older = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_WAYPOINT, 'battle',
+            {'room_id': room_b.pk})
+        dangling = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_WAYPOINT, 'lost',
+            {'room_id': 999999})
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        fake.set_online(admin)
+        async with self.door(agent, fake, layer) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'waypoints'})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'delivered': True, 'count': 2})
+        events = [event for _, event in layer.sent]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]['text'], 'sudo: 2 waypoints')
+        self.assertEqual(events[1]['category'], 'report')
+        # Newest first; live path; dangling row tells the truth.
+        self.assertEqual(events[1]['lines'], [
+            f'#{dangling.pk} lost — (room no longer exists)',
+            f'#{older.pk} battle — {zone.name}: {room_b.name}',
+        ])
+
+    async def test_memories_mixed_kinds_both_summary_forms(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_mx')
+        sword = await sync_to_async(make_equippable)(
+            'repf_mx', 'Mixed Sword', 'weapon', ['MAIN_HAND'])
+        waypoint = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_WAYPOINT, 'battle',
+            {'room_id': room_b.pk})
+        bundle = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_BUNDLE, 'kit',
+            {'lines': [[sword.slug, 1, 'common', 2]]})
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        fake.set_online(admin)
+        async with self.door(agent, fake, layer) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'memories'})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'delivered': True, 'count': 2})
+        events = [event for _, event in layer.sent]
+        self.assertEqual(events[0]['text'], 'sudo: 2 memories')
+        self.assertEqual(events[1]['lines'], [
+            f'#{bundle.pk} bundle kit — 1 lines',
+            f'#{waypoint.pk} waypoint battle — {zone.name}: {room_b.name}',
+        ])
+
+    async def test_memory_detail_waypoint_and_bundle(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_d')
+        sword = await sync_to_async(make_equippable)(
+            'repf_d', 'Detail Sword', 'weapon', ['MAIN_HAND'])
+        waypoint = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_WAYPOINT, 'battle',
+            {'room_id': room_b.pk}, taught_by=char.user)
+        bundle = await sync_to_async(self._teach)(
+            agent, AgentMemory.KIND_BUNDLE, 'kit',
+            {'lines': [[sword.slug, 1, 'common', 2]]})
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        fake.set_online(admin)
+        async with self.door(agent, fake, layer) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'memory',
+                                         'id': waypoint.pk})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'delivered': True, 'id': waypoint.pk})
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'memory',
+                                         'id': bundle.pk}, frame_id='2')
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'],
+                             {'delivered': True, 'id': bundle.pk})
+        events = [event for _, event in layer.sent]
+        self.assertEqual(len(events), 4)
+        self.assertEqual(events[0]['text'],
+                         f"sudo: waypoint 'battle' (id {waypoint.pk})")
+        self.assertEqual(events[0]['category'], 'sudo')
+        self.assertEqual(events[1]['lines'], [
+            f'where: {zone.name}: {room_b.name}',
+            f'taught by {char.user.username}',
+            f'created {waypoint.created_at.isoformat()} / '
+            f'updated {waypoint.updated_at.isoformat()}',
+        ])
+        self.assertEqual(events[2]['text'],
+                         f"sudo: bundle 'kit' (id {bundle.pk})")
+        self.assertEqual(events[3]['lines'], [
+            f'2× {sword.slug} Mk 1 common',
+            'taught by (unknown)',
+            f'created {bundle.created_at.isoformat()} / '
+            f'updated {bundle.updated_at.isoformat()}',
+        ])
+
+    async def test_memory_unknown_id_not_found(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_nf')
+        async with self.door(agent) as comm:
+            result = await report(comm, {'to': admin.name,
+                                         'kind': 'memory', 'id': 999999})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-found')
+
+    async def test_agent_scoping_never_leaks_other_store(self):
+        (agent_a, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_sa')
+        agent_b = await sync_to_async(make_agent)('repf_sb')
+        row = await sync_to_async(self._teach)(
+            agent_a, AgentMemory.KIND_WAYPOINT, 'battle',
+            {'room_id': room_b.pk})
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        fake.set_online(admin)
+        async with self.door(agent_b, fake, layer) as comm:
+            listing = await report(comm, {'to': admin.name,
+                                          'kind': 'waypoints'})
+            self.assertEqual(listing['data'],
+                             {'delivered': True, 'count': 0})
+            detail = await report(comm, {'to': admin.name,
+                                         'kind': 'memory',
+                                         'id': row.pk}, frame_id='2')
+            self.assertFalse(detail['ok'])
+            self.assertEqual(detail['error'], 'not-found')
+
+    async def test_non_admin_refused_and_offline_sends_nothing(self):
+        (agent, zone, room_a, room_b, char,
+         admin) = await sync_to_async(self._report_fixture)('repf_na')
+        fake, layer = FakeDoorClient(), RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            refused = await report(comm, {'to': char.name,
+                                          'kind': 'waypoints'})
+            self.assertFalse(refused['ok'])
+            self.assertEqual(refused['error'], 'not-admin')
+            # Offline admin: ok true, delivered false, nothing sent.
+            offline = await report(comm, {'to': admin.name,
+                                          'kind': 'memories'},
+                                   frame_id='2')
+            self.assertTrue(offline['ok'])
+            self.assertEqual(offline['data'],
+                             {'delivered': False, 'count': 0})
+        self.assertEqual(layer.sent, [])
