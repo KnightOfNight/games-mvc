@@ -118,6 +118,19 @@ DEVIATIONS / NOTES
 6. agents/ is outside the Django image, so the ledger/composer logic is
    deliberately not in the in-container suite (the 25.8 precedent); the
    deterministic driver check is its verification.
+7. INCIDENT — two dev bots (filed as #304): the §7.4 worktree
+   `botctl dev restart` started the new-code dev bot while a dev bot was
+   already running from the MAIN checkout — #299's pidfiles are
+   per-checkout by construction (AGENTS_DIR-relative), so the worktree's
+   "already running" check was blind to main's bot, and for a window two
+   dev bots were attached to the same door (every sudo handled twice —
+   double answers, double actions). The operator spotted it and stopped
+   the main-checkout bot by hand; end state verified clean (exactly one
+   dev bot, pid 86286, the worktree/new-code one; prod bot untouched).
+   Prevention is a design ruling — #304 carries the diagnosis and three
+   direction candidates (checkout-independent lock; process-scan start
+   guard; server-side one-attach-per-agent-account singleton, the #302
+   spirit).
 
 ISSUES
 ------
