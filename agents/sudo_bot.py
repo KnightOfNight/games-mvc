@@ -74,6 +74,10 @@ MC_PROTOCOL = 2
 # The door's answer limit (mc_door.MAX_ANSWER_LEN): truncate with an
 # ellipsis rather than draw bad-params.
 MAX_ANSWER_LEN = 2000
+# The door's receipt bounds (mc_door.MAX_RECEIPTS / MAX_RECEIPT_LEN):
+# same posture — truncate/cap bot-side rather than draw bad-params.
+MAX_RECEIPTS = 20
+MAX_RECEIPT_LEN = 200
 # Model tool-use iterations per sudo request (brief §5.5).
 TOOL_LOOP_CAP = 8
 # One door round trip's patience.
@@ -296,10 +300,10 @@ TOOLS = [
     {
         'name': 'move',
         'description': ('Teleport a character: exactly one of to_name '
-                        '(another character — lands in their room) or '
-                        'to_room_id. Refused while the character is in '
-                        'combat. Arrival/departure narrate in the world\'s '
-                        'own colors.'),
+                        '(another character — lands in their room), '
+                        'to_room_id, or waypoint. Refused while the '
+                        'character is in combat. Arrival/departure narrate '
+                        'in the world\'s own colors.'),
         'input_schema': {
             'type': 'object',
             'properties': {
@@ -308,7 +312,18 @@ TOOLS = [
                 'to_name': {'type': 'string',
                             'description': 'Destination character.'},
                 'to_room_id': {'type': 'integer',
-                               'description': 'Destination room id.'},
+                               'description': 'Destination room id. Must '
+                                              'come from a tool result in '
+                                              'this turn (rooms, where_is, '
+                                              'or a waypoint memory); calls '
+                                              'with unreceipted ids are '
+                                              'refused.'},
+                'waypoint': {'type': 'string',
+                             'description': 'Waypoint memory name — the '
+                                            'door resolves it from your own '
+                                            'store; for taught places, '
+                                            'always prefer this over '
+                                            'to_room_id.'},
             },
             'required': ['name'],
         },
@@ -338,7 +353,13 @@ TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {'item_id': {'type': 'integer',
-                                       'description': 'Instance id.'}},
+                                       'description': 'Instance id. Must '
+                                                      'come from a tool '
+                                                      'result in this turn '
+                                                      '(inventory, item, or '
+                                                      'gift); calls with '
+                                                      'unreceipted ids are '
+                                                      'refused.'}},
             'required': ['item_id'],
         },
     },
@@ -355,7 +376,9 @@ TOOLS = [
             'properties': {
                 'name': {'type': 'string', 'description': 'Owner name.'},
                 'item_id': {'type': 'integer',
-                            'description': 'Instance id (from inventory).'},
+                            'description': 'Instance id — from an inventory/'
+                                           'item result in this turn; '
+                                           'unreceipted ids are refused.'},
             },
             'required': ['name', 'item_id'],
         },
@@ -377,7 +400,9 @@ TOOLS = [
             'properties': {
                 'name': {'type': 'string', 'description': 'Owner name.'},
                 'item_id': {'type': 'integer',
-                            'description': 'Instance id (from inventory).'},
+                            'description': 'Instance id — from an inventory/'
+                                           'item result in this turn; '
+                                           'unreceipted ids are refused.'},
                 'changes': {
                     'type': 'object',
                     'description': 'Whitelisted fields to set, raw.',
@@ -449,7 +474,9 @@ TOOLS = [
             'properties': {
                 'name': {'type': 'string', 'description': 'Owner name.'},
                 'item_id': {'type': 'integer',
-                            'description': 'Instance id (from inventory).'},
+                            'description': 'Instance id — from an inventory/'
+                                           'item result in this turn; '
+                                           'unreceipted ids are refused.'},
                 'slot': {'type': 'string', 'enum': SLOT_CODES,
                          'description': 'Optional target slot.'},
             },
@@ -467,7 +494,9 @@ TOOLS = [
             'properties': {
                 'name': {'type': 'string', 'description': 'Owner name.'},
                 'item_id': {'type': 'integer',
-                            'description': 'Instance id (from inventory).'},
+                            'description': 'Instance id — from an inventory/'
+                                           'item result in this turn; '
+                                           'unreceipted ids are refused.'},
             },
             'required': ['name', 'item_id'],
         },
@@ -507,7 +536,10 @@ TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {'id': {'type': 'integer',
-                                  'description': 'Memory id.'}},
+                                  'description': 'Memory id — from a memories/'
+                                                 'memory/remember result in '
+                                                 'this turn; unreceipted '
+                                                 'ids are refused.'}},
             'required': ['id'],
         },
     },
@@ -539,7 +571,10 @@ TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {'id': {'type': 'integer',
-                                  'description': 'Memory id.'}},
+                                  'description': 'Memory id — from a memories/'
+                                                 'memory/remember result in '
+                                                 'this turn; unreceipted '
+                                                 'ids are refused.'}},
             'required': ['id'],
         },
     },
@@ -597,8 +632,11 @@ TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {'stream_id': {'type': 'string',
-                                         'description': 'Record stream id '
-                                                        '(from events).'}},
+                                         'description': 'Record stream id — '
+                                                        'from an events '
+                                                        'result in this '
+                                                        'turn; unreceipted '
+                                                        'ids are refused.'}},
             'required': ['stream_id'],
         },
     },
@@ -659,7 +697,9 @@ Your reports of your own actions are receipts, not intentions: never \
 say you remembered, moved, gave, equipped, or changed anything unless a \
 successful tool result for that exact call is in the current turn. If \
 you did not make the call, say so plainly — a false "saved" is worse \
-than no answer.
+than no answer. The game renders `sudo did:` receipt lines for every \
+action automatically — never enumerate your own receipts; summarize \
+outcomes plainly.
 
 Before moving a character, always query where_is on them first and \
 include where they were in your confirmation ("moved Harley Stone from \
@@ -670,12 +710,13 @@ are — especially before concluding a move is unnecessary. "Already \
 there" may only come from a fresh query result in the current turn, \
 never from an earlier turn's move or answer.
 
-A to_room_id must come from a tool result in the current turn — a \
-waypoint memory's data.room_id, a rooms row's id, or a where_is room \
-id. Never derive one from a waypoint's name, a memory's own id, or \
-recall. For a waypoint move, read the memory first and move once; a \
-wrong-room detour corrected afterwards is not a fix — the player \
-really makes every hop.
+For a taught place, pass the waypoint's name to move as `waypoint` — \
+the door resolves it from your store itself; never resolve a \
+waypoint's room id yourself. A to_room_id must come from a tool \
+result in the current turn — a rooms row's id or a where_is room id. \
+Never derive one from a waypoint's name, a memory's own id, or \
+recall. Move once; a wrong-room detour corrected afterwards is not a \
+fix — the player really makes every hop.
 
 Write locations exactly the way the game's location bar shows them: \
 `Zone: Area: Room` — for example `The Verdant Reach: The Sagewind Flats: \
@@ -727,6 +768,208 @@ report into their pane itself — over hand-writing a roster.
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
 """
+
+
+# ----------------------------------------------------------------------
+# The typed receipts ledger and action log (v25.9, #302) — the bot never
+# invents a value it should have read from the database. Enforced by
+# machinery at the tool-execution choke point, never asked of the model.
+# ----------------------------------------------------------------------
+
+# Tool arguments that must trace to a current-turn tool result in the
+# matching id-space — checked before the door is called. `move` with
+# `waypoint` or `to_name` has no checked argument: nothing to invent.
+CHECKED_ARGS = {
+    'move': (('to_room_id', 'room'),),
+    'item': (('item_id', 'item'),),
+    'remove_item': (('item_id', 'item'),),
+    'edit_item': (('item_id', 'item'),),
+    'equip_item': (('item_id', 'item'),),
+    'unequip_item': (('item_id', 'item'),),
+    'memory': (('id', 'memory'),),
+    'forget': (('id', 'memory'),),
+    'event': (('stream_id', 'stream'),),
+}
+
+# Where ids come from: per-tool result paths harvested into the ledger
+# on every successful result (never from error results). `foo[].bar`
+# walks a list field. A per-tool map, not a generic integer sweep — the
+# typing is the point: v25.8's playtest failure passed a receipted
+# integer (a memory's own id) into the wrong id-space, and an untyped
+# ledger would have licensed it.
+HARVEST = {
+    'where_is': (('room.id', 'room'),),
+    'character': (('room.id', 'room'),),
+    'rooms': (('rooms[].id', 'room'),),
+    'move': (('room.id', 'room'), ('from_room.id', 'room')),
+    'memory': (('id', 'memory'), ('data.room_id', 'room')),
+    'events': (('events[].room_id', 'room'),
+               ('events[].stream_id', 'stream')),
+    'event': (('room_id', 'room'), ('stream_id', 'stream')),
+    'inventory': (('items[].id', 'item'),),
+    'item': (('id', 'item'),),
+    'gift': (('item_id', 'item'),),
+    'create_artifact': (('item_id', 'item'),),
+    'remove_item': (('item_id', 'item'),),
+    'edit_item': (('item_id', 'item'),),
+    'equip_item': (('item_id', 'item'),),
+    'unequip_item': (('item_id', 'item'),),
+    'memories': (('memories[].id', 'memory'),),
+    'remember': (('id', 'memory'),),
+    'forget': (('forgotten.id', 'memory'),),
+}
+
+
+class ReceiptLedger:
+    """Per-request (one sudo request = one turn) typed id ledger. Four
+    id-spaces: room (int), item (int, instance ids), memory (int),
+    stream (str). Missing keys during harvest are skipped silently — a
+    result field the door stops sending must not crash the bot."""
+
+    SPACES = ('room', 'item', 'memory', 'stream')
+
+    def __init__(self):
+        self._seen = {space: set() for space in self.SPACES}
+
+    def has(self, space, value):
+        try:
+            return value in self._seen[space]
+        except TypeError:  # unhashable junk from the model
+            return False
+
+    def _add(self, space, value):
+        if value is not None:
+            try:
+                self._seen[space].add(value)
+            except TypeError:
+                pass
+
+    def _walk(self, node, parts, space):
+        for i, part in enumerate(parts):
+            if part.endswith('[]'):
+                items = node.get(part[:-2]) if isinstance(node, dict) else None
+                if isinstance(items, list):
+                    for item in items:
+                        self._walk(item, parts[i + 1:], space)
+                return
+            if not isinstance(node, dict) or part not in node:
+                return
+            node = node[part]
+        self._add(space, node)
+
+    def harvest(self, tool, data):
+        for path, space in HARVEST.get(tool, ()):
+            self._walk(data, path.split('.'), space)
+
+
+def _room_path(room):
+    """`Zone: Area: Room` from a door _room_dict — area omitted when
+    null, `nowhere` for a null room."""
+    if not isinstance(room, dict):
+        return 'nowhere'
+    parts = [room.get('zone'), room.get('area'), room.get('name')]
+    return ': '.join(p for p in parts if p) or 'nowhere'
+
+
+def _compose_receipt(name, params, data):
+    """One composed receipt string — bot machinery from the call's
+    params and the door's result, never model text. (`gift` is handled
+    by ActionLog for aggregation.)"""
+    who = params.get('name')
+    if name == 'create_artifact':
+        spec = params.get('spec') or {}
+        return (f"created artifact '{spec.get('name')}' for "
+                f"{params.get('to')} (item {data.get('item_id')})")
+    if name == 'strip':
+        return f'stripped {who}'
+    if name == 'dress':
+        return f'dressed {who}'
+    if name == 'move':
+        text = (f"moved {who} from {_room_path(data.get('from_room'))} "
+                f"to {_room_path(data.get('room'))}")
+        if data.get('waypoint') is not None:
+            waypoint = data['waypoint']
+            text += f" (waypoint '{waypoint}')"
+        return text
+    if name == 'remove_item':
+        text = f"removed item {data.get('item_id')} from {who}"
+        if data.get('definition_removed'):
+            text += ' (artifact definition deleted)'
+        return text
+    if name == 'edit_item':
+        changed = ', '.join(data.get('changed') or [])
+        return f"edited item {data.get('item_id')} on {who}: {changed}"
+    if name == 'equip_item':
+        return (f"equipped item {data.get('item_id')} on {who} "
+                f"(slot {data.get('slot')})")
+    if name == 'unequip_item':
+        return f"unequipped item {data.get('item_id')} on {who}"
+    if name == 'remember':
+        return (f"remembered {params.get('kind')} '{params.get('name')}' "
+                f"({data.get('result')}, id {data.get('id')})")
+    if name == 'forget':
+        forgotten = data.get('forgotten') or {}
+        return (f"forgot {forgotten.get('kind')} '{forgotten.get('name')}' "
+                f"(id {forgotten.get('id')})")
+    if name == 'report':
+        status = ('delivered' if data.get('delivered')
+                  else 'not delivered (offline)')
+        return (f"report on {params.get('character')} to "
+                f"{params.get('to')}: {status}")
+    return ''
+
+
+class ActionLog:
+    """Per-request composed action receipts: every successful action
+    except `answer` appends one. Identical (slug, mk_tier, rarity, to)
+    gifts aggregate to a single `×N` receipt (ids omitted when
+    aggregated — per-instance ids live in the MC record); without this
+    a bundle replay (up to 50 gift calls) would flood or overflow the
+    receipt bound."""
+
+    def __init__(self):
+        self._entries = []
+
+    def add(self, name, params, data):
+        data = data if isinstance(data, dict) else {}
+        if name == 'gift':
+            key = (params.get('slug'), params.get('mk_tier'),
+                   params.get('rarity'), params.get('to'))
+            for entry in self._entries:
+                if entry.get('gift_key') == key:
+                    entry['count'] += 1
+                    return
+            self._entries.append({'gift_key': key, 'count': 1,
+                                  'item_id': data.get('item_id')})
+            return
+        text = _compose_receipt(name, params, data)
+        if text:
+            self._entries.append({'text': text})
+
+    def receipts(self):
+        """The composed receipt list: truncated to the door's 200-char
+        bound (ellipsis), capped at 20 — oldest kept, overflow dropped
+        with a log line."""
+        out = []
+        for entry in self._entries:
+            if 'gift_key' in entry:
+                slug, mk_tier, rarity, to = entry['gift_key']
+                if entry['count'] == 1:
+                    text = (f"gave {slug} Mk {mk_tier} {rarity} to {to} "
+                            f"(item {entry['item_id']})")
+                else:
+                    text = (f"gave {slug} Mk {mk_tier} {rarity} "
+                            f"×{entry['count']} to {to}")
+            else:
+                text = entry['text']
+            if len(text) > MAX_RECEIPT_LEN:
+                text = text[:MAX_RECEIPT_LEN - 1] + '…'
+            out.append(text)
+        if len(out) > MAX_RECEIPTS:
+            log.info('receipts overflow: %d composed, keeping the oldest %d',
+                     len(out), MAX_RECEIPTS)
+            out = out[:MAX_RECEIPTS]
+        return out
 
 
 # ----------------------------------------------------------------------
@@ -1031,6 +1274,10 @@ class SudoBot:
         # requests ("move Harley here") resolve against the requester.
         request_turn = f'[{actor_name}] {request_text}'
         history.append({'role': 'user', 'content': request_turn})
+        # v25.9 (#302): one sudo request = one turn = one ledger and one
+        # action log — the standing orders' "current turn", enforced.
+        ledger = ReceiptLedger()
+        actions = ActionLog()
         final_text = ''
         for _ in range(TOOL_LOOP_CAP):
             turn = await asyncio.to_thread(
@@ -1041,30 +1288,58 @@ class SudoBot:
             history.append({'role': 'assistant', 'content': turn.raw_content})
             results = []
             for call in turn.tool_calls:
-                results.append(await self._execute_tool(call))
+                results.append(await self._execute_tool(call, ledger,
+                                                        actions))
             history.append({'role': 'user', 'content': results})
 
         self.convos.record(actor_name, request_turn, final_text)
-        if final_text:
-            await self._deliver(actor_name, final_text)
+        receipts = actions.receipts()
+        # Delivery happens when there is text OR receipts: a turn whose
+        # model went silent but whose actions succeeded delivers
+        # receipts-only — the admin always sees what was actually done;
+        # model prose is commentary, receipts are the record.
+        if final_text or receipts:
+            await self._deliver(actor_name, final_text, receipts)
         else:
             log.info('model chose silence for %s', actor_name)
 
-    async def _execute_tool(self, call):
+    async def _execute_tool(self, call, ledger, actions):
         """One proposed tool call -> one tool_result block. Door errors
         (the complete DoorError code set) come back as error results the
-        model can turn into a polite reply — never a crash."""
+        model can turn into a polite reply — never a crash.
+
+        v25.9 (#302): the single choke point enforces the typed
+        receipts ledger — an id-typed argument no current-turn tool
+        result produced (in the matching id-space) is refused before it
+        reaches the door; the model recovers inside the loop by looking
+        the value up."""
         block = {'type': 'tool_result', 'tool_use_id': call['id']}
         name, params = call['name'], call['input'] or {}
         if name not in QUERY_KINDS and name not in ACTION_KINDS:
             block['content'] = json.dumps({'error': 'unknown-tool'})
             block['is_error'] = True
             return block
+        for arg, space in CHECKED_ARGS.get(name, ()):
+            if arg not in params:
+                continue
+            if not ledger.has(space, params[arg]):
+                detail = (f"'{arg}' {params[arg]} is not from a lookup "
+                          f"this turn — look it up first.")
+                log.info('tool %s refused bot-side: unreceipted-id — %s',
+                         name, detail)
+                block['content'] = json.dumps(
+                    {'error': 'unreceipted-id', 'detail': detail})
+                block['is_error'] = True
+                return block
         result = await self.door_request(name, params)
         log.info('door %s %s -> ok=%s%s', name, params, result.get('ok'),
                  '' if result.get('ok') else f" error={result.get('error')}")
         if result.get('ok'):
-            block['content'] = json.dumps(result.get('data'))
+            data = result.get('data')
+            ledger.harvest(name, data)
+            if name in ACTION_KINDS and name != 'answer':
+                actions.add(name, params, data)
+            block['content'] = json.dumps(data)
         else:
             block['content'] = json.dumps(
                 {'error': result.get('error'),
@@ -1072,20 +1347,25 @@ class SudoBot:
             block['is_error'] = True
         return block
 
-    async def _deliver(self, actor_name, text):
+    async def _deliver(self, actor_name, text, receipts=None):
         # The door prepends `sudo: ` at delivery — strip any copy the
         # model wrote despite instructions (double-prefix guard).
         while text.startswith('sudo:'):
             text = text[len('sudo:'):].lstrip()
-        if not text:
+        receipts = receipts or []
+        if not text and not receipts:
             return
         if len(text) > MAX_ANSWER_LEN:
             text = text[:MAX_ANSWER_LEN - 1] + '…'
-        result = await self.door_request(
-            'answer', {'to': actor_name, 'text': text})
+        params = {'to': actor_name}
+        if text:
+            params['text'] = text
+        if receipts:
+            params['receipts'] = receipts
+        result = await self.door_request('answer', params)
         if result.get('ok'):
-            log.info('answer to %s delivered=%s', actor_name,
-                     result['data'].get('delivered'))
+            log.info('answer to %s delivered=%s (%d receipts)', actor_name,
+                     result['data'].get('delivered'), len(receipts))
         else:
             # not-admin, not-found, and kin: silent (brief §5.4).
             log.info('answer to %s refused: %s', actor_name,
