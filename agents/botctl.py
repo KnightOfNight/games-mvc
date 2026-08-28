@@ -21,14 +21,15 @@ touch the prod bot; v25.10, #304: runtime state moves to the central
 checkout-scoped):
     module      agents/<name>_bot.py
     key file    agents/.secrets/anthropic-api-key.<name>
+    token file  agents/.secrets/github-token.<name>    (optional, #301)
     log         ~/.shyland/<name>_bot.<target>.log
     pid file    ~/.shyland/.<name>_bot.<target>.pid        (bot-owned)
     convos      ~/.shyland/.<name>_bot_conversations.<target>.json
                 (bot-owned)
 
-The key is read at start and placed in the child environment only —
-never argv, never echoed, never logged. This file contains no secret
-values.
+The key (and the GitHub token, when its file exists and is non-empty)
+is read at start and placed in the child environment only — never argv,
+never echoed, never logged. This file contains no secret values.
 """
 
 import argparse
@@ -76,6 +77,10 @@ class BotPaths:
         self.module = AGENTS_DIR / f'{name}_bot.py'
         self.log = RUNTIME_DIR / f'{name}_bot.{target}.log'
         self.key_file = AGENTS_DIR / '.secrets' / f'anthropic-api-key.{name}'
+        # v25.10 (#301): optional — an absent token file is not an
+        # error; the bot refuses filing legibly at call time instead.
+        self.github_token_file = (AGENTS_DIR / '.secrets'
+                                  / f'github-token.{name}')
         # Bot-owned (the bot derives them from its own --target); listed
         # here so humans debugging state files have the one map (#299).
         self.pid_file = RUNTIME_DIR / f'.{name}_bot.{target}.pid'
@@ -150,6 +155,13 @@ def cmd_start(target, paths):
     # Child environment only: never argv, never echoed, never logged.
     env = dict(os.environ)
     env['ANTHROPIC_API_KEY'] = key
+    # v25.10 (#301): the GitHub token rides the same custody pattern;
+    # absent or empty is not an error — the bot refuses filing legibly
+    # at call time instead.
+    if paths.github_token_file.is_file():
+        token = paths.github_token_file.read_text().strip()
+        if token:
+            env['GITHUB_TOKEN'] = token
     url = TARGETS[target]['url'].rstrip('/')
     argv = [str(VENV_PYTHON), str(paths.module), 'run',
             '--target', target, '--url', url, '--log', str(paths.log)]

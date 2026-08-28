@@ -112,6 +112,18 @@ ACTION_KINDS = frozenset(
     {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
      'remove_item', 'edit_item', 'equip_item', 'unequip_item',
      'remember', 'forget', 'report'})
+# v25.10 (#301): bot-local actions — executed here, never door frames.
+# The door grows no filing vocabulary; the game box holds no GitHub
+# credentials.
+BOT_ACTIONS = frozenset({'file_issue'})
+
+# v25.10 (#301): sudo files GitHub issues. The token rides the child
+# environment (GITHUB_TOKEN, injected by botctl from
+# agents/.secrets/github-token.<name>) — never argv, never logged.
+GITHUB_REPO = 'KnightOfNight/games-mvc'
+GITHUB_API = 'https://api.github.com'
+GITHUB_ASSIGNEE = 'KnightOfNight'
+GITHUB_TIMEOUT = 15
 
 log = logging.getLogger('sudo_bot')
 
@@ -686,6 +698,30 @@ TOOLS = [
             'required': ['to', 'kind'],
         },
     },
+    {
+        'name': 'file_issue',
+        'description': ('File a GitHub issue on the game repo — a '
+                        'bot-side action, no game effect. Gather the '
+                        'title and body conversationally over as many '
+                        'turns as needed; read the COMPLETE draft back '
+                        'verbatim (title and full body); call this tool '
+                        'ONLY after the admin explicitly confirms the '
+                        'read-back draft — never on inference, never '
+                        '"while you\'re at it". Machinery applies the '
+                        'assignee and a provenance footer; the game '
+                        'renders the filing receipt with the real issue '
+                        'number.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'title': {'type': 'string',
+                          'description': 'The confirmed issue title.'},
+                'body': {'type': 'string',
+                         'description': 'The confirmed issue body.'},
+            },
+            'required': ['title', 'body'],
+        },
+    },
 ]
 
 # sudo's persona and standing orders (brief §2 rules 5-7; decline
@@ -801,6 +837,15 @@ exist, or for one memory's detail, use report (kinds waypoints, \
 memories, memory) — the game renders the listing itself, \
 deterministically; use the memories/memory queries only when the data \
 feeds your own next step rather than the admin's eyes.
+
+Admins can ask you to file a GitHub issue about anything noticed in the \
+game. Gather it Q&A style like artifact work: a clear title, a body \
+saying what, where, and when — thin is correct (the operator's own \
+filings are thin by doctrine); don't pad, don't speculate. Read the \
+complete draft back — title and full body, verbatim — and file only on \
+an explicit yes. After filing, the receipt with the issue number \
+renders automatically — never restate a number from memory. If filing \
+is disabled on this host, say so plainly.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
@@ -957,6 +1002,10 @@ def _compose_receipt(name, params, data):
               if params.get('character') is not None else '')
         return (f"report ({params.get('kind')}){on} to "
                 f"{params.get('to')}: {status}")
+    if name == 'file_issue':
+        # v25.10 (#301): the number and URL come from the API response,
+        # never model text — the honesty is structural.
+        return f"filed issue #{data.get('number')}: {data.get('url')}"
     return ''
 
 
@@ -1332,7 +1381,8 @@ class SudoBot:
             results = []
             for call in turn.tool_calls:
                 results.append(await self._execute_tool(call, ledger,
-                                                        actions))
+                                                        actions,
+                                                        actor_name))
             history.append({'role': 'user', 'content': results})
 
         receipts = actions.receipts()
@@ -1355,7 +1405,7 @@ class SudoBot:
         else:
             log.info('model chose silence for %s', actor_name)
 
-    async def _execute_tool(self, call, ledger, actions):
+    async def _execute_tool(self, call, ledger, actions, actor_name):
         """One proposed tool call -> one tool_result block. Door errors
         (the complete DoorError code set) come back as error results the
         model can turn into a polite reply — never a crash.
@@ -1364,10 +1414,15 @@ class SudoBot:
         receipts ledger — an id-typed argument no current-turn tool
         result produced (in the matching id-space) is refused before it
         reaches the door; the model recovers inside the loop by looking
-        the value up."""
+        the value up.
+
+        v25.10 (#301): BOT_ACTIONS run locally and never become door
+        frames; their successes join the action log (no ledger harvest
+        — issue numbers belong to no door id-space, deliberately)."""
         block = {'type': 'tool_result', 'tool_use_id': call['id']}
         name, params = call['name'], call['input'] or {}
-        if name not in QUERY_KINDS and name not in ACTION_KINDS:
+        if (name not in QUERY_KINDS and name not in ACTION_KINDS
+                and name not in BOT_ACTIONS):
             block['content'] = json.dumps({'error': 'unknown-tool'})
             block['is_error'] = True
             return block
@@ -1383,14 +1438,22 @@ class SudoBot:
                     {'error': 'unreceipted-id', 'detail': detail})
                 block['is_error'] = True
                 return block
-        result = await self.door_request(name, params)
-        log.info('door %s %s -> ok=%s%s', name, params, result.get('ok'),
-                 '' if result.get('ok') else f" error={result.get('error')}")
+        if name in BOT_ACTIONS:
+            result = await self._file_issue(actor_name, params)
+        else:
+            result = await self.door_request(name, params)
+            log.info('door %s %s -> ok=%s%s', name, params,
+                     result.get('ok'),
+                     '' if result.get('ok')
+                     else f" error={result.get('error')}")
         if result.get('ok'):
             data = result.get('data')
-            ledger.harvest(name, data)
-            if name in ACTION_KINDS and name != 'answer':
+            if name in BOT_ACTIONS:
                 actions.add(name, params, data)
+            else:
+                ledger.harvest(name, data)
+                if name in ACTION_KINDS and name != 'answer':
+                    actions.add(name, params, data)
             block['content'] = json.dumps(data)
         else:
             block['content'] = json.dumps(
@@ -1398,6 +1461,63 @@ class SudoBot:
                  'detail': result.get('detail', '')})
             block['is_error'] = True
         return block
+
+    async def _file_issue(self, actor_name, params):
+        """v25.10 (#301): the bot-local filing action — POST to the
+        GitHub issues API with the token from the child environment.
+        Errors come back in the door-result shape so the shared
+        tool_result tail renders them; the response body is never
+        echoed into the detail (log a bounded excerpt instead). Filed
+        issues are thin: title + body only, assignee applied here, no
+        labels — triage fattens them."""
+        for field in ('title', 'body'):
+            value = params.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return {'ok': False, 'error': 'bad-params',
+                        'detail': f"'{field}' is required "
+                                  f"(non-empty string)."}
+        if not self.cfg.github_token:
+            log.info('file_issue refused: filing disabled '
+                     '(no GitHub token on this bot host)')
+            return {'ok': False, 'error': 'not-configured',
+                    'detail': 'no GitHub token on this bot host; '
+                              'filing is disabled'}
+        stamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
+        body = (params['body']
+                + f'\n\n---\n_Filed via sudo (in-game) by {actor_name}, '
+                  f'{stamp}Z._')
+        log.info('file_issue attempt by %s: title=%r', actor_name,
+                 params['title'])
+        try:
+            response = await asyncio.to_thread(
+                requests.post,
+                f'{GITHUB_API}/repos/{GITHUB_REPO}/issues',
+                json={'title': params['title'], 'body': body,
+                      'assignees': [GITHUB_ASSIGNEE]},
+                headers={'Authorization':
+                         f'Bearer {self.cfg.github_token}',
+                         'Accept': 'application/vnd.github+json'},
+                timeout=GITHUB_TIMEOUT)
+        except Exception as exc:
+            log.warning('file_issue request failed (%s)',
+                        exc.__class__.__name__)
+            return {'ok': False, 'error': 'github',
+                    'detail': 'request failed'}
+        if response.status_code == 201:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+            data = {'number': payload.get('number'),
+                    'url': payload.get('html_url'),
+                    'title': payload.get('title')}
+            log.info('file_issue succeeded: #%s %s', data['number'],
+                     data['url'])
+            return {'ok': True, 'data': data}
+        log.warning('file_issue HTTP %s: %.200s', response.status_code,
+                    response.text)
+        return {'ok': False, 'error': 'github',
+                'detail': f'HTTP {response.status_code}'}
 
     async def _deliver(self, actor_name, text, receipts=None):
         # The door prepends `sudo: ` at delivery — strip any copy the
@@ -1626,6 +1746,9 @@ def cmd_run(cfg):
         brain = make_brain(cfg.brain, cfg.model, cfg.max_tokens)
     except SystemExit as exc:
         return _refuse(str(exc))
+    # v25.10 (#301): the GitHub token, child-environment only — never
+    # logged beyond filing=enabled|disabled.
+    cfg.github_token = os.environ.get('GITHUB_TOKEN', '')
     convos = ConversationStore(convo_file(cfg.target), cfg.convo_timeout,
                                cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
@@ -1633,8 +1756,9 @@ def cmd_run(cfg):
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     pidfile(cfg.target).write_text(str(os.getpid()))
     log.info('sudo bot starting: target=%s url=%s username=%s brain=%s '
-             'model=%s',
-             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model)
+             'model=%s filing=%s',
+             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model,
+             'enabled' if cfg.github_token else 'disabled')
     try:
         return asyncio.run(bot.run())
     finally:
