@@ -4,8 +4,11 @@ CLOSEOUT REPORT — V25.9 Brief 1: Structural Receipts
 ====================================================
 
 Branch: version_25_9
-Final implementation commit (arch-doc hash of record): 6e2f446
-Architecture doc commit: 5e1b9b0
+Final implementation commit (arch-doc hash of record): a73fbb0
+(pre-playtest implementation tip 6e2f446; the final hash lands the
+playtest-found replay-trap standing order — deviation 8)
+Architecture doc commit: 5e1b9b0, hash-of-record + playtest-findings
+update in the disposition-recording pass
 Suite: 877 green in-container (was 865; +12 = tests/test_v25_9_brief1.py exactly)
 Migration: NONE — migrate is a no-op (0054_agentmemory remains the head;
 makemigrations --check reports no changes). Code-only release.
