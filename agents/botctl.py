@@ -48,13 +48,15 @@ VENV_PYTHON = AGENTS_DIR / 'venvs' / 'mc-agent' / 'bin' / 'python'
 RUNTIME_DIR = Path.home() / '.shyland'
 
 # ----------------------------------------------------------------------
-# Targets — the two stacks a bot can face. dev runs self-signed certs,
-# so it (and only it) rides --insecure; the prod path can never receive
-# it. URLs are rstripped again at use (belt and suspenders with #292).
+# Targets — the two stacks a bot can face. Both run real certs (the
+# renewed wildcard landed on dev, operator-directed 2026-08-28), so
+# neither rides --insecure; the mechanism stays for any future target
+# that genuinely needs it. URLs are rstripped again at use (belt and
+# suspenders with #292).
 # ----------------------------------------------------------------------
 TARGETS = {
     'prod': {'url': 'https://games.magrathea.com', 'insecure': False},
-    'dev': {'url': 'https://emma.private.magrathea.com', 'insecure': True},
+    'dev': {'url': 'https://emma.private.magrathea.com', 'insecure': False},
 }
 
 STATUS_POLL_TRIES = 20

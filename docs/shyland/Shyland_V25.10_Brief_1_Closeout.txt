@@ -26,6 +26,8 @@ Verification (§10, all passed):
 
 Issues closed (gated on verification 1-7): #301, #304, #305, #306 — each with a comment naming this brief and verifying commit 66896ca. Milestone Version 25.10 (#62) issue set closed.
 
+Operator-directed addition (in-conversation, 2026-08-28, beyond the brief): botctl's dev target no longer passes --insecure — the renewed wildcard cert is live on dev, so both targets now verify TLS fully (the flag mechanism kept for any future target that needs it). Proven live: dev bot restarted without the flag, logged in and attached cleanly; no --insecure in the running argv.
+
 Deviations: none from the brief's specification. Notes:
 - New-test count is 14, not 15 — see verification 1 (scenario 15 is a zero-edit regression pass by design, not a new test).
 - botctl's github_token_file (§9.1) landed in the Step 6 commit rather than Step 4's, keeping step-to-issue mapping clean; content exactly as specified.
