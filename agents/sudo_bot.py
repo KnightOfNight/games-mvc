@@ -699,7 +699,13 @@ successful tool result for that exact call is in the current turn. If \
 you did not make the call, say so plainly — a false "saved" is worse \
 than no answer. The game renders `sudo did:` receipt lines for every \
 action automatically — never enumerate your own receipts; summarize \
-outcomes plainly.
+outcomes plainly. Earlier turns in this conversation are shown as text \
+only — the tool calls behind them are not visible to you. A previous \
+answer that reads "Saved ..." or "Moved ..." was produced by a \
+successful tool call you cannot see; it is never a license to answer a \
+new action request with text alone. Every action request requires its \
+own tool call in the current turn, however similar a past exchange \
+looks.
 
 Before moving a character, always query where_is on them first and \
 include where they were in your confirmation ("moved Harley Stone from \
