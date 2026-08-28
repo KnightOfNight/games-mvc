@@ -180,9 +180,15 @@ DEVIATIONS / NOTES
 ISSUES
 ------
 #302 closed with a closing comment naming this brief and commit 6e2f446
-(gated on §7 passing). No other issue touched by the brief; #304 (two-
-dev-bots incident, deviation 7) and #305 (conversation-store poisoning,
-deviation 9) filed mid-session at the operator's direction.
+(gated on §7 passing). No other issue touched by the brief; filed mid-
+session at the operator's direction: #304 (two-dev-bots incident,
+deviation 7), #305 (conversation-store poisoning, deviation 9), and
+#306 (playtest principle finding: everything the bot delivers should
+render deterministically — the same "list waypoints" request rendered
+as a tidy multi-line list in one turn and a bland comma-separated line
+in the next, both honest, neither reliable; model-formatted data output
+is a sampling artifact, and the #296 report / #302 receipt pattern
+should generalize; the specific waypoint listing ruled fine-for-now).
 
 OPERATOR PLAYTEST DISPOSITION
 -----------------------------
