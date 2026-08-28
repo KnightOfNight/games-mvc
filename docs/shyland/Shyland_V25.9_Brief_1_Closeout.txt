@@ -1,0 +1,213 @@
+2026-08-28 — Implementation session started: Shyland V25.9 Brief 1 (Structural Receipts, #302) on branch version_25_9.
+
+CLOSEOUT REPORT — V25.9 Brief 1: Structural Receipts
+====================================================
+
+Branch: version_25_9
+Final implementation commit (arch-doc hash of record): a73fbb0
+(pre-playtest implementation tip 6e2f446; the final hash lands the
+playtest-found replay-trap standing order — deviation 8)
+Architecture doc commit: 5e1b9b0, hash-of-record + playtest-findings
+update in the disposition-recording pass
+Suite: 877 green in-container (was 865; +12 = tests/test_v25_9_brief1.py exactly)
+Migration: NONE — migrate is a no-op (0054_agentmemory remains the head;
+makemigrations --check reports no changes). Code-only release.
+
+WHAT SHIPPED (#302 — the sudo bot never invents a value it should have
+read from the database; machinery, not prompts)
+----------------------------------------------------------------------
+- Door, move (§2): third mutually exclusive destination key `waypoint` —
+  exactly-one-of-three (bad-params names all three); lookup-and-act atomic
+  in the door via _waypoint_row, scoped to the calling agent's own store
+  (the memory verbs' addressing law: _agent_user + kind waypoint +
+  name__iexact); unknown waypoint => not-found naming it; stored room
+  deleted => not-found naming waypoint AND vanished room id; result gains
+  'waypoint' (the row's cased name) only on the waypoint form;
+  to_name/to_room_id byte-identical (result-shape pinned by test).
+- Door, answer (§3): machinery-only `receipts` — list of 1-20 non-empty
+  strings <=200 chars (MAX_RECEIPTS/MAX_RECEIPT_LEN beside MAX_ANSWER_LEN;
+  each violation a distinct bad-params); text optional when receipts
+  present (unchanged 1-2000 rule when given; neither => bad-params);
+  delivery = the sudo: text line as before (skipped when no text) then one
+  door-composed `sudo did: {receipt}` line per receipt in order, all
+  category 'sudo', all through _send_player_line -> audited_send (receipts
+  on the MC record); offline posture and result shape unchanged.
+- Bot, the typed ledger (§4.1): per-request ReceiptLedger (one sudo
+  request = one turn = one ledger), four id-spaces (room int / item int /
+  memory int / stream str); CHECKED_ARGS refused at _execute_tool before
+  the door ('unreceipted-id' error tool_result, logged; model recovers
+  in-loop); HARVEST is a per-tool result-path map, successful results
+  only, missing keys skipped silently — the typing is the point (the 25.8
+  wrong-space failure is structurally refused).
+- Bot, action log + composition (§4.2): every successful action except
+  answer appends one composed receipt (params + door result, never model
+  text) per the brief's format table; identical (slug, mk_tier, rarity,
+  to) gifts aggregate to one ×N receipt (ids omitted when aggregated);
+  200-char truncation (ellipsis), cap 20 oldest-kept with a log line on
+  overflow.
+- Bot, delivery (§4.3): _deliver(actor, text, receipts) sends receipts
+  when non-empty; delivery happens when there is text OR receipts —
+  receipts-only on model silence; neither => silent as before; the
+  leading-sudo: strip and MAX_ANSWER_LEN truncation unchanged.
+- Bot, schema + prompt (§4.4): move schema gains waypoint (prefer over
+  to_room_id for taught places) + exactly-one-of-three; every checked
+  argument's description carries the "from a tool result in this turn;
+  unreceipted ids are refused" contract; SYSTEM_TEMPLATE waypoint clause
+  now passes the name to move directly (never resolves a room id
+  bot-side); one added sentence: the game renders `sudo did:` lines
+  automatically — never enumerate your own receipts. All other standing
+  orders verbatim (defense-in-depth).
+- No client change, no kill-switch change, no new door kinds, no
+  player-facing command change (GDD §9 untouched). botctl.py and
+  mc_door_agent.py untouched per the brief.
+
+VERIFICATION (brief §7 — all passed)
+------------------------------------
+1. Full suite in-container (path form): 877 tests, OK. Grew from 865 by
+   exactly the 12 new tests.
+2. make deploy-dev run after implementation and tests passed (twice: the
+   §1 version-start deploy and the post-§6 deploy); dev stack on the
+   brief build; migrate no-op confirmed.
+3. Deterministic driver check, 16/16 checks PASSED live against the dev
+   stack (throwaway /tmp harness driving the real SudoBot pipeline —
+   ScriptedBrain, zero model calls — over the real MC door as
+   agent-smith, with a live player-door session as the online admin
+   pane):
+   a. Scripted move with un-receipted to_room_id refused bot-side
+      (unreceipted-id in the tool_result; door never called — no door
+      move log line; target unmoved).
+   b. The same to_room_id after a rooms lookup in the same turn executed
+      (door move ok=True; target moved).
+   c. Scripted forget passing a room id from a rooms result refused —
+      the typed-ledger proof (wrong space; door never called).
+   d. Waypoint move end-to-end: remember -> move {name, waypoint} ->
+      single hop (exactly one door move), result carried
+      waypoint='v259-wp', target landed.
+   e. Live pane deliveries: text-only turn (refused action => no
+      receipts) showed sudo: line only; action turns showed sudo: text
+      then sudo did: lines in order (remembered ... then moved ... with
+      the waypoint suffix); a silent-model turn with a successful action
+      delivered receipts-only (one sudo did: line, no sudo: line).
+4. Dev bot restarted via the worktree agents/botctl.py (dev target) after
+   deploy-dev: was not running -> straight to start; claude brain,
+   logged in as agent-sudo, attached, pid healthy.
+
+DEVIATIONS / NOTES
+------------------
+1. No test-hygiene conversions: no existing test pinned the old two-of
+   XOR bad-params message (DoorMoveTests asserts the error code only),
+   so brief §6.7's contingency did not trigger; zero existing tests
+   edited beyond the standing pin-test move in the opening act.
+2. Gift aggregation groups identical gifts across the whole turn (first-
+   occurrence position holds the receipt), not merely consecutive calls —
+   the brief's "in one turn" wording implemented literally.
+3. The driver harness's first run scored 15/16 — a harness timing
+   artifact, not a product failure: the scenario-d pane marker was
+   snapshotted before scenario-c's in-flight delivery arrived, leaking
+   'sudo: done-c' into the slice (all scenario-d lines present and
+   correct). Fixed harness-side (anchor on the scenario's own text line);
+   clean 16/16 re-run.
+4. Scratch dev-only state for the driver check: reused the 25.8 scratch
+   admin v258-verify / character "V258 Verify" (password reset to a
+   throwaway); agent-smith password likewise reset to a throwaway;
+   created user v259-target + character "V259 Target" (non-admin, parked
+   in room 1, inventory empty) as the move target. Dev-only; harmless to
+   keep or delete. The taught driver waypoint was deleted after the run;
+   agent-smith's memory store left as found.
+5. Worktree agents/venvs and agents/.secrets are SYMLINKS to the main
+   checkout's copies (the 25.8 deviation-5 pattern, recreated in this
+   worktree for botctl and the driver; gitignored, nothing installed,
+   nothing copied). Remove freely if unwanted.
+6. agents/ is outside the Django image, so the ledger/composer logic is
+   deliberately not in the in-container suite (the 25.8 precedent); the
+   deterministic driver check is its verification.
+7. INCIDENT — two dev bots (filed as #304): the §7.4 worktree
+   `botctl dev restart` started the new-code dev bot while a dev bot was
+   already running from the MAIN checkout — #299's pidfiles are
+   per-checkout by construction (AGENTS_DIR-relative), so the worktree's
+   "already running" check was blind to main's bot, and for a window two
+   dev bots were attached to the same door (every sudo handled twice —
+   double answers, double actions). The operator spotted it and stopped
+   the main-checkout bot by hand; end state verified clean (exactly one
+   dev bot, pid 86286, the worktree/new-code one; prod bot untouched).
+   Prevention is a design ruling — #304 carries the diagnosis and three
+   direction candidates (checkout-independent lock; process-scan start
+   guard; server-side one-attach-per-agent-account singleton, the #302
+   spirit).
+
+8. Playtest finding, fixed in-session (a73fbb0): on the operator's third
+   quick waypoint teach ("remember this location as 'one-up'"), the
+   model answered `Saved waypoint "one-up" at ...` WITHOUT calling
+   remember (log: where_is -> end_turn, 0 receipts; store verified — no
+   'one-up' row). THE MACHINERY WORKED: the false claim shipped with no
+   `sudo did:` line, and the operator caught it from the missing receipt
+   alone — the delivery-side layer doing exactly what #302 built it for.
+   Root cause is mechanistic, not just model flakiness: ConversationStore
+   replays history as plain text q/a pairs (the ruled 25.6 shape), so by
+   the third teach the model's visible history showed two prior
+   teach->"Saved ..." exchanges with no tool calls in sight — its own
+   stripped transcript taught it that a text-only "Saved" is a complete
+   response (the replay trap). Fix (bot-side only, the 25.8 precedent):
+   one added standing order naming the trap — earlier turns are text
+   only, the tool calls behind them invisible; a prior "Saved ..." is
+   never a license to answer an action request with text alone; every
+   action request requires its own tool call in the current turn. Dev
+   bot restarted with the new prompt. Note: the operator's 'one-up'
+   waypoint was NOT saved and needs re-teaching. A structural fix for
+   the replay shape (persisting tool blocks in history, or annotating
+   replayed answers) would change the ruled conversation-store design —
+   design-lane if the prompt order proves insufficient.
+
+9. Playtest finding, second variant (the poisoned history): after the
+   deviation-8 restart, the operator's re-teach of 'one-up' failed AGAIN
+   — this time with ZERO tool calls (log 14:57:28: straight end_turn,
+   0 receipts). Mechanism: the conversation store persists across
+   restarts by design, so the model's history still contained its own
+   earlier false "Saved waypoint 'one-up'" claim — the lie became ground
+   truth ("already saved"), self-reinforcing. The subsequent teaches
+   (two-up, three-up, green-start) all landed correctly with receipts
+   under the new standing order — only the poisoned name failed. The
+   operator's "list all waypoints" then returned the honest store (no
+   one-up), which is how the discrepancy surfaced: the receipts + honest
+   queries made the poison visible. Remediation in-session: dev bot
+   stopped, the dev conversation file deleted (bot-owned gitignored
+   runtime state), bot restarted fresh. STRUCTURAL FINDING for design:
+   the conversation store records the model's prose as the exchange
+   record, but the prose can be false — the delivered exchange now
+   includes machinery receipts, and persisting them with the answer (or
+   otherwise marking unbacked claims) would make the replayed history
+   truthful; changes the ruled 25.6 store shape, so design-lane — FILED
+   as #305 (operator-directed) with three direction candidates,
+   persist-receipts-with-the-answer recommended.
+
+ISSUES
+------
+#302 closed with a closing comment naming this brief and commit 6e2f446
+(gated on §7 passing). No other issue touched by the brief; filed mid-
+session at the operator's direction: #304 (two-dev-bots incident,
+deviation 7), #305 (conversation-store poisoning, deviation 9), and
+#306 (playtest principle finding: everything the bot delivers should
+render deterministically — the same "list waypoints" request rendered
+as a tidy multi-line list in one turn and a bland comma-separated line
+in the next, both honest, neither reliable; model-formatted data output
+is a sampling artifact, and the #296 report / #302 receipt pattern
+should generalize; the specific waypoint listing ruled fine-for-now).
+
+OPERATOR PLAYTEST DISPOSITION
+-----------------------------
+Operator reports playtest successful (2026-08-28, "playtest confirmed"
+— given after the two in-session bot-side fixes of deviations 8-9 were
+applied with the dev bot restarted on each, the poisoned conversation
+store reset, and the failure shape re-tested: one-up re-taught with its
+receipt, subsequent teaches all receipted). Checklist item 6 (the log
+skim): ZERO unreceipted-id refusals across the playtest's 19 live sudo
+requests — the model never attempted an invented id; the refusal
+machinery's proof remains the deterministic driver (§7.3 a/c). Playtest
+findings #304/#305/#306 filed design-lane (deviations 7-9 and the
+ISSUES section); none is a defect against this brief's spec.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None: code-only release, migrate no-op, no seed change. (The prod bot
+restart after the eventual prod deploy remains the operator's standing
+action, --target prod via botctl — not a brief step.)

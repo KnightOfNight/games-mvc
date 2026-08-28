@@ -45,6 +45,10 @@ from .models import (
 logger = logging.getLogger('shyland.mc')
 
 MAX_ANSWER_LEN = 2000
+# v25.9 (#302): answer's machinery-only receipts — bot-composed action
+# records, rendered by the game as their own `sudo did:` lines.
+MAX_RECEIPTS = 20
+MAX_RECEIPT_LEN = 200
 ITEMS_CAP = 50
 # v25.8 (#290/#300): rooms/events list results — the §3 preamble cap.
 LIST_CAP = 50
@@ -391,13 +395,43 @@ async def a_answer(params, agent_name):
     """#273: the delivery gate — the target's live ``admins.shyland``
     membership is authoritative regardless of what the bot concluded.
     Offline is ``ok: true, delivered: false``, never an error —
-    silence is the norm."""
+    silence is the norm.
+
+    v25.9 (#302): machinery-only ``receipts`` — each rendered as its
+    own door-composed ``sudo did:`` line after the answer, a form model
+    prose can never occupy. ``text`` becomes optional when receipts are
+    present; a turn whose model went silent still shows what was done."""
     char = await _resolve_character(params, key='to')
     text = params.get('text')
-    if not isinstance(text, str) or not text or len(text) > MAX_ANSWER_LEN:
-        raise DoorError(
-            'bad-params',
-            f"'text' must be a string of 1-{MAX_ANSWER_LEN} characters.")
+    receipts = params.get('receipts')
+    if receipts is not None:
+        if not isinstance(receipts, list):
+            raise DoorError('bad-params', "'receipts' must be a list.")
+        if not receipts:
+            raise DoorError('bad-params',
+                            "'receipts' must hold at least 1 entry.")
+        if len(receipts) > MAX_RECEIPTS:
+            raise DoorError(
+                'bad-params',
+                f"'receipts' holds at most {MAX_RECEIPTS} entries.")
+        for i, receipt in enumerate(receipts):
+            if not isinstance(receipt, str) or not receipt:
+                raise DoorError(
+                    'bad-params',
+                    f"receipts[{i}] must be a non-empty string.")
+            if len(receipt) > MAX_RECEIPT_LEN:
+                raise DoorError(
+                    'bad-params',
+                    f"receipts[{i}] must be at most {MAX_RECEIPT_LEN} "
+                    f"characters.")
+    if receipts is None or text is not None:
+        # No receipts: 'text' required exactly as before. With
+        # receipts: optional, but the same rule when given. Neither
+        # present is a bad-params by this same check.
+        if not isinstance(text, str) or not text or len(text) > MAX_ANSWER_LEN:
+            raise DoorError(
+                'bad-params',
+                f"'text' must be a string of 1-{MAX_ANSWER_LEN} characters.")
     if not await _is_admin(char):
         raise DoorError(
             'not-admin',
@@ -405,9 +439,15 @@ async def a_answer(params, agent_name):
             f'admins.shyland members.')
     delivered = await _presence_online(char.pk)
     if delivered:
-        # Words carry identity; the sudo color reinforces (§5.1).
-        await _send_player_line(char.pk, f'sudo: {text}', 'sudo',
-                                agent_name=agent_name)
+        if text:
+            # Words carry identity; the sudo color reinforces (§5.1).
+            await _send_player_line(char.pk, f'sudo: {text}', 'sudo',
+                                    agent_name=agent_name)
+        for receipt in receipts or []:
+            # Door-composed prefix: model text can never occupy
+            # line-start position on a receipt line.
+            await _send_player_line(char.pk, f'sudo did: {receipt}', 'sudo',
+                                    agent_name=agent_name)
     return {'delivered': delivered}
 
 
@@ -776,29 +816,62 @@ def _move_character(char, destination, record_visit):
         record_room_visit_sync(char, destination)
 
 
+@database_sync_to_async
+def _waypoint_row(agent_name, name):
+    """v25.9 (#302): the waypoint destination form's lookup — the
+    calling agent's own store, the memory verbs' addressing law (one
+    bot never resolves through another's waypoints). Returns the row's
+    cased name and its stored room id."""
+    agent = _agent_user(agent_name)
+    row = (AgentMemory.objects
+           .filter(agent=agent, kind=AgentMemory.KIND_WAYPOINT,
+                   name__iexact=name).first())
+    if row is None:
+        raise DoorError('not-found', f'No waypoint memory named {name!r}.')
+    return row.name, row.data.get('room_id')
+
+
 async def a_move(params, agent_name):
     """Online targets get the full arrival treatment through their own
     consumer (the ``moved`` branch — modeled on respawn — re-seats
     groups and records the visit, so a first visit announces zone
     completion exactly like a walked arrival). Offline targets get the
-    DB update + visit only, no broadcasts."""
+    DB update + visit only, no broadcasts.
+
+    v25.9 (#302): the ``waypoint`` destination form — lookup-and-act
+    atomic in the door; the bot never handles a room id for a taught
+    place."""
     char = await _resolve_character(params)
     has_name = 'to_name' in params
     has_id = 'to_room_id' in params
-    if has_name == has_id:
+    has_waypoint = 'waypoint' in params
+    if has_name + has_id + has_waypoint != 1:
         raise DoorError(
             'bad-params',
-            "Exactly one of 'to_name' or 'to_room_id' is required.")
+            "Exactly one of 'to_name', 'to_room_id', or 'waypoint' "
+            "is required.")
     if await _in_combat(char):
         # No landmines in the combat model: a combat session's room
         # binding must never watch its character teleport away.
         raise DoorError('in-combat',
                         f'{char.name} is in an active combat session.')
+    waypoint_name = None
     if has_name:
         other = await _resolve_character(params, key='to_name')
         destination = other.current_room
         if destination is None:
             raise DoorError('not-found', f'{other.name} is in no room.')
+    elif has_waypoint:
+        requested = _require_str(params, 'waypoint')
+        waypoint_name, room_id = await _waypoint_row(agent_name, requested)
+        destination = await _room_by_id(room_id)
+        if destination is None:
+            # The legible-refusal law (v25.8 memory design): name both
+            # the waypoint and the vanished room.
+            raise DoorError(
+                'not-found',
+                f'Waypoint {waypoint_name!r} points at room {room_id}, '
+                f'which no longer exists.')
     else:
         room_id = _require_int(params.get('to_room_id'), 'to_room_id')
         destination = await _room_by_id(room_id)
@@ -831,8 +904,12 @@ async def a_move(params, agent_name):
         await _send_player_line(
             char.pk, 'An admin moved you to a new room.', 'system',
             agent_name=agent_name, event='moved')
-    return {'room': _room_dict(destination),
-            'from_room': _room_dict(origin_room)}
+    result = {'room': _room_dict(destination),
+              'from_room': _room_dict(origin_room)}
+    if waypoint_name is not None:
+        # The row's cased name — the receipt names what was taught.
+        result['waypoint'] = waypoint_name
+    return result
 
 
 # ----------------------------------------------------------------------
