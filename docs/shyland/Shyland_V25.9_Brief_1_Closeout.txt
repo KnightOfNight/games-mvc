@@ -1,0 +1,3 @@
+2026-08-28 — Implementation session started: Shyland V25.9 Brief 1 (Structural Receipts, #302) on branch version_25_9.
+
+[STUB — completed in place at session end.]
