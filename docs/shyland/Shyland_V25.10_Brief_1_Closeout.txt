@@ -1,3 +1,46 @@
 2026-08-28 — Session start: Shyland V25.10 Brief 1 (Truthful Delivery and the Filing Bot), branch version_25_10.
 
-[stub — completed in place at closeout]
+== Closeout report ==
+
+Brief: docs/shyland/Shyland_V25.10_Brief_1_Truthful_Delivery_And_The_Filing_Bot.md (verbatim at branch tip 5a12655 at session start; no drift).
+Technical pre-flight (#252): all 15 §1 claims verified against the code before any work — no mismatches, no hard stop.
+
+Steps landed (one commit per step, pushed at every boundary):
+- Step 0  4a29d12  closeout stub (work-has-started signal)
+- Step 1  1d65e58  SHYLAND_VERSION -> 25.10-DEV + pin test, same commit; version-start make deploy-dev run
+- Step 2  454e37b  door attach singleton (#304): ATTACHED registry, gate order auth -> 4403 -> 4503 -> 4409, guarded release; bot CLOSE_MEANINGS 4409; tests 1-6
+- Step 3  14cef97  report family (#306): REPORT_KINDS x4, kind-dispatched a_report, door-composed helpers; bot schema/receipt/prompt kind-aware; tests 7-14 (scenario 15 = v25.8 report tests pass zero-edit)
+- Step 4  295e1aa  central runtime directory (#304): ~/.shyland/ for pid/log/convo in sudo_bot.py + botctl.py; module/secrets stay checkout-scoped; no state migration
+- Step 5  f1c31d2  store receipts (#305): receipts computed before record; stored answer folds [did: ...] lines; prompt sentence; docstring note
+- Step 6  66896ca  sudo files the tickets (#301): file_issue tool + confirm-gate description/prompt, BOT_ACTIONS local execution (actor_name threaded), GITHUB_* constants, provenance footer, structural receipt, botctl GITHUB_TOKEN child-env injection
+- Arch    edd6006  architecture doc: stamp 25.10, header hash -> 66896ca, new version paragraph, §4.20/§4.22/§4.23/§4.24 updated
+
+Verification (§10, all passed):
+1. make build + in-container suite: 891 tests, all green (877 baseline + 14 new in test_v25_10_brief1.py). Brief's "15 new tests at minimum" note: table scenario 15 (inventory regression) is satisfied by the pre-existing v25.8 report tests passing with zero edits rather than a new test — 14 new tests, coverage of all 15 scenarios.
+2. make deploy-dev run after implementation and tests passed.
+3. Singleton drill (live dev): worktree dev bot started via botctl; second agent-sudo client drew the already-attached error frame and close 4409; the holder's log was byte-identical before/after (connection untouched); ~/.shyland/.sudo_bot.dev.pid present. Bot stopped; the second client re-run was admitted (hello, protocol 2).
+4. Central directory: pid + log (and convo file after first save) under ~/.shyland/; zero state files created under the worktree's agents/.
+5. Store receipts (scripted-brain driver over the real dev door): the recorded answer in ~/.shyland/.sudo_bot_conversations.dev.json carries "[did: remembered waypoint 'v2510-e2e' (created, id 15)]" after the text; a receiptless turn stored text alone.
+6. Filing refusal: with no GITHUB_TOKEN, a driven file_issue drew {'error': 'not-configured', 'detail': 'no GitHub token on this bot host; filing is disabled'} and a legible scripted decline. Nothing was filed — verification filed no real issue.
+7. Report rendering (driver's captured player_message frames on a live admin pane): waypoints — leader 'sudo: 10 waypoints' + one '#id name — Zone: Area: Room' line per row, dangling row not present in store so live paths all resolved; memories — leader 'sudo: 11 memories' + kind-tagged lines with both summary forms ('13 lines' for the bundle); kind-aware receipts 'report (waypoints) to Stubtester: delivered' (no 'on None'). Dangling-room and memory-detail forms covered by tests 9 and 11 in-suite.
+
+Issues closed (gated on verification 1-7): #301, #304, #305, #306 — each with a comment naming this brief and verifying commit 66896ca. Milestone Version 25.10 (#62) issue set closed.
+
+Deviations: none from the brief's specification. Notes:
+- New-test count is 14, not 15 — see verification 1 (scenario 15 is a zero-edit regression pass by design, not a new test).
+- botctl's github_token_file (§9.1) landed in the Step 6 commit rather than Step 4's, keeping step-to-issue mapping clean; content exactly as specified.
+
+Transition note (§7.4, recorded as directed): a bot already running was started by old code and owns an old-location (per-checkout) pidfile — the new botctl cannot see it. Before starting a new-code bot on a target, stop any running bot for that target FROM THE CHECKOUT THAT STARTED IT. If missed, the door's 4409 is the backstop: the new bot logs 'already attached' and retries instead of double-acting. State at this session's end: no old-code dev bot was running (nothing to stop); the PROD bot is running old code from the main checkout (pidfile /Users/ctg/src/games-mvc/agents/.sudo_bot.prod.pid) and was not touched — after the eventual prod deploy, the operator's standing restart must stop it from the main checkout and start it with post-25.10 code so its state lands in ~/.shyland/.
+
+Dev-stack leavings (operator prunes; nothing deleted by this session):
+- agents/.secrets and agents/venvs symlinks created in this worktree pointing at the main checkout (the 25.9 convention).
+- Throwaway password set on dev account sudo-e2e (character Stubtester) for the pane-capture driver; value in /tmp only.
+- Waypoint 'v2510-e2e' (id 15) taught into agent-sudo's dev store by the driver.
+- Old per-checkout bot state files (pid/log/convo) from pre-25.10 code abandoned in place per the brief.
+- The dev bot is RUNNING from this worktree (post-25.10 code, ~/.shyland state, filing=disabled) — ready for the operator playtest. Playtest prerequisite for step 5 of §11: create agents/.secrets/github-token.sudo (operator).
+
+PENDING DEPLOY-TIME ACTIONS: none. No migration (code-only release), no seed, no prod-side data action. Operator-side notes for the record (neither a deploy-time block): (a) prod bot restart after the eventual prod deploy is the operator's standing action — restart with post-25.10 code, stopping the old bot from the main checkout that started it; (b) prod filing needs agents/.secrets/github-token.sudo on the bot host (executor: explicitly the operator), any time before first use.
+
+Suite count: 891 green in-container. Final content commit: edd6006 (this closeout-report completion commit follows it).
+
+Operator playtest disposition: [recorded at session end]
