@@ -1576,6 +1576,17 @@ class SudoBot:
             self._pending = {}
             self._events = asyncio.Queue()
             hello = json.loads(await asyncio.wait_for(ws.recv(), 15))
+            if hello.get('type') == 'error':
+                # v25.10 (#304): a pre-hello error frame announces a
+                # refusal and a close follows (already-attached ⇒
+                # 4409). Wait for the close so the run loop's
+                # ConnectionClosed handler logs the meaning and retries
+                # with backoff — a refused attach is a wait-your-turn,
+                # never a protocol fatal.
+                log.info('pre-hello error frame: %s',
+                         hello.get('error'))
+                await asyncio.wait_for(ws.recv(), 15)
+                return
             if (hello.get('type') != 'hello'
                     or hello.get('protocol') != MC_PROTOCOL):
                 raise FatalError(
