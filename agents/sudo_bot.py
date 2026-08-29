@@ -1381,6 +1381,28 @@ class SudoBot:
                 self.brain.respond, self.system_prompt, history, TOOLS)
             final_text = turn.text
             if not turn.tool_calls:
+                # v25.10 (#305, playtest): a would-be final answer
+                # carrying a [did: ...] mark with no receipt behind it
+                # is a machinery-detected fabrication — the mark is the
+                # lie's signature (observed live: the model pattern-
+                # completes 'Sent — ...' from replayed report history
+                # without acting). Bounce it back into the loop: the
+                # model performs the real call or drops the claim.
+                # Loop exhaustion falls through to the strip guard.
+                if '[did:' in final_text and not actions.receipts():
+                    log.info('rejected receiptless [did:] answer for '
+                             '%s — redo', actor_name)
+                    history.append({'role': 'assistant',
+                                    'content': final_text})
+                    history.append({
+                        'role': 'user',
+                        'content': ('[game] Your answer claims an '
+                                    'action with a [did: ...] mark, '
+                                    'but no tool call ran this turn — '
+                                    "receipts are machinery's. Perform "
+                                    'the action with a tool call now, '
+                                    'or answer without the claim.')})
+                    continue
                 break
             history.append({'role': 'assistant', 'content': turn.raw_content})
             results = []
