@@ -1750,6 +1750,13 @@ def _memory_report_detail(agent_name, memory_id):
             'lines': lines}
 
 
+def _value_lines(texts):
+    """#306: the client's report-lines contract renders dict entries
+    (`k`/`v`/`segs`) — a bare string renders as a blank line. Listing
+    and detail rows ride the value voice."""
+    return [{'v': text} for text in texts]
+
+
 async def _deliver_report(to, agent_name, leader, lines):
     """#306: the shared delivery tail — presence check, sudo leader,
     then one report-category lines frame (skipped when there are no
@@ -1799,7 +1806,8 @@ async def _report_waypoints(agent_name, to):
     leader = f'sudo: {total} waypoints'
     if total > len(rows):
         leader += f' (newest {len(rows)} shown)'
-    lines = [f"#{r['id']} {r['name']} — {r['summary']}" for r in rows]
+    lines = _value_lines(
+        [f"#{r['id']} {r['name']} — {r['summary']}" for r in rows])
     delivered = await _deliver_report(to, agent_name, leader, lines)
     return {'delivered': delivered, 'count': total}
 
@@ -1809,8 +1817,9 @@ async def _report_memories(agent_name, to):
     leader = f'sudo: {total} memories'
     if total > len(rows):
         leader += f' (newest {len(rows)} shown)'
-    lines = [f"#{r['id']} {r['kind']} {r['name']} — {r['summary']}"
-             for r in rows]
+    lines = _value_lines(
+        [f"#{r['id']} {r['kind']} {r['name']} — {r['summary']}"
+         for r in rows])
     delivered = await _deliver_report(to, agent_name, leader, lines)
     return {'delivered': delivered, 'count': total}
 
@@ -1821,7 +1830,7 @@ async def _report_memory(params, agent_name, to):
     leader = (f"sudo: {detail['kind']} '{detail['name']}' "
               f"(id {detail['id']})")
     delivered = await _deliver_report(to, agent_name, leader,
-                                      detail['lines'])
+                                      _value_lines(detail['lines']))
     return {'delivered': delivered, 'id': detail['id']}
 
 

@@ -205,10 +205,11 @@ class ReportFamilyTests(DoorTestBase):
         self.assertEqual(len(events), 2)
         self.assertEqual(events[0]['text'], 'sudo: 2 waypoints')
         self.assertEqual(events[1]['category'], 'report')
-        # Newest first; live path; dangling row tells the truth.
+        # Newest first; live path; dangling row tells the truth. Rows
+        # ride the client report-lines contract as value-voice dicts.
         self.assertEqual(events[1]['lines'], [
-            f'#{dangling.pk} lost — (room no longer exists)',
-            f'#{older.pk} battle — {zone.name}: {room_b.name}',
+            {'v': f'#{dangling.pk} lost — (room no longer exists)'},
+            {'v': f'#{older.pk} battle — {zone.name}: {room_b.name}'},
         ])
 
     async def test_memories_mixed_kinds_both_summary_forms(self):
@@ -233,8 +234,9 @@ class ReportFamilyTests(DoorTestBase):
         events = [event for _, event in layer.sent]
         self.assertEqual(events[0]['text'], 'sudo: 2 memories')
         self.assertEqual(events[1]['lines'], [
-            f'#{bundle.pk} bundle kit — 1 lines',
-            f'#{waypoint.pk} waypoint battle — {zone.name}: {room_b.name}',
+            {'v': f'#{bundle.pk} bundle kit — 1 lines'},
+            {'v': f'#{waypoint.pk} waypoint battle — '
+                  f'{zone.name}: {room_b.name}'},
         ])
 
     async def test_memory_detail_waypoint_and_bundle(self):
@@ -269,18 +271,18 @@ class ReportFamilyTests(DoorTestBase):
                          f"sudo: waypoint 'battle' (id {waypoint.pk})")
         self.assertEqual(events[0]['category'], 'sudo')
         self.assertEqual(events[1]['lines'], [
-            f'where: {zone.name}: {room_b.name}',
-            f'taught by {char.user.username}',
-            f'created {waypoint.created_at.isoformat()} / '
-            f'updated {waypoint.updated_at.isoformat()}',
+            {'v': f'where: {zone.name}: {room_b.name}'},
+            {'v': f'taught by {char.user.username}'},
+            {'v': f'created {waypoint.created_at.isoformat()} / '
+                  f'updated {waypoint.updated_at.isoformat()}'},
         ])
         self.assertEqual(events[2]['text'],
                          f"sudo: bundle 'kit' (id {bundle.pk})")
         self.assertEqual(events[3]['lines'], [
-            f'2× {sword.slug} Mk 1 common',
-            'taught by (unknown)',
-            f'created {bundle.created_at.isoformat()} / '
-            f'updated {bundle.updated_at.isoformat()}',
+            {'v': f'2× {sword.slug} Mk 1 common'},
+            {'v': 'taught by (unknown)'},
+            {'v': f'created {bundle.created_at.isoformat()} / '
+                  f'updated {bundle.updated_at.isoformat()}'},
         ])
 
     async def test_memory_unknown_id_not_found(self):
