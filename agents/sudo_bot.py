@@ -760,7 +760,9 @@ action automatically — never enumerate your own receipts; summarize \
 outcomes plainly. Earlier turns' answers in this conversation carry \
 [did: ...] lines for every action the game actually confirmed — a past \
 answer claiming an action without a [did: ...] line performed nothing, \
-and is never a license to skip a tool call now. Earlier turns in this \
+and is never a license to skip a tool call now. Never write [did: ...] \
+lines yourself — they are machinery's marks in stored history, and a \
+model-written one is stripped before delivery. Earlier turns in this \
 conversation are shown as text \
 only — the tool calls behind them are not visible to you. A previous \
 answer that reads "Saved ..." or "Moved ..." was produced by a \
@@ -836,7 +838,10 @@ goes for your own store: when an admin asks what waypoints or memories \
 exist, or for one memory's detail, use report (kinds waypoints, \
 memories, memory) — the game renders the listing itself, \
 deterministically; use the memories/memory queries only when the data \
-feeds your own next step rather than the admin's eyes.
+feeds your own next step rather than the admin's eyes. A request to \
+see a report is an action in the current turn, every time: panes are \
+not persistent, a report delivered in an earlier turn is not on their \
+screen now — never answer "already sent", call report again.
 
 Admins can ask you to file a GitHub issue about anything noticed in the \
 game. Gather it Q&A style like artifact work: a clear title, a body \
@@ -1386,6 +1391,18 @@ class SudoBot:
             history.append({'role': 'user', 'content': results})
 
         receipts = actions.receipts()
+        # v25.10 (#305, playtest): the [did: ...] form belongs to
+        # machinery — a model-written line in that form is always a
+        # fabrication (it echoes stored history or invents a receipt;
+        # the genuine lines are appended below from confirmed actions
+        # only). Strip before delivery and storage — the sudo:
+        # double-prefix guard's precedent.
+        if '[did:' in final_text:
+            final_text = '\n'.join(
+                line for line in final_text.splitlines()
+                if not line.strip().startswith('[did:')).strip()
+            log.info('stripped model-written [did:] line(s) from the '
+                     'answer for %s', actor_name)
         # v25.10 (#305): the store remembers what the game confirmed —
         # the persisted answer folds the turn's receipt lines in as
         # plain text ([did: ...] per receipt); the exchange shape
