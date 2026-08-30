@@ -7,8 +7,10 @@ V25.12 Brief 1 — The Durability-Posture Invariant — Closeout Report
 Session: implementation, 2026-08-30, branch version_25_12 (worktree).
 Brief: Shyland_V25.12_Brief_1_Durability_Posture_Invariant.md (verified verbatim
 at branch tip 207a7aa at session start; no drift).
-Final implementation commit hash: 2c0b349 (architecture doc rides 38d9a90; this
-report's completion commit follows it).
+Final implementation commit hash: 419a30a (the playtest-found bot-side
+vocabulary mirror; core implementation 2c0b349; architecture doc updated at
+38d9a90 and re-touched after the playtest fix; this report's completion commit
+follows).
 
 TECHNICAL PRE-FLIGHT (#252)
 ---------------------------
@@ -92,6 +94,19 @@ DEVIATIONS (none silent; the large one operator-approved in-session)
    transactions (nothing persisted to the dev DB); check 6 exercised the real
    _create_artifact function (its sync core) rather than the full websocket
    round trip — the socket path is covered by the new suite tests.
+3. PLAYTEST-FOUND, FIXED IN-SESSION (419a30a): the brief's change surface was
+   door-side only, but playtest step 4 asks sudo to drive the new definition
+   edit keys — the bot's edit_item schema (doctrine: mirrors the door's param
+   shapes) had not grown them, so the model had no vocabulary for the edit and
+   warned during step 3 that items "cannot be exempt from durability" while
+   the door was authoring exactly that. Fix (agents/sudo_bot.py, host-side —
+   nothing in the Docker image): takes_durability_loss + durability_table
+   added to the edit_item changes schema with coupled-pair descriptions;
+   durability_current's description notes the integral rule (#314);
+   create_artifact's description and the system prompt state artifacts are
+   born non-wearing (never warn otherwise). Requires the dev bot restart the
+   checklist already mandates. No in-suite tests (the suite cannot see
+   agents/ — standing precedent v25.9-v25.11).
 
 PENDING DEPLOY-TIME ACTIONS
 ---------------------------
@@ -108,6 +123,12 @@ Checklist: brief §6 (six steps, dev stack; deployed and ready). Steps 3, 4,
 and 6 require the dev bot restarted on this release's code from the 25.12
 worktree via botctl (operator action; the dev bot currently runs 25.11
 worktree code).
+
+Progress: steps 1-3 confirmed by the operator in-conversation (step 3: "the
+artifact has no durability listed in 'inv'" — the created artifact born
+non-wearing as designed, despite the pre-fix bot's warning it could not be).
+Step 4's gap found and fixed (deviation 3); steps 4 and 6 await the dev bot
+restart on post-fix code.
 
 Playtest disposition: PENDING — to be recorded verbatim-style before session
 end (#170).
