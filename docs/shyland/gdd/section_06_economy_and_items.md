@@ -211,7 +211,7 @@ The performance penalty applies to the item's stat contributions and weapon dama
 
 Each ItemDefinition carries its own durability table defining the degradation rate — how quickly it moves through the threshold bands. Different item types degrade at different rates: swords degrade faster than firearms due to physical impact; armor degrades slower than weapons. Builders can override per-item; new items pre-populate with a sensible default for their type.
 
-**The durability-posture invariant (v25.12, pending implementation).** A definition's wear flag and its table are one coupled fact, and nothing may sit between the two legal postures:
+**The durability-posture invariant (v25.12).** A definition's wear flag and its table are one coupled fact, and nothing may sit between the two legal postures:
 
 - **Wearing** — `takes_durability_loss` set, with a durability table that **fully covers 0–100%**: every durability value falls inside at least one band (bands may touch at their boundaries; a boundary value resolves to the first matching band), penalties 0.0–1.0.
 - **Non-wearing** — flag unset, table empty. No durability suffix, no penalty, no repair-path membership.
