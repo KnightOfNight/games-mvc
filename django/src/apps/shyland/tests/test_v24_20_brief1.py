@@ -22,6 +22,9 @@ def make_def(**overrides):
         scaling_base=5.0, scaling_factor=2.0, damage_spread=3.0,
         primary_stats=[{'stat': 'str', 'base': 1.0, 'factor': 3.0}],
         secondary_stat_pool=[],
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
     fields.update(overrides)
     return ItemDefinition.objects.create(**fields)

@@ -444,6 +444,70 @@ class EffectComponent(models.Model):
         return self.duration_base + (self.duration_scaling * mk_tier)
 
 
+def durability_posture_violations(takes_durability_loss, durability_table):
+    """The v25.12 durability-posture invariant (#311, GDD 6.5).
+    Returns a list of human-readable violation strings; empty = coherent.
+
+    Wear on requires a table covering every integer 0-100 (bands may
+    touch or overlap — first-match-wins at read time); wear off requires
+    an empty table. Lives here rather than item_utils because item_utils
+    imports from models. One validator behind all three enforcement
+    layers: ItemDefinition.clean() (admin form), the agent door's edit
+    validation, and — its cheap core — the durability_posture_coherent
+    DB constraint."""
+    if not takes_durability_loss:
+        if durability_table != []:
+            return ['takes_durability_loss is off: durability_table '
+                    'must be empty.']
+        return []
+    if not isinstance(durability_table, list) or not durability_table:
+        return ['takes_durability_loss is on: durability_table must be '
+                'a non-empty list of bands.']
+    violations = []
+    coverage_bands = []
+    for i, entry in enumerate(durability_table):
+        if not isinstance(entry, dict):
+            violations.append(f'Band {i}: must be an object.')
+            continue
+        if set(entry) != {'min', 'max', 'penalty'}:
+            violations.append(f"Band {i}: must have exactly the keys "
+                              f"'min', 'max', 'penalty'.")
+            continue
+        malformed = False
+        for key in ('min', 'max', 'penalty'):
+            value = entry[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                violations.append(f"Band {i}: '{key}' must be a number.")
+                malformed = True
+        if malformed:
+            continue
+        if not 0 <= entry['min'] <= entry['max'] <= 100:
+            violations.append(f'Band {i}: requires '
+                              f'0 <= min <= max <= 100.')
+            continue
+        if not 0.0 <= entry['penalty'] <= 1.0:
+            violations.append(f"Band {i}: 'penalty' must be between "
+                              f'0.0 and 1.0.')
+        coverage_bands.append((entry['min'], entry['max']))
+    uncovered = [n for n in range(101)
+                 if not any(lo <= n <= hi for lo, hi in coverage_bands)]
+    if uncovered:
+        runs = []
+        start = prev = uncovered[0]
+        for n in uncovered[1:]:
+            if n == prev + 1:
+                prev = n
+                continue
+            runs.append((start, prev))
+            start = prev = n
+        runs.append((start, prev))
+        gaps = ', '.join(str(lo) if lo == hi else f'{lo}-{hi}'
+                         for lo, hi in runs)
+        violations.append(f'Coverage gap: no band covers {gaps} '
+                          f'(every integer 0-100 needs a band).')
+    return violations
+
+
 class ItemDefinition(models.Model):
     WEAPON = 'weapon'
     ARMOR = 'armor'
@@ -506,11 +570,11 @@ class ItemDefinition(models.Model):
                   'is bonus on top.',
     )
 
-    valid_slots = models.JSONField(default=list)
+    valid_slots = models.JSONField(default=list, blank=True)
     is_two_handed = models.BooleanField(default=False)
 
     takes_durability_loss = models.BooleanField(default=True)
-    durability_table = models.JSONField(default=list)
+    durability_table = models.JSONField(default=list, blank=True)
 
     # Percentage Bags (#215): equipped-bag carry contribution is
     # carry_pct_base + carry_pct_per_mk x instance Mk tier, in percentage
@@ -519,8 +583,8 @@ class ItemDefinition(models.Model):
     carry_pct_base = models.IntegerField(default=0)
     carry_pct_per_mk = models.IntegerField(default=0)
 
-    primary_stats = models.JSONField(default=list)
-    secondary_stat_pool = models.JSONField(default=list)
+    primary_stats = models.JSONField(default=list, blank=True)
+    secondary_stat_pool = models.JSONField(default=list, blank=True)
 
     effect = models.ForeignKey(
         'EffectDefinition',
@@ -574,6 +638,24 @@ class ItemDefinition(models.Model):
                   'Meaningless unless tier_material_mk_min is set.',
     )
 
+    class Meta:
+        constraints = [
+            # The cheap core of the durability-posture invariant
+            # (#311, v25.12): wear on + empty table never saves. Full
+            # coverage validation lives in durability_posture_violations.
+            models.CheckConstraint(
+                condition=~models.Q(takes_durability_loss=True,
+                                    durability_table=[]),
+                name='durability_posture_coherent',
+            ),
+        ]
+
+    def clean(self):
+        violations = durability_posture_violations(
+            self.takes_durability_loss, self.durability_table)
+        if violations:
+            raise ValidationError({'durability_table': violations})
+
     def __str__(self):
         return self.name
 
@@ -618,8 +700,8 @@ class ItemInstance(models.Model):
     mk_tier = models.IntegerField()
     rarity = models.CharField(max_length=20, choices=RARITY_CHOICES)
 
-    rolled_primary_stats = models.JSONField(default=list)
-    rolled_secondary_stats = models.JSONField(default=list)
+    rolled_primary_stats = models.JSONField(default=list, blank=True)
+    rolled_secondary_stats = models.JSONField(default=list, blank=True)
 
     damage_midpoint = models.FloatField(null=True, blank=True)
     damage_spread = models.FloatField(null=True, blank=True)

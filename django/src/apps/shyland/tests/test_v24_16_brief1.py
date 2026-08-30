@@ -26,6 +26,9 @@ def make_def(prefix, name, item_type, valid_slots=None, carry_pct_base=0):
         valid_slots=valid_slots or [],
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
         carry_pct_base=carry_pct_base,
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 

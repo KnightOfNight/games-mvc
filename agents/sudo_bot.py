@@ -244,9 +244,12 @@ TOOLS = [
                         'not begin with a rarity word. Damage keys are for '
                         'weapons only; armor_base for armor only; valid_slots '
                         'required non-empty for weapon/armor/accessory/bag '
-                        'and must be [] otherwise. Ask the admin for the '
-                        'design (recipient, type, Mk, stats, name, lore) '
-                        'before creating.'),
+                        'and must be [] otherwise. Artifacts are born '
+                        'non-wearing — no durability tracking, automatically; '
+                        'there is no durability key here, and wear can be '
+                        'enabled afterwards only via edit_item. Ask the admin '
+                        'for the design (recipient, type, Mk, stats, name, '
+                        'lore) before creating.'),
         'input_schema': {
             'type': 'object',
             'properties': {
@@ -417,8 +420,12 @@ TOOLS = [
                         'only — ordinary definitions are shared '
                         'templates): name, description, base_value, '
                         'valid_slots, is_two_handed, armor_base, mystery '
-                        'fields, genre_tag; renames must stay unique. Any '
-                        'unknown key refuses the whole edit.'),
+                        'fields, genre_tag, takes_durability_loss, '
+                        'durability_table; renames must stay unique. '
+                        'Durability posture is a coupled pair: wear on '
+                        'requires a table covering every integer 0-100, '
+                        'wear off requires []. Any unknown key refuses '
+                        'the whole edit.'),
         'input_schema': {
             'type': 'object',
             'properties': {
@@ -446,7 +453,9 @@ TOOLS = [
                             'description': 'Weapons; null clears the pair.'},
                         'durability_current': {
                             'type': 'number',
-                            'description': '0-100; 0 marks the item broken.'},
+                            'description': '0-100, whole numbers only '
+                                           '(fractional is refused); 0 '
+                                           'marks the item broken.'},
                         'name': {'type': 'string',
                                  'description': 'Artifact definitions only; '
                                                 'unique, <= 200 chars, no '
@@ -476,6 +485,28 @@ TOOLS = [
                         'genre_tag': {'type': 'string', 'enum': GENRE_TAGS,
                                       'description': 'Artifact definitions '
                                                      'only.'},
+                        'takes_durability_loss': {
+                            'type': 'boolean',
+                            'description': 'Artifact definitions only; true '
+                                           'requires a durability_table '
+                                           'covering 0-100 (send both keys '
+                                           'in one edit).'},
+                        'durability_table': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'min': {'type': 'number'},
+                                    'max': {'type': 'number'},
+                                    'penalty': {'type': 'number'},
+                                },
+                                'required': ['min', 'max', 'penalty'],
+                            },
+                            'description': 'Artifact definitions only; bands '
+                                           '{min, max, penalty 0.0-1.0} that '
+                                           'together cover every integer '
+                                           '0-100 (touching/overlap fine); '
+                                           'must be [] when wear is off.'},
                     },
                 },
             },
@@ -811,8 +842,12 @@ always know who is talking; never ask.
 Conversations with the same admin continue across their sudo commands. \
 For artifact work, gather the design first — recipient, item type, Mk \
 tier, stats, name, lore — over as many turns as needed, and only call \
-create_artifact when the design is settled. For ordinary gifts, find the \
-definition with the items tool and use gift.
+create_artifact when the design is settled. Artifacts are born \
+non-wearing: the game authors that automatically, so never warn that an \
+item cannot be exempt from durability — it already is; wear is enabled \
+afterwards only by an edit_item setting takes_durability_loss true with \
+a full 0-100 durability_table in the same edit. For ordinary gifts, \
+find the definition with the items tool and use gift.
 
 Item work runs on instance ids. Always resolve items through inventory \
 (and item where detail matters) before proposing any item write — never \

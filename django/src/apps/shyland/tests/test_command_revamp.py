@@ -259,6 +259,10 @@ def make_item_def(prefix, name, item_type='material', base_value=1,
         item_type=item_type, genre_tag='fantasy', valid_slots=[],
         scaling_base=0.0, scaling_factor=0.0, base_value=base_value,
         effect=effect, takes_durability_loss=takes_durability,
+        # v25.12 (#311): wearing fixtures get an explicit all-worn band —
+        # preserves the retired empty-table fallback they ran under.
+        durability_table=([{'min': 0, 'max': 100, 'penalty': 1.0}]
+                          if takes_durability else []),
     )
 
 

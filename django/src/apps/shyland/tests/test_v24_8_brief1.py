@@ -32,6 +32,9 @@ def make_combat_knife(prefix):
         valid_slots=['MAIN_HAND', 'OFF_HAND'],
         scaling_base=5.0, scaling_factor=2.0, base_value=10,
         takes_durability_loss=True,
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 
@@ -96,6 +99,7 @@ class SlotCellCompositionTests(TransactionTestCase):
                 scaling_factor=1.0, base_value=10,
                 takes_durability_loss=True, is_two_handed=True,
                 is_ranged=True,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             hide = make_def('v8c', 'Animal Hide')
             # Synthetic dual-slot two-hander (#197 defensive ruling) —
@@ -106,6 +110,7 @@ class SlotCellCompositionTests(TransactionTestCase):
                 valid_slots=['MAIN_HAND', 'OFF_HAND'], scaling_base=3.0,
                 scaling_factor=1.0, base_value=10,
                 takes_durability_loss=True, is_two_handed=True,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             return knife, mace, bow, hide, dual_two
         knife, mace, bow, hide, dual_two = await sync_to_async(setup)()
@@ -128,6 +133,7 @@ class SlotCellCompositionTests(TransactionTestCase):
                 valid_slots=['OFF_HAND', 'MAIN_HAND'], scaling_base=3.0,
                 scaling_factor=1.0, base_value=10,
                 takes_durability_loss=True,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
         reversed_def = await sync_to_async(setup)()
         self.assertEqual(SkylandConsumer._slot_cell(reversed_def),

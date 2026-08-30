@@ -28,6 +28,10 @@ def make_def(prefix, name, item_type='material', valid_slots=None,
         valid_slots=valid_slots or [],
         scaling_base=0.0, scaling_factor=0.0, base_value=base_value,
         takes_durability_loss=takes_durability,
+        # v25.12 (#311): wearing fixtures get an explicit all-worn band —
+        # preserves the retired empty-table fallback they ran under.
+        durability_table=([{'min': 0, 'max': 100, 'penalty': 1.0}]
+                          if takes_durability else []),
     )
 
 
@@ -115,7 +119,7 @@ class VersionLineTests(TransactionTestCase):
         self.assertEqual(lines[-2], {})
         # The pin moves with the version rituals: version start sets
         # N.0-DEV, the closeout ritual sets the release stamp (N.0).
-        self.assertEqual(SHYLAND_VERSION, '25.11')
+        self.assertEqual(SHYLAND_VERSION, '25.12')
 
 
 class CategoryRetagTests(TransactionTestCase):

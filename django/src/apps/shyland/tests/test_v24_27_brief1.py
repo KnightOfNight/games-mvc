@@ -46,6 +46,9 @@ def make_item_definition(prefix):
         item_type=ItemDefinition.ACCESSORY, genre_tag=ItemDefinition.FANTASY,
         description='A test item.',
         scaling_base=1.0, scaling_factor=0.0,
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 

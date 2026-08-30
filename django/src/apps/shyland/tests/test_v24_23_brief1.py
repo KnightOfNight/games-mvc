@@ -103,6 +103,9 @@ class UnequipGuardTests(TransactionTestCase):
             item_type='bag', genre_tag='fantasy', valid_slots=['BACK'],
             scaling_base=0.0, scaling_factor=0.0,
             carry_pct_base=10, carry_pct_per_mk=5,
+            # v25.12 (#311): explicit all-worn band — preserves the
+            # retired empty-table fallback these fixtures ran under.
+            durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
         )
         bag = ItemInstance.objects.create(
             definition=defn, owner=char, mk_tier=1, rarity='common',

@@ -211,6 +211,17 @@ The performance penalty applies to the item's stat contributions and weapon dama
 
 Each ItemDefinition carries its own durability table defining the degradation rate — how quickly it moves through the threshold bands. Different item types degrade at different rates: swords degrade faster than firearms due to physical impact; armor degrades slower than weapons. Builders can override per-item; new items pre-populate with a sensible default for their type.
 
+**The durability-posture invariant (v25.12).** A definition's wear flag and its table are one coupled fact, and nothing may sit between the two legal postures:
+
+- **Wearing** — `takes_durability_loss` set, with a durability table that **fully covers 0–100%**: every durability value falls inside at least one band (bands may touch at their boundaries; a boundary value resolves to the first matching band), penalties 0.0–1.0.
+- **Non-wearing** — flag unset, table empty. No durability suffix, no penalty, no repair-path membership.
+
+The half-configured state — wear enabled with an empty or gappy table — is a defect by definition: the penalty lookup's no-band-matched fallback treats the item as fully degraded, so a pristine item renders and fights fully penalized. The invariant is enforced at every write path: the admin form, the agent door's edit vocabulary, and the database itself.
+
+**Durability values are integral.** Every game-path mutation moves whole points — wear, repair, generation — and admin-side edits are held to the same rule: a fractional durability value is refused, never stored.
+
+**Hand-authored artifacts do not wear.** The agent door's artifact builder (Section 10.11) authors the non-wearing posture on every artifact definition it creates; the artifact spec vocabulary carries no durability keys. A wearing artifact would be a future ruling of its own.
+
 #### Repair
 
 - **Above 0% durability:** Always repairable. Success chance scales with current durability — a well-maintained item is easy to repair; a nearly broken one is harder.

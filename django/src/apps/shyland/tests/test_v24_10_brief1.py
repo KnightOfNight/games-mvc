@@ -41,6 +41,9 @@ def make_floored_def(**overrides):
              'floor_base': 3.0, 'floor_factor': 9.0},
         ],
         secondary_stat_pool=[],
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
     fields.update(overrides)
     return ItemDefinition.objects.create(**fields)
