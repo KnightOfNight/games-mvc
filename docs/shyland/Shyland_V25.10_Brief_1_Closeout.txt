@@ -55,4 +55,4 @@ PENDING DEPLOY-TIME ACTIONS: none. No migration (code-only release), no seed, no
 
 Suite count: 891 green in-container. Final content commit: edd6006 (this closeout-report completion commit follows it).
 
-Operator playtest disposition: [recorded at session end]
+Operator playtest disposition: "playtest confirmed all items" — Operator reports playtest successful (2026-08-30, all six checklist items confirmed in-conversation: singleton refusal, deterministic listings, thread receipts, poison immunity, live filing of issue #309 with all machinery marks verified, kill-switch precedence and unaided reattach). Four playtest-found fixes landed in the still-open session (findings 1-4 above); the unmarked-fabrication remainder filed as #308 (design lane).
