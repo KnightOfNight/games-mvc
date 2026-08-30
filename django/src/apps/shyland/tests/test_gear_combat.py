@@ -42,6 +42,9 @@ def make_gear_def(prefix, name, item_type='material', slot=None,
         valid_slots=[slot] if slot else [],
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
         armor_base=armor_base,
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 

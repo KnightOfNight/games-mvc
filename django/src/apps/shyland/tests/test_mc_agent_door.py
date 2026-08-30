@@ -121,6 +121,10 @@ def door_records(fake, kind):
 
 
 def make_equippable(prefix, name, item_type, slots, **defn_kwargs):
+    # v25.12 (#311): explicit all-worn band — preserves the retired
+    # empty-table fallback these fixtures ran under.
+    defn_kwargs.setdefault(
+        'durability_table', [{'min': 0, 'max': 100, 'penalty': 1.0}])
     return ItemDefinition.objects.create(
         name=name, slug=f'{prefix}-{name.lower().replace(" ", "-")}',
         item_type=item_type, genre_tag='fantasy', description='Test gear.',
@@ -1472,11 +1476,18 @@ class DoorEditItemTests(DoorTestBase):
             await sync_to_async(item.refresh_from_db)()
             self.assertEqual(item.durability_current, 0.0)
             self.assertTrue(item.is_broken)
+            # v25.12 (#314): durability is integral — the fractional
+            # value this test once pinned as accepted is now refused;
+            # the nonzero-clears-broken intent rides a whole number.
             result = await self._edit(
                 comm, char, item.pk, {'durability_current': 40.5}, 'e2')
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'bad-params')
+            result = await self._edit(
+                comm, char, item.pk, {'durability_current': 40}, 'e3')
             self.assertTrue(result['ok'])
             await sync_to_async(item.refresh_from_db)()
-            self.assertEqual(item.durability_current, 40.5)
+            self.assertEqual(item.durability_current, 40.0)
             self.assertFalse(item.is_broken)
 
     async def test_equipped_edit_rescales_bars_and_refreshes(self):

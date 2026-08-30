@@ -56,6 +56,9 @@ class LadderSchemaTests(TestCase):
             item_type='accessory', genre_tag='fantasy',
             description='A widget that exists only to pin the schema.',
             scaling_base=2.0, scaling_factor=0.8,
+            # v25.12 (#311): explicit all-worn band — preserves the
+            # retired empty-table fallback these fixtures ran under.
+            durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
         )
         definition.refresh_from_db()
         self.assertIsNone(definition.tier_material_mk_min)
@@ -75,6 +78,7 @@ class GuardTests(TestCase):
             primary_stats=[{'stat': 'str', 'base': 0.7, 'factor': 2.1}],
             secondary_stat_pool=[],
             tier_material_mk_min=mk_min, tier_material_mk_max=mk_max,
+            durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
         )
 
     def generate(self, definition, mk_tier):

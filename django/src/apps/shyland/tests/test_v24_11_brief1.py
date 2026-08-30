@@ -40,6 +40,10 @@ def make_veiled_def(prefix, name, item_type='weapon', mystery='',
         scaling_base=0.0, scaling_factor=0.0, base_value=1,
         takes_durability_loss=takes_durability,
         mystery_name=mystery, carry_pct_base=carry_pct_base,
+        # v25.12 (#311): wearing fixtures get an explicit all-worn band —
+        # preserves the retired empty-table fallback they ran under.
+        durability_table=([{'min': 0, 'max': 100, 'penalty': 1.0}]
+                          if takes_durability else []),
     )
 
 

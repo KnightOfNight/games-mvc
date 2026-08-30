@@ -33,6 +33,9 @@ def make_weapon_def(prefix, name, valid_slots, two_handed=False,
         scaling_base=3.0, scaling_factor=1.0, base_value=10,
         takes_durability_loss=True, is_two_handed=two_handed,
         is_ranged=ranged,
+        # v25.12 (#311): explicit all-worn band — preserves the
+        # retired empty-table fallback these fixtures ran under.
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 
@@ -42,6 +45,7 @@ def make_armor_def(prefix, name, valid_slots):
         item_type='armor', genre_tag='fantasy', valid_slots=valid_slots,
         scaling_base=0.0, scaling_factor=0.0, base_value=5,
         takes_durability_loss=True,
+        durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
     )
 
 
@@ -273,6 +277,7 @@ class SlotCellTests(TransactionTestCase):
                 name='Animal Hide', slug='e7j-animal-hide',
                 item_type='material', genre_tag='fantasy', valid_slots=[],
                 scaling_base=0.0, scaling_factor=0.0, base_value=1,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             return bow, axe, mace, helm, hide
         bow, axe, mace, helm, hide = await sync_to_async(setup)()
@@ -325,18 +330,21 @@ class RefusalClauseTests(TransactionTestCase):
                 item_type='accessory', genre_tag='fantasy',
                 valid_slots=['RING'], scaling_base=0.0, scaling_factor=0.0,
                 base_value=2,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             signet = ItemDefinition.objects.create(
                 name='Silver Signet', slug='e7l-silver-signet',
                 item_type='accessory', genre_tag='fantasy',
                 valid_slots=['RING'], scaling_base=0.0, scaling_factor=0.0,
                 base_value=2,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             third = ItemDefinition.objects.create(
                 name='Gold Loop', slug='e7l-gold-loop',
                 item_type='accessory', genre_tag='fantasy',
                 valid_slots=['RING'], scaling_base=0.0, scaling_factor=0.0,
                 base_value=2,
+                durability_table=[{'min': 0, 'max': 100, 'penalty': 1.0}],
             )
             make_instance(band, char, slot='RING')
             make_instance(signet, char, slot='RING')
