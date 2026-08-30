@@ -1,0 +1,3 @@
+2026-08-30 — implementation session started: Shyland V25.11 Brief 1 (The Zero-Tool Bounce, #308), branch version_25_11.
+
+[stub — completed in place at session close]
