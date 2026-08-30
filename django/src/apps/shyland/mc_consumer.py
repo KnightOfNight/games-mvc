@@ -24,6 +24,13 @@ per-agent state. Gaps are announced, never silent. Egress
 *connections* are still not captured as stream events —
 attach/detach/tail get ``shyland.mc`` logger lines only; queries and
 actions are game-facing activity and are on the record.
+
+v25.10 (#304): one agent account = one attached connection — a second
+connection for an already-attached account is refused at the door
+(accept, ``already-attached`` error frame, close 4409), never a
+takeover. The claim registry (``ATTACHED``) is in-process by design —
+it must die with the process that owns the connections it guards,
+making a stale lock structurally impossible.
 """
 
 import asyncio
@@ -46,6 +53,12 @@ REPLAY_BATCH = 500
 # equals the client-side read cap is a coin-flip race every idle cycle,
 # and the loser tears down the connection. 2s block, 5s cap, no race.
 LIVE_BLOCK_MS = 2000
+
+# v25.10 (#304): agent username -> channel_name of the one attached
+# connection. In-process, single Daphne process — the registry dies
+# with the process (and its connections), so a stale claim cannot
+# outlive the socket it guards.
+ATTACHED = {}
 
 
 def _text(value):
@@ -129,6 +142,21 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
             await self.accept()
             await self.close(code=4503)
             return
+        # v25.10 (#304): the attach singleton — checked last, so a
+        # killed door reports killed and a non-member sees 4403 either
+        # way. A duplicate never claims and never sets _agent.
+        if ATTACHED.get(user.username):
+            await self.accept()
+            await self.send_json({
+                'type': 'error', 'error': 'already-attached',
+                'detail': (f'Another connection for {user.username} '
+                           f'is already attached.')})
+            await self.close(code=4409)
+            logger.info(
+                'shyland mc: egress attach refused — already attached '
+                '(agent=%s)', user.username)
+            return
+        ATTACHED[user.username] = self.channel_name
         self._agent = user.username
         await self.accept()
         await self.send_json({'type': 'hello', 'protocol': MC_PROTOCOL})
@@ -139,6 +167,11 @@ class MCEgressConsumer(AsyncJsonWebsocketConsumer):
         if task is not None:
             task.cancel()
         if getattr(self, '_agent', None) is not None:
+            # v25.10 (#304): guarded release — only the holder frees
+            # the slot; a rejected duplicate (no _agent, no claim)
+            # must not disturb the holder's claim.
+            if ATTACHED.get(self._agent) == self.channel_name:
+                del ATTACHED[self._agent]
             logger.info('shyland mc: egress detach (agent=%s)', self._agent)
 
     @database_sync_to_async

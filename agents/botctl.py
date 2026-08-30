@@ -16,16 +16,20 @@ Usage:
 Per (--bot NAME, target) — default bot sudo — the manager derives
 (v25.8, #299: state is (bot, target)-scoped, so one checkout can host a
 dev-facing and a prod-facing bot side by side and a dev stop can never
-touch the prod bot):
-    module    agents/<name>_bot.py
-    log       agents/<name>_bot.<target>.log
-    key file  agents/.secrets/anthropic-api-key.<name>
-    pid file  agents/.<name>_bot.<target>.pid        (bot-owned)
-    convos    agents/.<name>_bot_conversations.<target>.json (bot-owned)
+touch the prod bot; v25.10, #304: runtime state moves to the central
+~/.shyland/ directory, shared by every checkout — code and secrets stay
+checkout-scoped):
+    module      agents/<name>_bot.py
+    key file    agents/.secrets/anthropic-api-key.<name>
+    token file  agents/.secrets/github-token.<name>    (optional, #301)
+    log         ~/.shyland/<name>_bot.<target>.log
+    pid file    ~/.shyland/<name>_bot.<target>.pid         (bot-owned)
+    convos      ~/.shyland/<name>_bot_conversations.<target>.json
+                (bot-owned)
 
-The key is read at start and placed in the child environment only —
-never argv, never echoed, never logged. This file contains no secret
-values.
+The key (and the GitHub token, when its file exists and is non-empty)
+is read at start and placed in the child environment only — never argv,
+never echoed, never logged. This file contains no secret values.
 """
 
 import argparse
@@ -39,15 +43,20 @@ from pathlib import Path
 AGENTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENTS_DIR.parent
 VENV_PYTHON = AGENTS_DIR / 'venvs' / 'mc-agent' / 'bin' / 'python'
+# v25.10 (#304): the central runtime directory — pid/log/convo state
+# shared by every checkout; code and secrets stay checkout-scoped.
+RUNTIME_DIR = Path.home() / '.shyland'
 
 # ----------------------------------------------------------------------
-# Targets — the two stacks a bot can face. dev runs self-signed certs,
-# so it (and only it) rides --insecure; the prod path can never receive
-# it. URLs are rstripped again at use (belt and suspenders with #292).
+# Targets — the two stacks a bot can face. Both run real certs (the
+# renewed wildcard landed on dev, operator-directed 2026-08-28), so
+# neither rides --insecure; the mechanism stays for any future target
+# that genuinely needs it. URLs are rstripped again at use (belt and
+# suspenders with #292).
 # ----------------------------------------------------------------------
 TARGETS = {
     'prod': {'url': 'https://games.magrathea.com', 'insecure': False},
-    'dev': {'url': 'https://emma.private.magrathea.com', 'insecure': True},
+    'dev': {'url': 'https://emma.private.magrathea.com', 'insecure': False},
 }
 
 STATUS_POLL_TRIES = 20
@@ -68,13 +77,17 @@ class BotPaths:
         self.name = name
         self.target = target
         self.module = AGENTS_DIR / f'{name}_bot.py'
-        self.log = AGENTS_DIR / f'{name}_bot.{target}.log'
+        self.log = RUNTIME_DIR / f'{name}_bot.{target}.log'
         self.key_file = AGENTS_DIR / '.secrets' / f'anthropic-api-key.{name}'
+        # v25.10 (#301): optional — an absent token file is not an
+        # error; the bot refuses filing legibly at call time instead.
+        self.github_token_file = (AGENTS_DIR / '.secrets'
+                                  / f'github-token.{name}')
         # Bot-owned (the bot derives them from its own --target); listed
         # here so humans debugging state files have the one map (#299).
-        self.pid_file = AGENTS_DIR / f'.{name}_bot.{target}.pid'
-        self.convo_file = (AGENTS_DIR
-                           / f'.{name}_bot_conversations.{target}.json')
+        self.pid_file = RUNTIME_DIR / f'{name}_bot.{target}.pid'
+        self.convo_file = (RUNTIME_DIR
+                           / f'{name}_bot_conversations.{target}.json')
 
 
 def fail(message):
@@ -144,12 +157,20 @@ def cmd_start(target, paths):
     # Child environment only: never argv, never echoed, never logged.
     env = dict(os.environ)
     env['ANTHROPIC_API_KEY'] = key
+    # v25.10 (#301): the GitHub token rides the same custody pattern;
+    # absent or empty is not an error — the bot refuses filing legibly
+    # at call time instead.
+    if paths.github_token_file.is_file():
+        token = paths.github_token_file.read_text().strip()
+        if token:
+            env['GITHUB_TOKEN'] = token
     url = TARGETS[target]['url'].rstrip('/')
     argv = [str(VENV_PYTHON), str(paths.module), 'run',
             '--target', target, '--url', url, '--log', str(paths.log)]
     if TARGETS[target]['insecure']:
         argv.append('--insecure')
     say(f'starting {paths.name} bot against {target} ({url})')
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with open(paths.log, 'ab') as log_fh:
         subprocess.Popen(
             argv, cwd=str(REPO_ROOT), env=env, start_new_session=True,

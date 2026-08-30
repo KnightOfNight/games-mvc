@@ -1674,10 +1674,10 @@ async def q_event(params, agent_name):
 
 
 # ----------------------------------------------------------------------
-# Rendered report (v25.8 — #296)
+# Rendered report (v25.8 — #296; v25.10 — #306: the family grows)
 # ----------------------------------------------------------------------
 
-REPORT_KINDS = ('inventory',)
+REPORT_KINDS = ('inventory', 'waypoints', 'memories', 'memory')
 
 
 @database_sync_to_async
@@ -1698,19 +1698,84 @@ def _report_lines(char):
     return len(equipped) + len(unequipped), doll, inv
 
 
-async def a_report(params, agent_name):
-    """#296: the game-rendered state report — a door-composed leader in
-    the sudo voice, then the equipped and carried sections through the
-    shared player compositions, delivered privately to the requesting
-    admin's pane only (never a room broadcast). Offline is ``ok: true,
-    delivered: false`` — the a_answer posture."""
-    to = await _resolve_character(params, key='to')
-    kind = _require_str(params, 'kind')
-    if kind not in REPORT_KINDS:
-        raise DoorError(
-            'bad-params',
-            f'Unknown report kind {kind!r} — kinds: '
-            f'{", ".join(REPORT_KINDS)}.')
+@database_sync_to_async
+def _memory_report_rows(agent_name, kind):
+    """#306: rows for the listing report kinds — the _memories_payload
+    query shapes (agent scoping, newest-first, cap, one joined live
+    room query), with the store's true total counted before the
+    slice."""
+    qs = AgentMemory.objects.filter(agent=_agent_user(agent_name))
+    if kind is not None:
+        qs = qs.filter(kind=kind)
+    qs = qs.order_by('-created_at')
+    total = qs.count()
+    rows = list(qs[:MEMORY_LIST_CAP])
+    room_ids = [r.data.get('room_id') for r in rows
+                if r.kind == AgentMemory.KIND_WAYPOINT]
+    rooms = (Room.objects.select_related('zone', 'area')
+             .in_bulk([rid for rid in room_ids if isinstance(rid, int)]))
+    return total, [
+        {'id': r.pk, 'kind': r.kind, 'name': r.name,
+         'summary': _memory_summary(r, rooms)}
+        for r in rows
+    ]
+
+
+@database_sync_to_async
+def _memory_report_detail(agent_name, memory_id):
+    """#306: one memory rendered as report lines — the _memory_payload
+    row (agent-scoped, not-found in the q_memory form) with the
+    waypoint path resolved live and the bundle's positional lines
+    decoded legible."""
+    agent = _agent_user(agent_name)
+    row = (AgentMemory.objects.select_related('taught_by')
+           .filter(agent=agent, pk=memory_id).first())
+    if row is None:
+        raise DoorError('not-found', f'No memory with id {memory_id}.')
+    lines = []
+    if row.kind == AgentMemory.KIND_WAYPOINT:
+        room_id = row.data.get('room_id')
+        rooms = (Room.objects.select_related('zone', 'area')
+                 .in_bulk([room_id] if isinstance(room_id, int) else []))
+        lines.append(f'where: {_memory_summary(row, rooms)}')
+    else:
+        for line in row.data.get('lines', []):
+            if isinstance(line, list) and len(line) == 4:
+                lines.append(f'{line[3]}× {line[0]} Mk {line[1]} {line[2]}')
+    taught = row.taught_by.username if row.taught_by_id else '(unknown)'
+    lines.append(f'taught by {taught}')
+    lines.append(f'created {row.created_at.isoformat()} / '
+                 f'updated {row.updated_at.isoformat()}')
+    return {'id': row.pk, 'kind': row.kind, 'name': row.name,
+            'lines': lines}
+
+
+def _value_lines(texts):
+    """#306: the client's report-lines contract renders dict entries
+    (`k`/`v`/`segs`) — a bare string renders as a blank line. Listing
+    and detail rows ride the value voice."""
+    return [{'v': text} for text in texts]
+
+
+async def _deliver_report(to, agent_name, leader, lines):
+    """#306: the shared delivery tail — presence check, sudo leader,
+    then one report-category lines frame (skipped when there are no
+    lines: the leader alone is the report). Offline sends nothing."""
+    delivered = await _presence_online(to.pk)
+    if not delivered:
+        return False
+    await _send_player_line(to.pk, leader, 'sudo', agent_name=agent_name)
+    if lines:
+        await audited_send(
+            f'player_{to.pk}',
+            {'type': 'player_message', 'category': 'report',
+             'lines': lines, 'ts': envelope_ts()},
+            agent_name=agent_name)
+    return True
+
+
+async def _report_inventory(params, agent_name, to):
+    """#296 — byte-identical to the v25.8 behavior."""
     target = await _resolve_character(params, key='character')
     if not await _is_admin(to):
         raise DoorError(
@@ -1733,6 +1798,72 @@ async def a_report(params, agent_name):
                  'lines': lines, 'ts': envelope_ts()},
                 agent_name=agent_name)
     return {'delivered': delivered, 'item_count': item_count}
+
+
+async def _report_waypoints(agent_name, to):
+    total, rows = await _memory_report_rows(
+        agent_name, AgentMemory.KIND_WAYPOINT)
+    leader = f'sudo: {total} waypoints'
+    if total > len(rows):
+        leader += f' (newest {len(rows)} shown)'
+    lines = _value_lines(
+        [f"#{r['id']} {r['name']} — {r['summary']}" for r in rows])
+    delivered = await _deliver_report(to, agent_name, leader, lines)
+    return {'delivered': delivered, 'count': total}
+
+
+async def _report_memories(agent_name, to):
+    total, rows = await _memory_report_rows(agent_name, None)
+    leader = f'sudo: {total} memories'
+    if total > len(rows):
+        leader += f' (newest {len(rows)} shown)'
+    lines = _value_lines(
+        [f"#{r['id']} {r['kind']} {r['name']} — {r['summary']}"
+         for r in rows])
+    delivered = await _deliver_report(to, agent_name, leader, lines)
+    return {'delivered': delivered, 'count': total}
+
+
+async def _report_memory(params, agent_name, to):
+    memory_id = _require_int(params.get('id'), 'id')
+    detail = await _memory_report_detail(agent_name, memory_id)
+    leader = (f"sudo: {detail['kind']} '{detail['name']}' "
+              f"(id {detail['id']})")
+    delivered = await _deliver_report(to, agent_name, leader,
+                                      _value_lines(detail['lines']))
+    return {'delivered': delivered, 'id': detail['id']}
+
+
+async def a_report(params, agent_name):
+    """#296: the game-rendered state report — a door-composed leader in
+    the sudo voice, then rendered sections, delivered privately to the
+    requesting admin's pane only (never a room broadcast). Offline is
+    ``ok: true, delivered: false`` — the a_answer posture.
+
+    v25.10 (#306): kind-dispatched. ``inventory`` is the v25.8 report,
+    byte-identical; ``waypoints``/``memories`` list the calling agent's
+    store (true total, newest capped window, live paths); ``memory``
+    renders one row's detail. Machinery composes, the game renders —
+    nothing here is model-formatted."""
+    to = await _resolve_character(params, key='to')
+    kind = _require_str(params, 'kind')
+    if kind not in REPORT_KINDS:
+        raise DoorError(
+            'bad-params',
+            f'Unknown report kind {kind!r} — kinds: '
+            f'{", ".join(REPORT_KINDS)}.')
+    if kind == 'inventory':
+        return await _report_inventory(params, agent_name, to)
+    if not await _is_admin(to):
+        raise DoorError(
+            'not-admin',
+            f'{to.name} is not an admin; reports deliver only to '
+            f'admins.shyland members.')
+    if kind == 'waypoints':
+        return await _report_waypoints(agent_name, to)
+    if kind == 'memories':
+        return await _report_memories(agent_name, to)
+    return await _report_memory(params, agent_name, to)
 
 
 # ----------------------------------------------------------------------

@@ -22,6 +22,13 @@ Design rules (brief §2, binding):
   - Secrets (the model API key, the game password) are named env vars /
     files under agents/.secrets/ — never committed, printed, or logged.
 
+Runtime state (v25.10, #304): pid/log/conversation files live in the
+central runtime directory ~/.shyland/, shared by every checkout —
+    pid       ~/.shyland/sudo_bot.<target>.pid
+    convos    ~/.shyland/sudo_bot_conversations.<target>.json
+    log       ~/.shyland/sudo_bot.log        (default)
+Code and secrets stay checkout-scoped (agents/, agents/.secrets/).
+
 Subcommands:
     run      foreground event loop (detach with nohup, below)
     status   report whether a bot is running (via the pidfile)
@@ -57,16 +64,20 @@ import requests
 import websockets
 
 AGENTS_DIR = Path(__file__).resolve().parent
+# v25.10 (#304): the central runtime directory — state files live here,
+# shared by every checkout, so two checkouts' bots see each other's
+# pidfiles (the door's 4409 backs this up structurally).
+RUNTIME_DIR = Path.home() / '.shyland'
 
 # v25.8 (#299): state files are (bot, target)-scoped — one checkout can
 # host a dev-facing and a prod-facing bot side by side, and a dev stop
 # is incapable of touching the prod bot's pidfile by construction.
 def pidfile(target):
-    return AGENTS_DIR / f'.sudo_bot.{target}.pid'
+    return RUNTIME_DIR / f'sudo_bot.{target}.pid'
 
 
 def convo_file(target):
-    return AGENTS_DIR / f'.sudo_bot_conversations.{target}.json'
+    return RUNTIME_DIR / f'sudo_bot_conversations.{target}.json'
 
 # The door's protocol version (mc_consumer.MC_PROTOCOL) — anything else
 # is a world this bot was not written for, and it refuses to run.
@@ -90,6 +101,7 @@ BACKOFF_CAP = 60
 
 CLOSE_MEANINGS = {
     4403: 'not authorized (agents.shyland membership required)',
+    4409: 'refused: another connection for this account is already attached',
     4503: 'killed (the MC kill switch is engaged)',
 }
 
@@ -100,6 +112,18 @@ ACTION_KINDS = frozenset(
     {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
      'remove_item', 'edit_item', 'equip_item', 'unequip_item',
      'remember', 'forget', 'report'})
+# v25.10 (#301): bot-local actions — executed here, never door frames.
+# The door grows no filing vocabulary; the game box holds no GitHub
+# credentials.
+BOT_ACTIONS = frozenset({'file_issue'})
+
+# v25.10 (#301): sudo files GitHub issues. The token rides the child
+# environment (GITHUB_TOKEN, injected by botctl from
+# agents/.secrets/github-token.<name>) — never argv, never logged.
+GITHUB_REPO = 'KnightOfNight/games-mvc'
+GITHUB_API = 'https://api.github.com'
+GITHUB_ASSIGNEE = 'KnightOfNight'
+GITHUB_TIMEOUT = 15
 
 log = logging.getLogger('sudo_bot')
 
@@ -642,14 +666,19 @@ TOOLS = [
     },
     {
         'name': 'report',
-        'description': ('Deliver a game-rendered state report of a '
-                        "character into the requesting admin's pane: a "
-                        'sudo leader line plus the same equipment and '
-                        'inventory rendering the player equip/inv commands '
-                        'produce, colors included. Prefer this over '
-                        'hand-writing a roster when an admin asks to see '
-                        "someone's inventory. kind: inventory (the only "
-                        'kind for now). Offline admin: delivered false, '
+        'description': ('Deliver a game-rendered state report into the '
+                        "requesting admin's pane: a sudo leader line plus "
+                        'sections the game composes itself, colors '
+                        'included. Prefer this over hand-writing a roster '
+                        "when an admin asks to see someone's inventory — "
+                        'and memory/waypoint listings and memory detail '
+                        'are reports too: prefer them whenever an admin '
+                        'asks to *see* what you know. kinds: inventory '
+                        '(the player equip/inv rendering; character '
+                        'required), waypoints (your waypoint store), '
+                        'memories (your whole store), memory (one row in '
+                        'detail; id required). The game validates '
+                        'authoritatively. Offline admin: delivered false, '
                         'never an error.'),
         'input_schema': {
             'type': 'object',
@@ -658,10 +687,39 @@ TOOLS = [
                        'description': 'The requesting admin (the report '
                                       'lands in their pane).'},
                 'character': {'type': 'string',
-                              'description': 'The character to report on.'},
-                'kind': {'type': 'string', 'enum': ['inventory']},
+                              'description': 'The character to report on '
+                                             '(inventory kind only).'},
+                'kind': {'type': 'string',
+                         'enum': ['inventory', 'waypoints', 'memories',
+                                  'memory']},
+                'id': {'type': 'integer',
+                       'description': 'The memory id (memory kind only).'},
             },
-            'required': ['to', 'character', 'kind'],
+            'required': ['to', 'kind'],
+        },
+    },
+    {
+        'name': 'file_issue',
+        'description': ('File a GitHub issue on the game repo — a '
+                        'bot-side action, no game effect. Gather the '
+                        'title and body conversationally over as many '
+                        'turns as needed; read the COMPLETE draft back '
+                        'verbatim (title and full body); call this tool '
+                        'ONLY after the admin explicitly confirms the '
+                        'read-back draft — never on inference, never '
+                        '"while you\'re at it". Machinery applies the '
+                        'assignee and a provenance footer; the game '
+                        'renders the filing receipt with the real issue '
+                        'number.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'title': {'type': 'string',
+                          'description': 'The confirmed issue title.'},
+                'body': {'type': 'string',
+                         'description': 'The confirmed issue body.'},
+            },
+            'required': ['title', 'body'],
         },
     },
 ]
@@ -699,7 +757,13 @@ successful tool result for that exact call is in the current turn. If \
 you did not make the call, say so plainly — a false "saved" is worse \
 than no answer. The game renders `sudo did:` receipt lines for every \
 action automatically — never enumerate your own receipts; summarize \
-outcomes plainly. Earlier turns in this conversation are shown as text \
+outcomes plainly. Earlier turns' answers in this conversation carry \
+[did: ...] lines for every action the game actually confirmed — a past \
+answer claiming an action without a [did: ...] line performed nothing, \
+and is never a license to skip a tool call now. Never write [did: ...] \
+lines yourself — they are machinery's marks in stored history, and a \
+model-written one is stripped before delivery. Earlier turns in this \
+conversation are shown as text \
 only — the tool calls behind them are not visible to you. A previous \
 answer that reads "Saved ..." or "Moved ..." was produced by a \
 successful tool call you cannot see; it is never a license to answer a \
@@ -769,7 +833,24 @@ are answered from the durable record: search events (and event for one \
 record's full detail) with time windows, walking backwards from now — \
 not from conversation memory. When an admin asks to see a character's \
 inventory or equipment, prefer the report action — the game renders the \
-report into their pane itself — over hand-writing a roster.
+report into their pane itself — over hand-writing a roster. The same \
+goes for your own store: when an admin asks what waypoints or memories \
+exist, or for one memory's detail, use report (kinds waypoints, \
+memories, memory) — the game renders the listing itself, \
+deterministically; use the memories/memory queries only when the data \
+feeds your own next step rather than the admin's eyes. A request to \
+see a report is an action in the current turn, every time: panes are \
+not persistent, a report delivered in an earlier turn is not on their \
+screen now — never answer "already sent", call report again.
+
+Admins can ask you to file a GitHub issue about anything noticed in the \
+game. Gather it Q&A style like artifact work: a clear title, a body \
+saying what, where, and when — thin is correct (the operator's own \
+filings are thin by doctrine); don't pad, don't speculate. Read the \
+complete draft back — title and full body, verbatim — and file only on \
+an explicit yes. After filing, the receipt with the issue number \
+renders automatically — never restate a number from memory. If filing \
+is disabled on this host, say so plainly.
 
 Live player verbs: {verbs}
 Live admin verbs: {admin_verbs}
@@ -920,8 +1001,16 @@ def _compose_receipt(name, params, data):
     if name == 'report':
         status = ('delivered' if data.get('delivered')
                   else 'not delivered (offline)')
-        return (f"report on {params.get('character')} to "
+        # v25.10 (#306): kind-aware — ' on X' only when a character was
+        # passed; the listing kinds must never render 'on None'.
+        on = (f" on {params.get('character')}"
+              if params.get('character') is not None else '')
+        return (f"report ({params.get('kind')}){on} to "
                 f"{params.get('to')}: {status}")
+    if name == 'file_issue':
+        # v25.10 (#301): the number and URL come from the API response,
+        # never model text — the honesty is structural.
+        return f"filed issue #{data.get('number')}: {data.get('url')}"
     return ''
 
 
@@ -1081,7 +1170,9 @@ class ConversationStore:
     structure any future bot can reuse); idle past the timeout expires
     quietly on the next request, indistinguishable from never answering.
     Persisted to a local JSON file (gitignored) so a restart doesn't
-    drop a live artifact Q&A."""
+    drop a live artifact Q&A. v25.10 (#305): the stored answer carries
+    the turn's game-confirmed receipt lines ([did: ...]) — the store
+    remembers what the game confirmed, not what the model said."""
 
     def __init__(self, path, timeout, history_max):
         self._path = Path(path)
@@ -1290,16 +1381,60 @@ class SudoBot:
                 self.brain.respond, self.system_prompt, history, TOOLS)
             final_text = turn.text
             if not turn.tool_calls:
+                # v25.10 (#305, playtest): a would-be final answer
+                # carrying a [did: ...] mark with no receipt behind it
+                # is a machinery-detected fabrication — the mark is the
+                # lie's signature (observed live: the model pattern-
+                # completes 'Sent — ...' from replayed report history
+                # without acting). Bounce it back into the loop: the
+                # model performs the real call or drops the claim.
+                # Loop exhaustion falls through to the strip guard.
+                if '[did:' in final_text and not actions.receipts():
+                    log.info('rejected receiptless [did:] answer for '
+                             '%s — redo', actor_name)
+                    history.append({'role': 'assistant',
+                                    'content': final_text})
+                    history.append({
+                        'role': 'user',
+                        'content': ('[game] Your answer claims an '
+                                    'action with a [did: ...] mark, '
+                                    'but no tool call ran this turn — '
+                                    "receipts are machinery's. Perform "
+                                    'the action with a tool call now, '
+                                    'or answer without the claim.')})
+                    continue
                 break
             history.append({'role': 'assistant', 'content': turn.raw_content})
             results = []
             for call in turn.tool_calls:
                 results.append(await self._execute_tool(call, ledger,
-                                                        actions))
+                                                        actions,
+                                                        actor_name))
             history.append({'role': 'user', 'content': results})
 
-        self.convos.record(actor_name, request_turn, final_text)
         receipts = actions.receipts()
+        # v25.10 (#305, playtest): the [did: ...] form belongs to
+        # machinery — a model-written line in that form is always a
+        # fabrication (it echoes stored history or invents a receipt;
+        # the genuine lines are appended below from confirmed actions
+        # only). Strip before delivery and storage — the sudo:
+        # double-prefix guard's precedent.
+        if '[did:' in final_text:
+            final_text = '\n'.join(
+                line for line in final_text.splitlines()
+                if not line.strip().startswith('[did:')).strip()
+            log.info('stripped model-written [did:] line(s) from the '
+                     'answer for %s', actor_name)
+        # v25.10 (#305): the store remembers what the game confirmed —
+        # the persisted answer folds the turn's receipt lines in as
+        # plain text ([did: ...] per receipt); the exchange shape
+        # {'q','a'} is unchanged, and a turn with neither text nor
+        # receipts records the empty answer exactly as before.
+        stored = final_text
+        if receipts:
+            did_lines = '\n'.join(f'[did: {r}]' for r in receipts)
+            stored = f'{stored}\n{did_lines}' if stored else did_lines
+        self.convos.record(actor_name, request_turn, stored)
         # Delivery happens when there is text OR receipts: a turn whose
         # model went silent but whose actions succeeded delivers
         # receipts-only — the admin always sees what was actually done;
@@ -1309,7 +1444,7 @@ class SudoBot:
         else:
             log.info('model chose silence for %s', actor_name)
 
-    async def _execute_tool(self, call, ledger, actions):
+    async def _execute_tool(self, call, ledger, actions, actor_name):
         """One proposed tool call -> one tool_result block. Door errors
         (the complete DoorError code set) come back as error results the
         model can turn into a polite reply — never a crash.
@@ -1318,10 +1453,15 @@ class SudoBot:
         receipts ledger — an id-typed argument no current-turn tool
         result produced (in the matching id-space) is refused before it
         reaches the door; the model recovers inside the loop by looking
-        the value up."""
+        the value up.
+
+        v25.10 (#301): BOT_ACTIONS run locally and never become door
+        frames; their successes join the action log (no ledger harvest
+        — issue numbers belong to no door id-space, deliberately)."""
         block = {'type': 'tool_result', 'tool_use_id': call['id']}
         name, params = call['name'], call['input'] or {}
-        if name not in QUERY_KINDS and name not in ACTION_KINDS:
+        if (name not in QUERY_KINDS and name not in ACTION_KINDS
+                and name not in BOT_ACTIONS):
             block['content'] = json.dumps({'error': 'unknown-tool'})
             block['is_error'] = True
             return block
@@ -1337,14 +1477,22 @@ class SudoBot:
                     {'error': 'unreceipted-id', 'detail': detail})
                 block['is_error'] = True
                 return block
-        result = await self.door_request(name, params)
-        log.info('door %s %s -> ok=%s%s', name, params, result.get('ok'),
-                 '' if result.get('ok') else f" error={result.get('error')}")
+        if name in BOT_ACTIONS:
+            result = await self._file_issue(actor_name, params)
+        else:
+            result = await self.door_request(name, params)
+            log.info('door %s %s -> ok=%s%s', name, params,
+                     result.get('ok'),
+                     '' if result.get('ok')
+                     else f" error={result.get('error')}")
         if result.get('ok'):
             data = result.get('data')
-            ledger.harvest(name, data)
-            if name in ACTION_KINDS and name != 'answer':
+            if name in BOT_ACTIONS:
                 actions.add(name, params, data)
+            else:
+                ledger.harvest(name, data)
+                if name in ACTION_KINDS and name != 'answer':
+                    actions.add(name, params, data)
             block['content'] = json.dumps(data)
         else:
             block['content'] = json.dumps(
@@ -1352,6 +1500,63 @@ class SudoBot:
                  'detail': result.get('detail', '')})
             block['is_error'] = True
         return block
+
+    async def _file_issue(self, actor_name, params):
+        """v25.10 (#301): the bot-local filing action — POST to the
+        GitHub issues API with the token from the child environment.
+        Errors come back in the door-result shape so the shared
+        tool_result tail renders them; the response body is never
+        echoed into the detail (log a bounded excerpt instead). Filed
+        issues are thin: title + body only, assignee applied here, no
+        labels — triage fattens them."""
+        for field in ('title', 'body'):
+            value = params.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return {'ok': False, 'error': 'bad-params',
+                        'detail': f"'{field}' is required "
+                                  f"(non-empty string)."}
+        if not self.cfg.github_token:
+            log.info('file_issue refused: filing disabled '
+                     '(no GitHub token on this bot host)')
+            return {'ok': False, 'error': 'not-configured',
+                    'detail': 'no GitHub token on this bot host; '
+                              'filing is disabled'}
+        stamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
+        body = (params['body']
+                + f'\n\n---\n_Filed via sudo (in-game) by {actor_name}, '
+                  f'{stamp}Z._')
+        log.info('file_issue attempt by %s: title=%r', actor_name,
+                 params['title'])
+        try:
+            response = await asyncio.to_thread(
+                requests.post,
+                f'{GITHUB_API}/repos/{GITHUB_REPO}/issues',
+                json={'title': params['title'], 'body': body,
+                      'assignees': [GITHUB_ASSIGNEE]},
+                headers={'Authorization':
+                         f'Bearer {self.cfg.github_token}',
+                         'Accept': 'application/vnd.github+json'},
+                timeout=GITHUB_TIMEOUT)
+        except Exception as exc:
+            log.warning('file_issue request failed (%s)',
+                        exc.__class__.__name__)
+            return {'ok': False, 'error': 'github',
+                    'detail': 'request failed'}
+        if response.status_code == 201:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+            data = {'number': payload.get('number'),
+                    'url': payload.get('html_url'),
+                    'title': payload.get('title')}
+            log.info('file_issue succeeded: #%s %s', data['number'],
+                     data['url'])
+            return {'ok': True, 'data': data}
+        log.warning('file_issue HTTP %s: %.200s', response.status_code,
+                    response.text)
+        return {'ok': False, 'error': 'github',
+                'detail': f'HTTP {response.status_code}'}
 
     async def _deliver(self, actor_name, text, receipts=None):
         # The door prepends `sudo: ` at delivery — strip any copy the
@@ -1410,6 +1615,17 @@ class SudoBot:
             self._pending = {}
             self._events = asyncio.Queue()
             hello = json.loads(await asyncio.wait_for(ws.recv(), 15))
+            if hello.get('type') == 'error':
+                # v25.10 (#304): a pre-hello error frame announces a
+                # refusal and a close follows (already-attached ⇒
+                # 4409). Wait for the close so the run loop's
+                # ConnectionClosed handler logs the meaning and retries
+                # with backoff — a refused attach is a wait-your-turn,
+                # never a protocol fatal.
+                log.info('pre-hello error frame: %s',
+                         hello.get('error'))
+                await asyncio.wait_for(ws.recv(), 15)
+                return
             if (hello.get('type') != 'hello'
                     or hello.get('protocol') != MC_PROTOCOL):
                 raise FatalError(
@@ -1580,14 +1796,19 @@ def cmd_run(cfg):
         brain = make_brain(cfg.brain, cfg.model, cfg.max_tokens)
     except SystemExit as exc:
         return _refuse(str(exc))
+    # v25.10 (#301): the GitHub token, child-environment only — never
+    # logged beyond filing=enabled|disabled.
+    cfg.github_token = os.environ.get('GITHUB_TOKEN', '')
     convos = ConversationStore(convo_file(cfg.target), cfg.convo_timeout,
                                cfg.history_max)
     bot = SudoBot(cfg, brain, convos)
 
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     pidfile(cfg.target).write_text(str(os.getpid()))
     log.info('sudo bot starting: target=%s url=%s username=%s brain=%s '
-             'model=%s',
-             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model)
+             'model=%s filing=%s',
+             cfg.target, cfg.url, cfg.username, cfg.brain, cfg.model,
+             'enabled' if cfg.github_token else 'disabled')
     try:
         return asyncio.run(bot.run())
     finally:
@@ -1621,7 +1842,8 @@ def main():
         '--insecure', action='store_true',
         help='accept self-signed certs (dev stack only)')
     run_parser.add_argument(
-        '--log', default=env('SUDO_BOT_LOG', str(AGENTS_DIR / 'sudo_bot.log')))
+        '--log', default=env('SUDO_BOT_LOG',
+                             str(RUNTIME_DIR / 'sudo_bot.log')))
     run_parser.add_argument(
         '--model', default=env('SUDO_BOT_MODEL', 'claude-sonnet-5'))
     run_parser.add_argument(
