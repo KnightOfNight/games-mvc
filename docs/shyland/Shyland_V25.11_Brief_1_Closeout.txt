@@ -1,0 +1,100 @@
+2026-08-30 — implementation session started: Shyland V25.11 Brief 1 (The Zero-Tool Bounce, #308), branch version_25_11.
+
+== CLOSEOUT REPORT (completed in place at session end, 2026-08-30) ==
+
+SUMMARY
+Brief 1 applied in full. The zero-tool bounce is live in agents/sudo_bot.py
+(_handle_sudo): a nonempty would-be final answer on a turn where no tool call
+has executed draws exactly one corrective redo; the redo's answer is delivered
+without a second bounce. Silence stays sanctioned; any executed tool call
+(success or error) exempts the turn; the receiptless-[did:] gate evaluates
+first, unchanged. Change surface agents/sudo_bot.py only (host-side; the
+Docker image carries only the version stamp).
+
+COMMITS (all on version_25_11, pushed at every step boundary)
+- 7192243  Step 0: closeout stub (work-has-started signal)
+- c7df536  version start: SHYLAND_VERSION -> 25.11-DEV + pin test (same commit),
+           followed by the version-start make deploy-dev
+- 207c7b1  the gate (#308)
+- f5aab54  architecture doc (header hash -> 207c7b1, Version 25.11 block, s4.23)
+- f520bde  playtest fix: corrective rewording (operator-ruled in-session; below)
+- eb88941  arch doc follows the fix (quote updated, header hash -> f520bde)
+Final implementation commit: eb88941. This closeout completion and the end
+ritual's issues report follow it.
+
+VERIFICATION
+1. In-container suite (path form, django container): 891 tests, all green —
+   expected total 891 held; the only pre-existing test edited was the version
+   pin literal (test_b2_amendment1.py:118, 25.10 -> 25.11-DEV).
+2. Scripted-brain driver over the real dev door (v25.9/v25.10 pattern),
+   attached as agent-smith: all four brief cases, 15/15 assertions —
+   (a) unmarked fabrication: bounced once (new log line + corrective [game]
+       message observed in model history), redo performed a real call,
+       answer delivered, exactly one bounce;
+   (b) conversational: exactly one bounce, second answer delivered as-is;
+   (c) marked regression: existing receiptless-[did:] gate fired, new gate
+       did not;
+   (d) tool-ful pass-through: no bounce of either kind, delivered.
+   Driver re-run 15/15 after the playtest wording fix (f520bde).
+3. make deploy-dev run at version start and again after verification passed.
+4. Dev bot restarted on worktree code (real brain, filing=enabled), startup
+   log line confirmed; restarted again after the playtest fix.
+
+DEVIATIONS
+1. (Brief-recorded exception restated, §5) No new in-suite tests: the django
+   suite cannot see agents/ (host-side, outside the image); the bot-loop
+   machinery was proven by the scripted-brain driver, precedent v25.9/v25.10.
+   Suite total stays 891.
+2. Playtest fix, operator-ruled in the still-open session (2026-08-30): the
+   brief's ruled corrective wording drew audience-confused redos on
+   conversational turns (the model answered the machinery in the third
+   person; single-shot delivery shipped the meta-commentary to the admin's
+   pane — fails the brief's own s9.2 expectation). The conversation clause
+   was reworded ("...give your answer again — your next message is delivered
+   to the admin's pane, so speak to them directly, never about this
+   exchange."), mechanism byte-identical (f520bde). Recorded on #308; the
+   architecture doc quotes the shipped wording (eb88941). Operator
+   re-playtested the conversational case successfully.
+
+PLAYTEST SIDE-FINDINGS (out of brief scope, filed and mitigated in-session)
+- #311 (bug): takes_durability_loss=True with empty durability_table makes
+  get_durability_penalty fall through to its 1.0 fallback — pristine items
+  render say-colored and fight fully penalized. Root cause confirmed:
+  _create_artifact never authors a durability posture, so every bot-created
+  artifact inherits True + []. Operator direction recorded on the issue
+  (table mandatory when loss is true; the bot should ensure appropriate item
+  settings). Interim mitigation, operator-directed, dev DB via container
+  shell: 'Ludicrous Speed' definition flipped to takes_durability_loss=False
+  (matching the seed's non-wearing convention).
+- #312 (bug): the Django admin cannot re-save ItemDefinitions whose JSON
+  list fields are legitimately empty — durability_table/primary_stats/
+  secondary_stat_pool lack blank=True and Django form validation treats []
+  as empty. Blocks manual edits of all artifact and seeded non-wearing
+  definitions; surfaced by the operator's #311 fix attempt.
+
+PENDING DEPLOY-TIME ACTIONS
+None. (No prior-version pending actions carried into 25.11 — brief §2.9.)
+
+POST-DEPLOY OPERATOR STANDING ACTION (not a pending block — no session
+executor exists): after 25.11 merges and prod deploys, the operator restarts
+the PROD bot from the main checkout — the running prod bot predates the gate.
+
+DEV LEAVINGS (recorded, not cleaned — operator prunes)
+- Fresh throwaway dev password on agent-smith (value in /tmp only, v25.10
+  precedent); driver artifacts in /tmp (v2511_driver.py, convo/log files).
+- .secrets and venvs symlinks added to the version_25_11 worktree's agents/
+  (pointing at the main checkout, matching the 25.10 worktree pattern).
+- Dev bot left running on version_25_11 worktree code (filing enabled).
+- 'Ludicrous Speed' artifact on Sharon-Love with the shell-flipped
+  definition (see #311).
+
+ISSUES
+- #308 closed (gated on verification passing), with implementation and
+  playtest-fix comments.
+- #311, #312 filed (bug, @me) — pipeline, not this release.
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+Operator reports playtest successful — all checklist items confirmed,
+including the issue-drafting Q&A re-test against the reworded corrective
+(2026-08-30, in-conversation: "all playtest confirmed including the issue
+q&a").
