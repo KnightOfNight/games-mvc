@@ -1375,6 +1375,13 @@ class SudoBot:
         # action log — the standing orders' "current turn", enforced.
         ledger = ReceiptLedger()
         actions = ActionLog()
+        # v25.11 (#308): the zero-tool bounce — one corrective redo,
+        # single-shot per request, when a nonempty would-be final
+        # answer arrives on a turn where no tool call has executed at
+        # all. Silence stays sanctioned (never bounced); a turn with
+        # any executed tool call — success or error — never bounces.
+        ran_tool = False
+        bounced = False
         final_text = ''
         for _ in range(TOOL_LOOP_CAP):
             turn = await asyncio.to_thread(
@@ -1403,7 +1410,34 @@ class SudoBot:
                                     'the action with a tool call now, '
                                     'or answer without the claim.')})
                     continue
+                # v25.11 (#308): the unmarked sibling — delivery-claim
+                # prose with no machine-detectable signature on a turn
+                # where zero tool calls ran (observed live: 'Sent —
+                # full memory list delivered to your pane.' delivering
+                # nothing). Signature-free gate: bounce any nonempty
+                # zero-tool answer once; the redo's answer is delivered
+                # without a second bounce. Silence is deliberately
+                # exempt (§2.3's sanctioned behavior), and the bounce
+                # consumes one loop iteration like any other.
+                if final_text and not ran_tool and not bounced:
+                    bounced = True
+                    log.info('zero-tool answer for %s — one corrective '
+                             'redo', actor_name)
+                    history.append({'role': 'assistant',
+                                    'content': final_text})
+                    history.append({
+                        'role': 'user',
+                        'content': ('[game] Your answer made no tool '
+                                    'call this turn. If the request '
+                                    'asks you to see or do something, '
+                                    'do it now with a tool call — '
+                                    'machinery reports only what it '
+                                    'confirms. If this was just '
+                                    'conversation, answer as you '
+                                    'were.')})
+                    continue
                 break
+            ran_tool = True
             history.append({'role': 'assistant', 'content': turn.raw_content})
             results = []
             for call in turn.tool_calls:
