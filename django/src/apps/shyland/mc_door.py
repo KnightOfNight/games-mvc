@@ -39,7 +39,8 @@ from .item_utils import (
 )
 from .models import (
     AgentMemory, Character, CombatSession, EffectInstance, ItemDefinition,
-    ItemInstance, MCEvent, Room, record_room_visit_sync,
+    ItemInstance, MCEvent, Room, durability_posture_violations,
+    record_room_visit_sync,
 )
 
 logger = logging.getLogger('shyland.mc')
@@ -682,6 +683,11 @@ def _create_artifact(char, spec):
                 valid_slots=spec['valid_slots'],
                 is_two_handed=spec['is_two_handed'],
                 armor_base=spec['armor_base'],
+                # Artifacts don't wear (#311, v25.12) — authored
+                # explicitly; the model default pair is the incoherent
+                # posture the durability-posture invariant forbids.
+                takes_durability_loss=False,
+                durability_table=[],
                 suppress_mk_suffix=False,
                 mystery_name=spec['mystery_name'],
                 mystery_description=spec['mystery_description'],
@@ -989,6 +995,7 @@ INSTANCE_EDIT_KEYS = frozenset({
 ARTIFACT_DEFINITION_EDIT_KEYS = frozenset({
     'name', 'description', 'base_value', 'valid_slots', 'is_two_handed',
     'armor_base', 'mystery_name', 'mystery_description', 'genre_tag',
+    'takes_durability_loss', 'durability_table',
 })
 
 
@@ -1031,6 +1038,14 @@ def _edit_instance_fields(item, changes):
             raise DoorError(
                 'bad-params',
                 "'durability_current' must be a number between 0 and 100.")
+        # Durability is integral (#314, v25.12): every game path wears
+        # and repairs in whole points; a fractional value matches no
+        # seed band and silently draws the 1.0 fallback penalty.
+        if isinstance(value, float) and not value.is_integer():
+            raise DoorError(
+                'bad-params',
+                "'durability_current' must be integral — durability is "
+                'whole points only.')
         item.durability_current = float(value)
         # The invariant the durability system maintains everywhere.
         item.is_broken = (item.durability_current == 0)
@@ -1137,6 +1152,25 @@ def _edit_definition_fields(item, defn, changes):
                 'bad-params',
                 "'mystery_name'/'mystery_description' apply only to an "
                 'unidentifiable instance.')
+    if ('takes_durability_loss' in changes
+            or 'durability_table' in changes):
+        if 'takes_durability_loss' in changes:
+            if not isinstance(changes['takes_durability_loss'], bool):
+                raise DoorError(
+                    'bad-params',
+                    "'takes_durability_loss' must be a boolean.")
+            defn.takes_durability_loss = changes['takes_durability_loss']
+        if 'durability_table' in changes:
+            if not isinstance(changes['durability_table'], list):
+                raise DoorError('bad-params',
+                                "'durability_table' must be a list.")
+            defn.durability_table = changes['durability_table']
+        # The durability-posture invariant (#311, v25.12), judged on
+        # the post-edit state like the mystery coupling above.
+        violations = durability_posture_violations(
+            defn.takes_durability_loss, defn.durability_table)
+        if violations:
+            raise DoorError('bad-params', ' '.join(violations))
 
 
 @database_sync_to_async
