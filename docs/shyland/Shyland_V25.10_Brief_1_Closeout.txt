@@ -53,6 +53,6 @@ Dev-stack leavings (operator prunes; nothing deleted by this session):
 
 PENDING DEPLOY-TIME ACTIONS: none. No migration (code-only release), no seed, no prod-side data action. Operator-side notes for the record (neither a deploy-time block): (a) prod bot restart after the eventual prod deploy is the operator's standing action — restart with post-25.10 code, stopping the old bot from the main checkout that started it; (b) prod filing needs agents/.secrets/github-token.sudo on the bot host (executor: explicitly the operator), any time before first use.
 
-Suite count: 891 green in-container. Final content commit: edd6006 (this closeout-report completion commit follows it).
+Suite count: 891 green in-container (re-run full after playtest fix 2). Final content commit: f7ffb0a (disposition recorded; the playtest-fix commits 9032257/0179460/032bb2f/2327e00/7750a5d/9284a79 and the operator-directed additions bc3020d/4584ff9/5ef66ba sit between the arch-doc commit edd6006 and it; the session's issues report follows).
 
 Operator playtest disposition: "playtest confirmed all items" — Operator reports playtest successful (2026-08-30, all six checklist items confirmed in-conversation: singleton refusal, deterministic listings, thread receipts, poison immunity, live filing of issue #309 with all machinery marks verified, kill-switch precedence and unaided reattach). Four playtest-found fixes landed in the still-open session (findings 1-4 above); the unmarked-fabrication remainder filed as #308 (design lane).
