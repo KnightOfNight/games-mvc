@@ -1,3 +1,118 @@
 2026-08-30 — Implementation session started: Shyland_V25.12_Brief_1_Durability_Posture_Invariant.md on version_25_12.
 
-[STUB — completed in place at session end]
+================================================================================
+V25.12 Brief 1 — The Durability-Posture Invariant — Closeout Report
+================================================================================
+
+Session: implementation, 2026-08-30, branch version_25_12 (worktree).
+Brief: Shyland_V25.12_Brief_1_Durability_Posture_Invariant.md (verified verbatim
+at branch tip 207a7aa at session start; no drift).
+Final implementation commit hash: 2c0b349 (architecture doc rides 38d9a90; this
+report's completion commit follows it).
+
+TECHNICAL PRE-FLIGHT (#252)
+---------------------------
+All Section-2 claims verified against the code before any edit: models fields/
+defaults/line placements, no prior clean()/Meta on ItemDefinition, exactly two
+existing UniqueConstraints and no CheckConstraint, get_durability_penalty shape
+and 1.0 fallback, mc_door creation/edit structures and key sets, seed tables
+verbatim with the 34/21 pairing counts (all 21 False sites paired with []),
+integral wear/repair arithmetic, version constant and pin test, latest
+migration 0054, admin registration, Django>=5.0,<6.0. Zero mismatches in the
+brief's own claims.
+
+WHAT SHIPPED (commits, every step boundary pushed)
+--------------------------------------------------
+6055c45  Step 0: this stub (work-has-started signal).
+f6e7cc2  Step 1: SHYLAND_VERSION -> 25.12-DEV, pin test moved; version-start
+         make deploy-dev run.
+e997dcc  Step 2: models — durability_posture_violations (module-level, pure),
+         blank=True on exactly the six fields, ItemDefinition.clean() keyed to
+         durability_table, ItemDefinition.Meta with the durability_posture_
+         coherent CheckConstraint (condition= kwarg).
+5269aab  Step 3: migrations — authored 0055_normalize_durability_posture
+         (reverse-noop, two UTC-Z count lines) then generated 0056 (six alters
+         + AddConstraint; auto-depends on 0055). Ordering followed the brief:
+         0055 authored -> make build -> make makemigrations APP=shyland ->
+         make migrate. AddConstraint applied clean on dev.
+429b242  Step 4: the door — _create_artifact authors False+[] explicitly;
+         ARTIFACT_DEFINITION_EDIT_KEYS + takes_durability_loss/durability_table
+         with post-edit-state coupling via the shared validator (mystery-
+         coupling structure); #314 integral rule on durability_current.
+3ff376b  Step 5 deviation commit (see DEVIATIONS): test-fixture posture repair.
+2c0b349  Step 5: tests/test_v25_12_brief1.py — 24 tests (validator, clean(),
+         constraint, door creation/edit postures, integral rule, admin
+         re-save). Suite 891 -> 915.
+38d9a90  Step 8 (gated, last): architecture doc updated in place — stamp
+         25.12, header hash moved to 2c0b349; §4.1, §4.7, §4.22; §8 checked
+         and carried no #311/#312/#314 entry (nothing to adjust).
+
+VERIFICATION (§5 — all seven passed before issue closes)
+--------------------------------------------------------
+1. Full in-container suite (path form): 915 tests, all pass.
+2. Dev DB broken-pair definition count: 0.
+3. Dev DB validator sweep over all 139 definitions: 0 violations.
+4. Migration 0055's two UTC-stamped normalize lines on dev:
+     definitions flipped non-wearing: 0 (expected 0)
+     instances normalized to integral durability: 0 (expected 0)
+5. Constraint live: shell create(True, []) inside atomic -> IntegrityError,
+   rolled back, no row survived.
+6. Door path: artifact created via _create_artifact reads
+   takes_durability_loss=False, durability_table=[] (probe rolled back).
+7. Dev DB non-integral durability_current instance count: 0.
+
+Issues #311, #312, #314 closed with shipped-state comments after all seven
+checks passed. make deploy-dev run after the suite (Step 6); dev stack is on
+this build.
+
+DEVIATIONS (none silent; the large one operator-approved in-session)
+--------------------------------------------------------------------
+1. OPERATOR-APPROVED (option A, ruled in-conversation this session): the
+   brief's "No existing test is modified or weakened" / "zero modified tests"
+   premise was false — a #252-style hard stop was taken and the operator chose
+   the mechanical repair. Empirically (suite run against the Step-2/3 build):
+   3 failures + 139 errors.
+   - ~139 errors: test fixtures across 13 files created ItemDefinitions in the
+     model-default pair (True + []), now an IntegrityError under the new
+     constraint by design. Repair: those fixture sites author an explicit
+     all-worn band [{'min': 0, 'max': 100, 'penalty': 1.0}] (conditional in the
+     parametrized helpers) — behavior-preserving by construction: it reproduces
+     exactly the empty-table 1.0-fallback behavior the fixtures ran under, so
+     no assertion churn. Files: test_mc_agent_door, test_command_revamp,
+     test_b2_amendment1, test_gear_combat, test_v24_7/8/10/11/16/20/23/27/28.
+   - 1 pinned old behavior: test_durability_zero_sets_broken asserted
+     durability_current 40.5 accepted and stored — the exact behavior #314
+     removes. Converted to assert the integral-rule refusal, with the
+     nonzero-clears-broken intent preserved on a whole number (test-hygiene
+     rule: intent preserved, reported here, never silent).
+   - 3 failures (artifact-creation tests) needed no test edit — they were the
+     old _create_artifact hitting the constraint; Step 4's explicit False+[]
+     fixed them.
+2. Verification checks 5 and 6 ran as shell probes wrapped in rolled-back
+   transactions (nothing persisted to the dev DB); check 6 exercised the real
+   _create_artifact function (its sync core) rather than the full websocket
+   round trip — the socket path is covered by the new suite tests.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+None (per the brief). Migrations 0055/0056 ride make deploy-prod's migrate
+step in the closeout tail — named executor: make deploy-prod. 0055's two
+printed prod counts appear in the deploy output; the closeout session records
+actual-vs-expected (expected: small, likely 0/0 — prod's Ludicrous Speed
+equivalent state unknown-but-small per the brief). No seed change, no seed
+rerun.
+
+OPERATOR PLAYTEST
+-----------------
+Checklist: brief §6 (six steps, dev stack; deployed and ready). Steps 3, 4,
+and 6 require the dev bot restarted on this release's code from the 25.12
+worktree via botctl (operator action; the dev bot currently runs 25.11
+worktree code).
+
+Playtest disposition: PENDING — to be recorded verbatim-style before session
+end (#170).
+
+VERSION CONSTANT
+----------------
+This is the release's first (and only planned) implementation brief: Step 1
+owned the 25.12-DEV bump; the closeout session stamps 25.12.
