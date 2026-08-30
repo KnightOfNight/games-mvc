@@ -1432,9 +1432,12 @@ class SudoBot:
                                     'asks you to see or do something, '
                                     'do it now with a tool call — '
                                     'machinery reports only what it '
-                                    'confirms. If this was just '
-                                    'conversation, answer as you '
-                                    'were.')})
+                                    'confirms. If it was just '
+                                    'conversation, give your answer '
+                                    'again — your next message is '
+                                    'delivered to the admin\'s pane, '
+                                    'so speak to them directly, never '
+                                    'about this exchange.')})
                     continue
                 break
             ran_tool = True
