@@ -218,6 +218,8 @@ Each ItemDefinition carries its own durability table defining the degradation ra
 
 The half-configured state — wear enabled with an empty or gappy table — is a defect by definition: the penalty lookup's no-band-matched fallback treats the item as fully degraded, so a pristine item renders and fights fully penalized. The invariant is enforced at every write path: the admin form, the agent door's edit vocabulary, and the database itself.
 
+**Durability values are integral.** Every game-path mutation moves whole points — wear, repair, generation — and admin-side edits are held to the same rule: a fractional durability value is refused, never stored.
+
 **Hand-authored artifacts do not wear.** The agent door's artifact builder (Section 10.11) authors the non-wearing posture on every artifact definition it creates; the artifact spec vocabulary carries no durability keys. A wearing artifact would be a future ruling of its own.
 
 #### Repair
