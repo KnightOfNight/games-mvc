@@ -136,8 +136,13 @@ instance-side sibling of the #311/#314 family, for a design session to rule.
 Worktree venv/secrets symlinked from the main checkout (the 25.10/25.11
 pattern) to unblock the bot restart — dev leaving.
 
-Playtest disposition: PENDING — to be recorded verbatim-style before session
-end (#170).
+All six checklist steps confirmed by the operator in-conversation
+(2026-08-30): admin re-save clean; form error on the durability_table field;
+artifact born non-wearing with no durability cell; door edit coupling both
+directions on the restarted bot; Ludicrous Speed clean; 55.5 refused naming
+the integral rule / 55 accepted.
+
+Playtest disposition (#170): Operator reports playtest successful.
 
 VERSION CONSTANT
 ----------------
