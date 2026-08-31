@@ -1246,8 +1246,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         # v22 brief 2 (DD §7): any pickup at capacity fails outright.
+        # v25.13 (#275): strictly over capacity names the over state honestly.
         current_count, max_capacity = await self.get_carry_counts(char)
-        if current_count >= max_capacity:
+        if current_count > max_capacity:
+            await self.output(
+                f"You're over your carry limit. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+            return
+        elif current_count >= max_capacity:
             await self.output(
                 f"You can't carry any more. ({current_count}/{max_capacity} items)",
                 'warn',
@@ -2103,6 +2110,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         current_count, max_carry = await self.get_carry_counts(character)
 
         for item in contents:
+            # v25.13 (#275): strictly over capacity names the over state honestly.
+            if current_count > max_carry:
+                await self.output(
+                    f"You're over your carry limit. ({current_count}/{max_carry} items)",
+                    "warn"
+                )
+                break
             if current_count >= max_carry:
                 await self.output(
                     f"You can't carry any more. ({current_count}/{max_carry} items)",
@@ -2245,6 +2259,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         current_count, max_capacity = await self.get_carry_counts(char)
+        # v25.13 (#275): strictly over capacity names the over state honestly.
+        if current_count > max_capacity:
+            await self.output(
+                f"You're over your carry limit. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+            return
         if current_count + qty > max_capacity:
             if qty == 1:
                 msg = f"You can't carry any more. ({current_count}/{max_capacity} items)"
