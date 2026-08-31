@@ -417,6 +417,14 @@ Bags are equipment items that expand carry capacity. They occupy equipment slots
 - **A bag cannot be unequipped if doing so would put the character over their carry limit**
 - The slot a bag occupies creates meaningful trade-offs — a courier bag on a hip slot means no pistol there
 
+**The over-capacity state is legal — and legible (v25.13, #275, pending implementation).** Capacity derives from effective STR, so unequipping stat-granting gear can drop capacity below the current load. The unequip succeeds; only bags refuse (the guard above — a bag unequip is *always* and *only* a capacity operation, so refusing is fully consistent with the bag's identity, while a weapon or armor swap almost never is). Three surfaces make the state visible:
+
+1. **Warn at the moment of stranding.** Any unequip — or auto-swap displacement (Section 3) — that drops capacity below current load appends a warn-category line to the action's output, naming the new state with the numbers and the consequence: nothing can be picked up, looted, or bought until the character is back under.
+2. **Honest refusals.** While over capacity, the pickup, loot, and buy refusals state *why* — over the carry limit, with the numbers — never a bare "you can't carry any more."
+3. **Standing visibility.** The `inventory` header's `(current/capacity)` count renders the over state as-is (`443/408`); no additional marker.
+
+Drop, sell, and (re-)equip remain un-gated by capacity, so recovery is always in hand: re-equip the stat gear (capacity returns instantly) or sell/drop down under the limit.
+
 ### 6.11 Inventory Display
 
 The `inventory` command (v22 — the information standards of Section 9.1 applied) renders the **Inventory table** alone (v24.16, #208). The original three-part composite (#90) — Equipment, Inventory, Wallet — is retired: the Equipment paper-doll belongs to bare `equip` (v24.7 — #195) and the money line to `wallet`; `inv` duplicates neither. The carry count in the header still reads the equipped set — capacity per the Section 6.10 formula (effective STR base, equipped-bag contribution) — even though the equipment is no longer displayed.
