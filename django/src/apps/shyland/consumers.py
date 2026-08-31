@@ -1387,6 +1387,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v22 brief 2 (DD §6): the transactional sentence — no slot
             # mention; the paper-doll carries slot placement now.
             await self.output(f'You equip {item_ref(item)}.', 'success')
+            await self._warn_if_over_capacity(char)
             # v22 B5 (#110): gear can move the bar maxima — sync the pane.
             await self.send_status_refresh()
             return
@@ -1447,6 +1448,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
             'success',
         )
+        await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
 
@@ -1471,6 +1473,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.unequip_item(item)
         await self.output(f'You unequip {item_ref(item)}.', 'success')
+        await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
 
@@ -1487,6 +1490,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if (unequipped_count + 1) > new_limit:
                 return f"You're carrying too many items to remove your {get_display_name(item)}."
         return None
+
+    async def _warn_if_over_capacity(self, char):
+        """v25.13 (#275): the stranding warn — renders whenever a completed
+        gear change leaves the character strictly over carry capacity
+        (restatement included while still over), never at or under."""
+        current, max_carry = await self.get_carry_counts(char)
+        if current > max_carry:
+            await self.output(
+                f"You're over your carry limit ({current}/{max_carry} items) "
+                "— you can't pick up, loot, or buy anything until you're under it.",
+                'warn',
+            )
 
     async def cmd_use(self, args):
         # v22 brief 2 (DD §1 fn 11, #65): 'use [<quantity>] <item>' with a
