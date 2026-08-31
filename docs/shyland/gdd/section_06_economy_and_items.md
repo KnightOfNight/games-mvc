@@ -419,7 +419,7 @@ Bags are equipment items that expand carry capacity. They occupy equipment slots
 
 **The over-capacity state is legal — and legible (v25.13, #275, pending implementation).** Capacity derives from effective STR, so unequipping stat-granting gear can drop capacity below the current load. The unequip succeeds; only bags refuse (the guard above — a bag unequip is *always* and *only* a capacity operation, so refusing is fully consistent with the bag's identity, while a weapon or armor swap almost never is). Three surfaces make the state visible:
 
-1. **Warn at the moment of stranding.** Any unequip — or auto-swap displacement (Section 3) — that drops capacity below current load appends a warn-category line to the action's output, naming the new state with the numbers and the consequence: nothing can be picked up, looted, or bought until the character is back under.
+1. **Warn at the moment of stranding.** Any equip or unequip — auto-swap displacement included (Section 3) — that leaves the character over capacity appends a warn-category line to the action's output, naming the state with the numbers and the consequence: nothing can be picked up, looted, or bought until the character is back under. The stranding action warns; so does every later gear change made while still over — the state is deliberately unmissable, and the line never renders at or under capacity.
 2. **Honest refusals.** While over capacity, the pickup, loot, and buy refusals state *why* — over the carry limit, with the numbers — never a bare "you can't carry any more."
 3. **Standing visibility.** The `inventory` header's `(current/capacity)` count renders the over state as-is (`443/408`); no additional marker.
 
