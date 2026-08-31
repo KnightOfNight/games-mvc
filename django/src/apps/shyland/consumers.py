@@ -1246,7 +1246,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         # v22 brief 2 (DD §7): any pickup at capacity fails outright.
-        current_count, max_capacity = await self.get_carry_capacity(char)
+        current_count, max_capacity = await self.get_carry_counts(char)
         if current_count >= max_capacity:
             await self.output(
                 f"You can't carry any more. ({current_count}/{max_capacity} items)",
@@ -2244,7 +2244,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        current_count, max_capacity = await self.get_carry_capacity(char)
+        current_count, max_capacity = await self.get_carry_counts(char)
         if current_count + qty > max_capacity:
             if qty == 1:
                 msg = f"You can't carry any more. ({current_count}/{max_capacity} items)"
@@ -4265,15 +4265,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             .select_related('definition', 'definition__effect')
         )
-
-    @database_sync_to_async
-    def get_carry_capacity(self, character):
-        items = ItemInstance.objects.filter(owner=character)
-        current_count = items.count()
-        equipped = list(items.filter(is_equipped=True).select_related('definition'))
-        # v24.23 (#215): capacity via the single helper.
-        max_capacity = carry_capacity(character, equipped)
-        return (current_count, max_capacity)
 
     @database_sync_to_async
     def count_unequipped_items(self, character):

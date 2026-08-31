@@ -131,7 +131,7 @@ class CarryCapacityTests(TransactionTestCase):
         consumer = make_stub_consumer(char, [])
         current, max_carry = await consumer.get_carry_counts(char)
         self.assertEqual(max_carry, (char.stat_str + 3) * 10)
-        _, max_capacity = await consumer.get_carry_capacity(char)
+        _, max_capacity = await consumer.get_carry_counts(char)
         self.assertEqual(max_capacity, (char.stat_str + 3) * 10)
 
 
