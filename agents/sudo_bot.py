@@ -111,11 +111,13 @@ QUERY_KINDS = frozenset(
 ACTION_KINDS = frozenset(
     {'answer', 'gift', 'create_artifact', 'strip', 'dress', 'move',
      'remove_item', 'edit_item', 'equip_item', 'unequip_item',
-     'remember', 'forget', 'report'})
+     'remember', 'forget', 'report', 'grant_copper', 'deduct_copper'})
 # v25.10 (#301): bot-local actions — executed here, never door frames.
 # The door grows no filing vocabulary; the game box holds no GitHub
 # credentials.
 BOT_ACTIONS = frozenset({'file_issue'})
+# v25.14 (#317): bot-local queries — answered here, never door frames.
+BOT_QUERIES = frozenset({'issue_labels'})
 
 # v25.10 (#301): sudo files GitHub issues. The token rides the child
 # environment (GITHUB_TOKEN, injected by botctl from
@@ -234,6 +236,59 @@ TOOLS = [
                 'rarity': {'type': 'string', 'enum': GIFT_RARITIES},
             },
             'required': ['to', 'slug', 'mk_tier', 'rarity'],
+        },
+    },
+    {
+        'name': 'grant_copper',
+        'description': ('Grant currency to a character. Amounts are '
+                        'DENOMINATED: pass platinum/gold/silver/copper '
+                        'fields, each a positive integer, at least one '
+                        'required. If the admin gives a bare number with no '
+                        'currency name ("give her 100"), ask which currency '
+                        '— never assume a denomination and never convert '
+                        'between tiers yourself. The grant lands regardless '
+                        'of carry state (currency has none).'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'to': {'type': 'string', 'description': 'Recipient name.'},
+                'platinum': {'type': 'integer',
+                             'description': 'Platinum count, >= 1.'},
+                'gold': {'type': 'integer',
+                         'description': 'Gold count, >= 1.'},
+                'silver': {'type': 'integer',
+                           'description': 'Silver count, >= 1.'},
+                'copper': {'type': 'integer',
+                           'description': 'Copper count, >= 1.'},
+            },
+            'required': ['to'],
+        },
+    },
+    {
+        'name': 'deduct_copper',
+        'description': ('Take currency from a character. Amounts are '
+                        'DENOMINATED: pass platinum/gold/silver/copper '
+                        'fields, each a positive integer, at least one '
+                        'required. If the admin gives a bare number with no '
+                        'currency name ("take 100 from him"), ask which '
+                        'currency — never assume a denomination and never '
+                        'convert between tiers yourself. Deduction is exact '
+                        'or refused: if the target lacks the funds the door '
+                        'refuses with their balance; never a partial.'),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'to': {'type': 'string', 'description': 'Target name.'},
+                'platinum': {'type': 'integer',
+                             'description': 'Platinum count, >= 1.'},
+                'gold': {'type': 'integer',
+                         'description': 'Gold count, >= 1.'},
+                'silver': {'type': 'integer',
+                           'description': 'Silver count, >= 1.'},
+                'copper': {'type': 'integer',
+                           'description': 'Copper count, >= 1.'},
+            },
+            'required': ['to'],
         },
     },
     {
@@ -730,18 +785,29 @@ TOOLS = [
         },
     },
     {
+        'name': 'issue_labels',
+        'description': ('The live GitHub label list for the game repo — a '
+                        'bot-side query, no game effect. Call it when the '
+                        'admin wants labels on an issue, both to validate '
+                        'the names and to answer "what labels are there". '
+                        'Returns each label\'s name and description.'),
+        'input_schema': {'type': 'object', 'properties': {}},
+    },
+    {
         'name': 'file_issue',
         'description': ('File a GitHub issue on the game repo — a '
                         'bot-side action, no game effect. Gather the '
-                        'title and body conversationally over as many '
-                        'turns as needed; read the COMPLETE draft back '
-                        'verbatim (title and full body); call this tool '
-                        'ONLY after the admin explicitly confirms the '
-                        'read-back draft — never on inference, never '
-                        '"while you\'re at it". Machinery applies the '
-                        'assignee and a provenance footer; the game '
-                        'renders the filing receipt with the real issue '
-                        'number.'),
+                        'title, body, and any labels conversationally '
+                        'over as many turns as needed; validate label '
+                        'names via issue_labels; read the COMPLETE draft '
+                        'back verbatim (title, full body, and the label '
+                        'set — or "no labels"); call this tool ONLY after '
+                        'the admin explicitly confirms the read-back '
+                        'draft — never on inference, never "while '
+                        'you\'re at it"; the explicit yes covers the '
+                        'labels too. Machinery applies the assignee and '
+                        'a provenance footer; the game renders the '
+                        'filing receipt with the real issue number.'),
         'input_schema': {
             'type': 'object',
             'properties': {
@@ -749,6 +815,10 @@ TOOLS = [
                           'description': 'The confirmed issue title.'},
                 'body': {'type': 'string',
                          'description': 'The confirmed issue body.'},
+                'labels': {'type': 'array',
+                           'items': {'type': 'string'},
+                           'description': 'Optional confirmed label names '
+                                          '(existing labels only).'},
             },
             'required': ['title', 'body'],
         },
@@ -1042,10 +1112,20 @@ def _compose_receipt(name, params, data):
               if params.get('character') is not None else '')
         return (f"report ({params.get('kind')}){on} to "
                 f"{params.get('to')}: {status}")
+    if name == 'grant_copper':
+        return (f"granted {data.get('amount_display')} to "
+                f"{params.get('to')} (balance {data.get('balance_display')})")
+    if name == 'deduct_copper':
+        return (f"deducted {data.get('amount_display')} from "
+                f"{params.get('to')} (balance {data.get('balance_display')})")
     if name == 'file_issue':
         # v25.10 (#301): the number and URL come from the API response,
-        # never model text — the honesty is structural.
-        return f"filed issue #{data.get('number')}: {data.get('url')}"
+        # never model text — the honesty is structural. v25.14 (#317):
+        # likewise the applied labels, when any.
+        text = f"filed issue #{data.get('number')}: {data.get('url')}"
+        if data.get('labels'):
+            text += f" [labels: {', '.join(data['labels'])}]"
+        return text
     return ''
 
 
@@ -1533,7 +1613,7 @@ class SudoBot:
         block = {'type': 'tool_result', 'tool_use_id': call['id']}
         name, params = call['name'], call['input'] or {}
         if (name not in QUERY_KINDS and name not in ACTION_KINDS
-                and name not in BOT_ACTIONS):
+                and name not in BOT_ACTIONS and name not in BOT_QUERIES):
             block['content'] = json.dumps({'error': 'unknown-tool'})
             block['is_error'] = True
             return block
@@ -1551,6 +1631,8 @@ class SudoBot:
                 return block
         if name in BOT_ACTIONS:
             result = await self._file_issue(actor_name, params)
+        elif name in BOT_QUERIES:
+            result = await self._issue_labels()
         else:
             result = await self.door_request(name, params)
             log.info('door %s %s -> ok=%s%s', name, params,
@@ -1573,38 +1655,109 @@ class SudoBot:
             block['is_error'] = True
         return block
 
+    async def _issue_labels(self):
+        """v25.14 (#317): the bot-local label-list query — the live
+        filing vocabulary from the GitHub labels API. `triaged` is
+        filtered out (applying it is a design-session act; the bot
+        never offers or applies it); label CRUD stays human. One page
+        covers the whole vocabulary at this repo's size (cap 100). The
+        list is public-readable — the Authorization header rides only
+        when a token is configured; filing stays token-gated exactly
+        as before."""
+        headers = {'Accept': 'application/vnd.github+json'}
+        if self.cfg.github_token:
+            headers['Authorization'] = f'Bearer {self.cfg.github_token}'
+        try:
+            response = await asyncio.to_thread(
+                requests.get,
+                f'{GITHUB_API}/repos/{GITHUB_REPO}/labels?per_page=100',
+                headers=headers,
+                timeout=GITHUB_TIMEOUT)
+        except Exception as exc:
+            log.warning('issue_labels request failed (%s)',
+                        exc.__class__.__name__)
+            return {'ok': False, 'error': 'github',
+                    'detail': 'request failed'}
+        if response.status_code != 200:
+            log.warning('issue_labels HTTP %s: %.200s',
+                        response.status_code, response.text)
+            return {'ok': False, 'error': 'github',
+                    'detail': f'HTTP {response.status_code}'}
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = []
+        labels = [{'name': entry.get('name'),
+                   'description': entry.get('description')}
+                  for entry in payload
+                  if isinstance(entry, dict)
+                  and (entry.get('name') or '').lower() != 'triaged']
+        return {'ok': True, 'data': {'labels': labels}}
+
     async def _file_issue(self, actor_name, params):
         """v25.10 (#301): the bot-local filing action — POST to the
         GitHub issues API with the token from the child environment.
         Errors come back in the door-result shape so the shared
         tool_result tail renders them; the response body is never
         echoed into the detail (log a bounded excerpt instead). Filed
-        issues are thin: title + body only, assignee applied here, no
-        labels — triage fattens them."""
+        issues stay thin by default; v25.14 (#317): labels optional,
+        validated here against a fresh live-list fetch (the model's
+        earlier query is never trusted), canonical cased names applied,
+        `triaged` excluded, label CRUD stays human."""
         for field in ('title', 'body'):
             value = params.get(field)
             if not isinstance(value, str) or not value.strip():
                 return {'ok': False, 'error': 'bad-params',
                         'detail': f"'{field}' is required "
                                   f"(non-empty string)."}
+        labels = params.get('labels')
+        if labels is not None and (
+                not isinstance(labels, list)
+                or not all(isinstance(entry, str) and entry.strip()
+                           for entry in labels)):
+            return {'ok': False, 'error': 'bad-params',
+                    'detail': "'labels' must be a list of non-empty "
+                              "strings."}
         if not self.cfg.github_token:
             log.info('file_issue refused: filing disabled '
                      '(no GitHub token on this bot host)')
             return {'ok': False, 'error': 'not-configured',
                     'detail': 'no GitHub token on this bot host; '
                               'filing is disabled'}
+        canonical = []
+        if labels:
+            fetched = await self._issue_labels()
+            if not fetched.get('ok'):
+                return fetched
+            by_lower = {entry['name'].lower(): entry['name']
+                        for entry in fetched['data']['labels']}
+            offending = sorted({entry.strip() for entry in labels
+                                if entry.strip().lower() not in by_lower})
+            if offending:
+                return {'ok': False, 'error': 'bad-params',
+                        'detail': 'unknown or refused label(s): '
+                                  + ', '.join(offending)
+                                  + " — existing labels only, and "
+                                    "'triaged' is never applied."}
+            for entry in labels:
+                name = by_lower[entry.strip().lower()]
+                if name not in canonical:
+                    canonical.append(name)
         stamp = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())
         body = (params['body']
                 + f'\n\n---\n_Filed via sudo (in-game) by {actor_name}, '
                   f'{stamp}Z._')
         log.info('file_issue attempt by %s: title=%r', actor_name,
                  params['title'])
+        post_json = {'title': params['title'], 'body': body,
+                     'assignees': [GITHUB_ASSIGNEE]}
+        if canonical:
+            post_json['labels'] = canonical
         try:
             response = await asyncio.to_thread(
                 requests.post,
                 f'{GITHUB_API}/repos/{GITHUB_REPO}/issues',
-                json={'title': params['title'], 'body': body,
-                      'assignees': [GITHUB_ASSIGNEE]},
+                json=post_json,
                 headers={'Authorization':
                          f'Bearer {self.cfg.github_token}',
                          'Accept': 'application/vnd.github+json'},
@@ -1621,7 +1774,11 @@ class SudoBot:
                 payload = {}
             data = {'number': payload.get('number'),
                     'url': payload.get('html_url'),
-                    'title': payload.get('title')}
+                    'title': payload.get('title'),
+                    # v25.14 (#317): the applied set from the API
+                    # response, never the request echo (#306).
+                    'labels': [entry.get('name')
+                               for entry in payload.get('labels') or []]}
             log.info('file_issue succeeded: #%s %s', data['number'],
                      data['url'])
             return {'ok': True, 'data': data}
