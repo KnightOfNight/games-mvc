@@ -28,7 +28,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 
-from . import mc
+from . import currency, mc
 from .combat_utils import effective_stats, rescale_bars_for_gear
 from .consumers import DIRECTIONS, SkylandConsumer, parse_presence_name
 from .envelope import envelope_ts
@@ -486,6 +486,85 @@ async def a_gift(params, agent_name):
         await _send_player_line(char.pk, line, 'reward',
                                 agent_name=agent_name)
     return {'item_id': item.pk}
+
+
+DENOMINATIONS = ('platinum', 'gold', 'silver', 'copper')
+
+
+def _require_amount(params):
+    """Denominated amount → total copper. Each present denomination must
+    be a positive integer; at least one is required (#320 — the
+    denomination is never assumed)."""
+    kwargs = {}
+    for denom in DENOMINATIONS:
+        if denom in params:
+            kwargs[denom] = _require_int(params.get(denom), denom, minimum=1)
+    if not kwargs:
+        raise DoorError(
+            'bad-params',
+            "At least one of 'platinum', 'gold', 'silver', or 'copper' "
+            "is required (a positive integer).")
+    return currency.to_copper(**kwargs)
+
+
+@database_sync_to_async
+def _adjust_copper(char_pk, total, direction):
+    """Atomic copper mutation under the money paths' locking discipline
+    (the do_buy/do_sell pattern). Returns the new balance. Raises
+    ValueError('Insufficient funds.') from currency.subtract."""
+    with transaction.atomic():
+        fresh = Character.objects.select_for_update().get(pk=char_pk)
+        if direction == 'grant':
+            fresh.copper = currency.add(fresh.copper, total)
+        else:
+            fresh.copper = currency.subtract(fresh.copper, total)
+        fresh.save(update_fields=['copper'])
+        return fresh.copper
+
+
+async def a_grant_copper(params, agent_name):
+    """Currency has no carry state — a grant lands regardless (#320).
+    Player-facing amounts render zone-local; receipts and result data
+    use engine names (#261)."""
+    char = await _resolve_character(params, key='to')
+    total = _require_amount(params)
+    balance = await _adjust_copper(char.pk, total, 'grant')
+    if await _presence_online(char.pk):
+        zone_slug = (char.current_room.zone.slug
+                     if char.current_room_id else None)
+        line = (f'An admin granted you '
+                f'{currency.display_for_zone(total, zone_slug)}.')
+        await _send_player_line(char.pk, line, 'reward',
+                                agent_name=agent_name)
+    return {'granted_copper': total,
+            'amount_display': currency.display(total),
+            'balance_copper': balance,
+            'balance_display': currency.display(balance)}
+
+
+async def a_deduct_copper(params, agent_name):
+    """Deduction is exact or refused — insufficient funds draw a legible
+    refusal naming the balance; never a clamp, never a partial (#320)."""
+    char = await _resolve_character(params, key='to')
+    total = _require_amount(params)
+    try:
+        balance = await _adjust_copper(char.pk, total, 'deduct')
+    except ValueError:
+        raise DoorError(
+            'insufficient-funds',
+            f'{char.name} has {currency.display(char.copper)}; '
+            f'cannot deduct {currency.display(total)}.')
+    if await _presence_online(char.pk):
+        zone_slug = (char.current_room.zone.slug
+                     if char.current_room_id else None)
+        line = (f'An admin took '
+                f'{currency.display_for_zone(total, zone_slug)} from you.')
+        await _send_player_line(char.pk, line, 'system',
+                                agent_name=agent_name)
+    return {'deducted_copper': total,
+            'amount_display': currency.display(total),
+            'balance_copper': balance,
+            'balance_display': currency.display(balance)}
 
 
 def _validate_stat_entries(entries, key, *, allow_floor):
@@ -1934,4 +2013,6 @@ ACTION_HANDLERS = {
     'remember': a_remember,
     'forget': a_forget,
     'report': a_report,
+    'grant_copper': a_grant_copper,
+    'deduct_copper': a_deduct_copper,
 }
