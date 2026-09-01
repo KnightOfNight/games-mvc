@@ -177,6 +177,14 @@ def sweep_corpses(character, room, lootable):
         if copper == 0 and not contents:
             carried_nothing += 1
         for item in contents:
+            # v25.13 (#275): strictly over capacity names the over state honestly.
+            if current_count > max_carry:
+                messages.append((
+                    f"You're over your carry limit. ({current_count}/{max_carry} items)",
+                    'warn',
+                ))
+                capacity_hit = True
+                break
             if current_count >= max_carry:
                 messages.append((
                     f"You can't carry any more. ({current_count}/{max_carry} items)",

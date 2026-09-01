@@ -1246,8 +1246,15 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return
 
         # v22 brief 2 (DD §7): any pickup at capacity fails outright.
-        current_count, max_capacity = await self.get_carry_capacity(char)
-        if current_count >= max_capacity:
+        # v25.13 (#275): strictly over capacity names the over state honestly.
+        current_count, max_capacity = await self.get_carry_counts(char)
+        if current_count > max_capacity:
+            await self.output(
+                f"You're over your carry limit. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+            return
+        elif current_count >= max_capacity:
             await self.output(
                 f"You can't carry any more. ({current_count}/{max_capacity} items)",
                 'warn',
@@ -1380,6 +1387,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v22 brief 2 (DD §6): the transactional sentence — no slot
             # mention; the paper-doll carries slot placement now.
             await self.output(f'You equip {item_ref(item)}.', 'success')
+            await self._warn_if_over_capacity(char)
             # v22 B5 (#110): gear can move the bar maxima — sync the pane.
             await self.send_status_refresh()
             return
@@ -1440,6 +1448,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
             'success',
         )
+        await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
 
@@ -1464,6 +1473,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
 
         await self.unequip_item(item)
         await self.output(f'You unequip {item_ref(item)}.', 'success')
+        await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
 
@@ -1480,6 +1490,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             if (unequipped_count + 1) > new_limit:
                 return f"You're carrying too many items to remove your {get_display_name(item)}."
         return None
+
+    async def _warn_if_over_capacity(self, char):
+        """v25.13 (#275): the stranding warn — renders whenever a completed
+        gear change leaves the character strictly over carry capacity
+        (restatement included while still over), never at or under."""
+        current, max_carry = await self.get_carry_counts(char)
+        if current > max_carry:
+            await self.output(
+                f"You're over your carry limit ({current}/{max_carry} items) "
+                "— you can't pick up, loot, or buy anything until you're under it.",
+                'warn',
+            )
 
     async def cmd_use(self, args):
         # v22 brief 2 (DD §1 fn 11, #65): 'use [<quantity>] <item>' with a
@@ -2103,6 +2125,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         current_count, max_carry = await self.get_carry_counts(character)
 
         for item in contents:
+            # v25.13 (#275): strictly over capacity names the over state honestly.
+            if current_count > max_carry:
+                await self.output(
+                    f"You're over your carry limit. ({current_count}/{max_carry} items)",
+                    "warn"
+                )
+                break
             if current_count >= max_carry:
                 await self.output(
                     f"You can't carry any more. ({current_count}/{max_carry} items)",
@@ -2244,7 +2273,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        current_count, max_capacity = await self.get_carry_capacity(char)
+        current_count, max_capacity = await self.get_carry_counts(char)
+        # v25.13 (#275): strictly over capacity names the over state honestly.
+        if current_count > max_capacity:
+            await self.output(
+                f"You're over your carry limit. ({current_count}/{max_capacity} items)",
+                'warn',
+            )
+            return
         if current_count + qty > max_capacity:
             if qty == 1:
                 msg = f"You can't carry any more. ({current_count}/{max_capacity} items)"
@@ -4265,15 +4301,6 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
             .select_related('definition', 'definition__effect')
         )
-
-    @database_sync_to_async
-    def get_carry_capacity(self, character):
-        items = ItemInstance.objects.filter(owner=character)
-        current_count = items.count()
-        equipped = list(items.filter(is_equipped=True).select_related('definition'))
-        # v24.23 (#215): capacity via the single helper.
-        max_capacity = carry_capacity(character, equipped)
-        return (current_count, max_capacity)
 
     @database_sync_to_async
     def count_unequipped_items(self, character):
