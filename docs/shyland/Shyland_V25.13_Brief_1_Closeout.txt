@@ -1,3 +1,90 @@
 2026-08-31 — Implementation session started: Shyland_V25.13_Brief_1_Over_Capacity_Legibility.md on branch version_25_13.
 
-[STUB — completed in place at session end.]
+================================================================================
+Shyland V25.13 Brief 1 — Closeout Report
+Over-Capacity Legibility (#275 founding, #319 dependency)
+Branch: version_25_13 · Session date: 2026-08-31
+================================================================================
+
+PRE-FLIGHT
+- check_docker_host.py: exit 0, target local dev, posture coherent (.env == .env.dev).
+- Worktree ../games-mvc-version_25_13 joined at 0e5127f, clean, synced with origin.
+- Brief verified verbatim at the branch tip (committed 3be7648 by the design
+  session; no drift). Process assumptions diffed against Instructions v37: no
+  discrepancies.
+- Technical pre-flight (#252): all 13 claims verified against the code — zero
+  load-bearing mismatches (the two commits since the brief's verification hash
+  4c10a98 were docs-only).
+
+STEPS AS EXECUTED
+- Step 0: closeout stub pushed — 707585e.
+- Step 1 (version start): SHYLAND_VERSION -> "25.13-DEV" + pin test, own commit
+  4d888bd; make deploy-dev clean (no migrations, as the brief states).
+- Step 2 (#319): cmd_pickup and cmd_buy moved onto get_carry_counts
+  (unequipped-only); consumers.get_carry_capacity deleted;
+  test_gear_combat.py:134 converted. Guard grep for 'get_carry_capacity'
+  over django/src/: zero hits. Commit 6e58e19.
+- Step 3 (#275): the honest over-limit refusal — exactly
+  "You're over your carry limit. ({current}/{max} items)" (warn) — added at
+  the four sites when strictly over: pickup outright gate, buy pre-check
+  before the quantity check, single-corpse loot in-loop gate, sweep_corpses
+  in-loop gate in loot_utils (typed loot / loot all / plunder in one edit).
+  Existing strings byte-unchanged at ordinary fullness; pickup's mid-sweep
+  line untouched. Commit 6f64028.
+- Step 4: _warn_if_over_capacity(char) added; called after the success
+  sentence and before send_status_refresh() in cmd_unequip, cmd_equip's
+  free-slot branch, and the auto-swap branch. Fires only strictly over
+  (restatement while still over per the ruling); never at or under.
+  _unequip_blocked_reason and the bag guard not modified. Commit 8f7c27e.
+- Step 5: tests/test_v25_13_brief1.py — 12 tests covering all eight brief
+  scenarios (stranding warn on unequip and on auto-swap with exact numbers,
+  at-or-under silence, the four over-limit refusal sites, exact-full string
+  preservation on pickup and buy, the #319 count basis U < M <= U + E,
+  bag-guard regression with no stranding warn, recovery). Commit 4b97966.
+- Step 6 (verification): full suite in-container, path form:
+  Ran 927 tests — OK (915 at branch cut + 12 new, zero failures).
+  make deploy-dev rerun on the green build.
+- Step 7: operator playtest checklist delivered; disposition below.
+- Step 8: #275 and #319 closed with shipped-in comments, gated on Step 6.
+- Step 9 (architecture doc, last, gated): Shyland_Architecture_v25.md updated
+  in place — Version 25.13 header paragraph, stamp 25.12 -> 25.13, header
+  hash moved to 4b97966 (a consumer DB-helper retired; refusal semantics
+  changed across the consumer and loot_utils); body: new equip-flow
+  stranding-warn paragraph, buy checks, effective-stats site count, the
+  carry_capacity / get_carry_counts bullet, partial-fulfillment note.
+  Commit f24a385.
+
+DEVIATIONS (none silent)
+1. test_gear_combat.py:134 conversion (brief Step 2.3, implemented as
+   directed) duplicates the get_carry_counts assertion two lines above it —
+   harmless redundancy, noted for a future hygiene pass.
+2. Test-fixture-only: the new bag fixture needed explicit non-wearing
+   durability posture (takes_durability_loss=False, durability_table=[]) to
+   satisfy v25.12's durability_posture_coherent CheckConstraint — the model
+   default pair violates it by design. No production code involved.
+No pinned-string surprises: the suite surfaced no existing test pinning the
+touched strings against the over state, as the brief predicted.
+
+EMERGENT FINDINGS (filed during playtest support, outside brief scope)
+- #320 — agent door / sudo bot has no currency-grant action; copper cannot
+  be gifted (workaround: admin console).
+- #321 — bulk buy/sell at admin-scale quantities takes minutes with zero
+  output (sell O(n) transactions; buy O(qty) serial INSERTs). No code
+  touched; design session to rule.
+
+PENDING DEPLOY-TIME ACTIONS: NONE (per the brief — no migration, no seed
+change, no client change).
+
+Dev-stack leavings: the operator's admin-stocked playtest inventory and
+copper on the test character (dev DB only).
+
+PLAYTEST DISPOSITION (#170)
+Operator reports playtest successful — all eight checklist items confirmed
+(2026-08-31, in-session: "playtest confirmed all items").
+
+FINAL STATE
+- Final code commit (arch-doc header hash): 4b97966.
+- Final content commit of the brief: f24a385 (architecture doc).
+- Suite: 927 in-container, green. Dev stack running the green build.
+- Issues: #275 closed, #319 closed; milestone Version 25.13 members 2/2 done.
+================================================================================
