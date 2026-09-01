@@ -276,7 +276,7 @@ The paper-doll's half of the disclosure — consumed hand slots naming their con
 - **Two or more** — **refuse** with a message naming what must be unequipped first. Example: sword and shield equipped, equipping a two-handed axe refuses; unequip either one and the now one-for-one swap autos.
 - **Exactly one, but ambiguous** — refuse, naming the candidates. Canonical case: both RING slots full and a third ring equipped — the game cannot know which ring to displace. Same rule for any item valid in multiple slots that are all occupied (e.g. a knife valid in either hand while both hands are full).
 
-Auto-swap respects every existing unequip constraint: a cursed item cannot be displaced, and a displacement that would violate the carry limit (bags) refuses instead. Displacing stat-granting gear whose loss drops capacity below the current load is **not** refused — the swap proceeds and carries the same over-capacity warn line as a direct unequip (Section 6.10; v25.13, pending implementation).
+Auto-swap respects every existing unequip constraint: a cursed item cannot be displaced, and a displacement that would violate the carry limit (bags) refuses instead. Displacing stat-granting gear whose loss drops capacity below the current load is **not** refused — the swap proceeds and carries the same over-capacity warn line as a direct unequip (Section 6.10; v25.13).
 
 **Slot capacity.** Characters have exactly two RING slots; every other equipment slot holds exactly one item. (Implemented in v18 as a slot-capacity mechanism; RING is currently the only multi-capacity slot.)
 
