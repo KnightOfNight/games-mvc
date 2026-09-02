@@ -1,3 +1,118 @@
 2026-09-01 — Implementation session started: Shyland V25.14 Brief 1 (Copper Management and the Open Filing Vocabulary), branch version_25_14.
 
-[STUB — completed in place at session end.]
+================================================================================
+Shyland V25.14 Brief 1 — Closeout Report
+Copper Management and the Open Filing Vocabulary (#320 founding, #317 dependency)
+Branch: version_25_14 · Session dates: 2026-09-01/02
+================================================================================
+
+PRE-FLIGHT
+- check_docker_host.py: exit 0, target local dev, posture coherent
+  (.env == .env.dev; worktree DOMAIN emma.private.magrathea.com).
+- Worktree ../games-mvc-version_25_14 joined at 8663ca9, clean, synced with
+  origin.
+- Brief verified at the branch tip (committed 841609b by the design session;
+  no drift). Process assumptions diffed against Instructions v37: no
+  discrepancies.
+- Technical pre-flight (#252): every load-bearing claim verified against the
+  code — version constant + pin test, mc_door helpers (_require_int,
+  _resolve_character, _presence_online, _send_player_line — the latter has
+  an additional optional event=None kwarg, compatible), a_gift 'reward' /
+  a_move 'system' narration, ACTION_HANDLERS (13 entries ending report),
+  currency.py shapes, do_buy/do_sell locking discipline, player-detail
+  copper, mc_consumer dynamic dispatch + per-frame record, and all
+  sudo_bot.py anchors (ACTION_KINDS/BOT_ACTIONS/TOOLS/_execute_tool/
+  _file_issue/_compose_receipt/HARVEST). Zero mismatches, no hard stops.
+
+STEPS AS EXECUTED
+- Step 0: closeout stub pushed — f9392e3.
+- §1 (version start): SHYLAND_VERSION -> "25.14-DEV" + pin test, own commit
+  93b86cb; version-start make deploy-dev clean (migrate no-op, head 0056,
+  as the brief states).
+- §3 (door): currency added to mc_door.py's relative imports; DENOMINATIONS
+  + _require_amount (denominated, each positive, at least one required);
+  _adjust_copper under the do_buy/do_sell locking discipline
+  (transaction.atomic + select_for_update + save(update_fields=['copper']));
+  a_grant_copper / a_deduct_copper with the brief's exact authored narration
+  (grant 'reward', deduct 'system', zone-local via display_for_zone,
+  offline silent), insufficient-funds as a new DoorError code naming the
+  balance, result shapes per the brief; both registered in ACTION_HANDLERS.
+  No consumer change (dynamic dispatch, verified). Commit 7b978f3.
+- §4 (bot): ACTION_KINDS gains both kinds; BOT_QUERIES = {'issue_labels'}
+  routed in _execute_tool between BOT_ACTIONS and the door branch (no
+  receipt, harvest a structural no-op); grant_copper/deduct_copper tool
+  schemas mirroring the door params with the never-assume-a-denomination
+  rule in the descriptions; _issue_labels (GET /labels?per_page=100,
+  Authorization only when a token is configured, triaged filtered, the
+  _file_issue error shapes); _file_issue optional labels — list-of-non-empty-
+  strings check, fresh machinery-side re-fetch, case-insensitive match to
+  canonical cased names (deduped, order-preserving), unknown or triaged
+  refuses the whole filing naming every offender, canonical list on the
+  POST, receipt data 'labels' from the API response payload (#306);
+  file_issue description updated (labels in the draft gathering and the
+  verbatim read-back; the explicit yes covers the label set); docstring
+  updated to the v25.14 shape; _compose_receipt copper cases +
+  ' [labels: …]' suffix. No SYSTEM_TEMPLATE change (per the brief).
+  Commit dd83f38.
+- §5 (tests): DoorCopperTests in test_mc_agent_door.py — 7 tests: grant
+  happy path with exact denominated arithmetic (2,050), online reward line
+  zone-local (the-neon-sprawl aliases) with engine-named result data,
+  offline silence, deduct happy path with the exact 'system' line,
+  insufficient-funds naming the balance with balance unchanged, the
+  validation matrix (no denomination / zero / negative / boolean / non-int
+  on both kinds, unknown character) leaving the balance unchanged,
+  registration pin. Full suite in-container, path form: Ran 934 tests — OK
+  (927 at branch cut + 7 new, zero failures). Commit 5271958.
+- §6 (deploy + dev bot): make deploy-dev on the green build; dev sudo bot
+  restarted from this worktree via agents/botctl.py (stop pid 8026 / start
+  pid 28221, filing=enabled, attached clean). Prod bot untouched.
+- §7: operator playtest checklist delivered; disposition below.
+- §9 (issues): #320 and #317 closed with shipped-in comments, gated on §5
+  passing.
+- §8 (architecture doc, last, gated): Shyland_Architecture_v25.md updated
+  in place — header stamp 25.13 -> 25.14, header hash moved to 5271958
+  (new door vocabulary, insufficient-funds error code, new bot tools);
+  Version 25.14 note appended to the version block; §4.22 copper-management
+  paragraph; §4.23 copper-tools + open-filing-vocabulary paragraph; both
+  section headings extended. Commit c9f961e.
+
+DEVIATIONS (none silent)
+1. Step order: §9's issue closes were executed immediately after §8's
+   arch-doc commit and before the playtest disposition arrived — as the
+   brief gates them (on the verification section passing), not on the
+   disposition. Noted for legibility only; no gate was skipped.
+2. Environmental, not code: this worktree needed agents/.secrets and
+   agents/venvs symlinked to the main checkout to run botctl (the 25.13
+   worktree's exact pattern; both paths gitignored, nothing committed).
+   Recorded as a dev leaving.
+
+PLAYTEST FINDINGS (no code changes, no filings)
+- The operator asked the bot to add 'triaged' to an existing bug; the bot
+  refused twice over — triaged absent from its (filtered) vocabulary, and
+  no tool edits existing issues. Both are the brief working as designed
+  (design rule 7; #317 scope = labels on new filings only). Operator ruled
+  no issue filings for now; the existing-issue label-management capability
+  and the bot's "no triaged label in the repo" phrasing both stay unfiled.
+
+PENDING DEPLOY-TIME ACTIONS: NONE (per the brief — code-only release; the
+prod migrate at closeout will be a no-op, migration head stays 0056; the
+prod bot picks up the new tools via the standing post-deploy bot-restart
+action).
+
+Dev-stack leavings: agents/.secrets and agents/venvs symlinks in this
+worktree; dev sudo bot running this worktree's code (filing enabled);
+whatever grant/deduct copper and the labeled-then-closed test issue the
+operator's playtest produced.
+
+PLAYTEST DISPOSITION (#170)
+Operator reports playtest successful — all checklist items confirmed
+(2026-09-02, in-session: "all playtest items confirmed").
+
+FINAL STATE
+- Final code commit (arch-doc header hash): 5271958.
+- Final content commit of the brief: c9f961e (architecture doc).
+- Suite: 934 in-container, green. Dev stack running the green build; dev
+  sudo bot attached on it.
+- Issues: #320 closed, #317 closed; milestone Version 25.14 members 2/2
+  done.
+================================================================================
