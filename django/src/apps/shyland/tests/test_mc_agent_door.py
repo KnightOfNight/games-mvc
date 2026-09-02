@@ -1809,6 +1809,147 @@ class DoorUnequipItemTests(DoorTestBase):
             self.assertEqual(result['error'], 'not-equipped')
 
 
+# ----------------------------------------------------------------------
+# grant_copper / deduct_copper (v25.14, #320)
+# ----------------------------------------------------------------------
+
+class DoorCopperTests(DoorTestBase):
+
+    def _set_copper(self, char, amount):
+        Character.objects.filter(pk=char.pk).update(copper=amount)
+
+    def _get_copper(self, char):
+        return Character.objects.get(pk=char.pk).copper
+
+    async def _copper(self, char):
+        return await sync_to_async(self._get_copper)(char)
+
+    async def test_grant_happy_path_denominated(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_gc1')
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'gc1', 'act': 'grant_copper',
+                'params': {'to': char.name, 'gold': 2, 'silver': 5}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'], {
+                'granted_copper': 2050,
+                'amount_display': '2 golds, 5 silvers',
+                'balance_copper': 2050,
+                'balance_display': '2 golds, 5 silvers'})
+            self.assertEqual(await self._copper(char), 2050)
+
+    async def test_online_grant_sends_one_reward_line_zone_local(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_gc2')
+
+        def alias_zone():
+            zone.slug = 'the-neon-sprawl'
+            zone.save(update_fields=['slug'])
+        await sync_to_async(alias_zone)()
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'gc2', 'act': 'grant_copper',
+                'params': {'to': char.name, 'gold': 2, 'silver': 5}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(len(layer.sent), 1)
+            group, event = layer.sent[0]
+            self.assertEqual(group, f'player_{char.pk}')
+            self.assertEqual(event['category'], 'reward')
+            self.assertEqual(
+                event['text'],
+                'An admin granted you 2 Megacredits, 5 Kilocredits.')
+            # Result data stays engine-named regardless of zone.
+            self.assertEqual(result['data']['amount_display'],
+                             '2 golds, 5 silvers')
+
+    async def test_offline_grant_sends_nothing(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_gc3')
+        layer = RecordingLayer()
+        async with self.door(agent, layer=layer) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'gc3', 'act': 'grant_copper',
+                'params': {'to': char.name, 'copper': 7}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(layer.sent, [])
+            self.assertEqual(await self._copper(char), 7)
+
+    async def test_deduct_happy_path_with_system_line(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_dc1')
+        await sync_to_async(self._set_copper)(char, 2050)
+        fake = FakeDoorClient()
+        fake.set_online(char)
+        layer = RecordingLayer()
+        async with self.door(agent, fake, layer) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'dc1', 'act': 'deduct_copper',
+                'params': {'to': char.name, 'gold': 1}})
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['data'], {
+                'deducted_copper': 1000,
+                'amount_display': '1 gold',
+                'balance_copper': 1050,
+                'balance_display': '1 gold, 5 silvers'})
+            self.assertEqual(await self._copper(char), 1050)
+            self.assertEqual(len(layer.sent), 1)
+            group, event = layer.sent[0]
+            self.assertEqual(group, f'player_{char.pk}')
+            self.assertEqual(event['category'], 'system')
+            self.assertEqual(event['text'],
+                             'An admin took 1 gold from you.')
+
+    async def test_deduct_insufficient_funds_refused_exactly(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_dc2')
+        await sync_to_async(self._set_copper)(char, 30)
+        async with self.door(agent) as comm:
+            result = await request(comm, {
+                'type': 'action', 'id': 'dc2', 'act': 'deduct_copper',
+                'params': {'to': char.name, 'gold': 1}})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'insufficient-funds')
+            self.assertIn('3 silvers', result['detail'])
+            self.assertIn('1 gold', result['detail'])
+            self.assertEqual(await self._copper(char), 30)
+
+    async def test_validation_refusals_leave_balance_unchanged(self):
+        agent, zone, room_a, room_b, char = await sync_to_async(
+            self._fixture)('door_gc4')
+        await sync_to_async(self._set_copper)(char, 500)
+        bad_amounts = [
+            {},                    # no denomination at all
+            {'gold': 0},           # zero
+            {'silver': -3},        # negative
+            {'copper': True},      # boolean
+            {'copper': 'ten'},     # non-int
+        ]
+        async with self.door(agent) as comm:
+            for i, amount in enumerate(bad_amounts):
+                for act in ('grant_copper', 'deduct_copper'):
+                    result = await request(comm, {
+                        'type': 'action', 'id': f'v{i}{act[0]}',
+                        'act': act,
+                        'params': dict(amount, to=char.name)})
+                    self.assertFalse(result['ok'], (act, amount))
+                    self.assertEqual(result['error'], 'bad-params',
+                                     (act, amount))
+            result = await request(comm, {
+                'type': 'action', 'id': 'vnf', 'act': 'grant_copper',
+                'params': {'to': 'Nobody Such', 'gold': 1}})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['error'], 'not-found')
+            self.assertEqual(await self._copper(char), 500)
+
+    def test_kinds_registered(self):
+        self.assertIn('grant_copper', mc_door.ACTION_HANDLERS)
+        self.assertIn('deduct_copper', mc_door.ACTION_HANDLERS)
+
+
 class DoorNewKindsKillSwitchTests(DoorTestBase):
     """The consumer-level gate covers the v25.7 kinds — prove it."""
 
