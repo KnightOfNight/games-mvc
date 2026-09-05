@@ -1,0 +1,1 @@
+2026-09-05 — Implementation session started: Shyland V25.15 Brief 1 (Bulk Buy/Sell Batching, #321) on version_25_15. Stub — completed in place at session end.
