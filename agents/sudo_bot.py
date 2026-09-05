@@ -510,7 +510,10 @@ TOOLS = [
                             'type': 'number',
                             'description': '0-100, whole numbers only '
                                            '(fractional is refused); 0 '
-                                           'marks the item broken.'},
+                                           'marks the item broken. Wearing '
+                                           'items only — refused when the '
+                                           "definition doesn't take "
+                                           'durability loss.'},
                         'name': {'type': 'string',
                                  'description': 'Artifact definitions only; '
                                                 'unique, <= 200 chars, no '
@@ -545,7 +548,9 @@ TOOLS = [
                             'description': 'Artifact definitions only; true '
                                            'requires a durability_table '
                                            'covering 0-100 (send both keys '
-                                           'in one edit).'},
+                                           'in one edit). Flipping to false '
+                                           'resets the instance to healthy '
+                                           '(durability 100, not broken).'},
                         'durability_table': {
                             'type': 'array',
                             'items': {
