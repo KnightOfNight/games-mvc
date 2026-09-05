@@ -4488,8 +4488,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     rarity='common',
                     owner=char,
                 )
-                item.save()
+                # v25.15 (#321): bulk_create skips save(), so the
+                # exactly-one-location invariant is enforced explicitly
+                # per instance before the batch persists.
+                item.enforce_location_invariant()
                 items.append(item)
+            ItemInstance.objects.bulk_create(items, batch_size=500)
         self.character.copper = char.copper
         return items
 
