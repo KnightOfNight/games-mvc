@@ -1,3 +1,96 @@
 2026-09-05 — Implementation session started: Shyland_V25.16_Brief_1_Door_Durability_Posture.md on branch version_25_16.
 
-[STUB — completed in place at session end.]
+V25.16 BRIEF 1 CLOSEOUT — Instance-Side Durability Posture at the Door (#315)
+==============================================================================
+
+Branch: version_25_16
+Brief: Shyland_V25.16_Brief_1_Door_Durability_Posture.md (committed 14bc807)
+Final commit hash: d363142 (architecture doc; last code-bearing commit 3dd849b)
+
+Technical pre-flight (#252): all 11 of the brief's verified premises re-diffed
+against the code before writing anything — zero mismatches. No process-ritual
+discrepancies found in the brief.
+
+Steps executed
+--------------
+4.1 Version start: SHYLAND_VERSION -> "25.16-DEV" in its own commit 5c31999,
+    pin test (tests/test_b2_amendment1.py) moved in the same commit;
+    version-start make deploy-dev run clean.
+4.2 Shape-A refusal: _edit_instance_fields refuses durability_current
+    entirely on non-wearing definitions (every value, pre-edit posture,
+    DoorError bad-params naming the rule and the artifact two-request path).
+    Commit a645337.
+4.3 Flip reset: _edit_definition_fields posture block, after
+    durability_posture_violations passes — post-edit non-wearing posture
+    unconditionally resets the instance to 100.0/False (idempotent;
+    persistence via _edit_item's always-run item.save()). Commit a645337.
+4.4 Data migration 0057_normalize_nonwearing_instances (0055 pattern,
+    authored by hand, reverse noop). Commit f99f351.
+4.5 Bot schema mirror: sudo_bot.py edit_item — durability_current gains
+    wearing-only clause; takes_durability_loss gains flip-reset clause.
+    No other bot change. Commit a3d248c.
+4.6 Tests: tests/test_v25_16_brief1.py — 8 new tests covering all 8
+    specified legs (shape-A total, atomicity, wearing pin, flip reset
+    damaged/broken, combined reset-wins, combined pre-edit refusal,
+    idempotent re-assert heal). Commit 3dd849b.
+4.7 make deploy-dev clean (0057 ran in migrate); dev sudo bot restarted
+    from this worktree's fleet tooling (agents/botctl.py dev restart —
+    venvs/.secrets symlinked from the main checkout, the 25.10-25.15
+    pattern; bot confirmed running, schema mirror live). #315 closed with
+    closing comment, gated on verification passing.
+4.8 Architecture doc updated in place: stamp 25.16, header hash moved to
+    3dd849b (architectural change: door edit semantics + data migration),
+    new header version-note entry, §4.22 v25.7 edit_item clause + title
+    accretion + durability-posture paragraph instance-side extension,
+    §4.23 one-paragraph schema-mirror note. Commit d363142.
+
+Test counts (actual vs expected)
+--------------------------------
+Expected: 946 baseline + 8 new = 954. Actual: 954 ran, OK, in-container
+path form (python manage.py test apps/shyland/tests). Zero existing tests
+changed (the brief's premise 10 held — the v25.12 p5 leg survived the flip
+reset unchanged).
+
+0057 dev normalization count (actual vs expected)
+-------------------------------------------------
+Expected 0 or 1. Actual: 0 —
+"2026-09-05T12:02:10Z 0057_normalize_nonwearing_instances: normalized 0
+non-wearing instances" (the #315 playtest strand was already gone from the
+dev DB). Prod count lands in the closeout tail's deploy output.
+
+Verification (§5)
+-----------------
+1. Suite green: 954 OK, zero existing tests modified. PASS.
+2. Dev post-migrate stranded-row query: 0. PASS.
+3. Dev shell via the door path (_edit_item): shape-A refusal fired on a
+   real non-wearing instance (bad-params, rule-naming detail); a wearing
+   item's durability edit landed (100 -> 77, restored to 100). Throwaway
+   verification item/definition deleted. PASS.
+4. 0057 count line present in deploy-dev migrate output and recorded
+   above. PASS.
+
+Deviations
+----------
+None. Zero existing tests changed; no scope deviations; wearing-path
+behavior byte-identical.
+
+PENDING DEPLOY-TIME ACTIONS
+---------------------------
+No manual actions (per the brief §7). 0057 rides the closeout tail's
+standard make deploy-prod migrate step (executor: make deploy-prod);
+expected prod count 0, the count line reports the truth either way.
+Standing carried note (not a new action): the 4.5 schema mirror reaches
+production sudo only when the operator restarts the prod bot with
+post-25.16 code — absorbed by the already-carried prod-bot-restart
+standing action.
+
+Dev leavings (this session)
+---------------------------
+agents/venvs and agents/.secrets symlinks in this worktree (pointing at
+the main checkout — the 25.10-25.15 pattern); dev sudo bot now running
+this worktree's code.
+
+Operator playtest disposition
+-----------------------------
+OPEN — awaiting operator playtest (checklist in the brief §6, dev stack,
+dev bot restarted with the schema mirror).
