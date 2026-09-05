@@ -103,5 +103,6 @@ DEV LEAVINGS (operator awareness, standard practice)
 
 FINAL COMMIT HASH: 16140df (plus this closeout completion commit)
 
-OPERATOR PLAYTEST DISPOSITION: [OPEN — recorded before session end;
-the §6 checklist targets the dev stack, ready now]
+OPERATOR PLAYTEST DISPOSITION: Operator reports playtest successful
+(2026-09-05, in-conversation: "playtest confirmed" — terminal
+disposition per #170).
