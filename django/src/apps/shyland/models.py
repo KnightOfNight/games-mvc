@@ -758,7 +758,9 @@ class ItemInstance(models.Model):
         related_name='contents',
     )
 
-    def save(self, *args, **kwargs):
+    def enforce_location_invariant(self):
+        # v25.15 (#321): extracted from save() so bulk_create paths — which
+        # skip save() — can enforce the invariant explicitly per instance.
         non_null = sum([
             self.owner_id is not None,
             self.current_room_id is not None,
@@ -769,6 +771,9 @@ class ItemInstance(models.Model):
                 "ItemInstance must be in exactly one location: owner, current_room, or corpse. "
                 f"Got {non_null} non-null location fields."
             )
+
+    def save(self, *args, **kwargs):
+        self.enforce_location_invariant()
         super().save(*args, **kwargs)
 
     def __str__(self):
