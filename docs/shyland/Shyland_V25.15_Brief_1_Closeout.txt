@@ -1,0 +1,108 @@
+2026-09-05 — Implementation session started: Shyland V25.15 Brief 1 (Bulk Buy/Sell Batching, #321) on version_25_15. Stub — completed in place at session end.
+
+================================================================
+V25.15 BRIEF 1 CLOSEOUT — Bulk Buy/Sell Batching (#321)
+================================================================
+
+Session: implementation, branch version_25_15, worktree ../games-mvc-version_25_15
+Brief: docs/shyland/Shyland_V25.15_Brief_1_Bulk_Buy_Sell_Batching.md (committed ec83e44)
+Date: 2026-09-05
+
+TECHNICAL PRE-FLIGHT (#252)
+All ten of the brief's technical premises re-diffed against the code
+before any writing: do_buy shape (consumers.py:4464), do_sell + exactly
+two callers (4497; 2369/2414), bulk arm + id()-keyed prices + comment
+(2395-2490), generate_item_instance unsaved-return + #211 guard
+(item_utils.py:98), save() override + zero signals (models.py:761-772),
+CombatAction.item SET_NULL sole incoming FK, get_sale_price pure +
+select_related feed, currency.add/subtract, no equipped check in
+do_sell, suite baseline 934. Zero mismatches — no hard stop.
+
+WORK DONE (commits, in order; every step pushed at its boundary)
+  46030a9  Step 0: closeout stub (work-has-started signal)
+  ddddfd5  §4.1 opening act: SHYLAND_VERSION -> 25.15-DEV, pin test
+           moved same commit; version-start make deploy-dev run
+  547fd17  §4.2: ItemInstance.enforce_location_invariant() extracted
+           from save(); save() behavior byte-identical
+  cfad50d  §4.3: do_buy persists via one bulk_create(batch_size=500)
+           inside the same atomic block; per-unit generation and #211
+           guard unchanged; invariant enforced per instance pre-batch
+  df0e3ef  §4.4+4.5: do_sell_bulk (one lock, one copper add of the
+           precomputed total, one bulk delete) + cmd_sell bulk-arm
+           rewire (artifacts partitioned first, empty-sellable skips
+           the sale call, prices keyed by pk, id() comment replaced)
+  b567a7c  §4.6: tests/test_v25_15_brief1.py (12 tests)
+  16140df  §4.8: architecture doc (see below)
+
+TESTS — ACTUAL VS EXPECTED
+Expected: 934 baseline + new tests, zero existing tests changed.
+Actual:   946 in-container, all green (934 + 12 new), invocation
+          python manage.py test apps/shyland/tests (path form).
+Zero existing tests modified. (The b2_amendment1 version pin moved
+with the SHYLAND_VERSION bump per the standing opening-act rule —
+not a deviation.)
+New tests: bulk-sell mixed inventory (exact copper, rows, artifact
+survives), all-refused batch unchanged (SELL_REFUSAL_NONE, no sale
+call), pk-keyed group-total integrity (regression guard for the old
+pk-collapse defect), sell query-count independence (10 vs 50), bulk
+buy correctness (qty 40: rows, rolled stats, unbound, copper,
+sold_count), buy query-count independence (5 vs 40), poor/sold_out
+sentinels, invariant helper (zero/two/one locations) + save() pin.
+
+VERIFICATION (§5)
+1. Suite green as above.
+2. Dev shell, throwaway character, 1,000 Animal Hide instances gifted
+   via the shell helper (generate_item_instance + save):
+   sell all hide -> 0.078s, copper delta 4000 = expected 4000, rows
+   left 0, single count-form line "You sell Animal Hide Mk 1 x1000
+   for 4 golds." — identical aggregate output shape.
+3. Dev shell: buy 500 Healing Draught @ 15c -> 0.074s, copper delta
+   -7500 exact, 500 instances, sold_count +500, correct count-form
+   line. (A first pass hit the cheapest cart item at price 0 — count
+   and speed verified; re-run against a nonzero-price entry for the
+   meaningful copper check, both recorded here.)
+4. Query-bound tests are the structural proof; no EXPLAIN pass (per
+   brief).
+
+DEVIATIONS
+None from the brief's design rules or steps. Notes:
+- Verification shell runs required DJANGO_ALLOW_ASYNC_UNSAFE=1 (the
+  consumer path lazy-loads an FK in async context; single-threaded
+  verify shell, read-safety guard only — no code change).
+- One extra test beyond the brief's numbered list (all-refused batch)
+  pinning §4.5's new skip-the-sale-call branch.
+
+ISSUE STATE
+#321 closed (gated on verification passing) with a shipping comment;
+milestone Version 25.15 now 1/1 closed.
+
+ARCHITECTURE DOC (§4.8, last, gated — gates passed)
+Shyland_Architecture_v25.md updated in place: stamp 25.15, header hash
+moved to b567a7c (architectural change: transaction shape of the money
+paths); new Version 25.15 note in the header block; §4.1 invariant
+passage notes enforce_location_invariant(); §4.3 bulk-path passage
+re-written for pk-keyed pre-delete pricing, buy/sell command entries
+updated (bulk_create; do_sell_bulk), money-movement sentence adds
+do_sell_bulk.
+
+RELEASE FACTS
+Code-only: no model schema change, no migration (head stays 0056), no
+seed change, no client change. No quantity cap of any kind shipped
+(superseded ruling honored). make deploy-dev run at version start and
+again after implementation + verification passed (§4.7) — dev stack
+runs this build.
+
+PENDING DEPLOY-TIME ACTIONS
+None (per brief §7 — nothing rides the closeout-tail deploy).
+
+DEV LEAVINGS (operator awareness, standard practice)
+- Throwaway verify user/character v2515_verify ("V2515 Verify",
+  throwaway password, stat_str 60) holding 500 Worn Cudgels and 500
+  Healing Draughts; copper from verify runs; MC out-records from the
+  two verify sells/buys.
+
+FINAL COMMIT HASH: 16140df (plus this closeout completion commit)
+
+OPERATOR PLAYTEST DISPOSITION: Operator reports playtest successful
+(2026-09-05, in-conversation: "playtest confirmed" — terminal
+disposition per #170).

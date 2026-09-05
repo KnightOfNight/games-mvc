@@ -2400,22 +2400,27 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         # precedes the aggregates; singles keep the singular sentence.
         # v23 B4 (#138): artifacts are refused; everything else sells,
         # including zero-value items (which pay 0 — see get_sale_price).
-        sold_items = []
-        # Keyed by id(): do_sell deletes the row and Django then sets the
-        # in-memory pk to None, so pk-keyed prices would collapse to one
-        # entry (a latent v22 shape this rework inherited and fixes —
-        # group totals silently read the last-sold price before this).
-        prices = {}
+        # v25.15 (#321): the whole batch sells through one do_sell_bulk
+        # call — one transaction, one copper update, one bulk delete —
+        # replacing the per-item do_sell loop (one transaction per item).
+        # Keyed by pk, safely: queryset .delete() never touches the held
+        # Python instances, so their pks survive (unlike instance
+        # .delete(), which nulls the in-memory pk — the reason the old
+        # loop keyed by id()).
         refused = 0
+        sellable = []
         for item in res.items:
             if item.rarity == 'artifact':
                 refused += 1
                 continue
-            price = await self.do_sell(item, char)
-            sold_items.append(item)
-            prices[id(item)] = price
-        paying = [i for i in sold_items if prices[id(i)] > 0]
-        worthless = [i for i in sold_items if prices[id(i)] == 0]
+            sellable.append(item)
+        if sellable:
+            prices = await self.do_sell_bulk(sellable, char)
+        else:
+            prices = {}
+        sold_items = sellable
+        paying = [i for i in sold_items if prices[i.pk] > 0]
+        worthless = [i for i in sold_items if prices[i.pk] == 0]
         vendor_name = npc_display(vendor, capitalize=True)
         if sold_items:
             # v22 brief 2 (DD §6/§7): the shortfall report, verbatim.
@@ -2425,7 +2430,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     'success',
                 )
             for name, group in self._aggregate_by_name(paying):
-                group_total = sum(prices[id(i)] for i in group)
+                group_total = sum(prices[i.pk] for i in group)
                 if len(group) == 1:
                     await self.output(
                         npc_voice.pick(
@@ -4488,8 +4493,12 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     rarity='common',
                     owner=char,
                 )
-                item.save()
+                # v25.15 (#321): bulk_create skips save(), so the
+                # exactly-one-location invariant is enforced explicitly
+                # per instance before the batch persists.
+                item.enforce_location_invariant()
                 items.append(item)
+            ItemInstance.objects.bulk_create(items, batch_size=500)
         self.character.copper = char.copper
         return items
 
@@ -4505,6 +4514,26 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             item.delete()
         self.character.copper = char.copper
         return price
+
+    @database_sync_to_async
+    def do_sell_bulk(self, items, character):
+        """v25.15 (#321): the bulk-sell arm's engine — one atomic
+        transaction for the whole batch (one character lock, one copper
+        update, one bulk delete) instead of one transaction per item.
+        All-or-nothing on crash, where the per-item loop left partial
+        progress (ruled an improvement on #321). Returns {pk: price};
+        pricing happens before the transaction (pure arithmetic,
+        definitions preloaded by get_carried_items' select_related)."""
+        from django.db import transaction
+        prices = {item.pk: get_sale_price(item) for item in items}
+        total = sum(prices.values())
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            char.copper = currency.add(char.copper, total)
+            char.save(update_fields=['copper'])
+            ItemInstance.objects.filter(pk__in=list(prices)).delete()
+        self.character.copper = char.copper
+        return prices
 
     @database_sync_to_async
     def get_damaged_items(self, character):
