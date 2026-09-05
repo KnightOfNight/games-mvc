@@ -1111,6 +1111,19 @@ def _edit_instance_fields(item, changes):
             "'damage_midpoint' and 'damage_spread' must be both set or "
             'both null after the edit.')
     if 'durability_current' in changes:
+        # The instance-side durability-posture invariant (#315, v25.16,
+        # shape A): on a non-wearing definition the value is inert
+        # dormant data — every value refuses, judged on the pre-edit
+        # posture (a combined flip-and-set request refuses too; flip
+        # wearing first in its own request).
+        if not item.definition.takes_durability_loss:
+            raise DoorError(
+                'bad-params',
+                "'durability_current' is not editable — the definition "
+                "doesn't take durability loss, so durability is inert "
+                'dormant data on this item. For an artifact, flip '
+                "'takes_durability_loss' to true (with a full "
+                "'durability_table') in its own request first.")
         value = changes['durability_current']
         if (isinstance(value, bool) or not isinstance(value, (int, float))
                 or not 0 <= value <= 100):
@@ -1250,6 +1263,14 @@ def _edit_definition_fields(item, defn, changes):
             defn.takes_durability_loss, defn.durability_table)
         if violations:
             raise DoorError('bad-params', ' '.join(violations))
+        # The flip reset (#315, v25.16): authoring the non-wearing
+        # posture includes the instance — idempotent, posture-keyed on
+        # the post-edit state. Re-asserting non-wearing also resets
+        # (harmless on a healthy instance; heals a stranded one).
+        # Persistence rides _edit_item's unconditional item.save().
+        if not defn.takes_durability_loss:
+            item.durability_current = 100.0
+            item.is_broken = False
 
 
 @database_sync_to_async
