@@ -92,5 +92,20 @@ this worktree's code.
 
 Operator playtest disposition
 -----------------------------
-OPEN — awaiting operator playtest (checklist in the brief §6, dev stack,
-dev bot restarted with the schema mirror).
+Operator reports playtest successful (2026-09-06, dev stack). Notes:
+- Step 1: the bot declined pre-emptively from the 4.5 schema mirror
+  (polite refusal naming the posture rule) — the schema-mirror lesson
+  working as designed; door-side enforcement separately proven in §5.
+- Step 2 (flip cycle) confirmed.
+- Step 3: operator observed inv/equip Details rendering '0%' rather
+  than the word BROKEN — investigated and confirmed correct-as-built
+  (v22 DD §9 voice law: the doll's Details cell carries broken state
+  as the percentage in the error voice; the '— BROKEN' suffix belongs
+  to composed item lines, and examine shows 'Durability: 0% (BROKEN)').
+  DB row verified: door-set 0 coupled is_broken=True. No regression;
+  render paths untouched by this release.
+- Mid-playtest interruption: Anthropic API credit exhaustion made the
+  bot fail silently to the requesting admin (bot stayed up; log-only
+  failure). Operator restored credits; filed as #326 per operator
+  direction ("no silent failure unless the bot is not running at all"
+  — design ruling pending).
