@@ -1,0 +1,110 @@
+2026-09-07 — implementation session started: Shyland V25.17 Brief 1 (Legible Bot Failure Reporting), branch version_25_17.
+
+SUMMARY
+Brief 1 applied in full. A terminally failed live sudo request is no longer
+silent while the bot is up: the _worker choke point logs a classed warning
+(failed (persistent|transient) — reporting to the admin, traceback retained,
+UTC-Z) and delivers exactly one fixed in-pane line to the requesting admin
+via the door's answer action in sudo's voice. classify_failure(exc) is
+duck-typed on getattr(exc, 'status_code', None) — 400/401/403 => persistent,
+everything else including no status => transient — provider-agnostic, no
+anthropic import at module level. The is_admin pre-check query failure now
+raises RequestFailed through the same choke point (transient); a genuine
+non-admin still drops silently, byte-identical. The report path never
+raises: _report_failure wraps its _deliver call; delivery failure logs and
+stays quiet (the exempted bot-effectively-down case). Conversation store,
+model-chosen silence, reconnect/kill-switch states, and the #308 bounce all
+untouched.
+
+COMMITS (all pushed to origin/version_25_17)
+- 2d5a1cb  Step 0: closeout report stub (work-has-started signal)
+- 6966863  §4.1 version start: SHYLAND_VERSION -> 25.17-DEV + pin test
+- b9c61eb  §4.2 failure lines, PERSISTENT_STATUS_CODES, classify_failure,
+           RequestFailed
+- c1c5d01  §4.3 report path (the release's bot-side behavior change — the
+           arch-doc header hash)
+- 9101448  §4.6 architecture doc
+Final implementation (code) hash: c1c5d01. Architecture doc hash: 9101448.
+Final commit hash of the session: the commit carrying this completed report
+(follows it by construction).
+
+VERIFICATION (§5 — all passing)
+1. Classification proof (pure, agents/venvs/mc-agent/bin/python, sudo_bot
+   imported directly with anthropic absent from sys.modules): 8/8 —
+   status 400/401/403 => 'persistent'; 429, 500, None-status, an
+   attribute-free exception, and RequestFailed => 'transient'.
+2. Scripted raising-brain driver over the real dev door (v25.9/v25.10/v25.11
+   pattern; bot in-process as agent-smith, admin side as sudo-e2e/Stubtester
+   over /ws/shyland/): 12/12 — stub 401 => exactly one pane line
+   'sudo: Your request failed — the model service refused; this needs the
+   operator's attention.'; plain RuntimeError => exactly one pane line
+   'sudo: Your request failed — a temporary problem reaching the model. Try
+   again.'; both category 'sudo'; no stray lines after; log carries both
+   classed warnings with tracebacks (2), UTC-Z stamps.
+3. No-regression, stub brain: one normal round trip delivered exactly as
+   before ('sudo: Stub: Stubtester is in Heart of the Convergence (The
+   Convergence).'), no failure line.
+4. In-container suite: Ran 954 tests — OK (expected 954; zero existing-test
+   changes beyond the version-pin literal, the standing version-start move).
+5. Import hygiene: grep -n 'import anthropic' agents/sudo_bot.py matches
+   exactly once, inside ClaudeBrain.__init__ (line 1242) — deferred-import
+   rule preserved; nothing this brief adds imports anthropic.
+
+ACTUAL VS EXPECTED (everything numbered)
+- Suite count: expected 954, actual 954, zero existing-test changes. OK.
+- Persistent status set: {400, 401, 403} exactly as ruled. OK.
+- Pane lines: byte-exact to the brief's §3 fixed strings. OK.
+- Change surface: agents/sudo_bot.py only (plus version.py/pin test —
+  version start — and the architecture doc). No game-side code, no
+  migration, no seed, no client, no door vocabulary change. OK.
+
+DEPLOYS
+- make deploy-dev at version start (25.17-DEV) and again at §4.5 after
+  verification passed. The §4.5 run initially failed on a Docker Hub
+  registry outage (500s from registry-1.docker.io, transient, upstream);
+  succeeded on retry ~10 minutes later. Dev stack runs the stamped
+  25.17-DEV build.
+- Dev bot restarted on this worktree's (brief's) code via
+  ./agents/botctl.py dev restart — attached, brain=claude, filing=enabled
+  (§6 preamble). Ready for the operator playtest.
+
+DEVIATIONS
+1. §4.6 header hash (operator-ruled in-session, 2026-09-07; #252 hard stop;
+   recorded on #326): the brief's premise 9 said 25.11 set a no-hash-move
+   precedent for pure bot-side releases; the repo shows 25.11's arch commit
+   f5aab54 moved the header hash to its bot-side commit 207c7b1 (only the
+   changelog sentence was omitted). Flagged before touching the doc; the
+   operator ruled: move the hash. 25.17's header hash moves to c1c5d01,
+   the changelog entry records the ruling. Everything else in §4.6 as
+   written.
+2. (Brief-recorded exception restated, premise 9) No new in-suite tests:
+   the django suite cannot see agents/ (host-side, outside the image);
+   behavior proven by the scripted-brain driver, precedent v25.9–v25.11.
+   Suite total stays 954.
+
+ISSUES
+- #326 closed (gated on §5 passing) with a closing comment naming the
+  release and shipped shape; the §4.6 hash ruling recorded as a follow-up
+  comment.
+
+PENDING DEPLOY-TIME ACTIONS
+None. The bot is host-side; production takes the change when the operator
+restarts the prod bot on post-25.17 main code (standing operator action,
+not a deploy-window step — same as every bot release since 25.10). No prod
+data actions, no seed, no verify command.
+
+DEV LEAVINGS (recorded, not cleaned — operator prunes)
+- agents/.secrets and agents/venvs symlinks added to the version_25_17
+  worktree (pointing at the main checkout, matching the 25.10–25.16
+  worktree pattern).
+- Fresh throwaway dev passwords set on agent-smith (synced to the
+  agents/.secrets/agent-smith file contents) and sudo-e2e (value in
+  /tmp/v2517_password_sudo-e2e only).
+- Driver artifacts in /tmp (v2517_driver.py, v2517_verify_classify.py,
+  v2517_verify_stub.py, bot logs, convo files) — throwaway, not committed.
+- Dev bot left running on version_25_17 worktree code (filing enabled).
+
+OPERATOR PLAYTEST DISPOSITION (#170)
+Operator reports playtest successful (2026-09-07, in-conversation:
+"playtest confirmed" — the §6 checklist: baseline, bad-key persistent
+case, unreachable-endpoint transient case, sanctioned silence).

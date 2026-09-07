@@ -127,7 +127,35 @@ GITHUB_API = 'https://api.github.com'
 GITHUB_ASSIGNEE = 'KnightOfNight'
 GITHUB_TIMEOUT = 15
 
+# v25.17 (#326): a terminally failed live request speaks one classed
+# line — fixed strings, coarse by ruling (transient = worth retrying;
+# persistent = billing/auth, needs the operator). Raw API detail stays
+# in the log, never the pane.
+FAILURE_LINE_TRANSIENT = ('Your request failed — a temporary problem '
+                          'reaching the model. Try again.')
+FAILURE_LINE_PERSISTENT = ('Your request failed — the model service '
+                           'refused; this needs the operator\'s attention.')
+# Duck-typed on `status_code`, provider-agnostic (no anthropic import):
+# 400/401/403 won't heal on retry; everything else — including no
+# status at all (connection failures) — is worth another try.
+PERSISTENT_STATUS_CODES = frozenset({400, 401, 403})
+
 log = logging.getLogger('sudo_bot')
+
+
+def classify_failure(exc):
+    """v25.17 (#326): 'persistent' or 'transient' for a terminal
+    per-request failure. Pure and import-free by design rule."""
+    if getattr(exc, 'status_code', None) in PERSISTENT_STATUS_CODES:
+        return 'persistent'
+    return 'transient'
+
+
+class RequestFailed(Exception):
+    """v25.17 (#326): a request the machinery knows it failed (e.g. the
+    is_admin pre-check query itself erroring) — routed through the
+    worker's choke point so the admin hears about it. Carries no
+    status_code: always classed transient."""
 
 
 # ----------------------------------------------------------------------
@@ -1469,20 +1497,43 @@ class SudoBot:
                 await self._handle_sudo(actor_name, data['args'])
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                # Silence is never an error — log it, tell no one.
-                log.warning('sudo request from %s failed silently',
-                            actor_name, exc_info=True)
+            except Exception as exc:
+                # v25.17 (#326): a terminal failure is no longer silent —
+                # the raw detail stays here in the log; the admin gets
+                # one fixed classed line via the door's answer action.
+                log.warning('sudo request from %s failed (%s) — reporting '
+                            'to the admin', actor_name,
+                            classify_failure(exc), exc_info=True)
+                await self._report_failure(actor_name, exc)
+
+    async def _report_failure(self, actor_name, exc):
+        """v25.17 (#326): one fixed classed line to the requesting admin.
+        Never raises — if delivery itself fails (dead door connection),
+        log and stay quiet: that is the exempted bot-effectively-down
+        case."""
+        line = (FAILURE_LINE_PERSISTENT
+                if classify_failure(exc) == 'persistent'
+                else FAILURE_LINE_TRANSIENT)
+        try:
+            await self._deliver(actor_name, line)
+        except Exception:
+            log.warning('failure report delivery to %s failed — staying '
+                        'quiet', actor_name, exc_info=True)
 
     async def _handle_sudo(self, actor_name, request_text):
         log.info('sudo request from %s: %r', actor_name, request_text)
         # Cost discipline only (brief §5.4): the authoritative gate is
-        # the door's answer action. Drop silently on false or failure.
+        # the door's answer action. Drop silently on a genuine false;
+        # v25.17 (#326): a failed query is a failed request — route it
+        # through the worker's choke point (transient class).
         result = await self.door_request('is_admin', {'name': actor_name})
-        is_admin = result.get('ok') and result['data'].get('is_admin')
-        log.info('is_admin pre-check for %s: %s', actor_name,
-                 is_admin if result.get('ok') else
-                 f"query failed ({result.get('error')})")
+        if not result.get('ok'):
+            log.info('is_admin pre-check for %s: query failed (%s)',
+                     actor_name, result.get('error'))
+            raise RequestFailed(
+                f"is_admin pre-check query failed ({result.get('error')})")
+        is_admin = result['data'].get('is_admin')
+        log.info('is_admin pre-check for %s: %s', actor_name, is_admin)
         if not is_admin:
             return
 
