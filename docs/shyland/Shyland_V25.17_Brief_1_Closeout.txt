@@ -1,0 +1,3 @@
+2026-09-07 — implementation session started: Shyland V25.17 Brief 1 (Legible Bot Failure Reporting), branch version_25_17.
+
+[STUB — completed in place at session end]
