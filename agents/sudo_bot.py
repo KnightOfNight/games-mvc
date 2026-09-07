@@ -127,7 +127,35 @@ GITHUB_API = 'https://api.github.com'
 GITHUB_ASSIGNEE = 'KnightOfNight'
 GITHUB_TIMEOUT = 15
 
+# v25.17 (#326): a terminally failed live request speaks one classed
+# line — fixed strings, coarse by ruling (transient = worth retrying;
+# persistent = billing/auth, needs the operator). Raw API detail stays
+# in the log, never the pane.
+FAILURE_LINE_TRANSIENT = ('Your request failed — a temporary problem '
+                          'reaching the model. Try again.')
+FAILURE_LINE_PERSISTENT = ('Your request failed — the model service '
+                           'refused; this needs the operator\'s attention.')
+# Duck-typed on `status_code`, provider-agnostic (no anthropic import):
+# 400/401/403 won't heal on retry; everything else — including no
+# status at all (connection failures) — is worth another try.
+PERSISTENT_STATUS_CODES = frozenset({400, 401, 403})
+
 log = logging.getLogger('sudo_bot')
+
+
+def classify_failure(exc):
+    """v25.17 (#326): 'persistent' or 'transient' for a terminal
+    per-request failure. Pure and import-free by design rule."""
+    if getattr(exc, 'status_code', None) in PERSISTENT_STATUS_CODES:
+        return 'persistent'
+    return 'transient'
+
+
+class RequestFailed(Exception):
+    """v25.17 (#326): a request the machinery knows it failed (e.g. the
+    is_admin pre-check query itself erroring) — routed through the
+    worker's choke point so the admin hears about it. Carries no
+    status_code: always classed transient."""
 
 
 # ----------------------------------------------------------------------
