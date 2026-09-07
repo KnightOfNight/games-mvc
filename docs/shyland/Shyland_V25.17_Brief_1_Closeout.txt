@@ -105,7 +105,6 @@ DEV LEAVINGS (recorded, not cleaned — operator prunes)
 - Dev bot left running on version_25_17 worktree code (filing enabled).
 
 OPERATOR PLAYTEST DISPOSITION (#170)
-OPEN — awaiting the operator's §6 checklist run (chaos monkey by
-configuration: baseline, bad-key persistent case, unreachable-endpoint
-transient case, sanctioned silence). Disposition to be recorded here
-verbatim-style before the session-end ritual.
+Operator reports playtest successful (2026-09-07, in-conversation:
+"playtest confirmed" — the §6 checklist: baseline, bad-key persistent
+case, unreachable-endpoint transient case, sanctioned silence).
