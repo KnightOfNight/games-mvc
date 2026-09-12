@@ -1,3 +1,185 @@
 2026-09-12 — Implementation session start — Brief: Shyland_V26.0_Brief_1_Effect_Tick_Hygiene.md — Branch: version_26_0
 
-[STUB — completed in place at session end]
+================================================================================
+V26.0 Brief 1 — Effect Tick Hygiene (#145) — Closeout Report
+================================================================================
+
+Session type: implementation. Worktree: ../games-mvc-version_26_0 on branch
+version_26_0. Pre-flight: local dev target confirmed (exit 0), posture
+coherent. Brief verified verbatim at branch tip (unchanged since its design
+commit d60fdc2). Technical pre-flight (#252): all load-bearing claims verified
+against the code before any edit — version constant + pin test location, the
+six dot/hot branch shapes and wordings, the shift-branch new!=old pattern and
+terminal lines, per-branch message categories. Zero mismatches.
+
+--------------------------------------------------------------------------------
+Step log (every step committed and pushed at its boundary)
+--------------------------------------------------------------------------------
+
+Step 0  d587f74  Closeout stub — work-has-started signal.
+§2      ef7266d  Version start: SHYLAND_VERSION 25.17 -> 26.0-DEV, pin test
+                 (tests/test_b2_amendment1.py:122) moved same commit; followed
+                 by the version-start `make deploy-dev` (migrate: no-op).
+§3–§6   5c17df8  The fix + tests. Five branches in run_tick_engine.py Phase 1
+                 (dot_longevity, dot_acuity, hot_vitality, hot_longevity,
+                 hot_acuity) rewritten onto the shift-branch pattern:
+                 compute old/new (clamp math untouched); new == old -> no
+                 save, no status build, no announcement; new != old -> save +
+                 announce the ACTUAL applied delta; boundary arrival gets one
+                 stateless terminal line instead of the ordinary line.
+                 dot_vitality byte-unchanged; both shift branches untouched.
+                 New tests/test_v26_0_brief1.py (11 tests).
+§7      (in-session) Verification — see below.
+§8      (in-session) `make deploy-dev` from the worktree — dev stack running
+                 the brief build.
+§10     49a035c  Architecture doc: Shyland_Architecture_v25.md renamed (git mv
+                 = git rm + add) to Shyland_Architecture_v26.md per the N.0
+                 standing rule; stamp 26.0; header hash moved to 5c17df8
+                 (runtime behavior change); v26.0 header entry added; §4.9
+                 gains the uniform dot/hot doctrine paragraph (#145/#133
+                 provenance) and the #133 paragraph's stale "not-yet-migrated
+                 branches" tail updated; §6 doctrine entry updated to
+                 family-wide.
+
+--------------------------------------------------------------------------------
+Terminal-line wordings (authored at fix time per the standing creative policy
+recorded on #145; register matched to the shift branches')
+--------------------------------------------------------------------------------
+
+  dot_longevity  at 0              "Your stamina is bled dry. (-N Longevity)"   [combat]
+  dot_acuity     at ACUITY_FLOOR   "Your focus is torn to nothing."             [combat]
+  hot_vitality   at vitality_max   "Your body is whole once more. (+N Vitality)" [system]
+  hot_longevity  at longevity_max  "Your stamina returns in full. (+N Longevity)" [system]
+  hot_acuity     at acuity_baseline "Your mind settles back to its center."     [system]
+
+Authoring note (recorded, not a deviation): the three integer-bar terminal
+lines carry the actual-delta parenthetical. Rationale: for those branches a
+partial application (actual < nominal) occurs exactly and only on the arrival
+tick — the clamp only bites at the boundary — so the brief's §6 requirements
+"arrival announces the terminal line" and "partial application announces the
+partial delta, not the nominal" are the same tick; the delta parenthetical on
+the terminal line satisfies both. The two acuity terminals are bare, exactly
+like the shift branches', since their ordinary lines announce the resulting
+value (already actual) rather than a delta.
+
+--------------------------------------------------------------------------------
+Verification (brief §7)
+--------------------------------------------------------------------------------
+
+7.1  Full in-container suite (path form, docker exec in the django
+     container): Ran 965 tests ... OK. 954 pre-existing (all passing,
+     zero edited beyond the §2 pin-test stamp move) + 11 new.
+7.2  Grep proof: exactly one save(update_fields=...) per fixed branch, each
+     strictly inside its `if new != old:` guard (awk-scoped grep over the
+     five-branch region; no unconditional save remains on any no-change
+     path). The hold-tick tests additionally spy Character.save and assert
+     zero calls.
+7.3  Manual tick-engine spot-check on dev: folded into the operator playtest
+     per the brief's own terms (checklist step 1 is exactly this check).
+
+Issue #145: left open pending §7.3 via the playtest ("closes only when all
+verification steps pass" — §7.3 folds into the playtest). To be closed on the
+operator's successful playtest report. [If closed by session end, recorded
+below.]
+
+--------------------------------------------------------------------------------
+Deviations
+--------------------------------------------------------------------------------
+
+None. No model change, no migration (head stays 0057; deploy migrate was a
+no-op), no seed change, no client change, no GDD change. The only permitted
+existing-test edit was the §2 pin move.
+
+--------------------------------------------------------------------------------
+PENDING DEPLOY-TIME ACTIONS
+--------------------------------------------------------------------------------
+
+None. Code-only release; nothing for the closeout tail beyond the ordinary
+`make deploy-prod`.
+
+--------------------------------------------------------------------------------
+Operator playtest recipes (brief §9 — dev stack, ready now)
+--------------------------------------------------------------------------------
+
+Effects are applied via the Django shell (`make shell` from the worktree).
+Paste this prelude first, setting your character's name:
+
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.shyland.models import (Character, EffectDefinition,
+        EffectComponent, EffectInstance, EffectComponentInstance)
+
+    CHAR = Character.objects.get(name__iexact='YOUR-CHARACTER-NAME')
+
+    def apply_tick_effect(ctype, magnitude, minutes=10):
+        d, _ = EffectDefinition.objects.get_or_create(
+            slug=f"playtest-{ctype.replace('_', '-')}",
+            defaults={'name': f'Playtest {ctype}'})
+        c, _ = EffectComponent.objects.get_or_create(
+            definition=d, component_type=ctype, order=0,
+            defaults={'magnitude_base': magnitude, 'magnitude_scaling': 0.0,
+                      'duration_base': 600.0, 'duration_scaling': 0.0})
+        ei = EffectInstance.objects.create(
+            definition=d, target=CHAR, mk_tier=1, is_active=True)
+        EffectComponentInstance.objects.create(
+            effect_instance=ei, component=c, magnitude=magnitude,
+            is_active=True,
+            expires_at=timezone.now() + timedelta(minutes=minutes))
+        return ei
+
+Per checklist step (numbers match brief §9):
+
+  1. Silent full-bar HoT (this is also verification §7.3):
+         apply_tick_effect('hot_vitality', 15)
+     with Vitality full. Watch >=3 round boundaries (~10s): no output at all.
+
+  2. HoT recovery + terminal: damage the character (one fight, or
+         Character.objects.filter(pk=CHAR.pk).update(vitality_current=40)
+     ), then out of combat:
+         apply_tick_effect('hot_vitality', 25)
+     Recovery lines each round, exactly one "Your body is whole once more.
+     (+N Vitality)", then silence while the effect stays active.
+     NOTE: out of combat, passive vitality regen also heals silently between
+     rounds, so the announced per-round deltas may vary and the final +N is
+     whatever the HoT actually applied at the cap — expected. In the unlikely
+     event regen completes the bar between round boundaries, the HoT holds
+     silently without a terminal line — that too is doctrine (change-only,
+     stateless), not a bug.
+
+  3. dot_longevity floor:
+         apply_tick_effect('dot_longevity', 40)
+     (empties a 100 bar in 3 ticks): draining lines with actual deltas, one
+     "Your stamina is bled dry. (-N Longevity)" at 0, then silence.
+     NOTE: out of combat, longevity regen restores +1 roughly every 36s; the
+     next round boundary after each regen point legitimately drains it again
+     ("... (-1 Longevity)" then the bled-dry terminal) — doctrine-correct
+     (a real change occurred). Judge the silence over the window between
+     regen points, or run this step while in combat (regen pauses).
+
+  4. hot_acuity at baseline:
+         apply_tick_effect('hot_acuity', 0.1)
+     with Acuity at baseline: silence. Then push it off baseline:
+         Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
+     Watch it walk back with per-round "Your mind clears..." lines, one
+     "Your mind settles back to its center." at baseline, silence after.
+     (Passive drift also nudges acuity silently out of combat; the walk's
+     exact numerals may be off the clean 0.1 steps — expected.)
+
+  5. dot_vitality unchanged:
+         apply_tick_effect('dot_vitality', 2)
+     Damage lines read exactly as they always have ("You take 2 damage from
+     Playtest dot_vitality.").
+
+Teardown (removes all playtest effects and their definitions):
+
+    EffectInstance.objects.filter(
+        definition__slug__startswith='playtest-').delete()
+    EffectDefinition.objects.filter(slug__startswith='playtest-').delete()
+
+--------------------------------------------------------------------------------
+Operator playtest disposition (#170)
+--------------------------------------------------------------------------------
+
+PENDING — recorded before session end.
+
+Final commit hash: recorded at session end.
