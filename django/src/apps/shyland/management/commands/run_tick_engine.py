@@ -1524,66 +1524,125 @@ class Command(BaseCommand):
                         )
 
                 elif ctype == 'dot_longevity':
-                    character.longevity_current = max(0, character.longevity_current - magnitude)
-                    await database_sync_to_async(character.save)(update_fields=['longevity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your stamina drains from {definition.name}. (-{int(magnitude)} Longevity)",
-                        'combat', status,
-                    )
+                    # v26.0 (#145): #133 announcement doctrine, uniform
+                    # across the dot/hot family — change-only ticks, actual
+                    # deltas (never nominal magnitude), one stateless
+                    # terminal line at boundary arrival, holding is silent.
+                    old = character.longevity_current
+                    new = max(0, old - magnitude)
+                    if new != old:
+                        character.longevity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['longevity_current'])
+                        status = await self._build_status_async(character)
+                        if new == 0:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your stamina is bled dry. (-{int(old - new)} Longevity)",
+                                'combat', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your stamina drains from {definition.name}. "
+                                f"(-{int(old - new)} Longevity)",
+                                'combat', status,
+                            )
 
                 elif ctype == 'dot_acuity':
-                    character.acuity_current = round(
-                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current - magnitude)), 1
+                    # v26.0 (#145): doctrine as above; the announced value is
+                    # the resulting acuity, already actual. Bare terminal
+                    # line at the floor, per the shift-branch precedent.
+                    old = character.acuity_current
+                    new = round(
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, old - magnitude)), 1
                     )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your focus is disrupted by {definition.name}. "
-                        f"(Acuity {character.acuity_current:.2f})",
-                        'combat', status,
-                    )
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == ACUITY_FLOOR:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your focus is torn to nothing.",
+                                'combat', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your focus is disrupted by {definition.name}. "
+                                f"(Acuity {new:.2f})",
+                                'combat', status,
+                            )
 
                 elif ctype == 'hot_vitality':
-                    character.vitality_current = min(
-                        character.vitality_current + magnitude, character.vitality_max
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['vitality_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"You recover {int(magnitude)} Vitality from {definition.name}.",
-                        'system', status,
-                    )
+                    # v26.0 (#145): doctrine as above.
+                    old = character.vitality_current
+                    new = min(old + magnitude, character.vitality_max)
+                    if new != old:
+                        character.vitality_current = new
+                        await database_sync_to_async(character.save)(update_fields=['vitality_current'])
+                        status = await self._build_status_async(character)
+                        if new == character.vitality_max:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your body is whole once more. (+{int(new - old)} Vitality)",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"You recover {int(new - old)} Vitality from {definition.name}.",
+                                'system', status,
+                            )
 
                 elif ctype == 'hot_longevity':
-                    character.longevity_current = min(
-                        character.longevity_current + magnitude, character.longevity_max
-                    )
-                    await database_sync_to_async(character.save)(update_fields=['longevity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"You recover {int(magnitude)} Longevity from {definition.name}.",
-                        'system', status,
-                    )
+                    # v26.0 (#145): doctrine as above.
+                    old = character.longevity_current
+                    new = min(old + magnitude, character.longevity_max)
+                    if new != old:
+                        character.longevity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['longevity_current'])
+                        status = await self._build_status_async(character)
+                        if new == character.longevity_max:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your stamina returns in full. (+{int(new - old)} Longevity)",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"You recover {int(new - old)} Longevity from {definition.name}.",
+                                'system', status,
+                            )
 
                 elif ctype == 'hot_acuity':
-                    diff = character.acuity_baseline - character.acuity_current
+                    # v26.0 (#145): doctrine as above — the no-change skip
+                    # also ends the every-tick save-at-baseline loop. Bare
+                    # terminal line at baseline, per the shift precedent.
+                    old = character.acuity_current
+                    diff = character.acuity_baseline - old
                     step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
-                    character.acuity_current = round(
-                        max(ACUITY_FLOOR, min(ACUITY_CEILING, character.acuity_current + step)), 1
+                    new = round(
+                        max(ACUITY_FLOOR, min(ACUITY_CEILING, old + step)), 1
                     )
-                    await database_sync_to_async(character.save)(update_fields=['acuity_current'])
-                    status = await self._build_status_async(character)
-                    await self.send_to_player(
-                        character.pk,
-                        f"Your mind clears from {definition.name}. "
-                        f"(Acuity {character.acuity_current:.2f})",
-                        'system', status,
-                    )
+                    if new != old:
+                        character.acuity_current = new
+                        await database_sync_to_async(character.save)(update_fields=['acuity_current'])
+                        status = await self._build_status_async(character)
+                        if new == character.acuity_baseline:
+                            await self.send_to_player(
+                                character.pk,
+                                "Your mind settles back to its center.",
+                                'system', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"Your mind clears from {definition.name}. "
+                                f"(Acuity {new:.2f})",
+                                'system', status,
+                            )
 
                 elif ctype == 'shift_acuity_high':
                     # v23 B3 (#133): band-edge stop — the tonic sharpens you
