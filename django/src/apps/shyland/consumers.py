@@ -2711,6 +2711,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_status_refresh()
             return
 
+        # v26.1 (#70): the flee fuel gate — a contested attempt costs 25%
+        # of longevity_max (the attempt is the purchase: success, failure,
+        # and nowhere-to-run alike). Below the cost the attempt is refused
+        # free: no deduction, no cooldown, nothing changed. At exactly the
+        # cost the flee fires and lands at 0.
+        cost = math.ceil(character.longevity_max / 4)
+        if character.longevity_current < cost:
+            await self.send_output("You are too spent to flee!", 'warn')
+            return
+        await self.spend_flee_longevity(character, cost)
+        character.longevity_current = max(0, character.longevity_current - cost)
+
         # v23 B1 (#143): the NPC side reads the same effective stats as every
         # other combat contest — session mean of get_npc_stats()['per'].
         avg_per = flee_contest_npc_side(npcs)
@@ -2742,6 +2754,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     audience=[], data=flee_data)
                 await self.send_output("There is nowhere to run!", 'warn')
                 await self.record_flee_attempt(character, session)
+                # v26.1 (#70): show the spent fuel — no room change here
+                # to refresh the pane.
+                await self.send_status_refresh()
                 return
 
             destination, flee_dir = result
@@ -2812,6 +2827,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 f"{character.name} tried to flee combat but could not slip away.", 'combat'
             )
             await self.record_flee_attempt(character, session)
+            # v26.1 (#70): show the spent fuel — no room change here to
+            # refresh the pane.
+            await self.send_status_refresh()
 
     # ------------------------------------------------------------------
     # Stat commands
@@ -4933,4 +4951,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         session.last_flee_attempt_at = timezone.now()
         session.last_flee_character = character
         session.save(update_fields=['last_flee_attempt_at', 'last_flee_character'])
+
+    @database_sync_to_async
+    def spend_flee_longevity(self, character, cost):
+        """v26.1 (#70): the contested flee's fuel charge — one atomic
+        UPDATE (#52 style); Greatest is belt-and-suspenders under the
+        gate, which already refused anything below the cost."""
+        from django.db.models import F
+        from django.db.models.functions import Greatest
+        Character.objects.filter(pk=character.pk).update(
+            longevity_current=Greatest(F('longevity_current') - cost, 0))
 
