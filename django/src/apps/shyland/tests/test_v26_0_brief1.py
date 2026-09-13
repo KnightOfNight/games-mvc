@@ -231,6 +231,38 @@ class HotAcuityTests(TickHygieneBase):
             lambda: Character.objects.get(pk=char.pk).acuity_current)()
         self.assertEqual(current, 1.0)
 
+    async def test_two_decimal_baseline_arrives_exactly(self):
+        # #332 (playtest-found): baselines are 2-decimal (Feral 0.95);
+        # arrival stores the baseline EXACTLY — the 1-decimal round could
+        # never land 0.95, so the walk never terminated and fought drift.
+        def setup():
+            zone, room = make_world('ethL')
+            char = make_character('ethL', room)
+            set_acuity(char, current=0.7, baseline=0.95)
+            enter_combat(char, room)
+            make_tick_effect('ethL', char, 'hot_acuity', 0.1)
+            return char
+        char = await sync_to_async(setup)()
+        cmd, msgs = run_effects_engine()
+
+        rows = await self._tick(cmd, msgs, char, 3)
+        self.assertEqual(rows, [
+            ('Your mind clears from ethL Tonic. (Acuity 0.80)', 'system')])
+        rows = await self._tick(cmd, msgs, char, 6)
+        self.assertEqual(rows, [
+            ('Your mind clears from ethL Tonic. (Acuity 0.90)', 'system')])
+
+        # Arrival: gap 0.05 <= magnitude -> stored EXACTLY, terminal once.
+        rows = await self._tick(cmd, msgs, char, 9)
+        self.assertEqual(rows, [(SETTLES_CENTER, 'system')])
+
+        # Holding at the exact 2-decimal baseline: silence, no saves.
+        await self._silent_tick_no_saves(cmd, msgs, char, 12)
+
+        current = await sync_to_async(
+            lambda: Character.objects.get(pk=char.pk).acuity_current)()
+        self.assertEqual(current, 0.95)
+
     async def test_at_baseline_from_the_start_is_silent_and_saveless(self):
         def setup():
             zone, room = make_world('ethG')

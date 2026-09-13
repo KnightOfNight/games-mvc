@@ -1622,10 +1622,19 @@ class Command(BaseCommand):
                     # terminal line at baseline, per the shift precedent.
                     old = character.acuity_current
                     diff = character.acuity_baseline - old
-                    step = min(abs(diff), magnitude) * (1 if diff >= 0 else -1)
-                    new = round(
-                        max(ACUITY_FLOOR, min(ACUITY_CEILING, old + step)), 1
-                    )
+                    if abs(diff) <= magnitude:
+                        # v26.0 (#332): arrival stores the baseline EXACTLY
+                        # — baselines are 2-decimal (the #133 band-edge rule
+                        # applied here): the 1-decimal round could never
+                        # land e.g. 0.95, so the walk never terminated and
+                        # fought Phase 2 drift forever. Covers already-at-
+                        # baseline too (new == old -> skip).
+                        new = character.acuity_baseline
+                    else:
+                        step = magnitude * (1 if diff > 0 else -1)
+                        new = round(
+                            max(ACUITY_FLOOR, min(ACUITY_CEILING, old + step)), 1
+                        )
                     if new != old:
                         character.acuity_current = new
                         await database_sync_to_async(character.save)(update_fields=['acuity_current'])
