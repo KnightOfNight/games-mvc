@@ -118,11 +118,13 @@ class LongevityRegenTests(TransactionTestCase):
             return char
         char = await sync_to_async(setup)()
 
+        # v26.1 (#70): the constant retuned 3600 → 900 — the pinned
+        # interval moves with it (the law itself is unchanged).
         interval = math.ceil(LONGEVITY_REGEN_SECS / 274)
-        self.assertEqual(interval, 14)
+        self.assertEqual(interval, 4)
 
         cmd, sent = run_regen_engine()
-        await cmd.process_effects(interval * 2)      # 28 % 14 == 0
+        await cmd.process_effects(interval * 2)      # 8 % 4 == 0
         vit, lon = await sync_to_async(get_bars)(char)
         self.assertEqual(lon, 101)
 
@@ -151,14 +153,15 @@ class LongevityRegenTests(TransactionTestCase):
         self.assertEqual(lon, 274)
 
     def test_longevity_law_arithmetic(self):
-        # The law asserted via the interval, not a 3836-iteration loop:
-        # at a 274 bar the interval is ceil(3600/274) = 14 ticks/point,
-        # so full recovery from zero spans 274 × 14 = 3836 ticks (~64
-        # min) — the LONGEVITY_REGEN_SECS promise within one interval.
+        # The law asserted via the interval, not an iteration loop: at a
+        # 274 bar the interval is ceil(900/274) = 4 ticks/point (v26.1,
+        # #70: the constant retuned 3600 → 900), so full recovery from
+        # zero spans 274 × 4 = 1096 ticks (~18 min) — the
+        # LONGEVITY_REGEN_SECS promise within one interval.
         interval = math.ceil(LONGEVITY_REGEN_SECS / 274)
-        self.assertEqual(interval, 14)
+        self.assertEqual(interval, 4)
         total_ticks = 274 * interval
-        self.assertEqual(total_ticks, 3836)
+        self.assertEqual(total_ticks, 1096)
         self.assertGreaterEqual(total_ticks, LONGEVITY_REGEN_SECS)
         self.assertLess(total_ticks, LONGEVITY_REGEN_SECS + 274)
 
