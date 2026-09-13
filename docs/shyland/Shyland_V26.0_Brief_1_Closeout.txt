@@ -219,6 +219,65 @@ STEP 5 — dot_vitality unchanged:
      said, stop and report back. Otherwise the step passes — run the
      teardown (before the bar gets low).
 
+STEP 6 — small-magnitude hot_acuity walks at two decimals (added by
+operator direction 2026-09-13 after the #332 part-2 fix):
+  1. Out of combat, run:  apply_tick_effect('hot_acuity', 0.01)
+  2. Run:  Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
+  3. Watch the pane and the acuity bar for ~60 seconds.
+     Expected: the bar climbs steadily (never flaps backwards); per-round
+     "Your mind clears from Playtest hot_acuity. (Acuity 0.7x/0.8x/...)"
+     lines with two-decimal values making real progress each round
+     (drift adds its own silent progress between rounds, so the pace is
+     faster than 0.01 per round); then exactly ONE "Your mind settles
+     back to its center."; then silence with the bar resting exactly at
+     your baseline.
+  4. If the bar ever moves away from baseline, or the value flaps, or the
+     settles line repeats, stop and report back. Otherwise the step
+     passes — run the teardown.
+
+--------------------------------------------------------------------------------
+Playtest findings ledger (2026-09-13, in-session)
+--------------------------------------------------------------------------------
+
+1. #331 (filed, open — design pipeline, V26 label): Phase 1 stacked
+   same-character components compute from stale per-row snapshots —
+   duplicate arrival/terminal lines (surfaced by this brief's terminal
+   lines) and last-writer-wins value application (pre-existing). Operator
+   ruling recorded on the issue: multiples supported, fire in application
+   order, each on a fresh read; the apply-time admission policy
+   (better-HOT-or-fail / worse-DOT-applies) is the open design question,
+   to be ruled with #330. NOT fixed in this session.
+
+2. #332 (filed + FIXED in-session, operator-ruled — two parts):
+   hot_acuity's 1-decimal rounds vs 2-decimal baselines (Feral 0.95,
+   Machinekind 1.05). Part 1 (4b682c9): arrival stores acuity_baseline
+   EXACTLY (the #133 band-edge rule applied) — pre-fix the walk never
+   terminated and fought Phase 2 drift forever. Part 2 (bdb83f3):
+   mid-walk rounds at 2 decimals (drift granularity, v24.22 display
+   precision) — pre-fix any magnitude below 0.05 was erased entirely and
+   drift progress was truncated backwards each boundary (silent
+   0.70<->0.71 flap). Suite after both parts: 967 (13 brief tests: +1
+   two-decimal-baseline exact-arrival walk, +1 small-magnitude
+   two-decimal walk). Both parts deployed to dev; part 1 confirmed in
+   play by the operator (clean 0.80 -> 0.90 -> settles -> silence, twice,
+   statelessly). Arch doc updated both times; final header hash bdb83f3.
+   Deviation from brief §5 ("no clamp math changes"), operator-ruled
+   in-session — the ruling and both fixes recorded on the issue.
+
+3. #333 (filed at operator direction, V26 label): acuity math deep dive —
+   audit every acuity computation for decimal-precision assumptions and
+   rule a single precision doctrine (three precisions have accreted:
+   1-decimal legacy rounds, 2-decimal baselines/bands/drift, v24.22
+   two-decimal display). dot_acuity and the shift branches still carry
+   1-decimal mid-walk rounds (harmless at authored 0.1 magnitudes;
+   #333 owns the question). Playtest STEP 6 added at the same direction.
+
+Process feedback applied (2026-09-13): playtest steps are written as
+explicit numbered run/expect/decision sequences — command, expected
+observation with precondition, stop-and-report vs continue fork. The §9
+recipes above were rewritten to this rule; saved to project memory for
+all future checklists.
+
 --------------------------------------------------------------------------------
 Operator playtest disposition (#170)
 --------------------------------------------------------------------------------
