@@ -1887,17 +1887,28 @@ class Command(BaseCommand):
                 changed_fields.append('vitality_current')
 
             if character.longevity_current < character.longevity_max:
-                # Interval form: longevity_max is far below its constant, so
-                # the per-tick ceil would always be 1 (the ceil trap). One
-                # point every ceil(CONSTANT / max) ticks instead; an engine
-                # restart resetting tick_number at worst delays one point by
-                # up to one interval — accepted, no persistent state.
-                interval = math.ceil(LONGEVITY_REGEN_SECS / character.longevity_max)
-                if tick_number % interval == 0:
+                if character.longevity_max >= LONGEVITY_REGEN_SECS:
+                    # Per-tick form (v26.1, #70): at or above the constant,
+                    # Vitality's shape — ceil(max / CONSTANT) points per tick.
+                    heal = math.ceil(
+                        character.longevity_max / LONGEVITY_REGEN_SECS)
                     character.longevity_current = min(
-                        character.longevity_current + 1, character.longevity_max
-                    )
+                        character.longevity_current + heal,
+                        character.longevity_max)
                     changed_fields.append('longevity_current')
+                else:
+                    # Interval form: below the constant the per-tick ceil
+                    # would always be 1 (the ceil trap). One point every
+                    # ceil(CONSTANT / max) ticks; an engine restart resetting
+                    # tick_number at worst delays one point by up to one
+                    # interval — accepted, no persistent state.
+                    interval = math.ceil(
+                        LONGEVITY_REGEN_SECS / character.longevity_max)
+                    if tick_number % interval == 0:
+                        character.longevity_current = min(
+                            character.longevity_current + 1,
+                            character.longevity_max)
+                        changed_fields.append('longevity_current')
 
             if changed_fields:
                 await save_regen(character, changed_fields)
