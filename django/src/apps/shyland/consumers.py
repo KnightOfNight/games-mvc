@@ -1552,6 +1552,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     stopped_at_full = True
                     break
 
+            # v26.1 (#70): the potion's stop-at-full mirror — longevity-only
+            # restoratives gate on a full Longevity bar the same way. A
+            # dual-restore effect (none seeded today) keeps the vitality
+            # gate's semantics; its gating rule is a future design question.
+            if (not is_heal and not was_dying
+                    and await self.effect_restores_longevity(effect_def)):
+                gate_char = await self.get_character_fresh()
+                if gate_char.longevity_current >= gate_char.longevity_max:
+                    if used == 0:
+                        await self.output('You are already at full stamina.', 'warn')
+                    stopped_at_full = True
+                    break
+
             # v24.12 (#134): the field-repair gate — component-keyed,
             # never a name match; runs before apply and consume, so a
             # refusal consumes nothing and ends the command. Order is
@@ -3625,6 +3638,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return effect_def.components.filter(
             component_type__in=('restore_vitality',
                                 'restore_vitality_percent', 'hot_vitality'),
+        ).exists()
+
+    @database_sync_to_async
+    def effect_restores_longevity(self, effect_def):
+        """v26.1 (#70): the potion's stop-at-full rule — derived from the
+        effect's own components, never a separate flag (the #61 helper's
+        law)."""
+        return effect_def.components.filter(
+            component_type__in=('restore_longevity',
+                                'restore_longevity_percent', 'hot_longevity'),
         ).exists()
 
     @database_sync_to_async
