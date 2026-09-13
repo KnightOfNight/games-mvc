@@ -77,10 +77,10 @@ Verification (brief §7)
 7.3  Manual tick-engine spot-check on dev: folded into the operator playtest
      per the brief's own terms (checklist step 1 is exactly this check).
 
-Issue #145: left open pending §7.3 via the playtest ("closes only when all
-verification steps pass" — §7.3 folds into the playtest). To be closed on the
-operator's successful playtest report. [If closed by session end, recorded
-below.]
+Issue #145: CLOSED 2026-09-13 after all verification passed — §7.3 confirmed
+by the operator in playtest step 1 (full-bar hot_vitality, zero output across
+>=4 round boundaries) and the full checklist confirmed. Closing comment on
+the issue carries the verification record.
 
 --------------------------------------------------------------------------------
 Deviations
@@ -282,6 +282,24 @@ all future checklists.
 Operator playtest disposition (#170)
 --------------------------------------------------------------------------------
 
-PENDING — recorded before session end.
+Operator reports playtest successful — all six checklist steps confirmed
+in-session (2026-09-13): step 1 silent full-bar HoT (also verification
+§7.3), step 2 single terminal at the cap with actual delta, step 3
+dot_longevity actual deltas + partial terminal at 0, step 4 hot_acuity
+exact arrival at the 2-decimal baseline (post-#332 part 1), step 5
+dot_vitality byte-unchanged, step 6 small-magnitude hot_acuity two-decimal
+walk (post-#332 part 2, the +0.04/round HoT+drift ladder verified against
+the arithmetic). Operator ran the final teardown; no playtest effects or
+definitions remain on dev.
 
-Final commit hash: recorded at session end.
+Issues closed with the disposition: #145 (founding, sole milestone member)
+and #332 (playtest-found, fixed in-session, both parts). Open handoffs to
+the design pipeline: #331 (stacked-effect staleness + admission policy,
+ruling recorded, rule with #330) and #333 (acuity math precision audit) —
+both V26-labeled.
+
+Final implementation commit: bdb83f3 (the #332 part-2 fix; also the
+architecture doc's header hash). Suite at session end: 967 green,
+in-container. Dev stack running the final build via make deploy-dev.
+This closeout completion is the last content commit before the session-end
+issues report.
