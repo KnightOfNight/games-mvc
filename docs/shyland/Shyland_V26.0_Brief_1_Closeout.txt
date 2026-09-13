@@ -127,54 +127,97 @@ Paste this prelude first, setting your character's name:
             expires_at=timezone.now() + timedelta(minutes=minutes))
         return ei
 
-Per checklist step (numbers match brief §9):
+Format rule (operator, 2026-09-13): every step is an explicit numbered
+run/expect/decision sequence — command, exact expected observation with its
+precondition, then an explicit stop-and-report vs continue fork.
 
-  1. Silent full-bar HoT (this is also verification §7.3):
-         apply_tick_effect('hot_vitality', 15)
-     with Vitality full. Watch >=3 round boundaries (~10s): no output at all.
-
-  2. HoT recovery + terminal: damage the character (one fight, or
-         Character.objects.filter(pk=CHAR.pk).update(vitality_current=40)
-     ), then out of combat:
-         apply_tick_effect('hot_vitality', 25)
-     Recovery lines each round, exactly one "Your body is whole once more.
-     (+N Vitality)", then silence while the effect stays active.
-     NOTE: out of combat, passive vitality regen also heals silently between
-     rounds, so the announced per-round deltas may vary and the final +N is
-     whatever the HoT actually applied at the cap — expected. In the unlikely
-     event regen completes the bar between round boundaries, the HoT holds
-     silently without a terminal line — that too is doctrine (change-only,
-     stateless), not a bug.
-
-  3. dot_longevity floor:
-         apply_tick_effect('dot_longevity', 40)
-     (empties a 100 bar in 3 ticks): draining lines with actual deltas, one
-     "Your stamina is bled dry. (-N Longevity)" at 0, then silence.
-     NOTE: out of combat, longevity regen restores +1 roughly every 36s; the
-     next round boundary after each regen point legitimately drains it again
-     ("... (-1 Longevity)" then the bled-dry terminal) — doctrine-correct
-     (a real change occurred). Judge the silence over the window between
-     regen points, or run this step while in combat (regen pauses).
-
-  4. hot_acuity at baseline:
-         apply_tick_effect('hot_acuity', 0.1)
-     with Acuity at baseline: silence. Then push it off baseline:
-         Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
-     Watch it walk back with per-round "Your mind clears..." lines, one
-     "Your mind settles back to its center." at baseline, silence after.
-     (Passive drift also nudges acuity silently out of combat; the walk's
-     exact numerals may be off the clean 0.1 steps — expected.)
-
-  5. dot_vitality unchanged:
-         apply_tick_effect('dot_vitality', 2)
-     Damage lines read exactly as they always have ("You take 2 damage from
-     Playtest dot_vitality.").
-
-Teardown (removes all playtest effects and their definitions):
+TEARDOWN (run between checklist steps, and at the very end):
 
     EffectInstance.objects.filter(
         definition__slug__startswith='playtest-').delete()
     EffectDefinition.objects.filter(slug__startswith='playtest-').delete()
+
+Checklist step numbers match brief §9.
+
+STEP 1 — silent full-bar HoT (this is also verification §7.3):
+  1. Move to a room with no aggressive NPCs (The Convergence works) and
+     stay out of combat.
+  2. Confirm Vitality is full (wait for regen, or run:
+         Character.objects.filter(pk=CHAR.pk).update(
+             vitality_current=CHAR.vitality_max) ).
+  3. Run:  apply_tick_effect('hot_vitality', 15)
+  4. Watch the game pane for at least 15 seconds (>=4 round boundaries).
+     Expected: no messages of any kind from the ticker.
+  5. If you see ANY "You recover ... Vitality" line while the bar is full,
+     stop and report back. If you see nothing, step passes — run the
+     teardown and continue.
+  (In a room with aggro/respawns you WILL take damage and the HoT will
+  correctly announce real heals — that is not this step; use a safe room.)
+
+STEP 2 — HoT recovery + one terminal line:
+  1. Out of combat, run:
+         Character.objects.filter(pk=CHAR.pk).update(vitality_current=40)
+  2. Run:  apply_tick_effect('hot_vitality', 500)
+     (magnitude 500 so the HoT always performs the arrival itself — with a
+     small magnitude, silent passive regen can complete the bar between
+     boundaries instead, in which case the HoT correctly holds silent and
+     no terminal line ever fires; doctrine-correct but not this step's
+     demonstration.)
+  3. Watch the pane for ~5 seconds.
+     Expected: exactly ONE "Your body is whole once more. (+N Vitality)"
+     (N = the actual gap filled), then nothing.
+  4. If the line repeats, or a "You recover ..." line appears at the full
+     bar, stop and report back. Otherwise the step passes — run the
+     teardown and continue.
+
+STEP 3 — dot_longevity floor:
+  1. Enter combat with any NPC and stay in it for this step (in combat,
+     passive longevity regen pauses; out of combat it restores +1 point
+     every ~8-36s, and the still-active DoT legitimately re-drains it with
+     a "... (-1 Longevity)" bled-dry line each time — doctrine-correct but
+     it muddies the silence check).
+  2. Run:  apply_tick_effect('dot_longevity', 40)
+  3. Watch the pane. Expected, in order:
+       a. "Your stamina drains from Playtest dot_longevity. (-40 Longevity)"
+          each round while above the floor (actual delta, category combat);
+       b. exactly ONE "Your stamina is bled dry. (-N Longevity)" on the
+          arrival tick, where N is the actual remaining amount (partial,
+          not the nominal 40, unless the bar was an exact multiple);
+       c. then silence from this effect while it remains active.
+  4. If the bled-dry line repeats while you stay in combat, or any drain
+     line shows the nominal magnitude when less was actually applied, stop
+     and report back. Otherwise the step passes — run the teardown, leave
+     combat, and continue.
+
+STEP 4 — hot_acuity at baseline (re-verified after the #332 fix):
+  1. Out of combat, wait until your Acuity has settled, then confirm it
+     equals your baseline exactly:
+         print(CHAR.acuity_current, CHAR.acuity_baseline)
+  2. Run:  apply_tick_effect('hot_acuity', 0.1)
+  3. Watch the pane for at least 15 seconds.
+     Expected: no messages at all (at baseline the effect is a no-op).
+  4. If you see any "Your mind clears ..." line, stop and report back.
+     If you see nothing, continue:
+  5. Run:  Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
+  6. Watch the pane. Expected, in order:
+       a. per-round "Your mind clears from Playtest hot_acuity.
+          (Acuity 0.80)" then "(Acuity 0.90)" (numerals may sit a
+          hundredth or two off — passive drift also nudges the value);
+       b. exactly ONE "Your mind settles back to its center.";
+       c. then silence, with the acuity bar resting exactly at your
+          baseline (not flapping).
+  7. If the settles line repeats, or clears lines continue after it, or
+     the bar oscillates, stop and report back. Otherwise the step passes —
+     run the teardown and continue.
+
+STEP 5 — dot_vitality unchanged:
+  1. Run:  apply_tick_effect('dot_vitality', 2)
+  2. Watch the pane. Expected each round:
+     "You take 2 damage from Playtest dot_vitality." — exactly the
+     pre-26.0 wording, category combat.
+  3. If the wording differs in any way from what damage ticks have always
+     said, stop and report back. Otherwise the step passes — run the
+     teardown (before the bar gets low).
 
 --------------------------------------------------------------------------------
 Operator playtest disposition (#170)
