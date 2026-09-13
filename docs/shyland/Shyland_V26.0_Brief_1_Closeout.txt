@@ -1,0 +1,305 @@
+2026-09-12 — Implementation session start — Brief: Shyland_V26.0_Brief_1_Effect_Tick_Hygiene.md — Branch: version_26_0
+
+================================================================================
+V26.0 Brief 1 — Effect Tick Hygiene (#145) — Closeout Report
+================================================================================
+
+Session type: implementation. Worktree: ../games-mvc-version_26_0 on branch
+version_26_0. Pre-flight: local dev target confirmed (exit 0), posture
+coherent. Brief verified verbatim at branch tip (unchanged since its design
+commit d60fdc2). Technical pre-flight (#252): all load-bearing claims verified
+against the code before any edit — version constant + pin test location, the
+six dot/hot branch shapes and wordings, the shift-branch new!=old pattern and
+terminal lines, per-branch message categories. Zero mismatches.
+
+--------------------------------------------------------------------------------
+Step log (every step committed and pushed at its boundary)
+--------------------------------------------------------------------------------
+
+Step 0  d587f74  Closeout stub — work-has-started signal.
+§2      ef7266d  Version start: SHYLAND_VERSION 25.17 -> 26.0-DEV, pin test
+                 (tests/test_b2_amendment1.py:122) moved same commit; followed
+                 by the version-start `make deploy-dev` (migrate: no-op).
+§3–§6   5c17df8  The fix + tests. Five branches in run_tick_engine.py Phase 1
+                 (dot_longevity, dot_acuity, hot_vitality, hot_longevity,
+                 hot_acuity) rewritten onto the shift-branch pattern:
+                 compute old/new (clamp math untouched); new == old -> no
+                 save, no status build, no announcement; new != old -> save +
+                 announce the ACTUAL applied delta; boundary arrival gets one
+                 stateless terminal line instead of the ordinary line.
+                 dot_vitality byte-unchanged; both shift branches untouched.
+                 New tests/test_v26_0_brief1.py (11 tests).
+§7      (in-session) Verification — see below.
+§8      (in-session) `make deploy-dev` from the worktree — dev stack running
+                 the brief build.
+§10     49a035c  Architecture doc: Shyland_Architecture_v25.md renamed (git mv
+                 = git rm + add) to Shyland_Architecture_v26.md per the N.0
+                 standing rule; stamp 26.0; header hash moved to 5c17df8
+                 (runtime behavior change); v26.0 header entry added; §4.9
+                 gains the uniform dot/hot doctrine paragraph (#145/#133
+                 provenance) and the #133 paragraph's stale "not-yet-migrated
+                 branches" tail updated; §6 doctrine entry updated to
+                 family-wide.
+
+--------------------------------------------------------------------------------
+Terminal-line wordings (authored at fix time per the standing creative policy
+recorded on #145; register matched to the shift branches')
+--------------------------------------------------------------------------------
+
+  dot_longevity  at 0              "Your stamina is bled dry. (-N Longevity)"   [combat]
+  dot_acuity     at ACUITY_FLOOR   "Your focus is torn to nothing."             [combat]
+  hot_vitality   at vitality_max   "Your body is whole once more. (+N Vitality)" [system]
+  hot_longevity  at longevity_max  "Your stamina returns in full. (+N Longevity)" [system]
+  hot_acuity     at acuity_baseline "Your mind settles back to its center."     [system]
+
+Authoring note (recorded, not a deviation): the three integer-bar terminal
+lines carry the actual-delta parenthetical. Rationale: for those branches a
+partial application (actual < nominal) occurs exactly and only on the arrival
+tick — the clamp only bites at the boundary — so the brief's §6 requirements
+"arrival announces the terminal line" and "partial application announces the
+partial delta, not the nominal" are the same tick; the delta parenthetical on
+the terminal line satisfies both. The two acuity terminals are bare, exactly
+like the shift branches', since their ordinary lines announce the resulting
+value (already actual) rather than a delta.
+
+--------------------------------------------------------------------------------
+Verification (brief §7)
+--------------------------------------------------------------------------------
+
+7.1  Full in-container suite (path form, docker exec in the django
+     container): Ran 965 tests ... OK. 954 pre-existing (all passing,
+     zero edited beyond the §2 pin-test stamp move) + 11 new.
+7.2  Grep proof: exactly one save(update_fields=...) per fixed branch, each
+     strictly inside its `if new != old:` guard (awk-scoped grep over the
+     five-branch region; no unconditional save remains on any no-change
+     path). The hold-tick tests additionally spy Character.save and assert
+     zero calls.
+7.3  Manual tick-engine spot-check on dev: folded into the operator playtest
+     per the brief's own terms (checklist step 1 is exactly this check).
+
+Issue #145: CLOSED 2026-09-13 after all verification passed — §7.3 confirmed
+by the operator in playtest step 1 (full-bar hot_vitality, zero output across
+>=4 round boundaries) and the full checklist confirmed. Closing comment on
+the issue carries the verification record.
+
+--------------------------------------------------------------------------------
+Deviations
+--------------------------------------------------------------------------------
+
+None. No model change, no migration (head stays 0057; deploy migrate was a
+no-op), no seed change, no client change, no GDD change. The only permitted
+existing-test edit was the §2 pin move.
+
+--------------------------------------------------------------------------------
+PENDING DEPLOY-TIME ACTIONS
+--------------------------------------------------------------------------------
+
+None. Code-only release; nothing for the closeout tail beyond the ordinary
+`make deploy-prod`.
+
+--------------------------------------------------------------------------------
+Operator playtest recipes (brief §9 — dev stack, ready now)
+--------------------------------------------------------------------------------
+
+Effects are applied via the Django shell (`make shell` from the worktree).
+Paste this prelude first, setting your character's name:
+
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.shyland.models import (Character, EffectDefinition,
+        EffectComponent, EffectInstance, EffectComponentInstance)
+
+    CHAR = Character.objects.get(name__iexact='YOUR-CHARACTER-NAME')
+
+    def apply_tick_effect(ctype, magnitude, minutes=10):
+        d, _ = EffectDefinition.objects.get_or_create(
+            slug=f"playtest-{ctype.replace('_', '-')}",
+            defaults={'name': f'Playtest {ctype}'})
+        c, _ = EffectComponent.objects.get_or_create(
+            definition=d, component_type=ctype, order=0,
+            defaults={'magnitude_base': magnitude, 'magnitude_scaling': 0.0,
+                      'duration_base': 600.0, 'duration_scaling': 0.0})
+        ei = EffectInstance.objects.create(
+            definition=d, target=CHAR, mk_tier=1, is_active=True)
+        EffectComponentInstance.objects.create(
+            effect_instance=ei, component=c, magnitude=magnitude,
+            is_active=True,
+            expires_at=timezone.now() + timedelta(minutes=minutes))
+        return ei
+
+Format rule (operator, 2026-09-13): every step is an explicit numbered
+run/expect/decision sequence — command, exact expected observation with its
+precondition, then an explicit stop-and-report vs continue fork.
+
+TEARDOWN (run between checklist steps, and at the very end):
+
+    EffectInstance.objects.filter(
+        definition__slug__startswith='playtest-').delete()
+    EffectDefinition.objects.filter(slug__startswith='playtest-').delete()
+
+Checklist step numbers match brief §9.
+
+STEP 1 — silent full-bar HoT (this is also verification §7.3):
+  1. Move to a room with no aggressive NPCs (The Convergence works) and
+     stay out of combat.
+  2. Confirm Vitality is full (wait for regen, or run:
+         Character.objects.filter(pk=CHAR.pk).update(
+             vitality_current=CHAR.vitality_max) ).
+  3. Run:  apply_tick_effect('hot_vitality', 15)
+  4. Watch the game pane for at least 15 seconds (>=4 round boundaries).
+     Expected: no messages of any kind from the ticker.
+  5. If you see ANY "You recover ... Vitality" line while the bar is full,
+     stop and report back. If you see nothing, step passes — run the
+     teardown and continue.
+  (In a room with aggro/respawns you WILL take damage and the HoT will
+  correctly announce real heals — that is not this step; use a safe room.)
+
+STEP 2 — HoT recovery + one terminal line:
+  1. Out of combat, run:
+         Character.objects.filter(pk=CHAR.pk).update(vitality_current=40)
+  2. Run:  apply_tick_effect('hot_vitality', 500)
+     (magnitude 500 so the HoT always performs the arrival itself — with a
+     small magnitude, silent passive regen can complete the bar between
+     boundaries instead, in which case the HoT correctly holds silent and
+     no terminal line ever fires; doctrine-correct but not this step's
+     demonstration.)
+  3. Watch the pane for ~5 seconds.
+     Expected: exactly ONE "Your body is whole once more. (+N Vitality)"
+     (N = the actual gap filled), then nothing.
+  4. If the line repeats, or a "You recover ..." line appears at the full
+     bar, stop and report back. Otherwise the step passes — run the
+     teardown and continue.
+
+STEP 3 — dot_longevity floor:
+  1. Enter combat with any NPC and stay in it for this step (in combat,
+     passive longevity regen pauses; out of combat it restores +1 point
+     every ~8-36s, and the still-active DoT legitimately re-drains it with
+     a "... (-1 Longevity)" bled-dry line each time — doctrine-correct but
+     it muddies the silence check).
+  2. Run:  apply_tick_effect('dot_longevity', 40)
+  3. Watch the pane. Expected, in order:
+       a. "Your stamina drains from Playtest dot_longevity. (-40 Longevity)"
+          each round while above the floor (actual delta, category combat);
+       b. exactly ONE "Your stamina is bled dry. (-N Longevity)" on the
+          arrival tick, where N is the actual remaining amount (partial,
+          not the nominal 40, unless the bar was an exact multiple);
+       c. then silence from this effect while it remains active.
+  4. If the bled-dry line repeats while you stay in combat, or any drain
+     line shows the nominal magnitude when less was actually applied, stop
+     and report back. Otherwise the step passes — run the teardown, leave
+     combat, and continue.
+
+STEP 4 — hot_acuity at baseline (re-verified after the #332 fix):
+  1. Out of combat, wait until your Acuity has settled, then confirm it
+     equals your baseline exactly:
+         print(CHAR.acuity_current, CHAR.acuity_baseline)
+  2. Run:  apply_tick_effect('hot_acuity', 0.1)
+  3. Watch the pane for at least 15 seconds.
+     Expected: no messages at all (at baseline the effect is a no-op).
+  4. If you see any "Your mind clears ..." line, stop and report back.
+     If you see nothing, continue:
+  5. Run:  Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
+  6. Watch the pane. Expected, in order:
+       a. per-round "Your mind clears from Playtest hot_acuity.
+          (Acuity 0.80)" then "(Acuity 0.90)" (numerals may sit a
+          hundredth or two off — passive drift also nudges the value);
+       b. exactly ONE "Your mind settles back to its center.";
+       c. then silence, with the acuity bar resting exactly at your
+          baseline (not flapping).
+  7. If the settles line repeats, or clears lines continue after it, or
+     the bar oscillates, stop and report back. Otherwise the step passes —
+     run the teardown and continue.
+
+STEP 5 — dot_vitality unchanged:
+  1. Run:  apply_tick_effect('dot_vitality', 2)
+  2. Watch the pane. Expected each round:
+     "You take 2 damage from Playtest dot_vitality." — exactly the
+     pre-26.0 wording, category combat.
+  3. If the wording differs in any way from what damage ticks have always
+     said, stop and report back. Otherwise the step passes — run the
+     teardown (before the bar gets low).
+
+STEP 6 — small-magnitude hot_acuity walks at two decimals (added by
+operator direction 2026-09-13 after the #332 part-2 fix):
+  1. Out of combat, run:  apply_tick_effect('hot_acuity', 0.01)
+  2. Run:  Character.objects.filter(pk=CHAR.pk).update(acuity_current=0.70)
+  3. Watch the pane and the acuity bar for ~60 seconds.
+     Expected: the bar climbs steadily (never flaps backwards); per-round
+     "Your mind clears from Playtest hot_acuity. (Acuity 0.7x/0.8x/...)"
+     lines with two-decimal values making real progress each round
+     (drift adds its own silent progress between rounds, so the pace is
+     faster than 0.01 per round); then exactly ONE "Your mind settles
+     back to its center."; then silence with the bar resting exactly at
+     your baseline.
+  4. If the bar ever moves away from baseline, or the value flaps, or the
+     settles line repeats, stop and report back. Otherwise the step
+     passes — run the teardown.
+
+--------------------------------------------------------------------------------
+Playtest findings ledger (2026-09-13, in-session)
+--------------------------------------------------------------------------------
+
+1. #331 (filed, open — design pipeline, V26 label): Phase 1 stacked
+   same-character components compute from stale per-row snapshots —
+   duplicate arrival/terminal lines (surfaced by this brief's terminal
+   lines) and last-writer-wins value application (pre-existing). Operator
+   ruling recorded on the issue: multiples supported, fire in application
+   order, each on a fresh read; the apply-time admission policy
+   (better-HOT-or-fail / worse-DOT-applies) is the open design question,
+   to be ruled with #330. NOT fixed in this session.
+
+2. #332 (filed + FIXED in-session, operator-ruled — two parts):
+   hot_acuity's 1-decimal rounds vs 2-decimal baselines (Feral 0.95,
+   Machinekind 1.05). Part 1 (4b682c9): arrival stores acuity_baseline
+   EXACTLY (the #133 band-edge rule applied) — pre-fix the walk never
+   terminated and fought Phase 2 drift forever. Part 2 (bdb83f3):
+   mid-walk rounds at 2 decimals (drift granularity, v24.22 display
+   precision) — pre-fix any magnitude below 0.05 was erased entirely and
+   drift progress was truncated backwards each boundary (silent
+   0.70<->0.71 flap). Suite after both parts: 967 (13 brief tests: +1
+   two-decimal-baseline exact-arrival walk, +1 small-magnitude
+   two-decimal walk). Both parts deployed to dev; part 1 confirmed in
+   play by the operator (clean 0.80 -> 0.90 -> settles -> silence, twice,
+   statelessly). Arch doc updated both times; final header hash bdb83f3.
+   Deviation from brief §5 ("no clamp math changes"), operator-ruled
+   in-session — the ruling and both fixes recorded on the issue.
+
+3. #333 (filed at operator direction, V26 label): acuity math deep dive —
+   audit every acuity computation for decimal-precision assumptions and
+   rule a single precision doctrine (three precisions have accreted:
+   1-decimal legacy rounds, 2-decimal baselines/bands/drift, v24.22
+   two-decimal display). dot_acuity and the shift branches still carry
+   1-decimal mid-walk rounds (harmless at authored 0.1 magnitudes;
+   #333 owns the question). Playtest STEP 6 added at the same direction.
+
+Process feedback applied (2026-09-13): playtest steps are written as
+explicit numbered run/expect/decision sequences — command, expected
+observation with precondition, stop-and-report vs continue fork. The §9
+recipes above were rewritten to this rule; saved to project memory for
+all future checklists.
+
+--------------------------------------------------------------------------------
+Operator playtest disposition (#170)
+--------------------------------------------------------------------------------
+
+Operator reports playtest successful — all six checklist steps confirmed
+in-session (2026-09-13): step 1 silent full-bar HoT (also verification
+§7.3), step 2 single terminal at the cap with actual delta, step 3
+dot_longevity actual deltas + partial terminal at 0, step 4 hot_acuity
+exact arrival at the 2-decimal baseline (post-#332 part 1), step 5
+dot_vitality byte-unchanged, step 6 small-magnitude hot_acuity two-decimal
+walk (post-#332 part 2, the +0.04/round HoT+drift ladder verified against
+the arithmetic). Operator ran the final teardown; no playtest effects or
+definitions remain on dev.
+
+Issues closed with the disposition: #145 (founding, sole milestone member)
+and #332 (playtest-found, fixed in-session, both parts). Open handoffs to
+the design pipeline: #331 (stacked-effect staleness + admission policy,
+ruling recorded, rule with #330) and #333 (acuity math precision audit) —
+both V26-labeled.
+
+Final implementation commit: bdb83f3 (the #332 part-2 fix; also the
+architecture doc's header hash). Suite at session end: 967 green,
+in-container. Dev stack running the final build via make deploy-dev.
+This closeout completion is the last content commit before the session-end
+issues report.
