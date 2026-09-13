@@ -263,6 +263,38 @@ class HotAcuityTests(TickHygieneBase):
             lambda: Character.objects.get(pk=char.pk).acuity_current)()
         self.assertEqual(current, 0.95)
 
+    async def test_small_magnitude_walks_at_two_decimals(self):
+        # #332 part 2: mid-walk rounds to 2 decimals — the old 1-decimal
+        # round erased any magnitude below 0.05 (round(0.90+0.01, 1) stayed
+        # 0.90 forever) and truncated drift's progress backwards.
+        def setup():
+            zone, room = make_world('ethM')
+            char = make_character('ethM', room)
+            set_acuity(char, current=0.90, baseline=0.95)
+            enter_combat(char, room)
+            make_tick_effect('ethM', char, 'hot_acuity', 0.01)
+            return char
+        char = await sync_to_async(setup)()
+        cmd, msgs = run_effects_engine()
+
+        # Four ordinary ticks: real 0.01 progress each, two-decimal renders.
+        for n, expected in ((3, '0.91'), (6, '0.92'), (9, '0.93'), (12, '0.94')):
+            rows = await self._tick(cmd, msgs, char, n)
+            self.assertEqual(rows, [
+                (f'Your mind clears from ethM Tonic. (Acuity {expected})',
+                 'system')])
+
+        # Arrival lands the exact 2-decimal baseline: terminal, once.
+        rows = await self._tick(cmd, msgs, char, 15)
+        self.assertEqual(rows, [(SETTLES_CENTER, 'system')])
+
+        # Holding: silence, no saves.
+        await self._silent_tick_no_saves(cmd, msgs, char, 18)
+
+        current = await sync_to_async(
+            lambda: Character.objects.get(pk=char.pk).acuity_current)()
+        self.assertEqual(current, 0.95)
+
     async def test_at_baseline_from_the_start_is_silent_and_saveless(self):
         def setup():
             zone, room = make_world('ethG')

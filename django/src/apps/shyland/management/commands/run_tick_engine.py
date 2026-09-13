@@ -1631,9 +1631,15 @@ class Command(BaseCommand):
                         # baseline too (new == old -> skip).
                         new = character.acuity_baseline
                     else:
+                        # v26.0 (#332, part 2): mid-walk rounds to 2 decimals
+                        # — drift's granularity and the v24.22 display
+                        # precision. The old 1-decimal round erased any
+                        # magnitude below 0.05 (round(0.70+0.01, 1) == 0.70)
+                        # and truncated drift's 2-decimal progress backwards
+                        # every boundary.
                         step = magnitude * (1 if diff > 0 else -1)
                         new = round(
-                            max(ACUITY_FLOOR, min(ACUITY_CEILING, old + step)), 1
+                            max(ACUITY_FLOOR, min(ACUITY_CEILING, old + step)), 2
                         )
                     if new != old:
                         character.acuity_current = new
