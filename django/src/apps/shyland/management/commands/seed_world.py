@@ -2563,6 +2563,12 @@ class Command(BaseCommand):
     }
     CART_CONSUMABLE_DEFAULT_PRICE = 15
 
+    # v26.2 (#330): consumables the carts do NOT stock — the admission
+    # playtest salve is shell-gift only by brief directive (no vendor
+    # entries, no loot entries). The one carve-out to the #43
+    # every-consumable rule; the seed verification honors the same set.
+    CART_STOCK_EXCLUDED = {'weak-mending-salve'}
+
     # v19 brief 10 Part 5: one-sentence listening hint appended to each of
     # the six mapped NPCs' descriptions. Aldric and Info Prime keep their
     # brief 9 descriptions unchanged, per this brief's explicit ruling.
@@ -3135,6 +3141,7 @@ class Command(BaseCommand):
         # entries present).
         consumable_slugs = set(
             ItemDefinition.objects.filter(item_type='consumable')
+            .exclude(slug__in=self.CART_STOCK_EXCLUDED)
             .values_list('slug', flat=True)
         )
         for cart_slug in sorted(self.CONVERGENCE_CART_VENDORS):
@@ -5732,6 +5739,10 @@ class Command(BaseCommand):
             # listed here so the type-wide consumable back-fill below
             # can't overwrite the authored 15.
             'repair-kit': 15,
+            # v26.2 (#330): the admission-test salve at the draught
+            # standard — listed for the same reason (seeded later by
+            # _seed_curses; the filter().update() no-ops on run one).
+            'weak-mending-salve': 15,
             # v24.21 (#201): the floored-proc pair — authored pricing
             # (ruled 2026-08-05). Listing here also removes them from the
             # type-wide 25 back-fill's reach.
@@ -5852,6 +5863,7 @@ class Command(BaseCommand):
         # standard authored price.
         consumables = list(
             ItemDefinition.objects.filter(item_type=ItemDefinition.CONSUMABLE)
+            .exclude(slug__in=self.CART_STOCK_EXCLUDED)
         )
         for npc_slug in sorted(self.CONVERGENCE_CART_VENDORS):
             npc = NpcDefinition.objects.get(slug=npc_slug)
