@@ -256,35 +256,65 @@ Legendary and Artifact items cannot be crafted — only found (Legendary) or gra
 
 **Artifact items are categorically different from other rarities.** An Artifact is a one-of-a-kind item that exists nowhere else in the game — it has a proper name, a lore entry, and properties that do not follow the standard item generation rules. Artifacts are created by hand, one at a time, for specific purposes or players. The Artifact rarity tier is reserved for these items exclusively.
 
-### 6.7 Cursed Items
+### 6.7 Cursed Items — The Curse Engine (v26.2, pending implementation)
 
-Some items carry a hidden curse. The curse is not visible in the item's description — nothing reveals it before the item is equipped, unless:
+Some items carry a hidden curse. The full engine is ruled on #297 (the Q1–Q7 system rulings) and #330 (the engine shape set); the apply-time admission doctrine its ticking components ride is Section 6.9's admission policy (#331). The engine ships in v26.2 with acquisition **admin-only**; curses go live in the world — generation-time drops, the `cleanse` service, presence detection — in the arc's Release B (#297).
 
-- A player has a curse-detection skill (available in the Cross-Origin utility tree)
-- A player pays an NPC service to identify the item (a sage, a tech-scanner, a witch doctor depending on genre)
+#### Identity — the latent curse
 
-**On equipping a cursed item:**
+- **Every cursed instance knows its curse from birth.** A nullable FK on the instance (`latent_curse` → the curse's `EffectDefinition`) is rolled **once at generation**; one curse per item. It is distinct from `active_curse`, the live `EffectInstance` once the trap has sprung.
+- **Candidate pools are authored per item definition** (a weighted through-model, `CurseCandidate`). Low-level items carry a pool of one — same make/model/zone → same curse, so a curse can be the signature of a make or a place. High-tier items may carry several candidates ranging from very bad to very very bad, with weight making the worst the rarest — a gamble of unknown depth.
+- **Curses are limited to the higher-rarity items bosses drop.** Pools attach only to definitions appearing in boss/world-boss loot tables, and the generation-time roll fires only when the rolled instance rarity is **Rare or above**. (The admin gifting path may bypass the rarity gate for testing.)
+- A curse `EffectDefinition` is marked as such (`is_curse`) and is built from **real components** — the cuts, drains, and multipliers of Section 6.9. The old `curse_generic` placeholder type is retired in place.
 
-- The curse activates immediately
-- The player sees the curse effect described in the same terms used for any other effect application
-- The item cannot be unequipped until the curse is removed
+#### The trap — equipping springs it
 
-**Curse removal:**
+- **The equip is never refused for being cursed, and soulbind fires as normal** — equipping a cursed item is also a permanent bind. The trap functioning is the design.
+- The mundane transactional line prints first (`You equip …`), **then the world turns**: the curse's authored apply lore — one vivid line up to a full vision paragraph, per curse — renders as narration (value-color, ambient, unattributed), one output line per authored line. The theater is private; the room sees nothing.
+- In the same motion the machinery lands: the curse applies as a live `EffectInstance` at the **item's** Mk tier (curse magnitudes scale with the item — a Mk 5 item's curse bites harder), `active_curse` is populated, and `curse_identified` is set — **springing the trap is the identification**.
+- The curse application **bypasses every admission gate** (Section 6.9): the lane gate exempts curses in both directions, and the same-definition replace check is skipped — two cursed items carrying the same curse each spring their own independent instance, and both run.
 
-- Warden ability
-- NPC removal service (currency cost)
-- Specific consumable
-- Timeout — curses may have an optional duration after which they lift naturally
+#### Lifecycle — a curse ends once, and the item comes out clean
 
-**Curse effects draw from the shared effect vocabulary.** A curse is an EffectInstance applied to the character when the item is equipped. The same effect types used by combat abilities and consumables are used by curses — this makes the world feel coherent. A Warden removing a curse is the same mechanical operation as a Warden dispelling a combat debuff.
+- **Duration is a property of the curse itself.** Low-level curses expire on their own (the Z01 tier: single-digit minutes — a "nice first experience"); high-level curses have **no expiry** and require remediation, and the quality of the cursed item is what makes remediation worth it.
+- **Every end-of-curse cleans the instance, whatever the cause** — expiry, curse-caused death, admin teardown, and (Release B) cleansing: `is_cursed` and `latent_curse` clear, the player equips and unequips at leisure, and no re-equip ever re-applies it — one curse life per instance. All reversible components reverse exactly (stat cuts restore the stored delta; bar cuts restore through the bar-law rescale).
+- **The item's description memorializes the prior curse.** Each curse carries authored memorial text; at teardown it is stamped onto the instance and appended as a closing paragraph to the item's description — the item remembers.
+- While the curse is live, unequip is refused (the standing guard) — and therefore the item cannot be sold: the curse keeps its teeth for free.
+- `curse_identified` stays set after the clean — a historical fact; display already keys on `is_cursed AND curse_identified`.
 
-**Curse magnitude and duration are configurable independently of each other.** A combat-applied curse might do heavy damage per tick for 15 seconds. The same curse on a ring might do a small, persistent drain that is merely annoying in normal play but compounds dangerously in prolonged combat. The effect vocabulary supports this — magnitude and duration are set at application time, not fixed on the effect definition.
+#### Death semantics — the source is the controlling factor
 
-**Curse state on the item instance:**
+- **Curse-caused death ends the curse.** The curse's own drain carries the character to the standard fall and death; the item comes out clean and is yours to keep forever — trial by ordeal.
+- **Death by any other cause leaves the curse standing.** Curse effects are exempt from the dying/death effect-cancellation that clears everything else; the item is still equipped and still cursed through respawn. A persisting curse never suspends: its ticks on an emptied bar are no-ops, its max-cuts stay in force (the respawn refill fills to the *cut* max), and a persisting DoT-to-death resumes draining and will eventually win — at which point *that* death is curse-caused and frees the item.
+- With multiple curses active, only the curse that caused the fall ends; the others ride through.
+- General law: **a curse lives exactly as long as its source does** — item-borne curses while the item bears them. This deliberately leaves room for player-applied curses by other means someday, governing their own persistence.
 
-- `is_cursed` — whether this specific copy carries a curse
-- `curse_identified` — whether the player has had it identified before equipping
-- Curse status is never revealed to the player until equipped or identified. The inventory command never shows curse indicators on unidentified items.
+#### Curse families
+
+- **Percent stat cuts** — a straight fractional cut to a stat (e.g. 50% of STR), reversed exactly at curse end.
+- **Percent bar cuts** — a fractional cut to `vitality_max` or `longevity_max`, applied and reversed through the standing bar-law rescale (fill fraction invariant; nothing refills). Acuity is excluded — band identity, not a fuel tank.
+- **Damage-output and armor-value reduction** — multipliers read at the two combat points (Section 5.6): outgoing damage scaled down, TAV scaled down before the armor curve. Multiple actives multiply.
+- **Over-time drains and combinations** — ordinary dots and multi-component sets from the shared vocabulary.
+- **The two signature shapes:** **DoT-to-death** — an authored no-expiry vitality drain, not a special type: it kills you, the curse ends, and the item is yours forever sans curse. **The floor-hold** — drains to an authored hold point (a fraction of max — "almost dead," authorable per curse; a crueler curse pins lower) and pins there: heals cannot raise the bar above the hold, the drain never takes it below, and outside damage still can.
+
+#### Knowledge
+
+- **No pre-equip detection in v26: the only way to find a curse is to equip the item.** No divination service, no detection fee, no skill — cheap universal detection would mean nobody ever springs the trap, and the gamble *is* the system. Z01's expiring curses are deliberately safe to learn on.
+- The display law stands: curse status is hidden everywhere — inventory shows no indicator — except `examine`, which reveals only when `is_cursed AND curse_identified`: the curse's name, its time remaining (`permanent` for no-expiry), and its description.
+- Release B adds the one sanctioned presence check: the cleanse NPCs' separate paid sweep — *that* a carried item is cursed and which one, never what it does. Sirius's nose stays outside both rules, whim-gated (#259).
+
+#### Removal
+
+- **Only an NPC can cleanse — never a potion or consumable** (Release B, #297: the `cleanse` service, priced by the curse itself, placed across the world). Low-level expiring curses may simply be waited out.
+- Admin containment (v25.7, `sudo` unequip/removal) remains, now routed through the shared teardown — ending the live effect *and* cleaning the latent flag.
+
+#### Acquisition staging
+
+- **v26.2 (Release A): admin-only.** The shell helper gains an explicit force-curse path — pool roll by default, or a named curse override (how the high-tier test curses are gifted, and how playtests pin a specific curse). The wild generation-time roll ships wired but **dormant** — zero live drops.
+- **Seed:** five real Z01 expiring-tier curses covering the families (a stat cut, a bar cut, a short DoT, a damage-or-armor cut, a combination — never the lethal signatures), plus three high-tier test curses (a DoT-to-death, a floor-hold, a no-expiry combination) belonging to **no pool** — unreachable in live generation until Z02+ authors them in.
+- **Release B (#297)** wires the live chance on `is_cursed_template` definitions.
+
+**Curse state on the item instance:** `latent_curse` (which curse springs — set at generation, cleared at curse end), `active_curse` (the live effect once sprung), `is_cursed`, `curse_identified`, and the memorial description field.
 
 ### 6.8 Item Identification
 
@@ -322,11 +352,11 @@ This is intended for one-of-a-kind Artifacts whose true nature is a permanent se
 
 #### The Identification Service (Future)
 
-The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **curses and deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12.
+The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12. **Curse detection is not in its scope (v26.2, pending implementation):** curse knowledge follows Section 6.7's doctrine — equipping is the identification, and the only sanctioned pre-equip check is the cleanse NPCs' presence sweep (Release B).
 
-#### Interaction with Curses
+#### Interaction with Curses (v26.2, pending implementation)
 
-An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; only the identification service (or curse-detection skill) reveals a curse before equipping. Without that, equipping a cursed item is a risk the player takes knowingly.
+An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; **nothing reveals what a curse does before it springs** — equipping a cursed item is a gamble the player takes with open eyes, and springing the trap is the identification (Section 6.7). Release B's presence sweep can say *that* a carried item is cursed, never what the curse does.
 
 ### 6.9 The Effect System
 
@@ -334,13 +364,14 @@ All temporary and persistent effects in Shyland — consumable effects, curse ef
 
 #### Model Structure
 
-**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds).
+**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds). *(v26.2, pending implementation)* Curse definitions add three fields: an `is_curse` marker, the authored apply lore (the equip-time theater, Section 6.7), and the authored memorial text (stamped onto the instance at curse end).
 
 **EffectComponent** — defines one behavioral unit within an `EffectDefinition`. Each component has a type, optional stat target (for `stat_bonus`/`stat_penalty`), and scaling parameters:
 
 - `magnitude_base` + `magnitude_scaling` — scales with source Mk tier at application time
 - `duration_base` + `duration_scaling` — scales with source Mk tier at application time
 - `order` — controls application order within a definition
+- *(v26.2, pending implementation)* a nullable **second magnitude pair** (`magnitude2_base` + `magnitude2_scaling`) for types needing two authored numbers (the floor-hold's hold point; every other type ignores it), and a **`no_expiry`** boolean — such components create instances with no expiry timestamp and tick until their effect ends by other means (`duration == 0` keeps meaning instantaneous; no sentinel overloading)
 
 Scaling formula: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)` and `duration = duration_base + (duration_scaling × mk_tier)`. The Mk tier is always the source's (the item or NPC applying the effect) — never the target's.
 
@@ -374,17 +405,36 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 |`shift_acuity_low`  |Duration, ticking  |Pushes Acuity downward per combat round              |
 |`stat_bonus`        |Duration, once     |Applies stat delta on creation; reverses on expiry   |
 |`stat_penalty`      |Duration, once     |Applies stat delta on creation; reverses on expiry   |
-|`curse_generic`     |Duration, state    |Blocks unequip until removed                         |
+|`curse_generic`     |Duration, state    |**Retired in place (v26.2)** — curses are built from real components; the choice row remains, nothing seeds it |
 |`durability_restore`|Instantaneous      |Deferred — placeholder response only                 |
+
+*(v26.2, pending implementation — the curse-family types; working names, pinned at brief time:)*
+
+|Type                |Category           |Description                                          |
+|--------------------|-------------------|-----------------------------------------------------|
+|`stat_cut_percent`  |Duration, once     |Cuts a stat by a fraction; the flat delta is computed and stored at apply time and reversed exactly at end (no drift if level-ups move the base mid-effect)|
+|`cut_vitality_max`  |Duration, once     |Cuts `vitality_max` by a fraction via the bar-law rescale; reversed through the same rescale at end|
+|`cut_longevity_max` |Duration, once     |As above, for `longevity_max`                        |
+|`damage_cut`        |Duration, passive  |Multiplier scaling down outgoing damage, read at the combat damage term (Section 5.6); multiple actives multiply|
+|`armor_cut`         |Duration, passive  |Multiplier scaling down TAV before the armor curve (Section 5.6); multiple actives multiply|
+|`floor_hold_vitality`|Duration, ticking |Drains per round (magnitude) toward an authored hold point (second magnitude pair, fraction of max), then pins: heals never raise the bar above the hold, the drain never takes it below, outside damage still can|
 
 The vocabulary grows as content grows — new component types are additive.
 
-#### Reapplication
+#### Reapplication and Admission (v26.2, pending implementation — #331)
 
-When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
+**Same-definition reapplication (the standing rule, checked first).** When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
 
-- Incoming Mk tier ≥ existing Mk tier → reset: deactivate the existing instance and all its component instances, then create fresh ones at the new Mk tier
-- Incoming Mk tier < existing Mk tier → silently ignored; no message sent
+- Incoming Mk tier ≥ existing Mk tier → reset: deactivate the existing instance and all its component instances, then create fresh ones at the new Mk tier (refresh + upgrade)
+- Incoming Mk tier < existing Mk tier → refused
+
+**Cross-definition admission (the lane gate).** Different definitions contending for the same bar are governed per **(direction, bar) lane** — the six dot/hot lanes (`dot`/`hot` × Vitality/Longevity/Acuity). A DoT never gates a HoT and vice versa (the poison-vs-healing race is legitimate gameplay); different bars never gate each other; shifts and stat effects coexist freely, ungated.
+
+- **"Better"/"worse" is per-tick magnitude — a strict comparison, duration-blind.** A HoT is admitted only if strictly stronger per tick than every active effect in its lane; a DoT is admitted only if strictly worse. An equal effect is refused in both directions — no free duration-extension through the side door.
+- **Admission means JOIN, not replace.** The admitted effect runs alongside the existing ones; a lane's stack builds only by climbing. Stacked effects genuinely stack — multiple HoTs heal faster, multiple DoTs kill faster.
+- **Stacked effects fire in apply order, each against a fresh read of the character's true state** (the #331 staleness fix): applications are cumulative, and a tick that changes nothing is genuinely silent under the Section-wide announcement doctrine.
+- **Curses bypass the gate in both directions** (Section 6.7): a curse always lands regardless of the lane, and a live curse component never blocks an ordinary effect's admission.
+- **Refusal surfacing:** a player self-application refused by the gate **keeps the consumable** — nothing is spent — with a warn-layer message naming the stronger effect already running (this also converts the old silently-spent same-definition lower-Mk refusal to kept-plus-warn). A refused NPC proc is silent: the attack line simply doesn't name the effect.
 
 #### Expiry Messages
 
