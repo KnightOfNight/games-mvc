@@ -28,7 +28,7 @@ from .command_grammar import (
     RARITY_RANK, Resolution, complete as grammar_complete,
     entry_display_name, oldest_first, resolve,
 )
-from .effect_utils import compose_use_sentence
+from .effect_utils import EffectRefused, compose_use_sentence
 from .envelope import envelope_ts
 from . import loot_utils
 from .loot_utils import sweep_corpses
@@ -1601,7 +1601,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         stopped_fulfilled = True
                     break
 
-            pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            # v26.2 (#331): a refused application keeps the consumable
+            # whole — warn naming the blocker, stop the use loop. The old
+            # silently-spent lower-Mk path is a ruled behavior change.
+            try:
+                pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            except EffectRefused as refusal:
+                await self.output(
+                    f'The {refusal.blocking_name} coursing through you is '
+                    f'stronger — {item_ref(item, indefinite=True)} would '
+                    'be wasted.',
+                    'warn')
+                break
             await self.consume_item(item)
             used += 1
 

@@ -22,6 +22,25 @@ def percent_heal_amount(fraction, vitality_max):
                                   VITALITY_PERCENT_HEAL_FLOOR)
 
 
+# v26.2 (#331): the six admission-gated lanes — the ticking dot/hot
+# family. Shifts, stat effects, and instants are ungated.
+GATED_TICKING_TYPES = (
+    'dot_vitality', 'hot_vitality',
+    'dot_longevity', 'hot_longevity',
+    'dot_acuity', 'hot_acuity',
+)
+
+
+class EffectRefused(Exception):
+    """v26.2 (#331): an effect application was refused by the admission
+    gate (or the same-definition lower-Mk check). Carries the blocking
+    active effect's definition name for the caller's warn line."""
+
+    def __init__(self, blocking_name):
+        self.blocking_name = blocking_name
+        super().__init__(blocking_name)
+
+
 def apply_effect_definition(definition, target, mk_tier, removed_by_label='consumable'):
     """
     Apply an EffectDefinition to a target Character.
@@ -30,34 +49,80 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
     clauses; sentence composition belongs to the caller (see
     compose_standalone_sentence / compose_use_sentence). Timed
     components produce no pairs.
+
+    v26.2 (#331): raises EffectRefused instead of silently returning []
+    on a same-definition lower-Mk reapplication, and runs the admission
+    gate over the six ticking dot/hot lanes: a gated component is
+    admitted only if its magnitude at this mk_tier is strictly greater
+    than every active same-type component instance on the target
+    (curse-sourced incumbents excluded — a live curse never blocks an
+    ordinary effect). Whole-effect atomicity: if ANY gated component is
+    refused, the whole application is refused before anything mutates.
+    Admission is a join — incumbents in other definitions are never
+    deactivated.
+
     Synchronous — call from within @database_sync_to_async.
     """
     from .models import EffectInstance, EffectComponentInstance
-
-    messages = []
 
     # Reapplication check
     existing = EffectInstance.objects.filter(
         definition=definition, target=target, is_active=True
     ).first()
 
-    if existing:
-        if mk_tier >= existing.mk_tier:
-            # Undo any active stat_bonus/stat_penalty component instances
-            active_cis = list(existing.component_instances.filter(is_active=True).select_related('component'))
-            for ci in active_cis:
-                if ci.component.component_type in ('stat_bonus', 'stat_penalty'):
-                    apply_stat_effect(target, ci, reverse=True)
-            existing.component_instances.filter(is_active=True).update(
-                is_active=False, removed_by='reapplication'
-            )
-            existing.is_active = False
-            existing.removed_by = 'reapplication'
-            existing.save(update_fields=['is_active', 'removed_by'])
-        else:
-            return []
+    if existing and mk_tier < existing.mk_tier:
+        raise EffectRefused(existing.definition.name)
 
-    # Create container
+    # v26.2 (#331): the admission gate — checked for every gated
+    # component BEFORE any mutation (whole-effect atomicity; the
+    # same-definition incumbent is about to be replaced, so its own
+    # instances don't gate the replacement).
+    for component in definition.components.all():
+        if component.component_type not in GATED_TICKING_TYPES:
+            continue
+        incoming = component.computed_magnitude(mk_tier)
+        incumbents = EffectComponentInstance.objects.filter(
+            effect_instance__target=target,
+            effect_instance__is_active=True,
+            is_active=True,
+            component__component_type=component.component_type,
+        ).exclude(
+            effect_instance__definition__is_curse=True,
+        ).select_related('effect_instance__definition')
+        if existing:
+            incumbents = incumbents.exclude(effect_instance=existing)
+        for incumbent in incumbents:
+            if incumbent.magnitude >= incoming:
+                raise EffectRefused(incumbent.effect_instance.definition.name)
+
+    if existing:
+        # Same-definition >=-Mk refresh: replace the incumbent.
+        # Undo any active stat_bonus/stat_penalty component instances
+        active_cis = list(existing.component_instances.filter(is_active=True).select_related('component'))
+        for ci in active_cis:
+            if ci.component.component_type in ('stat_bonus', 'stat_penalty'):
+                apply_stat_effect(target, ci, reverse=True)
+        existing.component_instances.filter(is_active=True).update(
+            is_active=False, removed_by='reapplication'
+        )
+        existing.is_active = False
+        existing.removed_by = 'reapplication'
+        existing.save(update_fields=['is_active', 'removed_by'])
+
+    instance, messages = _create_effect_instance(definition, target, mk_tier)
+    return messages
+
+
+def _create_effect_instance(definition, target, mk_tier):
+    """The gate-free creation core: container + component instances +
+    instant application. v26.2 (#330): extracted so the curse trap
+    (spring_curse) can apply with all gates bypassed. Returns
+    (EffectInstance, clause pairs).
+    """
+    from .models import EffectInstance, EffectComponentInstance
+
+    messages = []
+
     instance = EffectInstance(
         definition=definition,
         target=target,
@@ -72,7 +137,20 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
         magnitude = component.computed_magnitude(mk_tier)
         duration  = component.computed_duration(mk_tier)
 
-        if component.is_instantaneous():
+        if component.no_expiry:
+            # v26.2 (#330): never-expiring component — timed, with a null
+            # expires_at the expiry sweep skips; duration fields ignored.
+            has_duration_components = True
+            ci = EffectComponentInstance(
+                effect_instance=instance,
+                component=component,
+                magnitude=magnitude,
+                expires_at=None,
+                is_active=True,
+            )
+            ci.save()
+            _apply_persistent_component_on_create(component, target, ci, mk_tier)
+        elif component.is_instantaneous():
             pair = _apply_instant_component(component, target, magnitude)
             if pair is not None:
                 messages.append(pair)
@@ -87,8 +165,7 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
                 is_active=True,
             )
             ci.save()
-            if component.component_type in ('stat_bonus', 'stat_penalty'):
-                apply_stat_effect(target, ci, reverse=False)
+            _apply_persistent_component_on_create(component, target, ci, mk_tier)
 
     # Close instance immediately if it had no duration components
     if not has_duration_components:
@@ -96,7 +173,16 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
         instance.removed_by = 'timeout'
         instance.save(update_fields=['is_active', 'removed_by'])
 
-    return messages
+    return instance, messages
+
+
+def _apply_persistent_component_on_create(component, target, ci, mk_tier):
+    """On-apply action for a freshly created timed component instance.
+    stat_bonus/stat_penalty apply immediately (pre-v26.2 behavior);
+    v26.2 (#330) adds the reversible cut family — see Step 4 of the
+    V26.2 Brief 1 design record."""
+    if component.component_type in ('stat_bonus', 'stat_penalty'):
+        apply_stat_effect(target, ci, reverse=False)
 
 
 def _apply_instant_component(component, target, magnitude):

@@ -1478,6 +1478,15 @@ class Command(BaseCommand):
 
             ticking = await get_ticking_component_instances()
 
+            # v26.2 (#331): the staleness fix — components fire in apply
+            # order (applied_at, then component-instance pk), and every
+            # component on one character reads and mutates the SAME
+            # in-memory Character, so same-lane deltas are cumulative
+            # (two 10-damage dots on 100 leave 80). Before this, each
+            # select_related row carried its own stale Character copy.
+            ticking.sort(key=lambda c: (c.effect_instance.applied_at, c.pk))
+            canonical_characters = {}
+
             # Characters who fell to a component processed earlier in this
             # same phase: skip any further ticking components on them this
             # tick (their effects are already canceled — a second component
@@ -1485,7 +1494,8 @@ class Command(BaseCommand):
             newly_dying = set()
 
             for ci in ticking:
-                character = ci.effect_instance.target
+                character = canonical_characters.setdefault(
+                    ci.effect_instance.target.pk, ci.effect_instance.target)
                 if character.pk in newly_dying:
                     continue
                 definition = ci.effect_instance.definition
