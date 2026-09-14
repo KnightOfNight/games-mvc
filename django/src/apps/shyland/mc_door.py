@@ -1038,11 +1038,10 @@ def _remove_item(char, item_id):
         item = _owned_item(char, item_id)
         ref = item_ref(item)
         if item.active_curse_id is not None:
-            item.active_curse.component_instances.filter(
-                is_active=True).update(
-                    is_active=False, removed_by='item-removed')
-            EffectInstance.objects.filter(pk=item.active_curse_id).update(
-                is_active=False, removed_by='item-removed')
+            # v26.2 (#330): the one shared teardown — the v25.7 behavior
+            # plus reversal of the cut family and the latent-flag clean.
+            from .curse_utils import end_curse
+            end_curse(item, 'item-removed')
         was_equipped = item.is_equipped
         if item.rarity == ItemInstance.ARTIFACT:
             item.definition.delete()

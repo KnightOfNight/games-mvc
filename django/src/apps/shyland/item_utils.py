@@ -307,7 +307,14 @@ def get_display_description(item):
     Identified items show the real description; unidentified show mystery description or fallback.
     """
     if item.is_identified:
-        return item.definition.description
+        # v26.2 (#330): an ended curse's memorial closes the identified
+        # description forever after.
+        description = item.definition.description
+        if item.memorial_description:
+            if description:
+                return f'{description}\n\n{item.memorial_description}'
+            return item.memorial_description
+        return description
     mystery = item.definition.mystery_description.strip()
     if mystery:
         return mystery

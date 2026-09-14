@@ -418,6 +418,10 @@ def apply_stat_effect(target, component_instance, reverse=False):
 def _expiry_message_for_effect(effect_instance):
     """One message for the whole effect when all components expire together."""
     definition_name = effect_instance.definition.name
+    # v26.2 (#330): a curse announces its own passing; the memorial on
+    # the item does the storytelling afterward.
+    if effect_instance.definition.is_curse:
+        return f"{definition_name} is spent. Its hold on you breaks."
     first_component = effect_instance.definition.components.order_by('order').first()
     if first_component is None:
         return f"The {definition_name} wears off."
@@ -467,4 +471,17 @@ def _expiry_message_for_component(component_instance, definition_name):
         return f"The penalty from {definition_name} lifts."
     if ctype == 'curse_generic':
         return ""
+    # v26.2 (#330): the curse component family.
+    if ctype == 'stat_cut_percent':
+        return f"The weakness from {definition_name} lifts."
+    if ctype == 'cut_vitality_max':
+        return f"The drain on your body from {definition_name} lifts."
+    if ctype == 'cut_longevity_max':
+        return f"The drain on your stamina from {definition_name} lifts."
+    if ctype == 'damage_cut':
+        return f"The faltering from {definition_name} lifts."
+    if ctype == 'armor_cut':
+        return f"The rot from {definition_name} lifts."
+    if ctype == 'floor_hold_vitality':
+        return f"The grip of {definition_name} releases."
     return f"An effect from {definition_name} wears off."

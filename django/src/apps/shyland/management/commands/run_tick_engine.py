@@ -245,12 +245,17 @@ class Command(BaseCommand):
                 'is_dying', 'dying_since', 'is_dead', 'current_room',
                 'vitality_current', 'acuity_current', 'longevity_current',
             ])
-            active_instances = list(character.active_effects.filter(is_active=True))
+            # v26.2 (#330): curse-sourced effects ride through death —
+            # the refill above naturally fills to the CUT max (the cut
+            # components stay active and inside the max recompute).
+            active_instances = list(character.active_effects.filter(
+                is_active=True).exclude(definition__is_curse=True))
             for ei in active_instances:
                 ei.component_instances.filter(is_active=True).update(
                     is_active=False, removed_by='death'
                 )
-            character.active_effects.filter(is_active=True).update(
+            character.active_effects.filter(is_active=True).exclude(
+                definition__is_curse=True).update(
                 is_active=False, removed_by='death'
             )
             CombatAction.objects.filter(character=character, is_processed=False).delete()
@@ -1068,12 +1073,17 @@ class Command(BaseCommand):
                             character.dying_since = _now
                             character.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
 
-                            active_instances = list(character.active_effects.filter(is_active=True))
+                            # v26.2 (#330): curse-sourced effects ride
+                            # through the fall — an NPC kill is an
+                            # other-cause death for every curse.
+                            active_instances = list(character.active_effects.filter(
+                                is_active=True).exclude(definition__is_curse=True))
                             for ei in active_instances:
                                 ei.component_instances.filter(is_active=True).update(
                                     is_active=False, removed_by='dying'
                                 )
-                            character.active_effects.filter(is_active=True).update(
+                            character.active_effects.filter(is_active=True).exclude(
+                                definition__is_curse=True).update(
                                 is_active=False, removed_by='dying'
                             )
                             CombatAction.objects.filter(character=character, is_processed=False).delete()
@@ -1494,16 +1504,31 @@ class Command(BaseCommand):
             @database_sync_to_async
             def fall_and_cancel(char):
                 char.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
-                active_instances = list(char.active_effects.filter(is_active=True))
+                # v26.2 (#330): curse-sourced effects ride through the
+                # fall — a curse outlives every death except its own kill
+                # (the caller attributes that one separately).
+                active_instances = list(char.active_effects.filter(
+                    is_active=True).exclude(definition__is_curse=True))
                 for ei in active_instances:
                     ei.component_instances.filter(is_active=True).update(
                         is_active=False, removed_by='dying'
                     )
-                char.active_effects.filter(is_active=True).update(
+                char.active_effects.filter(is_active=True).exclude(
+                    definition__is_curse=True).update(
                     is_active=False, removed_by='dying'
                 )
                 from apps.shyland.models import CombatAction
                 CombatAction.objects.filter(character=char, is_processed=False).delete()
+
+            @database_sync_to_async
+            def end_killing_curse(effect_instance):
+                # v26.2 (#330): the curse that carried its bearer to the
+                # fall ends itself — located by the active_curse reverse
+                # lookup; every other curse rides through.
+                from apps.shyland.curse_utils import end_curse
+                cursed_item = effect_instance.cursed_item.first()
+                if cursed_item is not None:
+                    end_curse(cursed_item, 'curse-death')
 
             ticking = await get_ticking_component_instances()
 
@@ -1549,7 +1574,16 @@ class Command(BaseCommand):
                 magnitude = ci.magnitude
 
                 if ctype == 'dot_vitality':
-                    character.vitality_current = max(0, character.vitality_current - magnitude)
+                    # v26.2 (#330/#331): change-only — a tick on an
+                    # emptied bar (a persisting curse dot on a dying
+                    # character) is a genuine no-op: no re-fall, no
+                    # repeat message. Newly reaching 0 is a change, so
+                    # the fall still fires exactly once.
+                    old_vitality = character.vitality_current
+                    new_vitality = max(0, old_vitality - magnitude)
+                    if new_vitality == old_vitality:
+                        continue
+                    character.vitality_current = new_vitality
                     if character.vitality_current <= 0:
                         character.vitality_current = 0
                         character.is_dying = True
@@ -1557,6 +1591,10 @@ class Command(BaseCommand):
                         newly_dying.add(character.pk)
 
                         await fall_and_cancel(character)
+                        if definition.is_curse:
+                            # The killing curse ends itself; the item
+                            # comes out clean (memorial stamped).
+                            await end_killing_curse(ci.effect_instance)
 
                         await self.send_to_player(character.pk, '', None, None, event='clear')
                         await self.send_to_player(
@@ -1573,9 +1611,11 @@ class Command(BaseCommand):
                     else:
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
                         status = await self._build_status_async(character)
+                        # v26.2 (#331): the actual delta, never nominal —
+                        # cumulative same-lane passes can clamp at 0.
                         await self.send_to_player(
                             character.pk,
-                            f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
+                            f"You take {int(old_vitality - new_vitality)} damage from {definition.name}.", 'combat',
                             status,
                         )
 
@@ -1894,6 +1934,28 @@ class Command(BaseCommand):
         def reverse_stat_ci(character, ci):
             apply_stat_effect(character, ci, reverse=True)
 
+        @database_sync_to_async
+        def rescale_after_cut_expiry(character):
+            # v26.2 (#330): the expired bar-cut instance is inactive now
+            # — the bar-law rescale recomputes the maxima without it.
+            from apps.shyland.combat_utils import rescale_bars_for_gear
+            rescale_bars_for_gear(character)
+            character.refresh_from_db(fields=[
+                'vitality_current', 'vitality_max',
+                'longevity_current', 'longevity_max',
+            ])
+
+        @database_sync_to_async
+        def clean_expired_curse(parent):
+            # v26.2 (#330): a closed curse instance routes through the
+            # one shared teardown — the item comes out clean, memorial
+            # stamped (the components are already expired; end_curse
+            # finds nothing active to re-reverse).
+            from apps.shyland.curse_utils import end_curse
+            cursed_item = parent.cursed_item.first()
+            if cursed_item is not None:
+                end_curse(cursed_item, 'timeout')
+
         expiring = await get_expiring_component_instances()
 
         by_instance = defaultdict(list)
@@ -1909,10 +1971,15 @@ class Command(BaseCommand):
                 character = parent.target
                 ctype = ci.component.component_type
 
-                if ctype in ('stat_bonus', 'stat_penalty'):
+                # v26.2 (#330): stat_cut_percent stores its negative flat
+                # delta — the stat-effect reversal restores it exactly.
+                if ctype in ('stat_bonus', 'stat_penalty', 'stat_cut_percent'):
                     await reverse_stat_ci(character, ci)
 
                 await expire_ci(ci)
+
+                if ctype in ('cut_vitality_max', 'cut_longevity_max'):
+                    await rescale_after_cut_expiry(character)
 
                 if not all_expiring_now:
                     msg = _expiry_message_for_component(ci, parent.definition.name)
@@ -1935,6 +2002,8 @@ class Command(BaseCommand):
             remaining = await count_active_cis_on_instance(parent)
             if remaining == 0:
                 await close_instance(parent)
+                if parent.definition.is_curse:
+                    await clean_expired_curse(parent)
                 logger.info(
                     f"EffectInstance closed: {parent.definition.slug} on {parent.target.name}"
                 )
