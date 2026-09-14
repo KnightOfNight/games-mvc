@@ -98,7 +98,7 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 - **While dying — allowed:** use (restoratives only — durability-restore consumables refuse: nothing but healing while dying; v24.12), heal (v24.4) (self-rescue heal — deliberate design), cancel, say, sudo, mc (v25.4), quit, information, settings. Everything else refused (warn).
 - **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
 - `cancel` is allowed in every state — the escape hatch is never locked.
-- **Flee costs fuel (v26.1, pending implementation):** a contested flee attempt — one that reaches the escape contest — spends **25% of `longevity_max`**, success and failure alike; below the cost the attempt is refused (warn — the world declining) and the refusal is free: no fuel spent, no flee cooldown started. Flee outside combat and the empty-session disengage remain costless. Full mechanics in Section 4.3.
+- **Flee costs fuel:** a contested flee attempt — one that reaches the escape contest — spends **25% of `longevity_max`**, success and failure alike; below the cost the attempt is refused (warn — the world declining) and the refusal is free: no fuel spent, no flee cooldown started. Flee outside combat and the empty-session disengage remain costless. Full mechanics in Section 4.3.
 
 #### Resolution Scope Pools
 

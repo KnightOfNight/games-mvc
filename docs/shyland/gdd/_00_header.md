@@ -1,6 +1,6 @@
 # Shyland — Game Design Document
 
-**Version 26.0 — Closed**
+**Version 26.1 — Closed**
 
 -----
 
