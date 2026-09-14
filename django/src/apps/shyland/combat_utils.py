@@ -240,6 +240,30 @@ def roll_gear_bonus_damage(equipped_items):
     return roll_gear_bonus_damage_detailed(equipped_items)[0]
 
 
+def active_bar_cut_totals(character):
+    """v26.2 (#330): summed flat max-deltas of the active curse bar-cut
+    component instances on a character — {'vit': N, 'lon': N}. The cut
+    components store their flat delta as the instance magnitude at apply
+    time; every max recompute (bar_rescale_updates, recalculate_bars)
+    subtracts these so the cut survives mid-curse gear/stat/level
+    mutations and reverses exactly when the instances deactivate."""
+    from .models import EffectComponentInstance
+    totals = {'vit': 0, 'lon': 0}
+    rows = EffectComponentInstance.objects.filter(
+        effect_instance__target=character,
+        effect_instance__is_active=True,
+        is_active=True,
+        component__component_type__in=('cut_vitality_max',
+                                       'cut_longevity_max'),
+    ).select_related('component')
+    for ci in rows:
+        if ci.component.component_type == 'cut_vitality_max':
+            totals['vit'] += int(ci.magnitude)
+        else:
+            totals['lon'] += int(ci.magnitude)
+    return totals
+
+
 def rescale_bars_for_gear(character):
     """v22 B5 (#110): the bar law at gear mutations. One atomic
     .update() recomputes both maxima from effective stats (gear sums
@@ -247,16 +271,20 @@ def rescale_bars_for_gear(character):
     and rescales both currents to preserve fill fraction. Sync — call
     from within @database_sync_to_async, after the item write.
     v25.5 (#281): extracted from SkylandConsumer so the agent door's
-    strip/dress run the exact same mutation."""
+    strip/dress run the exact same mutation.
+    v26.2 (#330): active curse bar cuts ride every recompute."""
     from .models import Character
     gear = gear_stat_bonus(character)
+    cuts = active_bar_cut_totals(character)
     Character.objects.filter(pk=character.pk).update(
         **bar_rescale_updates(
-            gear_end=gear['end'], gear_str=gear['str'], gear_wis=gear['wis']))
+            gear_end=gear['end'], gear_str=gear['str'], gear_wis=gear['wis'],
+            vit_cut=cuts['vit'], lon_cut=cuts['lon']))
 
 
 def bar_rescale_updates(gear_end=0, gear_str=0, gear_wis=0,
-                        end_delta=0, str_delta=0, wis_delta=0):
+                        end_delta=0, str_delta=0, wis_delta=0,
+                        vit_cut=0, lon_cut=0):
     """v22 B5 (#110): the bar law. Returns the field→expression dict for
     ONE atomic .update() that recomputes both maxima from effective stats
     and rescales both currents to preserve fill fraction — current ×
@@ -272,16 +300,21 @@ def bar_rescale_updates(gear_end=0, gear_str=0, gear_wis=0,
     )
     from django.db.models.functions import Cast, Greatest, Round
 
-    new_vit = ExpressionWrapper(
+    # v26.2 (#330): active curse bar cuts subtract inside the formula
+    # (floored at 1) so a mid-curse rescale never erases a cut and the
+    # cut's reversal is exact — see active_bar_cut_totals.
+    new_vit = Greatest(Value(1), ExpressionWrapper(
         (F('stat_end') + (end_delta + gear_end)) * 10
         + (F('stat_str') + (str_delta + gear_str)) * 3
-        + F('level') * 5,
-        output_field=IntegerField())
-    new_lon = ExpressionWrapper(
+        + F('level') * 5
+        - vit_cut,
+        output_field=IntegerField()))
+    new_lon = Greatest(Value(1), ExpressionWrapper(
         (F('stat_end') + (end_delta + gear_end)) * 8
         + (F('stat_wis') + (wis_delta + gear_wis)) * 5
-        + F('level') * 5,
-        output_field=IntegerField())
+        + F('level') * 5
+        - lon_cut,
+        output_field=IntegerField()))
 
     def rescaled(current_field, max_field, new_max):
         ratio = ExpressionWrapper(
@@ -300,6 +333,39 @@ def bar_rescale_updates(gear_end=0, gear_str=0, gear_wis=0,
         'longevity_current': rescaled('longevity_current', 'longevity_max', new_lon),
         'longevity_max': new_lon,
     }
+
+
+def curse_combat_reads(character):
+    """v26.2 (#330): one query for the per-round passive curse combat
+    reads — (damage_factor, armor_factor). Factors multiply per active
+    instance (1 - magnitude each); no active instances leave both 1.0.
+    Read once per round alongside the equipped-set load — never in
+    per-action hot loops."""
+    from .models import EffectComponentInstance
+    dmg = 1.0
+    armor = 1.0
+    rows = EffectComponentInstance.objects.filter(
+        effect_instance__target=character,
+        effect_instance__is_active=True,
+        is_active=True,
+        component__component_type__in=('damage_cut', 'armor_cut'),
+    ).select_related('component')
+    for ci in rows:
+        if ci.component.component_type == 'damage_cut':
+            dmg *= max(0.0, 1.0 - ci.magnitude)
+        else:
+            armor *= max(0.0, 1.0 - ci.magnitude)
+    return dmg, armor
+
+
+def curse_output_factor(character):
+    """v26.2 (#330): the damage_cut multiplier alone."""
+    return curse_combat_reads(character)[0]
+
+
+def curse_armor_factor(character):
+    """v26.2 (#330): the armor_cut multiplier alone."""
+    return curse_combat_reads(character)[1]
 
 
 def acuity_damage_modifier(character):
@@ -751,8 +817,13 @@ def recalculate_bars(character, equipped_items=None):
     through this — they use the atomic bar_rescale_updates path (#110).
     """
     eff = effective_stats(character, equipped_items)
-    new_vitality_max  = (eff['end'] * 10) + (eff['str'] * 3) + (character.level * 5)
-    new_longevity_max = (eff['end'] * 8)  + (eff['wis'] * 5) + (character.level * 5)
+    # v26.2 (#330): active curse bar cuts ride every max recompute —
+    # level-up's full refill fills to the CUT max, floored at 1.
+    cuts = active_bar_cut_totals(character)
+    new_vitality_max  = max(1, (eff['end'] * 10) + (eff['str'] * 3)
+                            + (character.level * 5) - cuts['vit'])
+    new_longevity_max = max(1, (eff['end'] * 8) + (eff['wis'] * 5)
+                            + (character.level * 5) - cuts['lon'])
 
     character.vitality_max      = new_vitality_max
     character.vitality_current  = new_vitality_max

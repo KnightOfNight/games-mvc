@@ -20,7 +20,7 @@ from . import currency
 from . import mc
 from . import npc_voice
 from .combat_utils import (
-    bar_rescale_updates, effective_stats,
+    active_bar_cut_totals, bar_rescale_updates, effective_stats,
     flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
     release_session_npcs, rescale_bars_for_gear,
 )
@@ -2997,9 +2997,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             }
             if stat in ('end', 'str', 'wis'):
                 gear = gear_stat_bonus(char)
+                # v26.2 (#330): active curse bar cuts ride every max
+                # recompute — see active_bar_cut_totals.
+                cuts = active_bar_cut_totals(char)
                 updates.update(bar_rescale_updates(
                     gear_end=gear['end'], gear_str=gear['str'],
-                    gear_wis=gear['wis'], **{f'{stat}_delta': pts}))
+                    gear_wis=gear['wis'], vit_cut=cuts['vit'],
+                    lon_cut=cuts['lon'], **{f'{stat}_delta': pts}))
             Character.objects.filter(pk=char.pk).update(**updates)
             # Field-limited refresh: a bare refresh_from_db would clear the
             # FK caches the async caller still reads (current_room).

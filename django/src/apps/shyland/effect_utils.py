@@ -179,10 +179,62 @@ def _create_effect_instance(definition, target, mk_tier):
 def _apply_persistent_component_on_create(component, target, ci, mk_tier):
     """On-apply action for a freshly created timed component instance.
     stat_bonus/stat_penalty apply immediately (pre-v26.2 behavior);
-    v26.2 (#330) adds the reversible cut family — see Step 4 of the
-    V26.2 Brief 1 design record."""
-    if component.component_type in ('stat_bonus', 'stat_penalty'):
+    v26.2 (#330) adds the reversible cut family. damage_cut, armor_cut,
+    and floor_hold_vitality need no on-apply action — the first two are
+    passive per-round reads, the third ticks."""
+    ctype = component.component_type
+    if ctype in ('stat_bonus', 'stat_penalty'):
         apply_stat_effect(target, ci, reverse=False)
+    elif ctype == 'stat_cut_percent':
+        # The fraction lives on the component; the instance stores the
+        # NEGATIVE flat delta computed once against the current base
+        # stat — exact reversal, no drift (the stat_bonus delta model).
+        stat_name = component.target_stat
+        attr = f'stat_{stat_name}'
+        if stat_name and hasattr(target, attr):
+            fraction = ci.magnitude
+            delta = int(fraction * getattr(target, attr))
+            ci.magnitude = -delta
+            ci.save(update_fields=['magnitude'])
+            apply_stat_effect(target, ci, reverse=False)
+    elif ctype in ('cut_vitality_max', 'cut_longevity_max'):
+        # The fraction cuts the bar's max, computed once against the
+        # pre-cut max and stored as the flat delta; the rescale family
+        # subtracts every active cut inside its formula (bar law — fill
+        # fraction invariant), so apply is just store-then-rescale.
+        from .combat_utils import rescale_bars_for_gear
+        bar_max = (target.vitality_max if ctype == 'cut_vitality_max'
+                   else target.longevity_max)
+        ci.magnitude = int(ci.magnitude * bar_max)
+        ci.save(update_fields=['magnitude'])
+        rescale_bars_for_gear(target)
+        target.refresh_from_db(fields=[
+            'vitality_current', 'vitality_max',
+            'longevity_current', 'longevity_max',
+        ])
+
+
+def vitality_hold_value(character):
+    """v26.2 (#330): the active floor_hold_vitality hold value for a
+    character — max(1, ceil(magnitude2 × vitality_max)), the most
+    restrictive (lowest) when several are live — or None with no active
+    hold. The heal ceiling: while active, any vitality-increasing write
+    clamps to max(current_before_heal, hold_value)."""
+    import math
+    from .models import EffectComponentInstance
+    hold = None
+    rows = EffectComponentInstance.objects.filter(
+        effect_instance__target=character,
+        effect_instance__is_active=True,
+        is_active=True,
+        component__component_type='floor_hold_vitality',
+    ).select_related('component', 'effect_instance')
+    for ci in rows:
+        mag2 = ci.component.computed_magnitude2(
+            ci.effect_instance.mk_tier) or 0.0
+        value = max(1, math.ceil(mag2 * character.vitality_max))
+        hold = value if hold is None else min(hold, value)
+    return hold
 
 
 def _apply_instant_component(component, target, magnitude):
@@ -206,8 +258,17 @@ def _apply_instant_component(component, target, magnitude):
     row = Character.objects.filter(pk=target.pk)
 
     if ctype == 'restore_vitality':
+        # v26.2 (#330): the floor-hold heal ceiling — below the hold,
+        # heals work up to the hold; at or above it, heals are no-ops
+        # (clamp to max(current_before_heal, hold)). The consumable is
+        # still spent; the annotation keeps its nominal print (the
+        # standing at-max clamp shape).
+        hold = vitality_hold_value(target)
+        ceiling = (F('vitality_max') if hold is None
+                   else Least(F('vitality_max'),
+                              Greatest(F('vitality_current'), Value(hold))))
         row.update(vitality_current=Least(
-            F('vitality_current') + magnitude, F('vitality_max')))
+            F('vitality_current') + magnitude, ceiling))
         return ("feel your body recover", f"(+{int(magnitude)} Vitality)")
 
     if ctype == 'restore_vitality_percent':
@@ -216,9 +277,14 @@ def _apply_instant_component(component, target, magnitude):
         # vitality_max is safe to read from the caller's character — only
         # equip/level paths move it; the tick engine's per-round writes
         # touch vitality_current, which stays inside the atomic UPDATE.
+        # v26.2 (#330): floor-hold heal ceiling, as restore_vitality.
         heal = percent_heal_amount(magnitude, target.vitality_max)
+        hold = vitality_hold_value(target)
+        ceiling = (F('vitality_max') if hold is None
+                   else Least(F('vitality_max'),
+                              Greatest(F('vitality_current'), Value(hold))))
         row.update(vitality_current=Least(
-            F('vitality_current') + heal, F('vitality_max')))
+            F('vitality_current') + heal, ceiling))
         return ("feel your body recover", f"(+{heal} Vitality)")
 
     if ctype == 'restore_longevity':
