@@ -111,7 +111,8 @@ PENDING DEPLOY-TIME ACTIONS
   invariants live in the seed's own verification pass, which
   make seed-prod runs.
 
-OPERATOR PLAYTEST DISPOSITION: PENDING — playtest checklist presented
-  after Step 10's deploy; this line is completed when the operator
-  reports. [The closeout session reads this line as a gate.]
+OPERATOR PLAYTEST DISPOSITION: Operator reports playtest successful
+  (2026-09-14) — all eleven checklist steps confirmed against the dev
+  stack (steps 1-6 confirmed 2026-09-13/14 session-time, steps 7-11
+  confirmed following; no findings, no fixes required).
 ========================================================================
