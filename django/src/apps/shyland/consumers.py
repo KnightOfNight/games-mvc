@@ -1387,6 +1387,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v22 brief 2 (DD §6): the transactional sentence — no slot
             # mention; the paper-doll carries slot placement now.
             await self.output(f'You equip {item_ref(item)}.', 'success')
+            # v26.2 (#330): the trap — success line first, then the
+            # theater, each line its own message, narration voice,
+            # private (no room broadcast).
+            for line in await self.spring_curse_if_latent(item, char):
+                await self.output(line, 'room')
             await self._warn_if_over_capacity(char)
             # v22 B5 (#110): gear can move the bar maxima — sync the pane.
             await self.send_status_refresh()
@@ -1448,6 +1453,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
             'success',
         )
+        # v26.2 (#330): the trap — see the free-slot path above.
+        for line in await self.spring_curse_if_latent(item, char):
+            await self.output(line, 'room')
         await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
@@ -4415,6 +4423,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def apply_character_stat_change(self, character):
         character.save()
+
+    @database_sync_to_async
+    def spring_curse_if_latent(self, item, character):
+        # v26.2 (#330): the trap — a player equip success springs the
+        # item's latent curse, once (active_curse set = already sprung;
+        # latent_curse cleared at curse end = never again). Returns the
+        # theater lines for the caller to print in narration voice.
+        if (item.is_cursed and item.latent_curse_id
+                and item.active_curse_id is None):
+            from .curse_utils import spring_curse
+            return spring_curse(item, character)
+        return []
 
     @database_sync_to_async
     def do_apply_effect(self, effect_def, character, mk_tier):

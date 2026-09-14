@@ -856,6 +856,9 @@ def _dress(char):
                 missing.append(instance_id)
                 continue
             # Byte-consistent with equip_item: equip re-soulbinds.
+            # v26.2 (#330): documented admin bypass (the v25.7
+            # sudo-unequip precedent) — a door dress does NOT spring a
+            # latent curse; the trap is the player equip path only.
             item.is_equipped = True
             item.equipped_slot = slot or ''
             item.is_soulbound = True
@@ -1379,6 +1382,9 @@ def _equip_item_admin(char, item_id, slot):
             equipped.equipped_slot = ''
             equipped.save()
         # Byte-consistent with equip_item/_dress: equip re-soulbinds.
+        # v26.2 (#330): documented admin bypass (the v25.7 sudo-unequip
+        # precedent) — a door equip does NOT spring a latent curse; the
+        # trap is the player equip path only.
         item.is_equipped = True
         item.equipped_slot = target_slot
         item.is_soulbound = True
