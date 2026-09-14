@@ -4,16 +4,22 @@ from datetime import timedelta
 from django.utils import timezone
 
 
+def percent_restore_amount(fraction, bar_max, floor):
+    """The Draught Law shape (v24.0, #139), generalized per bar (v26.1,
+    #70): a percentage restore gives ceil(fraction × bar_max), never less
+    than the bar's floor. The fraction is of MAX, never of deficit.
+    math.ceil, never bare round() — banker's rounding is the #105
+    lesson. One shared home for the arithmetic."""
+    return max(floor, math.ceil(fraction * bar_max))
+
+
 def percent_heal_amount(fraction, vitality_max):
-    """The Draught Law (v24.0, #139): a percentage heal restores
-    ceil(fraction × vitality_max), never less than
-    VITALITY_PERCENT_HEAL_FLOOR. The fraction is of MAX, never of
-    deficit. math.ceil, never bare round() — banker's rounding is the
-    #105 lesson. One shared home for the arithmetic; the instant-apply
+    """The Draught Law (v24.0, #139) for Vitality — a thin delegate to
+    percent_restore_amount with the vitality floor; the instant-apply
     branch and the consumers use-path aggregate both call this."""
     from .models import VITALITY_PERCENT_HEAL_FLOOR
-    return max(VITALITY_PERCENT_HEAL_FLOOR,
-               math.ceil(fraction * vitality_max))
+    return percent_restore_amount(fraction, vitality_max,
+                                  VITALITY_PERCENT_HEAL_FLOOR)
 
 
 def apply_effect_definition(definition, target, mk_tier, removed_by_label='consumable'):
@@ -108,7 +114,7 @@ def _apply_instant_component(component, target, magnitude):
     from django.db.models import Case, DecimalField, F, Value, When
     from django.db.models.functions import Cast, Greatest, Least, Round
 
-    from .models import Character
+    from .models import Character, LONGEVITY_PERCENT_RESTORE_FLOOR
 
     ctype = component.component_type
     row = Character.objects.filter(pk=target.pk)
@@ -133,6 +139,18 @@ def _apply_instant_component(component, target, magnitude):
         row.update(longevity_current=Least(
             F('longevity_current') + magnitude, F('longevity_max')))
         return ("feel your stamina return", f"(+{int(magnitude)} Longevity)")
+
+    if ctype == 'restore_longevity_percent':
+        # The potion mirror (v26.1, #70): magnitude arrives as the
+        # FRACTION of longevity_max (computed_magnitude = 0.15 + 0.05×Mk).
+        # longevity_max is safe to read from the caller's character — only
+        # equip/level paths move it; the tick engine's regen writes touch
+        # longevity_current, which stays inside the atomic UPDATE.
+        restore = percent_restore_amount(
+            magnitude, target.longevity_max, LONGEVITY_PERCENT_RESTORE_FLOOR)
+        row.update(longevity_current=Least(
+            F('longevity_current') + restore, F('longevity_max')))
+        return ("feel your stamina return", f"(+{restore} Longevity)")
 
     if ctype == 'restore_acuity':
         # Same formula as before, expressed in SQL: move toward the

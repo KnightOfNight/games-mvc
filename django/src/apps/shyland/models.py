@@ -13,8 +13,9 @@ DEATH_DURABILITY_LOSS = 10.0
 ACUITY_DRIFT_RATE     = 0.01
 STAT_POINTS_PER_LEVEL = 5
 VITALITY_REGEN_SECS   = 120   # seconds to regen full Vitality from zero out of combat
-LONGEVITY_REGEN_SECS  = 3600  # seconds to regen full Longevity from zero out of combat
+LONGEVITY_REGEN_SECS  = 900   # seconds to regen full Longevity from zero out of combat
 VITALITY_PERCENT_HEAL_FLOOR = 25  # the Draught Law's minimum heal (#139)
+LONGEVITY_PERCENT_RESTORE_FLOOR = 25  # the potion mirror of the Draught Law floor (#70)
 
 # v19 brief 9: NPC dialogue engine timing. Slower than combat's 1-tick
 # cadence, kept sociable rather than interrupty.
@@ -391,6 +392,7 @@ COMPONENT_TYPE_CHOICES = [
     ('restore_vitality_percent', 'Restore Vitality (percent of max)'),
     ('restore_acuity',     'Restore Acuity'),
     ('restore_longevity',  'Restore Longevity'),
+    ('restore_longevity_percent', 'Restore Longevity (percent of max)'),
     ('dot_vitality',       'DoT Vitality'),
     ('dot_acuity',         'DoT Acuity'),
     ('dot_longevity',      'DoT Longevity'),

@@ -1,17 +1,14 @@
 ## 4. The Three Bars — Vitality, Acuity, Longevity
 
-This is one of Shyland's most distinctive systems. All characters have three resource bars, each governing a different dimension of their condition. They are not separate — they interact and influence each other. The separation into three bars is a mechanical convenience, not a philosophical statement that mind and body are distinct.
+This is one of Shyland's most distinctive systems. All characters have three resource bars, each governing a different dimension of their condition. **The bars are independent — no bar ever reads or modifies another (the three-tanks doctrine, v26.1).** Vitality and Longevity are **fuel tanks**: currencies a character spends in order to act. Enough fuel buys the action; not enough refuses it; and the fuel balance never changes what the purchased action does — **the fuel tanks don't control power, they're just money.** Power comes from player, NPC, and item level, never from fuel remaining. Acuity is deliberately not a fuel tank: it is a band meter whose deviation modifies the character's own output (Section 4.2), and that identity is exactly as shipped.
+
+**Player-facing bar ordering is Vitality, Longevity, Acuity** — the stats pane and every kindred surface render Longevity second. The subsection order below is historical and unchanged, so every §-reference stays valid; the reorder is display-side only.
 
 ### 4.1 Vitality
 
-**What it is:** The body's immediate physical condition.
+**What it is:** The body's immediate physical condition — the fuel tank of staying alive.
 
-**Mechanical effects:**
-
-- Melee damage dealt and received scales with current Vitality as a percentage of maximum (low Vitality = hitting and being hit harder proportionally)
-- Movement speed degrades at low Vitality
-- Physical resistance degrades at low Vitality
-- Reaching 0 Vitality triggers the Dying state
+**Mechanical effects:** Vitality is a pure fuel tank — **it gates, it never scales.** Its one gate is absolute: reaching 0 Vitality triggers the Dying state. At every value above zero the character fights, moves, and resists at full effectiveness. (Canceled on paper, v26.1 — never built: melee damage scaling with current Vitality, movement-speed degradation at low Vitality, physical-resistance degradation at low Vitality. The code has been a pure tank since day one; the doctrine makes the paper match.)
 
 **Recovery:** Healing spells, medkits, potions, and passive natural regeneration. Passive regen is always active when not in combat and not in the Dying state — no rest command required. **The regen law: proportional to maximum.** The rate is `vitality_max / VITALITY_REGEN_SECS` points per second, applied per tick as `ceil(vitality_max / VITALITY_REGEN_SECS)` and clamped at max. At the constant of 120 seconds, a full refill from zero takes exactly **120 seconds at every level** — the deeper the pool, the faster the points return; refill time never grows with vitality growth, so time remains a real substitute for draught money at any level. Regen is silent — no message is sent; players observe recovery through the status bar.
 
@@ -77,29 +74,32 @@ The consequence is deliberate and worth stating plainly: **the tonic family buys
 
 ### 4.3 Longevity
 
-**What it is:** The slow burn. Accumulated resilience — the will and capacity to keep going over time.
+**What it is:** The slow burn. The deep reserve — the will and capacity to keep going — spent on acts of raw exertion and refilled slowly. Longevity is a pure fuel tank: **it gates, it never scales.** No effect's power or duration, no regen rate, no stat, and no other bar reads it. It answers exactly one question: *can you afford this action right now?*
 
-**Mechanical effects:**
+**Spending it — flee exertion:** the first consumer is **flee**. A contested flee attempt — one that reaches the escape contest — costs **25% of `longevity_max`** (`ceil(longevity_max / 4)`), at every level, whether the attempt succeeds or fails: the escape and the failed scramble exert alike, and the "still recovering from your last flee attempt" fiction finally has its cost. The gate is exact-or-refused: with `longevity_current` below the cost, the attempt is refused — **no fuel, no flee** — and the refusal is free (no Longevity spent, no flee cooldown started; a refused purchase leaves no charge). At exactly the cost, the flee fires and lands the character at zero fuel. The drained player fights, quaffs, or dies. Outside the fuel system entirely: flee outside combat remains the shipped no-op refusal, and a flee inside a session whose living opposition is already gone remains a free trivial disengage — no contest, no exertion, no cost.
 
-- Controls stamina duration — how long a character can sprint, sustain effort, or maintain concentration
-- Governs duration of sustained effects: a character's own damage-over-time effects last longer at high Longevity; enemy DoTs applied to them expire faster
-- Controls the window of long-lasting buffs and debuffs
-- At low Longevity: sustained spells collapse early, long fights become increasingly punishing
+**Future direction (recorded, not yet designed): Longevity is mana fuel.** Future player abilities will draw it at much smaller percentages than flee's 25%. Fuel decides whether the ability fires at all; the fired ability's power comes from level, never from the tank.
 
-**Recovery:** Longevity recovers passively out of combat under the same proportional-to-max law as Vitality, at its own much slower constant (`LONGEVITY_REGEN_SECS = 3600`): full recovery from zero takes about **one hour at every level**. Because a Longevity bar is far smaller than its constant, the vitality-style per-tick ceil would degenerate to a flat 1 point per second — so Longevity uses the **interval form**: one point every `ceil(LONGEVITY_REGEN_SECS / longevity_max)` seconds (about 14 s per point at a 274 bar, ~64 minutes from zero). Warden abilities can accelerate this. It is the hardest bar to restore and the one players are most likely to mismanage over a long dungeon run.
+**Recovery (constant retuned 3600 → 900):** Longevity recovers passively out of combat under the same proportional-to-max law as Vitality, at its own slower constant (`LONGEVITY_REGEN_SECS = 900`): full recovery from zero in a nominal **15 minutes at every level** — still 7.5× slower than Vitality, no longer an hour. The rate is `longevity_max / 900` points per second; because that is usually below one point per second, the numerical form is chosen **by regime** so the law holds at every bar size:
 
-**Design intent:** Longevity is the dungeon stamina resource. A player might enter a dungeon with full Vitality and Acuity but low Longevity from previous fights, and feel it immediately in their sustained performance. It rewards planning and discourages endless grinding without rest.
+- **`longevity_max < 900` — the interval form:** one point every `ceil(900 / longevity_max)` seconds (4 s per point at a 274 bar, ~18 minutes from zero; one flee's worth back in roughly 4–5 minutes).
+- **`longevity_max ≥ 900` — the per-tick form,** exactly Vitality's shape: `ceil(longevity_max / 900)` points per second.
 
-### 4.4 Interactions Between the Three Bars
+The crossover is seamless — both forms approximate the same `max / 900` rate, each ceil rounding at its own regime's granularity — and refill time stays ~15 minutes however deep the tank grows; without the regime rule, the interval form's 1-second floor would make refill time grow linearly with any bar past 900. Warden abilities can accelerate this.
 
-The bars are not isolated:
+**Restoring it — the potion:** Longevity's restorative consumable works **exactly like the Healing Draught**, under the same Draught Law shape: a percent-of-max restore of **`0.15 + 0.05×Mk`** of `longevity_max`, Common, seeded into Z01 vendor stock at the draught's 15 cp standard, vendor-only (no loot-table entries). The mismatch is deliberate: one Mk 1 potion (20%) does not fully refund one flee (25%) — fuel costs what it costs. (Name and lore are authored at brief time.)
 
-- Critically low Vitality causes Acuity to spike (panic response — hyper-focus with all its drawbacks)
-- Severely low Longevity causes both Vitality regen and Acuity recovery to slow
-- Certain eldritch effects damage all three bars simultaneously
-- A skilled Warden manages all three for the party — not just the green bar
+**Design intent:** Longevity is the wallet for exertion. A player who flees twice in a dungeon has spent half their tank and will feel the third emergency before they reach it — the bar rewards planning an escape budget the way copper rewards planning a shopping trip. It is the slowest tank to refill and the one players are most likely to overdraw in a long run; what it never does is make anyone hit softer, cast shorter, or regen slower. Enough fuel buys the action. Not enough refuses it. Nothing else.
+
+### 4.4 Independence of the Three Bars — The Three-Tanks Doctrine
+
+**The bars are three independent tanks. No bar ever reads or modifies another bar (v26.1 doctrine — the code has worked this way since day one; this section now says so).** Two long-promised causal connections are canceled on paper, never having been built: critically-low Vitality no longer promises an Acuity panic spike, and severely-low Longevity no longer promises slowed Vitality/Acuity recovery. There are no cross-bar reads anywhere — not in regen, not in effect application, not in combat math.
+
+What remains true — and compatible with independence:
+
+- **One effect may carry components against multiple tanks.** Certain eldritch effects damage all three bars simultaneously — as parallel per-tank components in a single effect definition. Drainers, not connections: each component touches its own tank and reads nothing from the others.
+- **A skilled Warden manages all three for the party** — not just the green bar. Fillers, not connections: Warden tools restore and steady each tank on its own terms.
 
 **The bar law (v22, #100/#109/#110 — standing invariant).** Fill fraction is invariant under **every** max-changing mutation — equip, unequip, and stat spend alike. When a bar's maximum changes, the current value rescales proportionally (`current × new_max ÷ old_max`, rounded to nearest, floored at 1 while alive; a dying 0 stays 0; full bars stay exactly full — no drift). The bar grows or shrinks; the percentage holds; **nothing refills**. One law, no special cases, exploit-proof by construction: equipping END gear at 40% leaves you at 40% of the larger bar, and the once-bankable mid-combat spend heal cannot exist. The rescale is one atomic database update in the #52 style — the consumer never reads-modifies-writes bar or stat fields on a cached object — which is also where #110's stat-field race died. Level-up keeps its own behavior (full refill on both bars) — leveling is an earned moment, not a mutation.
 
 -----
-

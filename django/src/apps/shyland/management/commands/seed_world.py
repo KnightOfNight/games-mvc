@@ -2553,6 +2553,9 @@ class Command(BaseCommand):
     # get a sane price until one is authored here.
     CART_CONSUMABLE_PRICES = {
         'healing-draught': 15,
+        # v26.1 (#70): explicit even though it equals the default — the
+        # repair-kit precedent guards against a future default change.
+        'stamina-potion': 15,
         'focus-tonic': 15,
         'repair-kit': 15,
     }
@@ -3870,11 +3873,11 @@ class Command(BaseCommand):
         self._check('9 Verdant unarmed pools with 4 messages each', pool_ok)
 
         vendor_ok = (
-            VendorEntry.objects.filter(npc_definition__slug='essa-the-trader').count() == 4
-            and VendorEntry.objects.filter(npc_definition__slug='sona-the-trader').count() == 4
-            and VendorEntry.objects.filter(npc_definition__slug='ridda-the-trader').count() == 5
+            VendorEntry.objects.filter(npc_definition__slug='essa-the-trader').count() == 5
+            and VendorEntry.objects.filter(npc_definition__slug='sona-the-trader').count() == 5
+            and VendorEntry.objects.filter(npc_definition__slug='ridda-the-trader').count() == 6
         )
-        self._check('Essa and Sona carry 4 vendor entries each; Ridda carries 5', vendor_ok)
+        self._check('Essa and Sona carry 5 vendor entries each; Ridda carries 6', vendor_ok)
 
     # ------------------------------------------------------------------
     # Shared platform seed data (unchanged)
@@ -4157,6 +4160,23 @@ class Command(BaseCommand):
         })
         self.stdout.write(f'  EffectDefinition "{healing_draught.name}" seeded.')
 
+        # --- Stamina Potion ---
+        stamina_potion = self._reconcile(EffectDefinition, {'slug': 'stamina-potion'}, {
+            'name': 'Stamina Potion',
+            'description': 'Restores Longevity immediately.',
+        })
+        # v26.1 (#70): the draught mirror — percent-of-max restore,
+        # magnitude is the FRACTION of longevity_max (0.15 + 0.05×Mk).
+        self._reconcile(EffectComponent, {'definition': stamina_potion, 'order': 0}, {
+            'component_type': 'restore_longevity_percent',
+            'target_stat': '',
+            'magnitude_base': 0.15,
+            'magnitude_scaling': 0.05,
+            'duration_base': 0.0,
+            'duration_scaling': 0.0,
+        })
+        self.stdout.write(f'  EffectDefinition "{stamina_potion.name}" seeded.')
+
         # --- Focus Tonic ---
         focus_tonic = self._reconcile(EffectDefinition, {'slug': 'focus-tonic'}, {
             'name': 'Focus Tonic',
@@ -4206,6 +4226,7 @@ class Command(BaseCommand):
 
         self._effects = {
             'healing-draught': healing_draught,
+            'stamina-potion': stamina_potion,
             'focus-tonic': focus_tonic,
             'fracture-wraith-poison': wraith_poison,
             'repair-kit': repair_kit,
@@ -4670,6 +4691,24 @@ class Command(BaseCommand):
                 'secondary_stat_pool': [],
                 'effect': effects['healing-draught'],
                 'description': 'A bitter herbal infusion in a stoppered vial. Works fast.',
+            },
+            {
+                'slug': 'stamina-potion',
+                'name': 'Stamina Potion',
+                'item_type': 'consumable',
+                'genre_tag': 'fantasy',
+                'valid_slots': [],
+                # v26.1 (#70): the seed owns the potion's value — 15 cp,
+                # the Essa/Sona/Ridda vendor price standard (sale 5 cp).
+                'base_value': 15,
+                'scaling_base': 0.0,
+                'scaling_factor': 0.0,
+                'takes_durability_loss': False,
+                'durability_table': [],
+                'primary_stats': [],
+                'secondary_stat_pool': [],
+                'effect': effects['stamina-potion'],
+                'description': 'Thick as tar and stubborn going down. Puts the road back under your feet.',
             },
             {
                 'slug': 'focus-tonic',
@@ -5357,6 +5396,9 @@ class Command(BaseCommand):
             'pristine-animal-pelt': 36,
             'hardened-insect-chitin': 36,
             'healing-draught': 15,
+            # v26.1 (#70): the potion at the draught standard — the
+            # authored value, forced on every reseed.
+            'stamina-potion': 15,
             # v24.12 (#134): the repair kit at the draught standard —
             # listed here so the type-wide consumable back-fill below
             # can't overwrite the authored 15.
@@ -7619,12 +7661,14 @@ class Command(BaseCommand):
         vendors = {
             'essa-the-trader': [
                 ('healing-draught', 15),
+                ('stamina-potion', 15),
                 ('combat-knife', 40),
                 ('leather-boots', 35),
                 ('leather-gloves', 35),
             ],
             'sona-the-trader': [
                 ('healing-draught', 15),
+                ('stamina-potion', 15),
                 ('hunting-bow', 90),
                 ('leather-vest', 60),
                 ('leather-leggings', 55),
@@ -7964,6 +8008,7 @@ class Command(BaseCommand):
         vendors = {
             'ridda-the-trader': [
                 ('healing-draught', 15),
+                ('stamina-potion', 15),
                 ('iron-mace', 80),
                 ('wooden-shield', 70),
                 ('iron-sword', 75),

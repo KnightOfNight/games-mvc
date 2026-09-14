@@ -1,0 +1,118 @@
+Session start 2026-09-13 — Shyland V26.1 Brief 1 (Longevity First Drain, #70) — branch version_26_1.
+
+========================================================================
+SHYLAND V26.1 BRIEF 1 — CLOSEOUT REPORT
+Brief: Shyland_V26.1_Brief_1_Longevity_First_Drain.md (committed cd89f5e)
+Branch: version_26_1 (worktree /Users/ctg/src/games-mvc-version_26_1)
+Session date: 2026-09-13
+========================================================================
+
+FINAL IMPLEMENTATION COMMIT: f57ef81 (Step 9, tests; the architecture
+doc's header hash points here). Architecture-doc commit: b7fa514.
+
+COMMIT LADDER
+  f6831a6  Step 0: closeout-report stub (work-has-started signal)
+  1e0f1aa  Step 1: SHYLAND_VERSION 26.0 -> 26.1-DEV + pin test (own
+           commit), followed by the version-start make deploy-dev
+  57ad1d8  Step 2: LONGEVITY_REGEN_SECS 900, LONGEVITY_PERCENT_RESTORE_
+           FLOOR, restore_longevity_percent choice + migration 0058
+           (0058_alter_effectcomponent_component_type — choices-only,
+           exactly the brief's expected shape; applied on dev)
+  47f8d61  Step 3: percent_restore_amount generalization; percent_heal_
+           amount thin delegate (both existing callers byte-compatible);
+           restore_longevity_percent instant branch
+  8dff5aa  Step 4: longevity stop-at-full gate in the per-item use loop
+           + effect_restores_longevity helper (component-keyed;
+           dual-restore effects keep vitality-gate semantics)
+  d493309  Step 5: flee fuel gate — ceil(max/4) pre-contest on every
+           contested attempt; free refusal (no deduction, no cooldown,
+           no status refresh); atomic spend helper (Greatest clamp);
+           status refresh added to contest-failure and nowhere-to-run
+  2316d0c  Step 6: regen regime rule in tick engine Phase 4 (per-tick
+           form at max >= 900, interval form below; vitality untouched)
+  4de21e1  Step 7: Stamina Potion seed (effect 0.15/0.05, item 15 cp,
+           three authored vendors, back-fill + cart-price entries,
+           vendor-count verification 5/5/6; no loot tables)
+  5b067ea  Step 8: stats-pane bars reordered V, L, A (markup move only)
+  f57ef81  Step 9: tests/test_v26_1_brief1.py (23 tests) + the
+           test_v243_regen.py pin retune (deviation 2 below)
+  b7fa514  Architecture doc (last, gated step)
+
+SUITE
+  Full in-container suite (path form): 990 tests, all green.
+  Invariant: 967 prior + 23 new = 990; zero existing tests changed
+  beyond the Step 1 pin move and deviation 2 below.
+
+STEP 10 — DEV DEPLOY + SEED (2026-09-13)
+  make deploy-dev: clean (migrate no-op — 0058 was applied in Step 2).
+  make seed (dev): verification ALL PASS, including the new vendor
+  count check "Essa and Sona carry 5 vendor entries each; Ridda
+  carries 6".
+
+  Actual row deltas vs Step 7 expectations:
+    EffectDefinition  4 -> 5   (+1, expected +1)  OK
+    EffectComponent   4 -> 5   (+1, expected +1)  OK
+    ItemDefinition  140 -> 139 (+1 stamina-potion, -2 sweep; see below)
+    VendorEntry      37 -> 42  (+5: Essa, Sona, Ridda authored + VND-9,
+                                Mother Tansy automatic, all 15 cp)  OK
+  Deletions: expected 0, ACTUAL 2 — the seed's standing enforce-exact
+  sweep deleted two ItemDefinitions "not authored by this seed":
+  "Ludicrous Speed" and "Magic Sword" (pre-existing admin-authored dev
+  test artifacts — the known dev leavings, not created or touched by
+  this brief; the sweep is v-era standing seed behavior, "the code is
+  definitive"). Any ItemInstances of those definitions were removed by
+  the FK cascade (0 remain). Deviation 3 below records this. The
+  production expectation remains 0 deletions — prod carries no such
+  leavings to the best of session knowledge; the seed-prod output in
+  the closeout tail reports actual.
+
+DEVIATIONS (all recorded, none silent)
+  1. Ruling-letter note (pre-declared in the brief): the 2026-09-11
+     ruling named the potion "restore_longevity's first customer"; the
+     flat type cannot express percent-of-max, so the new
+     restore_longevity_percent is the customer and the flat type is
+     untouched. Ruled 2026-09-13; implemented as the brief specifies.
+  2. Test hygiene: the brief's "zero existing tests change beyond the
+     Step 1 pin move" did not survive the brief's own constant retune —
+     tests/test_v243_regen.py pinned constant-derived literals
+     (interval 14 at a 274 bar, total 3836 ticks). The three pins moved
+     to the retuned values (4, 1096) with the interval-form law they
+     assert unchanged and comments updated (v26.1 #70 noted). No other
+     test in the suite pinned the old constant (swept).
+  3. Seed deletions on dev: expected 0, actual 2 (see Step 10) — dev
+     leavings swept by standing enforce-exact seed behavior, unrelated
+     to this brief's changes.
+  4. Architecture doc SS7/SS8: the brief directed correcting now-stale
+     "nothing drains Longevity" claims; a sweep found no such claim in
+     SS7/SS8 (the stale content lived in SS4.9's "known boundary" note
+     and SS6's regen/Draught-Law decision paragraphs — all updated).
+
+FLAG FOR THE CLOSEOUT/NEXT PROCESS REFRESH (not arch, not GDD): the
+Project Instructions' "Three Bars" section still reads "nothing drains
+it yet — its first consuming mechanic is filed as #70" — true when v38
+was cut, stale once 26.1 ships. Instructions refreshes are closeout
+work; noted here so it isn't lost.
+
+ISSUES
+  #70 closed 2026-09-13 (gated on verification passing), implementation
+  comment recorded. Sole milestone member of Version 26.1.
+
+PENDING DEPLOY-TIME ACTIONS
+  | Action | Executor | Expected effect |
+  |---|---|---|
+  | Production seed rerun (delivers the Stamina Potion: effect, item,
+    3 authored + 2 automatic vendor entries; expected deletions 0) |
+    make seed-prod — closeout tail's deploy window only, bare
+    invocation, on its own operator confirmation | +1 EffectDefinition,
+    +1 EffectComponent, +1 ItemDefinition, +5 VendorEntry; seed
+    verification (incl. 5/5/6 vendor counts) passes on prod |
+  This block stays open until the production execution at release
+  deploy. No verify_* command ships with this brief; the count
+  invariants live in the seed's own verification pass, which
+  make seed-prod runs.
+
+OPERATOR PLAYTEST DISPOSITION: Operator reports playtest successful
+  (2026-09-14) — all eleven checklist steps confirmed against the dev
+  stack (steps 1-6 confirmed 2026-09-13/14 session-time, steps 7-11
+  confirmed following; no findings, no fixes required).
+========================================================================

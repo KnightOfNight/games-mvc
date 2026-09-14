@@ -1552,6 +1552,19 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     stopped_at_full = True
                     break
 
+            # v26.1 (#70): the potion's stop-at-full mirror — longevity-only
+            # restoratives gate on a full Longevity bar the same way. A
+            # dual-restore effect (none seeded today) keeps the vitality
+            # gate's semantics; its gating rule is a future design question.
+            if (not is_heal and not was_dying
+                    and await self.effect_restores_longevity(effect_def)):
+                gate_char = await self.get_character_fresh()
+                if gate_char.longevity_current >= gate_char.longevity_max:
+                    if used == 0:
+                        await self.output('You are already at full stamina.', 'warn')
+                    stopped_at_full = True
+                    break
+
             # v24.12 (#134): the field-repair gate — component-keyed,
             # never a name match; runs before apply and consume, so a
             # refusal consumes nothing and ends the command. Order is
@@ -2698,6 +2711,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             await self.send_status_refresh()
             return
 
+        # v26.1 (#70): the flee fuel gate — a contested attempt costs 25%
+        # of longevity_max (the attempt is the purchase: success, failure,
+        # and nowhere-to-run alike). Below the cost the attempt is refused
+        # free: no deduction, no cooldown, nothing changed. At exactly the
+        # cost the flee fires and lands at 0.
+        cost = math.ceil(character.longevity_max / 4)
+        if character.longevity_current < cost:
+            await self.send_output("You are too spent to flee!", 'warn')
+            return
+        await self.spend_flee_longevity(character, cost)
+        character.longevity_current = max(0, character.longevity_current - cost)
+
         # v23 B1 (#143): the NPC side reads the same effective stats as every
         # other combat contest — session mean of get_npc_stats()['per'].
         avg_per = flee_contest_npc_side(npcs)
@@ -2729,6 +2754,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                     audience=[], data=flee_data)
                 await self.send_output("There is nowhere to run!", 'warn')
                 await self.record_flee_attempt(character, session)
+                # v26.1 (#70): show the spent fuel — no room change here
+                # to refresh the pane.
+                await self.send_status_refresh()
                 return
 
             destination, flee_dir = result
@@ -2799,6 +2827,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 f"{character.name} tried to flee combat but could not slip away.", 'combat'
             )
             await self.record_flee_attempt(character, session)
+            # v26.1 (#70): show the spent fuel — no room change here to
+            # refresh the pane.
+            await self.send_status_refresh()
 
     # ------------------------------------------------------------------
     # Stat commands
@@ -3625,6 +3656,16 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         return effect_def.components.filter(
             component_type__in=('restore_vitality',
                                 'restore_vitality_percent', 'hot_vitality'),
+        ).exists()
+
+    @database_sync_to_async
+    def effect_restores_longevity(self, effect_def):
+        """v26.1 (#70): the potion's stop-at-full rule — derived from the
+        effect's own components, never a separate flag (the #61 helper's
+        law)."""
+        return effect_def.components.filter(
+            component_type__in=('restore_longevity',
+                                'restore_longevity_percent', 'hot_longevity'),
         ).exists()
 
     @database_sync_to_async
@@ -4910,4 +4951,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         session.last_flee_attempt_at = timezone.now()
         session.last_flee_character = character
         session.save(update_fields=['last_flee_attempt_at', 'last_flee_character'])
+
+    @database_sync_to_async
+    def spend_flee_longevity(self, character, cost):
+        """v26.1 (#70): the contested flee's fuel charge — one atomic
+        UPDATE (#52 style); Greatest is belt-and-suspenders under the
+        gate, which already refused anything below the cost."""
+        from django.db.models import F
+        from django.db.models.functions import Greatest
+        Character.objects.filter(pk=character.pk).update(
+            longevity_current=Greatest(F('longevity_current') - cost, 0))
 
