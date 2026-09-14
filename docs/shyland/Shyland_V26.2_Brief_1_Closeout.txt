@@ -1,1 +1,174 @@
 2026-09-14 — Session start: implementation session for Shyland_V26.2_Brief_1_Curse_Engine.md on branch version_26_2. (Stub — completed in place at session end.)
+
+================================================================================
+V26.2 Brief 1 — The Curse Engine (#330 founding ticket; #331 dependency)
+Implementation closeout report
+================================================================================
+
+SESSION
+  Type: implementation. Branch: version_26_2 (worktree ../games-mvc-version_26_2).
+  Pre-flight: local dev target confirmed (check_docker_host exit 0); worktree
+  clean and synced at 8920cb0 at session start.
+  Technical pre-flight (#252): all 13 load-bearing claims (T1-T13) re-verified
+  against the code at the branch tip by direct file reads — ZERO mismatches.
+  No PENDING DEPLOY-TIME ACTIONS were open from prior releases (V26.1's block
+  closed at its deploy, 2026-09-14).
+
+COMMIT LEDGER (all pushed to origin/version_26_2)
+  381a47f  Step 0: closeout stub (work-has-started signal)
+  279eea0  Step 1: SHYLAND_VERSION 26.1 -> 26.2-DEV + pin test, same commit;
+           version-start make deploy-dev run
+  cbe91ec  Step 2: schema — migration 0059 (EffectDefinition is_curse/
+           apply_text/memorial_text; EffectComponent magnitude2 pair +
+           no_expiry; ItemInstance latent_curse + memorial_description;
+           CurseCandidate; six new component types; curse_generic retired
+           in place)
+  383327d  Step 3: EffectRefused contract + six-lane admission gate +
+           #331 staleness fix (one in-memory Character per target,
+           (applied_at, pk) apply order); use path kept-plus-warn;
+           NPC path silent skip; _create_effect_instance extracted
+  4058e82  Step 4: the six component types (stat_cut_percent negative-delta
+           storage; bar cuts INSIDE the max recompute; damage_cut/armor_cut
+           per-round multipliers; floor_hold_vitality + heal ceiling)
+  09d3195  Step 5: generation-time latent roll (CURSE_WILD_CHANCE 0.0
+           dormant; rarity gate; force path; ValueErrors)
+  93d7ed1  Step 6: the trap — spring_curse in new curse_utils.py; both
+           cmd_equip success paths hooked (success line first, theater in
+           narration voice, private); door-side admin bypasses documented
+  44b376e  Step 7: lifecycle — end_curse wired (expiry/sudo/curse-death);
+           curse-exempt cancels at all three sites; dot_vitality
+           change-only; memorial at the description chokepoint
+  858e419  Step 8: display — examine reveal block (name + M:SS/permanent +
+           description), memorial paragraph, door read mirror
+  5805c2b  Step 9: seed — 5 Ridge curses (26 CurseCandidate rows),
+           3 test curses, admission-test definitions
+  b669ad1  Step 10: tests — 39 new, suite 990 -> 1029, zero existing changed
+  e8f13fe  Verification fixes: salve base_value in the authored dict
+           (idempotent reseed) + CART_STOCK_EXCLUDED carve-out
+  aa8e49a  Step 11 (gated, last): architecture doc — stamp 26.2, hash moves
+           to e8f13fe (architectural release)
+
+  FINAL IMPLEMENTATION (code) COMMIT / ARCH HEADER HASH: e8f13fe
+  FINAL SESSION COMMIT: see the closing entry below.
+
+VERIFICATION (brief §13 — all passed)
+  1. Full in-container suite (path form): Ran 1029 tests — OK
+     (990 -> 1029, +39 in tests/test_v26_2_brief1.py; zero existing tests
+     changed — no existing test pinned the silently-spent lower-Mk path or
+     the dot_vitality nominal-delta line, so the §12 test-hygiene
+     conversions the brief anticipated turned out to be zero; the two
+     v26.0 dot_vitality pins still pass as written).
+  2. make seed on dev: additive run created the curse set; re-run
+     idempotent ("No differences — database matches coded configuration
+     exactly"). Deletions: see the actual-vs-expected section.
+  3. Shell spot-checks: ALL PASS — CurseCandidate.objects.count() == 26
+     (2+3+12+8+1); EffectDefinition.objects.filter(is_curse=True).count()
+     == 8; all 26 pooled definitions is_cursed_template=True and no
+     others; the three test curses have zero CurseCandidate rows;
+     test-mending-weak / test-mending-strong / weak-mending-salve exist,
+     the salve has no vendor entries and no loot entries, neither mending
+     definition is_curse.
+  4. Greps: no code path applies curse_generic (survives only as the
+     retired-in-place choice constant and its expiry-message stubs);
+     CURSE_WILD_CHANCE == 0.0.
+  5. make deploy-dev run after implementation + verification passed —
+     the dev stack runs the brief's build, seeded.
+
+SEED DELETIONS — ACTUAL vs EXPECTED
+  Expected (brief §11): 0 — purely additive.
+  Actual on dev: the curse-seed run itself deleted 0 rows. One dev-only
+  wrinkle: the cart-stock carve-out (deviation D1) landed after two
+  in-session seed runs had already auto-stocked the salve on the two ring
+  carts, so the next reseed swept exactly those 2 pre-carve-out VendorEntry
+  rows (VND-9 / Mother Tansy x Weak Mending Salve). These rows never
+  existed anywhere but this session's dev database.
+  Production prediction: deletions 0 (the salve has never existed there;
+  the carve-out ships before the definition does). §15 records this.
+
+DEVIATIONS AND RECORDED FINDINGS
+  D1. Cart-stock carve-out (seed). The brief pins the salve at "no vendor
+      entries" (§11.2b, §13.3), but the standing #43 rule auto-stocks
+      EVERY consumable ItemDefinition on both ring street carts on every
+      reseed, with a seed-verification set-equality check enforcing it.
+      The two directives are contradictory; the brief's pinned end state
+      won. Implemented as a narrow documented carve-out:
+      CART_STOCK_EXCLUDED = {'weak-mending-salve'} honored by both the
+      stocker and the #43 verification check. First-ever exception to the
+      every-consumable rule.
+  D2. Salve base_value. The type-wide consumable back-fill (12 cp) in
+      _seed_items flipped the salve's authored 15 on every run (reseed
+      non-idempotent). The salve joins the authored base_values dict at 15
+      — the repair-kit precedent, verbatim.
+  D3. dot_vitality converted to change-only with actual-delta lines. The
+      v26.0 closeout pinned dot_vitality byte-unchanged ("Dying = ruled
+      exception"), but this brief's §5.3 invariant ("a tick that changes
+      nothing is genuinely silent") and §9.2 ("its ticks on emptied bars
+      are no-ops under the change-only doctrine") require the conversion —
+      without it a persisting curse dot on a dying character would
+      re-trigger the fall (dying_since reset, repeated fatal-blow lines)
+      every round. Newly-reaching-0 is a change, so the fall fires exactly
+      once. Both v26.0 dot_vitality pin tests still pass as written (their
+      setups make actual == nominal).
+  D4. Bar-cut mechanics. The brief says "cut the bar's max through the
+      standing bar-law rescale; store the flat max-delta on the instance."
+      The standing rescale RECOMPUTES maxima from the stat formula, so a
+      free-standing cut would be silently erased by any mid-curse gear
+      equip, stat spend, or level-up, breaking exact reversal and the
+      §9.2 refill-to-cut-max semantics. Implemented so the cut lives
+      INSIDE every max recompute: active_bar_cut_totals feeds
+      bar_rescale_updates (new vit_cut/lon_cut params, floor 1),
+      rescale_bars_for_gear, the cmd_spend path, and recalculate_bars
+      (level-up fills to the CUT max, floored at 1). All pinned invariants
+      hold (mid-curse rescale keeps the cut — tested).
+  D5. Heal-ceiling breadth. The brief's §6 enumerates the instant restores
+      and hot_vitality ticking as enforcement points, under the general
+      clause "any vitality-increasing write on the target clamps."
+      Implemented the general clause: passive regen (Phase 4) and
+      lifesteal are also clamped — without the regen clamp the pinned
+      floor-hold "silence" is impossible out of combat (regen would lift
+      the bar above the hold every tick and the drain would re-announce
+      every round, forever). execute_death's refill is deliberately
+      exempt per §9.2.
+  D6. §8 equip-path audit finding. Two non-player paths set
+      is_equipped=True: the door's _dress (outfit restore) and
+      _equip_item_admin. Both are documented admin bypasses (the v25.7
+      sudo-unequip precedent) — a door equip does NOT spring a latent
+      curse; in-code comments added at both sites.
+  D7. Door edit_item mirror (§10). The door's edit whitelist refuses
+      unknown keys, so the new curse fields are read-only by construction
+      — the correct posture (lifecycle is engine-owned); NO new editable
+      keys were added, and therefore the sudo bot's edit_item schema
+      needed no mirror change. The item READ payload gains latent_curse
+      (slug), active_curse (id), memorial_description.
+  D8. Expiry-sweep null skip. "The expiry sweep must skip null" was
+      already true by construction — expires_at__lte=now excludes NULL by
+      SQL semantics. No code change; noted for the record.
+  D9. Playtest checklist notes (flagged for the operator BEFORE the
+      playtest; the steps' own stop-and-report forks govern):
+      (a) Step 8 says the Gravekeeper's Hold "drains 8/round"; the §11.2
+          component table (authoritative per the standing rule) gives
+          magnitude 8.0/4.0, i.e. 12/round at Mk 1 (8 + 4x1). Expect 12s.
+      (b) Step 11 expects the item to survive sudo removal ("item clean,
+          unequip free, no re-spring on re-equip"), but the standing sudo
+          removal path (the door's remove_item, §9.1's named site) DELETES
+          the item — the curse teardown, latent clean, and memorial stamp
+          all execute (tested), and then the item is gone. §9.1 was
+          implemented exactly as specified; the step's expectations
+          cannot be observed on a deleted item. If the intent was an
+          effect-only removal surface, that is a design-session question.
+  D10. EffectRefused import shape and the MC record: the combat_action MC
+      record gains a 'curse_factor' key only when a damage_cut is active
+      (record honesty for the scaled final); additive, never load-bearing.
+
+PENDING DEPLOY-TIME ACTIONS (open until the production executions at
+release deploy — Deployment Law step 6)
+  | Action | Executor | Expected |
+  | Migration 0059 on production | make deploy-prod (closeout tail, standard) | applies cleanly |
+  | Production seed — curse definitions/components, 26 CurseCandidate rows, 26 is_cursed_template flags, admission-test definitions | make seed-prod, bare, on its own operator confirmation in the closeout tail | deletions: 0; counts as §13.3 |
+  Dev-side executions of both happened in-session (Steps 2 and 13).
+
+OPERATOR PLAYTEST
+  Checklist: brief §14 (12 steps), against the dev stack — deployed and
+  seeded, ready at session end. Note D9 before running steps 8 and 11.
+
+  Playtest disposition: OPEN — awaiting operator.
