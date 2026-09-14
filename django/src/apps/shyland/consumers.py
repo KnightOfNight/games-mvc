@@ -1863,13 +1863,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             line += f' (between {x} and {x + math.ceil(entry["value"])} damage)'
         return line
 
-    def _format_identified_item_lines(self, item):
+    def _format_identified_item_lines(self, item, curse_info=None):
         defn = item.definition
         lines = []
         # v20 brief 3 (#48): composed headline; rarity lives in the
         # trailing flag block now.
         lines.append(compose_item_line(item))
         lines.append(f'  {defn.description}')
+        if item.memorial_description:
+            # v26.2 (#330): an ended curse's memorial closes the
+            # description forever after.
+            lines.append('')
+            lines.append(f'  {item.memorial_description}')
         lines.append('')
         lines.append(f'  Type:       {defn.item_type.title()}')
         lines.append(f'  Genre:      {defn.genre_tag.title()}')
@@ -1927,9 +1932,43 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
 
         if item.is_cursed and item.curse_identified:
-            lines.append('  Curse:      This item carries a curse.')
+            # v26.2 (#330): the revealed block — name, time remaining
+            # ('permanent' for a never-expiring curse), description.
+            # curse_info arrives pre-fetched (this builder runs in async
+            # context, no ORM here); without it the generic row stands.
+            if curse_info is not None:
+                name, remaining, curse_desc = curse_info
+                lines.append(f'  Curse:      {name} ({remaining})')
+                if curse_desc:
+                    lines.append(f'              {curse_desc}')
+            else:
+                lines.append('  Curse:      This item carries a curse.')
 
         return lines
+
+    @database_sync_to_async
+    def get_curse_examine_info(self, item):
+        # v26.2 (#330): the examine reveal's data — (name, remaining,
+        # description) for the item's active curse, or None. Remaining is
+        # 'permanent' when the instance has only never-expiring
+        # components (#47's ruled vocabulary), else M:SS from the latest
+        # component expiry.
+        instance = item.active_curse
+        if instance is None:
+            return None
+        expiries = [
+            ci.expires_at
+            for ci in instance.component_instances.filter(is_active=True)
+            if ci.expires_at is not None
+        ]
+        if expiries:
+            from django.utils import timezone
+            secs = max(0, int((max(expiries) - timezone.now()).total_seconds()))
+            remaining = f'{secs // 60}:{secs % 60:02d} remaining'
+        else:
+            remaining = 'permanent'
+        return (instance.definition.name, remaining,
+                instance.definition.description)
 
     async def cmd_examine(self, args):
         # v22 brief 2 (DD §8, #96): examine's pool is the union —
@@ -1962,7 +2001,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 # the reveal is output-only. In-memory flip, no .save();
                 # the room listing keeps the mystery name until pickup.
                 item.is_identified = True
-                lines = self._format_identified_item_lines(item)
+                curse_info = None
+                if item.is_cursed and item.curse_identified:
+                    curse_info = await self.get_curse_examine_info(item)
+                lines = self._format_identified_item_lines(
+                    item, curse_info=curse_info)
             await self.output('\n'.join(lines), 'report')
             return
 

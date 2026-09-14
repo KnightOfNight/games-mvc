@@ -359,7 +359,7 @@ async def q_inventory(params, agent_name):
 @database_sync_to_async
 def _item_payload(item_id):
     item = (ItemInstance.objects
-            .select_related('definition', 'owner',
+            .select_related('definition', 'owner', 'latent_curse',
                             'current_room__zone', 'current_room__area')
             .filter(pk=item_id).first())
     if item is None:
@@ -372,6 +372,13 @@ def _item_payload(item_id):
         'damage_spread': item.damage_spread,
         'is_cursed': item.is_cursed,
         'curse_identified': item.curse_identified,
+        # v26.2 (#330): full-fidelity curse state — read-only through
+        # the door (the edit whitelist refuses these keys; the curse
+        # lifecycle is engine-owned).
+        'latent_curse': (item.latent_curse.slug
+                         if item.latent_curse_id else None),
+        'active_curse': item.active_curse_id,
+        'memorial_description': item.memorial_description,
         'is_identified': item.is_identified,
         'is_unidentifiable': item.is_unidentifiable,
         'owner': ({'id': item.owner_id, 'name': item.owner.name}
