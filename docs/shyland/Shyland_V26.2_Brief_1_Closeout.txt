@@ -159,6 +159,32 @@ DEVIATIONS AND RECORDED FINDINGS
   D10. EffectRefused import shape and the MC record: the combat_action MC
       record gains a 'curse_factor' key only when a damage_cut is active
       (record honesty for the scaled final); additive, never load-bearing.
+  D11. Playtest-prep-found fix (2026-09-16, before step 8 ran): the #151
+      aggregate heal path (`use`/`heal` on instant vitality restoratives)
+      writes vitality through its OWN atomic UPDATE in
+      _apply_aggregate_heal — a third vitality-heal write path the
+      brief's §6 enumeration missed; the heal ceiling did not cover it,
+      so a draught would have healed straight past a floor hold (playtest
+      step 8 would have failed). Fixed in-session under the brief's
+      general clause ("any vitality-increasing write clamps"): the
+      aggregate UPDATE gains the Least(max, Greatest(current, hold))
+      ceiling, and consumption planning stops at the effective headroom
+      (min(deficit, hold − current)) so a hold never mass-consumes
+      draughts for nothing — while `covered` stays measured against the
+      true full-bar deficit, so the full-heal fold never fires under a
+      hold. One new test (AggregateHealCeilingTests); suite 1029 → 1030,
+      full suite green. Commits: see the ledger addendum below. Test
+      authoring note: the `use` verb takes a numeric-only quantity (v22
+      grammar) — the test's first draft used `use all` and never resolved.
+
+COMMIT LEDGER ADDENDUM (playtest-prep fix, 2026-09-16)
+  94801a9  the aggregate-path heal ceiling + AggregateHealCeilingTests
+           (suite 1029 -> 1030 OK; full suite green)
+  (+ the arch-doc hash/count follow-up commit carrying this note)
+  FINAL IMPLEMENTATION (code) COMMIT / ARCH HEADER HASH: 94801a9
+  (supersedes e8f13fe — the final hash lands the playtest-found fixes,
+  the 25.17/#332 precedent). make deploy-dev rerun after the fix — the
+  dev stack runs the fixed build. Suite of record: 1030.
 
 PENDING DEPLOY-TIME ACTIONS (open until the production executions at
 release deploy — Deployment Law step 6)
