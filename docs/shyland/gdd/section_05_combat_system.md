@@ -164,7 +164,7 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 
 **Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). Applying, ticking, and dispelling are the same mechanical operations whatever the source. The coherence is intentional.
 
-**Curse multipliers at the combat read points (v26.2, pending implementation):** two curse-family component types plug into combat as passive multipliers — one scales down the player's outgoing damage term, the other scales down TAV before the armor curve (Section 5.4). Multiple actives multiply together. Built as general machinery; in v26.2 only curses author them.
+**Curse multipliers at the combat read points (v26.2):** two curse-family component types plug into combat as passive multipliers — one scales down the player's outgoing damage term, the other scales down TAV before the armor curve (Section 5.4). Multiple actives multiply together. Built as general machinery; in v26.2 only curses author them.
 
 ### 5.7 Flee, Escape & Disengagement
 

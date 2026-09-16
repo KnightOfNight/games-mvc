@@ -256,7 +256,7 @@ Legendary and Artifact items cannot be crafted — only found (Legendary) or gra
 
 **Artifact items are categorically different from other rarities.** An Artifact is a one-of-a-kind item that exists nowhere else in the game — it has a proper name, a lore entry, and properties that do not follow the standard item generation rules. Artifacts are created by hand, one at a time, for specific purposes or players. The Artifact rarity tier is reserved for these items exclusively.
 
-### 6.7 Cursed Items — The Curse Engine (v26.2, pending implementation)
+### 6.7 Cursed Items — The Curse Engine (v26.2)
 
 Some items carry a hidden curse. The full engine is ruled on #297 (the Q1–Q7 system rulings) and #330 (the engine shape set); the apply-time admission doctrine its ticking components ride is Section 6.9's admission policy (#331). The engine ships in v26.2 with acquisition **admin-only**; curses go live in the world — generation-time drops, the `cleanse` service, presence detection — in the arc's Release B (#297).
 
@@ -352,9 +352,9 @@ This is intended for one-of-a-kind Artifacts whose true nature is a permanent se
 
 #### The Identification Service (Future)
 
-The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12. **Curse detection is not in its scope (v26.2, pending implementation):** curse knowledge follows Section 6.7's doctrine — equipping is the identification, and the only sanctioned pre-equip check is the cleanse NPCs' presence sweep (Release B).
+The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12. **Curse detection is not in its scope (v26.2):** curse knowledge follows Section 6.7's doctrine — equipping is the identification, and the only sanctioned pre-equip check is the cleanse NPCs' presence sweep (Release B).
 
-#### Interaction with Curses (v26.2, pending implementation)
+#### Interaction with Curses (v26.2)
 
 An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; **nothing reveals what a curse does before it springs** — equipping a cursed item is a gamble the player takes with open eyes, and springing the trap is the identification (Section 6.7). Release B's presence sweep can say *that* a carried item is cursed, never what the curse does.
 
@@ -364,14 +364,14 @@ All temporary and persistent effects in Shyland — consumable effects, curse ef
 
 #### Model Structure
 
-**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds). *(v26.2, pending implementation)* Curse definitions add three fields: an `is_curse` marker, the authored apply lore (the equip-time theater, Section 6.7), and the authored memorial text (stamped onto the instance at curse end).
+**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds). *(v26.2)* Curse definitions add three fields: an `is_curse` marker, the authored apply lore (the equip-time theater, Section 6.7), and the authored memorial text (stamped onto the instance at curse end).
 
 **EffectComponent** — defines one behavioral unit within an `EffectDefinition`. Each component has a type, optional stat target (for `stat_bonus`/`stat_penalty`), and scaling parameters:
 
 - `magnitude_base` + `magnitude_scaling` — scales with source Mk tier at application time
 - `duration_base` + `duration_scaling` — scales with source Mk tier at application time
 - `order` — controls application order within a definition
-- *(v26.2, pending implementation)* a nullable **second magnitude pair** (`magnitude2_base` + `magnitude2_scaling`) for types needing two authored numbers (the floor-hold's hold point; every other type ignores it), and a **`no_expiry`** boolean — such components create instances with no expiry timestamp and tick until their effect ends by other means (`duration == 0` keeps meaning instantaneous; no sentinel overloading)
+- *(v26.2)* a nullable **second magnitude pair** (`magnitude2_base` + `magnitude2_scaling`) for types needing two authored numbers (the floor-hold's hold point; every other type ignores it), and a **`no_expiry`** boolean — such components create instances with no expiry timestamp and tick until their effect ends by other means (`duration == 0` keeps meaning instantaneous; no sentinel overloading)
 
 Scaling formula: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)` and `duration = duration_base + (duration_scaling × mk_tier)`. The Mk tier is always the source's (the item or NPC applying the effect) — never the target's.
 
@@ -408,7 +408,7 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 |`curse_generic`     |Duration, state    |**Retired in place (v26.2)** — curses are built from real components; the choice row remains, nothing seeds it |
 |`durability_restore`|Instantaneous      |Deferred — placeholder response only                 |
 
-*(v26.2, pending implementation — the curse-family types; working names, pinned at brief time:)*
+*(v26.2 — the curse-family types; working names, pinned at brief time:)*
 
 |Type                |Category           |Description                                          |
 |--------------------|-------------------|-----------------------------------------------------|
@@ -421,7 +421,7 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 
 The vocabulary grows as content grows — new component types are additive.
 
-#### Reapplication and Admission (v26.2, pending implementation — #331)
+#### Reapplication and Admission (v26.2 — #331)
 
 **Same-definition reapplication (the standing rule, checked first).** When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
 

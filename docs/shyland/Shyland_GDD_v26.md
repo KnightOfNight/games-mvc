@@ -4,7 +4,7 @@
 
 # Shyland — Game Design Document
 
-**Version 26.1 — Closed**
+**Version 26.2 — Closed**
 
 -----
 
@@ -128,6 +128,7 @@
 | **v25.17** | **Point release — Closed** | **RELEASE — legible bot failure reporting (#326 founding and sole ticket).** One founding ticket, one brief, per the release scope law. A bot-only release: change surface `agents/sudo_bot.py` alone (plus the version stamp), no game-side code, no migration, no seed, no client change, no door vocabulary change. The defect (#326, filed from the V25.16 playtest's API-credit exhaustion): a hard model-API error on a live sudo request was handled exactly as designed — caught per request, logged with traceback, bot stayed attached — while the requesting admin got nothing, indistinguishable in-pane from the bot being down. **The ruling: when the bot is up and an admin's request terminally fails, the admin gets exactly one fixed legible in-pane line** through the door's shipped `answer` action in sudo's voice, naming the failure **class** and never the raw API detail (which stays in the host-side log). Two classes, coarse deliberately: **transient** (`Your request failed — a temporary problem reaching the model. Try again.`) and **persistent** (`Your request failed — the model service refused; this needs the operator's attention.` — billing, auth; retrying won't help). Classification is **duck-typed and provider-agnostic**: `classify_failure(exc)` keys on `getattr(exc, 'status_code', None)` — 400/401/403 ⇒ persistent, everything else including no status at all ⇒ transient — no module-level `anthropic` import (deferred-import rule preserved; exactly one import, inside `ClaudeBrain.__init__`). The `is_admin` pre-check query failure now raises `RequestFailed` through the same `_worker` choke point (transient); a genuine non-admin still drops silently, byte-identical. **The report path never raises:** `_report_failure` wraps its delivery call — if delivery fails too (dead door connection, the bot-effectively-down case the rule exempts), the bot logs and stays quiet. Model-chosen silence stays sanctioned (#308's exemption untouched); conversation store, reconnect and kill-switch states, and the #308 bounce all untouched. Suite steady at **954** — no new in-suite tests (the django suite cannot see host-side `agents/`; precedent v25.9–v25.11); behavior proven by a pure classification proof (8/8), a scripted raising-brain driver over the real dev door (12/12 — exactly one pane line per class, byte-exact to the ruled strings, no stray lines, classed UTC-Z log warnings with tracebacks), and a stub no-regression round trip. **Nineteenth release under the technical pre-flight (#252): one load-bearing mismatch, hard-stopped and operator-ruled in-session** — the brief's premise that 25.11 set a no-hash-move precedent for pure bot-side releases was false against the repo (25.11's arch commit did move its header hash); the operator ruled: move it — the architecture doc's header hash moves to `c1c5d01` (the release's bot-side behavior commit), the ruling recorded on #326. **Operator playtest successful against the dev stack** (baseline round trip, bad-key persistent case, unreachable-endpoint transient case, sanctioned silence). Architecture doc stamped 25.17 in place (§4.23 legible failure reporting). One marker swept at this closeout (§10, parenthetical deletion only — the passage's heading already carried shipped provenance). **Pending deploy-time actions: none** — the bot is host-side; production takes the change when the operator restarts the prod bot on post-25.17 main code (the standing action; that restart now delivers the failure lines plus everything pending since 25.10). |
 | **v26.0** | **v26 — Closed** | **RELEASE — effect tick hygiene; Version 26 (Game Mechanics) opens (#145 founding and sole ticket).** One founding ticket, one brief, per the release scope law. The major's first design session (2026-09-11) did the big coherent pass: all eight queued V26 issues triaged with full ruling sets, the fuel-tank doctrine settled (Vitality and Longevity gate, never scale; Acuity keeps its shipped band identity; no bar affects another — "the fuel tanks don't control power, they're just money"), all V26 mechanics land in Zone 1, and the release order ruled on #145 (26.0 #145 → 26.1 #70 → 26.2 #330 [filed there] → 26.3 #297 → 26.4 #283 → 26.5 #316 → 26.6 #47 → 26.7 #220). The release itself makes the **#133 announcement doctrine** — *effect ticks never announce no-ops; boundary arrival gets one terminal line; holding is silent* — **uniform across the tick engine's whole dot/hot family.** Five branches (`dot_longevity`, `dot_acuity`, `hot_vitality`, `hot_longevity`, `hot_acuity`) rewritten onto the shift-branch pattern: clamp math untouched; `new == old` does nothing at all (no save, no status build, no announcement); `new != old` saves and announces the **actual applied delta**, never the nominal; boundary arrival gets one stateless terminal line instead of the ordinary line (terminal wordings authored at fix time under the standing creative policy). `dot_vitality` byte-unchanged (its Dying event is the ruled terminal exception); both shift branches untouched. **Ruled with no GDD delta** — the doctrine is already law in §4 from #133; this release makes the code conform, so there were no markers to sweep. Playtest findings, all handled in-session: **#332 filed, operator-ruled, and fixed (two parts** — a ruled deviation from the brief's no-clamp-math premise): `hot_acuity`'s 1-decimal mid-walk rounds collided with 2-decimal baselines (Feral 0.95, Machinekind 1.05) — arrival now stores `acuity_baseline` exactly (the #133 band-edge rule applied) and mid-walk rounds at 2 decimals (drift granularity, v24.22 display precision); pre-fix the walk never terminated and sub-0.05 magnitudes were erased entirely. **#331 filed** (Phase 1 stacked same-character components compute from stale per-row snapshots; ruling recorded — fresh-read stacking in application order, admission policy to be ruled with #330) and **#333 filed** (acuity decimal-precision audit toward one doctrine) — both open to the design pipeline, V26-labeled. Twentieth release under the technical pre-flight (#252): zero mismatches. Code-only: no model change, no migration (head stays `0057`), no seed, no client change. Suite **967** (954 pre-existing + 13 brief tests). **Operator playtest successful against the dev stack** — all six checklist steps, including the two added after the #332 rulings. Architecture doc: renamed `Shyland_Architecture_v26.md` by the brief per the `N.0` standing rule, stamped 26.0, header hash moved to `bdb83f3` (runtime behavior change; the final hash carries both #332 parts). **The V25 queue is drained** — no open issue carries the V25 label. Major-opening mechanics at closeout: `GDD_MAJOR` → 26, monolith renamed `Shyland_GDD_v26.md`, old monolith removed. **Pending deploy-time actions: none** — nothing for the closeout tail beyond the ordinary `make deploy-prod`. |
 | **v26.1** | **Point release — Closed** | **RELEASE — Longevity's first drain (#70 founding and sole ticket).** One founding ticket, one brief, per the release scope law. The slow burn finally burns: under the three-tanks doctrine (fuel tanks gate, never scale — §4.4), Longevity gets its first consuming mechanic. **The flee fuel gate (§4.3, §9):** a contested flee attempt — one that reaches the escape contest — costs `ceil(longevity_max / 4)` (25% of max), charged pre-contest, success and failure alike; below the cost the attempt is refused **free** (`You are too spent to flee!` — warn; no deduction, no flee cooldown, no status refresh); at exactly the cost the flee fires and lands the bar at 0. The dying check, cooldown check, out-of-combat no-op, and empty-session disengage remain exempt and byte-unchanged; the deduction is one atomic UPDATE (`spend_flee_longevity`, #52 style). **Regen retuned 3600 → 900** (`LONGEVITY_REGEN_SECS = 900` — nominal 15 minutes from zero at every level) under the new **regime rule**: interval form below a 900 bar (one point per `ceil(900/max)` s), Vitality-shaped per-tick form at or above it (`ceil(max/900)` per second) — refill time stays ~15 minutes however deep the tank grows; Vitality's regen untouched. **The Stamina Potion** — Longevity's exact Healing-Draught mirror, superseding the earlier full-restore idea by ruling (a full restore is "a financial win for high level players"): new `restore_longevity_percent` EffectComponent type (migration `0058`, choices-only), `0.15 + 0.05×Mk` of `longevity_max` with floor 25 (`LONGEVITY_PERCENT_RESTORE_FLOOR`), Common, 15 cp, seeded to Essa, Sona, and Ridda plus the two automatic cart entries, vendor-only (no loot-table entries); Mk 1's 20% not refunding one flee's 25% is deliberate — fuel costs what it costs. `percent_heal_amount` generalized to `percent_restore_amount` (thin byte-compatible delegate kept for both existing callers); the per-item use loop gains the longevity stop-at-full gate mirroring the draught's. **Display: the stats pane reorders to Vitality, Longevity, Acuity** (markup move only; §4 subsection numbering unchanged). Twenty-first release under the technical pre-flight (#252): zero mismatches. Model change: `EffectComponent.component_type` choices only (migration `0058`). Suite **990** (967 pre-existing + 23 brief tests). Deviations, all recorded in the closeout report: the v24.3 regen pin tests retuned with the constant (interval 14 → 4, total 3836 → 1096; the interval-form law they assert unchanged); the dev seed's standing enforce-exact sweep deleted two pre-existing admin-authored dev leavings ("Ludicrous Speed", "Magic Sword" — unrelated to the brief; production deletion expectation remains 0). **Operator playtest successful against the dev stack** — all eleven checklist steps, no findings. Architecture doc stamped 26.1 in place, header hash moved to `f57ef81` (runtime behavior change). **Pending deploy-time action: the production seed rerun** (`make seed-prod`, closeout tail's deploy window, bare invocation on its own operator confirmation) — delivers the Stamina Potion: +1 EffectDefinition, +1 EffectComponent, +1 ItemDefinition, +5 VendorEntry; expected deletions 0; the seed's own verification pass (including the 5/5/6 vendor counts) is the executor of the count invariants. |
+| **v26.2** | **Point release — Closed** | **RELEASE — the curse engine; Release A of the #297 curse arc (#330 founding ticket; #331 dependency riding the release).** One founding ticket, one brief, per the release scope law. The complete curse engine ships, playtestable end to end, with acquisition **admin-only** (`CURSE_WILD_CHANCE = 0.0` wired but dormant); curses go live in the world — generation-time drops, the `cleanse` service, presence detection — in the arc's Release B (#297). **Schema (migration `0059`):** `EffectDefinition` gains `is_curse`/`apply_text` (the equip-time theater)/`memorial_text`; `EffectComponent` gains the nullable second magnitude pair (`magnitude2_base`/`magnitude2_scaling` — only the floor-hold reads it) and `no_expiry` (instances with no expiry timestamp; `duration == 0` keeps meaning instantaneous); `ItemInstance` gains `latent_curse` and `memorial_description`; new model `CurseCandidate` is the generation pool; six curse-family component types join the vocabulary (`stat_cut_percent`, `cut_vitality_max`, `cut_longevity_max`, `damage_cut`, `armor_cut`, `floor_hold_vitality`); `curse_generic` retired in place. **The #331 fix + admission policy (§6.9):** `apply_effect_definition` raises `EffectRefused` (blocker-named) instead of silently returning nothing; the six ticking dot/hot lanes gate on strictly-greater magnitude vs every active same-type incumbent (equal refused, duration-blind, join-not-replace, whole-effect atomicity; curse instances excluded both directions); the use pipeline's silently-spent lower-Mk path becomes **kept-plus-warn** (ruled behavior change; the NPC proc path skips silently); Phase 1 runs one in-memory character per target in `(applied_at, pk)` apply order — stacked same-target effects no longer compute from stale snapshots; `dot_vitality` joins the change-only family (a persisting curse dot on an emptied bar is a genuine no-op — no re-fall). **The trap and the lifecycle:** equipping springs the latent curse (success line first, authored theater in narration voice, private; door dress/equip are documented admin bypasses); `end_curse` is the one teardown — expiry, sudo removal, curse-death — with reversible cuts reversed exactly and the memorial stamped onto the instance; bar cuts live **inside** every max recompute so mid-curse gear/stat/level mutations never erase them; the floor hold's heal ceiling clamps every vitality-increasing write (instant restores, hot ticks, passive regen, lifesteal, and the #151 aggregate heal path — the playtest-prep-found third write path, deviation D11). **Display:** examine's revealed block shows curse name + countdown (`M:SS`/`permanent`) + description; the memorial closes the identified description; the door's item read payload gains the three curse fields, read-only. **Seed:** five expiring Ridge curses pooled onto the Ridge-boss loot definitions (26 `CurseCandidate` rows, self-healing), three never-expiring test curses, admission-test definitions including the shell-gift-only `weak-mending-salve` — the first-ever carve-out to the #43 every-consumable cart rule (`CART_STOCK_EXCLUDED`, honored by the seed verification check). Twenty-second release under the technical pre-flight (#252): all 13 load-bearing claims verified, zero mismatches. Suite **990 → 1030** (40 new tests; zero existing tests changed). Deviations D1–D11 all recorded in the closeout report. **Operator playtest successful against the dev stack** — steps 1–11 passed (step 9 re-staged at Mk 5 after surfacing F1), step 12 skipped by the operator (no playtestable surface exists — zero `NpcEffect` rows in the game; unit-test covered). Findings: **#336 filed** (examine should check equipped items first); **F1 recorded unfiled** for the #297 Release B design session (out-of-combat DoTs race passive regen — a Mk 1 Hollowing cannot kill through regen). Architecture doc stamped 26.2 in place, header hash moved to `94801a9` (architectural release; the final hash lands the playtest-prep aggregate-ceiling fix, the 25.17 precedent). **Pending deploy-time actions: the production seed rerun** (`make seed-prod`, closeout tail's deploy window, bare invocation on its own operator confirmation) — delivers the curse set; expected deletions 0; migration `0059` rides the standard `make deploy-prod` migrate step. |
 
 -----
 
@@ -1320,11 +1321,11 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |**Unmoored**  |Eldritch effect; Acuity pushed violently away from baseline                                   |
 |**Focused**   |Acuity spiked high; single-target bonus, flanking blindness active                            |
 |**Scattered** |Acuity pushed low; awareness penalties, spell unreliability                                   |
-|**Cursed**    |Persistent negative effect from a cursed item or combat ability; cannot be removed voluntarily|
+|**Cursed**    |Item-borne effect that springs on equip; ends once and cleans the item; cannot be removed voluntarily — Section 6.7 (v26.2)|
 
-**Longevity interactions:** The duration of DoT and HoT effects on a character is modified by their Longevity. High Longevity = enemy DoTs expire faster, own HoTs last longer.
+**Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). Applying, ticking, and dispelling are the same mechanical operations whatever the source. The coherence is intentional.
 
-**Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). This means a Warden dispelling a curse and a Warden dispelling a combat debuff are mechanically the same operation. The coherence is intentional.
+**Curse multipliers at the combat read points (v26.2):** two curse-family component types plug into combat as passive multipliers — one scales down the player's outgoing damage term, the other scales down TAV before the armor curve (Section 5.4). Multiple actives multiply together. Built as general machinery; in v26.2 only curses author them.
 
 ### 5.7 Flee, Escape & Disengagement
 
@@ -1653,35 +1654,65 @@ Legendary and Artifact items cannot be crafted — only found (Legendary) or gra
 
 **Artifact items are categorically different from other rarities.** An Artifact is a one-of-a-kind item that exists nowhere else in the game — it has a proper name, a lore entry, and properties that do not follow the standard item generation rules. Artifacts are created by hand, one at a time, for specific purposes or players. The Artifact rarity tier is reserved for these items exclusively.
 
-### 6.7 Cursed Items
+### 6.7 Cursed Items — The Curse Engine (v26.2)
 
-Some items carry a hidden curse. The curse is not visible in the item's description — nothing reveals it before the item is equipped, unless:
+Some items carry a hidden curse. The full engine is ruled on #297 (the Q1–Q7 system rulings) and #330 (the engine shape set); the apply-time admission doctrine its ticking components ride is Section 6.9's admission policy (#331). The engine ships in v26.2 with acquisition **admin-only**; curses go live in the world — generation-time drops, the `cleanse` service, presence detection — in the arc's Release B (#297).
 
-- A player has a curse-detection skill (available in the Cross-Origin utility tree)
-- A player pays an NPC service to identify the item (a sage, a tech-scanner, a witch doctor depending on genre)
+#### Identity — the latent curse
 
-**On equipping a cursed item:**
+- **Every cursed instance knows its curse from birth.** A nullable FK on the instance (`latent_curse` → the curse's `EffectDefinition`) is rolled **once at generation**; one curse per item. It is distinct from `active_curse`, the live `EffectInstance` once the trap has sprung.
+- **Candidate pools are authored per item definition** (a weighted through-model, `CurseCandidate`). Low-level items carry a pool of one — same make/model/zone → same curse, so a curse can be the signature of a make or a place. High-tier items may carry several candidates ranging from very bad to very very bad, with weight making the worst the rarest — a gamble of unknown depth.
+- **Curses are limited to the higher-rarity items bosses drop.** Pools attach only to definitions appearing in boss/world-boss loot tables, and the generation-time roll fires only when the rolled instance rarity is **Rare or above**. (The admin gifting path may bypass the rarity gate for testing.)
+- A curse `EffectDefinition` is marked as such (`is_curse`) and is built from **real components** — the cuts, drains, and multipliers of Section 6.9. The old `curse_generic` placeholder type is retired in place.
 
-- The curse activates immediately
-- The player sees the curse effect described in the same terms used for any other effect application
-- The item cannot be unequipped until the curse is removed
+#### The trap — equipping springs it
 
-**Curse removal:**
+- **The equip is never refused for being cursed, and soulbind fires as normal** — equipping a cursed item is also a permanent bind. The trap functioning is the design.
+- The mundane transactional line prints first (`You equip …`), **then the world turns**: the curse's authored apply lore — one vivid line up to a full vision paragraph, per curse — renders as narration (value-color, ambient, unattributed), one output line per authored line. The theater is private; the room sees nothing.
+- In the same motion the machinery lands: the curse applies as a live `EffectInstance` at the **item's** Mk tier (curse magnitudes scale with the item — a Mk 5 item's curse bites harder), `active_curse` is populated, and `curse_identified` is set — **springing the trap is the identification**.
+- The curse application **bypasses every admission gate** (Section 6.9): the lane gate exempts curses in both directions, and the same-definition replace check is skipped — two cursed items carrying the same curse each spring their own independent instance, and both run.
 
-- Warden ability
-- NPC removal service (currency cost)
-- Specific consumable
-- Timeout — curses may have an optional duration after which they lift naturally
+#### Lifecycle — a curse ends once, and the item comes out clean
 
-**Curse effects draw from the shared effect vocabulary.** A curse is an EffectInstance applied to the character when the item is equipped. The same effect types used by combat abilities and consumables are used by curses — this makes the world feel coherent. A Warden removing a curse is the same mechanical operation as a Warden dispelling a combat debuff.
+- **Duration is a property of the curse itself.** Low-level curses expire on their own (the Z01 tier: single-digit minutes — a "nice first experience"); high-level curses have **no expiry** and require remediation, and the quality of the cursed item is what makes remediation worth it.
+- **Every end-of-curse cleans the instance, whatever the cause** — expiry, curse-caused death, admin teardown, and (Release B) cleansing: `is_cursed` and `latent_curse` clear, the player equips and unequips at leisure, and no re-equip ever re-applies it — one curse life per instance. All reversible components reverse exactly (stat cuts restore the stored delta; bar cuts restore through the bar-law rescale).
+- **The item's description memorializes the prior curse.** Each curse carries authored memorial text; at teardown it is stamped onto the instance and appended as a closing paragraph to the item's description — the item remembers.
+- While the curse is live, unequip is refused (the standing guard) — and therefore the item cannot be sold: the curse keeps its teeth for free.
+- `curse_identified` stays set after the clean — a historical fact; display already keys on `is_cursed AND curse_identified`.
 
-**Curse magnitude and duration are configurable independently of each other.** A combat-applied curse might do heavy damage per tick for 15 seconds. The same curse on a ring might do a small, persistent drain that is merely annoying in normal play but compounds dangerously in prolonged combat. The effect vocabulary supports this — magnitude and duration are set at application time, not fixed on the effect definition.
+#### Death semantics — the source is the controlling factor
 
-**Curse state on the item instance:**
+- **Curse-caused death ends the curse.** The curse's own drain carries the character to the standard fall and death; the item comes out clean and is yours to keep forever — trial by ordeal.
+- **Death by any other cause leaves the curse standing.** Curse effects are exempt from the dying/death effect-cancellation that clears everything else; the item is still equipped and still cursed through respawn. A persisting curse never suspends: its ticks on an emptied bar are no-ops, its max-cuts stay in force (the respawn refill fills to the *cut* max), and a persisting DoT-to-death resumes draining and will eventually win — at which point *that* death is curse-caused and frees the item.
+- With multiple curses active, only the curse that caused the fall ends; the others ride through.
+- General law: **a curse lives exactly as long as its source does** — item-borne curses while the item bears them. This deliberately leaves room for player-applied curses by other means someday, governing their own persistence.
 
-- `is_cursed` — whether this specific copy carries a curse
-- `curse_identified` — whether the player has had it identified before equipping
-- Curse status is never revealed to the player until equipped or identified. The inventory command never shows curse indicators on unidentified items.
+#### Curse families
+
+- **Percent stat cuts** — a straight fractional cut to a stat (e.g. 50% of STR), reversed exactly at curse end.
+- **Percent bar cuts** — a fractional cut to `vitality_max` or `longevity_max`, applied and reversed through the standing bar-law rescale (fill fraction invariant; nothing refills). Acuity is excluded — band identity, not a fuel tank.
+- **Damage-output and armor-value reduction** — multipliers read at the two combat points (Section 5.6): outgoing damage scaled down, TAV scaled down before the armor curve. Multiple actives multiply.
+- **Over-time drains and combinations** — ordinary dots and multi-component sets from the shared vocabulary.
+- **The two signature shapes:** **DoT-to-death** — an authored no-expiry vitality drain, not a special type: it kills you, the curse ends, and the item is yours forever sans curse. **The floor-hold** — drains to an authored hold point (a fraction of max — "almost dead," authorable per curse; a crueler curse pins lower) and pins there: heals cannot raise the bar above the hold, the drain never takes it below, and outside damage still can.
+
+#### Knowledge
+
+- **No pre-equip detection in v26: the only way to find a curse is to equip the item.** No divination service, no detection fee, no skill — cheap universal detection would mean nobody ever springs the trap, and the gamble *is* the system. Z01's expiring curses are deliberately safe to learn on.
+- The display law stands: curse status is hidden everywhere — inventory shows no indicator — except `examine`, which reveals only when `is_cursed AND curse_identified`: the curse's name, its time remaining (`permanent` for no-expiry), and its description.
+- Release B adds the one sanctioned presence check: the cleanse NPCs' separate paid sweep — *that* a carried item is cursed and which one, never what it does. Sirius's nose stays outside both rules, whim-gated (#259).
+
+#### Removal
+
+- **Only an NPC can cleanse — never a potion or consumable** (Release B, #297: the `cleanse` service, priced by the curse itself, placed across the world). Low-level expiring curses may simply be waited out.
+- Admin containment (v25.7, `sudo` unequip/removal) remains, now routed through the shared teardown — ending the live effect *and* cleaning the latent flag.
+
+#### Acquisition staging
+
+- **v26.2 (Release A): admin-only.** The shell helper gains an explicit force-curse path — pool roll by default, or a named curse override (how the high-tier test curses are gifted, and how playtests pin a specific curse). The wild generation-time roll ships wired but **dormant** — zero live drops.
+- **Seed:** five real Z01 expiring-tier curses covering the families (a stat cut, a bar cut, a short DoT, a damage-or-armor cut, a combination — never the lethal signatures), plus three high-tier test curses (a DoT-to-death, a floor-hold, a no-expiry combination) belonging to **no pool** — unreachable in live generation until Z02+ authors them in.
+- **Release B (#297)** wires the live chance on `is_cursed_template` definitions.
+
+**Curse state on the item instance:** `latent_curse` (which curse springs — set at generation, cleared at curse end), `active_curse` (the live effect once sprung), `is_cursed`, `curse_identified`, and the memorial description field.
 
 ### 6.8 Item Identification
 
@@ -1719,11 +1750,11 @@ This is intended for one-of-a-kind Artifacts whose true nature is a permanent se
 
 #### The Identification Service (Future)
 
-The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **curses and deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12.
+The in-game identification mechanism — NPC sage service, Warden class ability, consumable identification scroll — concerns **deeper properties, not basic nature** (basic nature is free by holding or close inspection). Designed but not yet implemented. See Section 12. **Curse detection is not in its scope (v26.2):** curse knowledge follows Section 6.7's doctrine — equipping is the identification, and the only sanctioned pre-equip check is the cleanse NPCs' presence sweep (Release B).
 
-#### Interaction with Curses
+#### Interaction with Curses (v26.2)
 
-An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; only the identification service (or curse-detection skill) reveals a curse before equipping. Without that, equipping a cursed item is a risk the player takes knowingly.
+An item's basic nature and its curse status are separate knowledge. Holding or examining reveals nature; **nothing reveals what a curse does before it springs** — equipping a cursed item is a gamble the player takes with open eyes, and springing the trap is the identification (Section 6.7). Release B's presence sweep can say *that* a carried item is cursed, never what the curse does.
 
 ### 6.9 The Effect System
 
@@ -1731,13 +1762,14 @@ All temporary and persistent effects in Shyland — consumable effects, curse ef
 
 #### Model Structure
 
-**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds).
+**EffectDefinition** — a pure container and label. Has a name, slug, and description only. All behavior lives in its child `EffectComponent` rows. One definition can have multiple components, enabling multi-effect items (e.g. a potion that buffs STR for 60 seconds and DEX for 30 seconds). *(v26.2)* Curse definitions add three fields: an `is_curse` marker, the authored apply lore (the equip-time theater, Section 6.7), and the authored memorial text (stamped onto the instance at curse end).
 
 **EffectComponent** — defines one behavioral unit within an `EffectDefinition`. Each component has a type, optional stat target (for `stat_bonus`/`stat_penalty`), and scaling parameters:
 
 - `magnitude_base` + `magnitude_scaling` — scales with source Mk tier at application time
 - `duration_base` + `duration_scaling` — scales with source Mk tier at application time
 - `order` — controls application order within a definition
+- *(v26.2)* a nullable **second magnitude pair** (`magnitude2_base` + `magnitude2_scaling`) for types needing two authored numbers (the floor-hold's hold point; every other type ignores it), and a **`no_expiry`** boolean — such components create instances with no expiry timestamp and tick until their effect ends by other means (`duration == 0` keeps meaning instantaneous; no sentinel overloading)
 
 Scaling formula: `magnitude = magnitude_base + (magnitude_scaling × mk_tier)` and `duration = duration_base + (duration_scaling × mk_tier)`. The Mk tier is always the source's (the item or NPC applying the effect) — never the target's.
 
@@ -1771,17 +1803,36 @@ A single `EffectDefinition` can mix instantaneous and duration-based components.
 |`shift_acuity_low`  |Duration, ticking  |Pushes Acuity downward per combat round              |
 |`stat_bonus`        |Duration, once     |Applies stat delta on creation; reverses on expiry   |
 |`stat_penalty`      |Duration, once     |Applies stat delta on creation; reverses on expiry   |
-|`curse_generic`     |Duration, state    |Blocks unequip until removed                         |
+|`curse_generic`     |Duration, state    |**Retired in place (v26.2)** — curses are built from real components; the choice row remains, nothing seeds it |
 |`durability_restore`|Instantaneous      |Deferred — placeholder response only                 |
+
+*(v26.2 — the curse-family types; working names, pinned at brief time:)*
+
+|Type                |Category           |Description                                          |
+|--------------------|-------------------|-----------------------------------------------------|
+|`stat_cut_percent`  |Duration, once     |Cuts a stat by a fraction; the flat delta is computed and stored at apply time and reversed exactly at end (no drift if level-ups move the base mid-effect)|
+|`cut_vitality_max`  |Duration, once     |Cuts `vitality_max` by a fraction via the bar-law rescale; reversed through the same rescale at end|
+|`cut_longevity_max` |Duration, once     |As above, for `longevity_max`                        |
+|`damage_cut`        |Duration, passive  |Multiplier scaling down outgoing damage, read at the combat damage term (Section 5.6); multiple actives multiply|
+|`armor_cut`         |Duration, passive  |Multiplier scaling down TAV before the armor curve (Section 5.6); multiple actives multiply|
+|`floor_hold_vitality`|Duration, ticking |Drains per round (magnitude) toward an authored hold point (second magnitude pair, fraction of max), then pins: heals never raise the bar above the hold, the drain never takes it below, outside damage still can|
 
 The vocabulary grows as content grows — new component types are additive.
 
-#### Reapplication
+#### Reapplication and Admission (v26.2 — #331)
 
-When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
+**Same-definition reapplication (the standing rule, checked first).** When an effect is applied to a target who already has an active `EffectInstance` of the same `EffectDefinition`:
 
-- Incoming Mk tier ≥ existing Mk tier → reset: deactivate the existing instance and all its component instances, then create fresh ones at the new Mk tier
-- Incoming Mk tier < existing Mk tier → silently ignored; no message sent
+- Incoming Mk tier ≥ existing Mk tier → reset: deactivate the existing instance and all its component instances, then create fresh ones at the new Mk tier (refresh + upgrade)
+- Incoming Mk tier < existing Mk tier → refused
+
+**Cross-definition admission (the lane gate).** Different definitions contending for the same bar are governed per **(direction, bar) lane** — the six dot/hot lanes (`dot`/`hot` × Vitality/Longevity/Acuity). A DoT never gates a HoT and vice versa (the poison-vs-healing race is legitimate gameplay); different bars never gate each other; shifts and stat effects coexist freely, ungated.
+
+- **"Better"/"worse" is per-tick magnitude — a strict comparison, duration-blind.** A HoT is admitted only if strictly stronger per tick than every active effect in its lane; a DoT is admitted only if strictly worse. An equal effect is refused in both directions — no free duration-extension through the side door.
+- **Admission means JOIN, not replace.** The admitted effect runs alongside the existing ones; a lane's stack builds only by climbing. Stacked effects genuinely stack — multiple HoTs heal faster, multiple DoTs kill faster.
+- **Stacked effects fire in apply order, each against a fresh read of the character's true state** (the #331 staleness fix): applications are cumulative, and a tick that changes nothing is genuinely silent under the Section-wide announcement doctrine.
+- **Curses bypass the gate in both directions** (Section 6.7): a curse always lands regardless of the lane, and a live curse component never blocks an ordinary effect's admission.
+- **Refusal surfacing:** a player self-application refused by the gate **keeps the consumable** — nothing is spent — with a warn-layer message naming the stronger effect already running (this also converts the old silently-spent same-definition lower-Mk refusal to kept-plus-warn). A refused NPC proc is silent: the attack line simply doesn't name the effect.
 
 #### Expiry Messages
 
