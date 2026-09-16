@@ -193,8 +193,96 @@ release deploy — Deployment Law step 6)
   | Production seed — curse definitions/components, 26 CurseCandidate rows, 26 is_cursed_template flags, admission-test definitions | make seed-prod, bare, on its own operator confirmation in the closeout tail | deletions: 0; counts as §13.3 |
   Dev-side executions of both happened in-session (Steps 2 and 13).
 
-OPERATOR PLAYTEST
-  Checklist: brief §14 (12 steps), against the dev stack — deployed and
-  seeded, ready at session end. Note D9 before running steps 8 and 11.
+OPERATOR PLAYTEST (run 2026-09-16, dev stack, character Sharon-Love;
+delivered interactively one step at a time per the operator's new
+playtest-delivery protocol — see the process note below)
+  Step 1  PASSED — latent invisible (inventory + examine clean).
+  Step 2  PASSED — trap fired on the AUTO-SWAP equip path (bonus
+          coverage: success line, theater, over-capacity warn in correct
+          order); STR cut by the exact flat delta (24 -> 18 displayed).
+  Step 3  PASSED — examine reveal: name, countdown from 5:00, description.
+  Step 4  PASSED — cursed unequip refused (standing v18 line, plain name
+          without Mk suffix — pre-existing wording, untouched).
+  Step 5  PASSED — expiry: curse line, STR restored, memorial appended,
+          free unequip, clean re-equip (no re-spring).
+  Step 6  PASSED — climb admits; per-round announcements 3 then 6 in
+          apply order; full-bar silence.
+  Step 7  PASSED — weaker refused with the blocker-naming warn; salve
+          kept (count 1 before and after).
+  Step 8  PASSED — drain 12/round (D9a confirmed: table wins over the
+          step's "8"), arrival line at the 31 pin, pin silence, draught
+          consumed with heal no-op'd at the hold (via the D11 aggregate
+          fix, shipped before this step ran).
+  Step 9  FAILED AS ORIGINALLY STAGED, then PASSED re-staged: at Mk 1
+          the Hollowing (8/round) loses to out-of-combat passive regen
+          (~9/round at vitality_max 614) — net +1/round, oscillating
+          pin, no death possible (finding F1 below; the engine is
+          behaving as specified — the race predates this brief). The
+          stuck Mk 1 curse was ended via shell end_curse; re-gifted at
+          Mk 5 (20/round, net -11): vision theater, fall, dying window,
+          respawn, item clean with memorial, free unequip — and the
+          Gravekeeper's Hold rode through the curse-death untouched.
+  Step 10 PASSED — NPC kill with the Hold equipped: curse survived the
+          unrelated death, examine shows the live (permanent) curse,
+          drain resumed against the refilled bar.
+  Step 11 PASSED — sudo removal (bot receipt: item 29778 destroyed):
+          drain stopped, pin broken (regen climbed past 31), no curse
+          remnant. Observed under the D9b semantics: the standing
+          removal path deletes the item; the effect teardown is the
+          verified surface.
+  Step 12 SKIPPED by the operator — and found to have NO PLAYTESTABLE
+          SURFACE: zero NpcEffect rows exist in the game (the Fracture
+          Wraith was a pre-Verdant placeholder removed by
+          _cleanup_placeholders; its poison survives as effect
+          vocabulary only). The NPC-path refusal behavior is covered by
+          the two §12.2 unit tests.
 
-  Playtest disposition: OPEN — awaiting operator.
+  PLAYTEST FINDINGS
+  F1 (design-level, UNFILED — issue callout made in-session, operator
+     did not direct filing; recorded here for design-session pickup):
+     curse/effect DoTs race passive regen out of combat. Numbers from
+     the run: Mk 1 Hollowing 8/round vs regen ceil(614/300)x3 = 9/round
+     (net +1 — cannot kill); Mk 5 20/round vs 9 (net -11 — kills, but
+     the tempo drags: regen quietly refunds nearly half the drain).
+     Same race applies to any out-of-combat dot and predates this brief
+     (v24.3 regen). Ruling candidates: dot-vs-regen interaction, curse
+     kill tempo. Belongs with the #297 Release B design session.
+  F2 FILED: #336 — examine should check equipped items first (equipped
+     Rare cap vs same-noun inventory copy; the inventory copy won the
+     pick). Found at step 10b; worked around with the numbered form.
+  F3 D9a confirmed at step 8 (12/round, table-over-prose).
+  F4 D9b confirmed at step 11 (removal deletes the item; effect ends
+     cleanly). If an effect-only sudo removal surface is wanted, that
+     is a design-session question.
+
+  DEV LEAVINGS (Sharon-Love): memorialized spent-curse items kept by
+  design (Mk 1 iron mace / Leaden Arm; Mk 1 + Mk 5 leather gloves /
+  Hollowing — the Mk 1 pair ended via shell end_curse during the step-9
+  re-staging); one weak-mending-salve in inventory; the cursed leather
+  cap deleted by the step-11 sudo removal; assorted vitality/effect
+  churn. The step-12 throwaway effect definition was never created
+  (step skipped).
+
+  PROCESS NOTE (operator rule, 2026-09-16, saved to project memory):
+  playtests are delivered interactively — brief step summary first,
+  then collect the info needed to build exact code (character name
+  etc.), then one step at a time with ready-to-paste code, operator
+  reporting between steps. Never a full-checklist dump. Candidate for
+  a future Instructions refresh (operator's call).
+
+  Playtest disposition: Operator reports playtest successful — steps
+  1 through 11 passed (step 9 after the Mk 5 re-staging), step 12
+  skipped by the operator (no playtestable surface exists; unit-test
+  covered). TERMINAL.
+
+CLOSING ENTRY (2026-09-16)
+  Suite of record: 1030 (path form, in-container, OK).
+  Arch header hash of record: 94801a9.
+  Issues: #330 closed, #331 closed (gated on verification, 2026-09-14);
+  #336 filed at operator direction (2026-09-16).
+  The PENDING DEPLOY-TIME ACTIONS block above remains OPEN for the
+  closeout tail (migration 0059 via deploy-prod; curse seed via
+  seed-prod, expected deletions 0).
+  Final commit hash: this report-completion commit (see git — the last
+  commit on version_26_2 before the session-end issues report).
+  Session ended with the implementation-session-end ritual.
