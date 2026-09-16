@@ -160,11 +160,11 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |**Unmoored**  |Eldritch effect; Acuity pushed violently away from baseline                                   |
 |**Focused**   |Acuity spiked high; single-target bonus, flanking blindness active                            |
 |**Scattered** |Acuity pushed low; awareness penalties, spell unreliability                                   |
-|**Cursed**    |Persistent negative effect from a cursed item or combat ability; cannot be removed voluntarily|
+|**Cursed**    |Item-borne effect that springs on equip; ends once and cleans the item; cannot be removed voluntarily — Section 6.7 (v26.2)|
 
-**Longevity interactions:** The duration of DoT and HoT effects on a character is modified by their Longevity. High Longevity = enemy DoTs expire faster, own HoTs last longer.
+**Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). Applying, ticking, and dispelling are the same mechanical operations whatever the source. The coherence is intentional.
 
-**Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). This means a Warden dispelling a curse and a Warden dispelling a combat debuff are mechanically the same operation. The coherence is intentional.
+**Curse multipliers at the combat read points (v26.2):** two curse-family component types plug into combat as passive multipliers — one scales down the player's outgoing damage term, the other scales down TAV before the armor curve (Section 5.4). Multiple actives multiply together. Built as general machinery; in v26.2 only curses author them.
 
 ### 5.7 Flee, Escape & Disengagement
 

@@ -22,6 +22,25 @@ def percent_heal_amount(fraction, vitality_max):
                                   VITALITY_PERCENT_HEAL_FLOOR)
 
 
+# v26.2 (#331): the six admission-gated lanes — the ticking dot/hot
+# family. Shifts, stat effects, and instants are ungated.
+GATED_TICKING_TYPES = (
+    'dot_vitality', 'hot_vitality',
+    'dot_longevity', 'hot_longevity',
+    'dot_acuity', 'hot_acuity',
+)
+
+
+class EffectRefused(Exception):
+    """v26.2 (#331): an effect application was refused by the admission
+    gate (or the same-definition lower-Mk check). Carries the blocking
+    active effect's definition name for the caller's warn line."""
+
+    def __init__(self, blocking_name):
+        self.blocking_name = blocking_name
+        super().__init__(blocking_name)
+
+
 def apply_effect_definition(definition, target, mk_tier, removed_by_label='consumable'):
     """
     Apply an EffectDefinition to a target Character.
@@ -30,34 +49,80 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
     clauses; sentence composition belongs to the caller (see
     compose_standalone_sentence / compose_use_sentence). Timed
     components produce no pairs.
+
+    v26.2 (#331): raises EffectRefused instead of silently returning []
+    on a same-definition lower-Mk reapplication, and runs the admission
+    gate over the six ticking dot/hot lanes: a gated component is
+    admitted only if its magnitude at this mk_tier is strictly greater
+    than every active same-type component instance on the target
+    (curse-sourced incumbents excluded — a live curse never blocks an
+    ordinary effect). Whole-effect atomicity: if ANY gated component is
+    refused, the whole application is refused before anything mutates.
+    Admission is a join — incumbents in other definitions are never
+    deactivated.
+
     Synchronous — call from within @database_sync_to_async.
     """
     from .models import EffectInstance, EffectComponentInstance
-
-    messages = []
 
     # Reapplication check
     existing = EffectInstance.objects.filter(
         definition=definition, target=target, is_active=True
     ).first()
 
-    if existing:
-        if mk_tier >= existing.mk_tier:
-            # Undo any active stat_bonus/stat_penalty component instances
-            active_cis = list(existing.component_instances.filter(is_active=True).select_related('component'))
-            for ci in active_cis:
-                if ci.component.component_type in ('stat_bonus', 'stat_penalty'):
-                    apply_stat_effect(target, ci, reverse=True)
-            existing.component_instances.filter(is_active=True).update(
-                is_active=False, removed_by='reapplication'
-            )
-            existing.is_active = False
-            existing.removed_by = 'reapplication'
-            existing.save(update_fields=['is_active', 'removed_by'])
-        else:
-            return []
+    if existing and mk_tier < existing.mk_tier:
+        raise EffectRefused(existing.definition.name)
 
-    # Create container
+    # v26.2 (#331): the admission gate — checked for every gated
+    # component BEFORE any mutation (whole-effect atomicity; the
+    # same-definition incumbent is about to be replaced, so its own
+    # instances don't gate the replacement).
+    for component in definition.components.all():
+        if component.component_type not in GATED_TICKING_TYPES:
+            continue
+        incoming = component.computed_magnitude(mk_tier)
+        incumbents = EffectComponentInstance.objects.filter(
+            effect_instance__target=target,
+            effect_instance__is_active=True,
+            is_active=True,
+            component__component_type=component.component_type,
+        ).exclude(
+            effect_instance__definition__is_curse=True,
+        ).select_related('effect_instance__definition')
+        if existing:
+            incumbents = incumbents.exclude(effect_instance=existing)
+        for incumbent in incumbents:
+            if incumbent.magnitude >= incoming:
+                raise EffectRefused(incumbent.effect_instance.definition.name)
+
+    if existing:
+        # Same-definition >=-Mk refresh: replace the incumbent.
+        # Undo any active stat_bonus/stat_penalty component instances
+        active_cis = list(existing.component_instances.filter(is_active=True).select_related('component'))
+        for ci in active_cis:
+            if ci.component.component_type in ('stat_bonus', 'stat_penalty'):
+                apply_stat_effect(target, ci, reverse=True)
+        existing.component_instances.filter(is_active=True).update(
+            is_active=False, removed_by='reapplication'
+        )
+        existing.is_active = False
+        existing.removed_by = 'reapplication'
+        existing.save(update_fields=['is_active', 'removed_by'])
+
+    instance, messages = _create_effect_instance(definition, target, mk_tier)
+    return messages
+
+
+def _create_effect_instance(definition, target, mk_tier):
+    """The gate-free creation core: container + component instances +
+    instant application. v26.2 (#330): extracted so the curse trap
+    (spring_curse) can apply with all gates bypassed. Returns
+    (EffectInstance, clause pairs).
+    """
+    from .models import EffectInstance, EffectComponentInstance
+
+    messages = []
+
     instance = EffectInstance(
         definition=definition,
         target=target,
@@ -72,7 +137,20 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
         magnitude = component.computed_magnitude(mk_tier)
         duration  = component.computed_duration(mk_tier)
 
-        if component.is_instantaneous():
+        if component.no_expiry:
+            # v26.2 (#330): never-expiring component — timed, with a null
+            # expires_at the expiry sweep skips; duration fields ignored.
+            has_duration_components = True
+            ci = EffectComponentInstance(
+                effect_instance=instance,
+                component=component,
+                magnitude=magnitude,
+                expires_at=None,
+                is_active=True,
+            )
+            ci.save()
+            _apply_persistent_component_on_create(component, target, ci, mk_tier)
+        elif component.is_instantaneous():
             pair = _apply_instant_component(component, target, magnitude)
             if pair is not None:
                 messages.append(pair)
@@ -87,8 +165,7 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
                 is_active=True,
             )
             ci.save()
-            if component.component_type in ('stat_bonus', 'stat_penalty'):
-                apply_stat_effect(target, ci, reverse=False)
+            _apply_persistent_component_on_create(component, target, ci, mk_tier)
 
     # Close instance immediately if it had no duration components
     if not has_duration_components:
@@ -96,7 +173,68 @@ def apply_effect_definition(definition, target, mk_tier, removed_by_label='consu
         instance.removed_by = 'timeout'
         instance.save(update_fields=['is_active', 'removed_by'])
 
-    return messages
+    return instance, messages
+
+
+def _apply_persistent_component_on_create(component, target, ci, mk_tier):
+    """On-apply action for a freshly created timed component instance.
+    stat_bonus/stat_penalty apply immediately (pre-v26.2 behavior);
+    v26.2 (#330) adds the reversible cut family. damage_cut, armor_cut,
+    and floor_hold_vitality need no on-apply action — the first two are
+    passive per-round reads, the third ticks."""
+    ctype = component.component_type
+    if ctype in ('stat_bonus', 'stat_penalty'):
+        apply_stat_effect(target, ci, reverse=False)
+    elif ctype == 'stat_cut_percent':
+        # The fraction lives on the component; the instance stores the
+        # NEGATIVE flat delta computed once against the current base
+        # stat — exact reversal, no drift (the stat_bonus delta model).
+        stat_name = component.target_stat
+        attr = f'stat_{stat_name}'
+        if stat_name and hasattr(target, attr):
+            fraction = ci.magnitude
+            delta = int(fraction * getattr(target, attr))
+            ci.magnitude = -delta
+            ci.save(update_fields=['magnitude'])
+            apply_stat_effect(target, ci, reverse=False)
+    elif ctype in ('cut_vitality_max', 'cut_longevity_max'):
+        # The fraction cuts the bar's max, computed once against the
+        # pre-cut max and stored as the flat delta; the rescale family
+        # subtracts every active cut inside its formula (bar law — fill
+        # fraction invariant), so apply is just store-then-rescale.
+        from .combat_utils import rescale_bars_for_gear
+        bar_max = (target.vitality_max if ctype == 'cut_vitality_max'
+                   else target.longevity_max)
+        ci.magnitude = int(ci.magnitude * bar_max)
+        ci.save(update_fields=['magnitude'])
+        rescale_bars_for_gear(target)
+        target.refresh_from_db(fields=[
+            'vitality_current', 'vitality_max',
+            'longevity_current', 'longevity_max',
+        ])
+
+
+def vitality_hold_value(character):
+    """v26.2 (#330): the active floor_hold_vitality hold value for a
+    character — max(1, ceil(magnitude2 × vitality_max)), the most
+    restrictive (lowest) when several are live — or None with no active
+    hold. The heal ceiling: while active, any vitality-increasing write
+    clamps to max(current_before_heal, hold_value)."""
+    import math
+    from .models import EffectComponentInstance
+    hold = None
+    rows = EffectComponentInstance.objects.filter(
+        effect_instance__target=character,
+        effect_instance__is_active=True,
+        is_active=True,
+        component__component_type='floor_hold_vitality',
+    ).select_related('component', 'effect_instance')
+    for ci in rows:
+        mag2 = ci.component.computed_magnitude2(
+            ci.effect_instance.mk_tier) or 0.0
+        value = max(1, math.ceil(mag2 * character.vitality_max))
+        hold = value if hold is None else min(hold, value)
+    return hold
 
 
 def _apply_instant_component(component, target, magnitude):
@@ -120,8 +258,17 @@ def _apply_instant_component(component, target, magnitude):
     row = Character.objects.filter(pk=target.pk)
 
     if ctype == 'restore_vitality':
+        # v26.2 (#330): the floor-hold heal ceiling — below the hold,
+        # heals work up to the hold; at or above it, heals are no-ops
+        # (clamp to max(current_before_heal, hold)). The consumable is
+        # still spent; the annotation keeps its nominal print (the
+        # standing at-max clamp shape).
+        hold = vitality_hold_value(target)
+        ceiling = (F('vitality_max') if hold is None
+                   else Least(F('vitality_max'),
+                              Greatest(F('vitality_current'), Value(hold))))
         row.update(vitality_current=Least(
-            F('vitality_current') + magnitude, F('vitality_max')))
+            F('vitality_current') + magnitude, ceiling))
         return ("feel your body recover", f"(+{int(magnitude)} Vitality)")
 
     if ctype == 'restore_vitality_percent':
@@ -130,9 +277,14 @@ def _apply_instant_component(component, target, magnitude):
         # vitality_max is safe to read from the caller's character — only
         # equip/level paths move it; the tick engine's per-round writes
         # touch vitality_current, which stays inside the atomic UPDATE.
+        # v26.2 (#330): floor-hold heal ceiling, as restore_vitality.
         heal = percent_heal_amount(magnitude, target.vitality_max)
+        hold = vitality_hold_value(target)
+        ceiling = (F('vitality_max') if hold is None
+                   else Least(F('vitality_max'),
+                              Greatest(F('vitality_current'), Value(hold))))
         row.update(vitality_current=Least(
-            F('vitality_current') + heal, F('vitality_max')))
+            F('vitality_current') + heal, ceiling))
         return ("feel your body recover", f"(+{heal} Vitality)")
 
     if ctype == 'restore_longevity':
@@ -266,6 +418,10 @@ def apply_stat_effect(target, component_instance, reverse=False):
 def _expiry_message_for_effect(effect_instance):
     """One message for the whole effect when all components expire together."""
     definition_name = effect_instance.definition.name
+    # v26.2 (#330): a curse announces its own passing; the memorial on
+    # the item does the storytelling afterward.
+    if effect_instance.definition.is_curse:
+        return f"{definition_name} is spent. Its hold on you breaks."
     first_component = effect_instance.definition.components.order_by('order').first()
     if first_component is None:
         return f"The {definition_name} wears off."
@@ -315,4 +471,17 @@ def _expiry_message_for_component(component_instance, definition_name):
         return f"The penalty from {definition_name} lifts."
     if ctype == 'curse_generic':
         return ""
+    # v26.2 (#330): the curse component family.
+    if ctype == 'stat_cut_percent':
+        return f"The weakness from {definition_name} lifts."
+    if ctype == 'cut_vitality_max':
+        return f"The drain on your body from {definition_name} lifts."
+    if ctype == 'cut_longevity_max':
+        return f"The drain on your stamina from {definition_name} lifts."
+    if ctype == 'damage_cut':
+        return f"The faltering from {definition_name} lifts."
+    if ctype == 'armor_cut':
+        return f"The rot from {definition_name} lifts."
+    if ctype == 'floor_hold_vitality':
+        return f"The grip of {definition_name} releases."
     return f"An effect from {definition_name} wears off."

@@ -383,6 +383,17 @@ class EffectDefinition(models.Model):
     slug        = models.SlugField(unique=True)
     description = models.TextField(blank=True)
 
+    # v26.2 (#330): the curse engine. A curse is an EffectDefinition with
+    # is_curse=True — same component vocabulary, different lifecycle
+    # (springs on equip, one shared teardown, memorial on the item).
+    is_curse      = models.BooleanField(default=False)
+    apply_text    = models.TextField(
+        blank=True, default='',
+        help_text='Equip-time theater, one output line per newline-separated line.')
+    memorial_text = models.TextField(
+        blank=True, default='',
+        help_text='Stamped onto the item as memorial_description at curse end.')
+
     def __str__(self):
         return self.name
 
@@ -405,6 +416,14 @@ COMPONENT_TYPE_CHOICES = [
     ('stat_penalty',       'Stat Penalty'),
     ('curse_generic',      'Curse Generic'),
     ('durability_restore', 'Durability Restore'),
+    # v26.2 (#330): the curse component family. curse_generic above is
+    # retired in place — nothing seeds it, no code applies it.
+    ('stat_cut_percent',   'Stat Cut (percent of current)'),
+    ('cut_vitality_max',   'Cut Vitality Max'),
+    ('cut_longevity_max',  'Cut Longevity Max'),
+    ('damage_cut',         'Damage Cut'),
+    ('armor_cut',          'Armor Cut'),
+    ('floor_hold_vitality', 'Floor Hold Vitality'),
 ]
 
 STAT_TARGET_CHOICES = [
@@ -430,6 +449,15 @@ class EffectComponent(models.Model):
     duration_scaling  = models.FloatField(default=0.0)
     order             = models.IntegerField(default=0)
 
+    # v26.2 (#330): the second magnitude pair — only floor_hold_vitality
+    # reads it (hold fraction; magnitude is the per-round drain).
+    magnitude2_base    = models.FloatField(null=True, blank=True)
+    magnitude2_scaling = models.FloatField(null=True, blank=True)
+    # v26.2 (#330): never-expiring component — instances are created with
+    # expires_at=None and the expiry sweep skips them. duration == 0 keeps
+    # meaning instantaneous; a no_expiry component's durations are ignored.
+    no_expiry          = models.BooleanField(default=False)
+
     class Meta:
         ordering = ['order']
 
@@ -441,6 +469,12 @@ class EffectComponent(models.Model):
 
     def computed_magnitude(self, mk_tier):
         return self.magnitude_base + (self.magnitude_scaling * mk_tier)
+
+    def computed_magnitude2(self, mk_tier):
+        # v26.2 (#330): mirror of computed_magnitude for the second pair.
+        if self.magnitude2_base is None:
+            return None
+        return self.magnitude2_base + ((self.magnitude2_scaling or 0.0) * mk_tier)
 
     def computed_duration(self, mk_tier):
         return self.duration_base + (self.duration_scaling * mk_tier)
@@ -662,6 +696,24 @@ class ItemDefinition(models.Model):
         return self.name
 
 
+class CurseCandidate(models.Model):
+    # v26.2 (#330): the curse pool — which curses a cursed-template
+    # definition can roll at generation time, weight as relative odds.
+    item_definition = models.ForeignKey(
+        'ItemDefinition', on_delete=models.CASCADE,
+        related_name='curse_candidates')
+    curse = models.ForeignKey(
+        'EffectDefinition', on_delete=models.CASCADE,
+        related_name='candidate_on')
+    weight = models.IntegerField(default=1)
+
+    class Meta:
+        unique_together = [('item_definition', 'curse')]
+
+    def __str__(self):
+        return f'{self.item_definition.slug} -> {self.curse.slug}'
+
+
 class ItemInstance(models.Model):
     COMMON = 'common'
     UNCOMMON = 'uncommon'
@@ -730,6 +782,18 @@ class ItemInstance(models.Model):
         on_delete=models.SET_NULL,
         related_name='cursed_item',
     )
+    # v26.2 (#330): the latent curse rolled at generation time — springs
+    # on equip, cleared by the one shared teardown (one curse life per
+    # instance; with this cleared, no path ever re-springs).
+    latent_curse = models.ForeignKey(
+        'EffectDefinition',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='latent_on_instances',
+    )
+    # v26.2 (#330): stamped from the curse's memorial_text at curse end;
+    # appended to the identified description forever after.
+    memorial_description = models.TextField(blank=True, default='')
 
     is_identified = models.BooleanField(
         default=True,

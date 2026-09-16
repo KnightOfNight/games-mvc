@@ -245,12 +245,17 @@ class Command(BaseCommand):
                 'is_dying', 'dying_since', 'is_dead', 'current_room',
                 'vitality_current', 'acuity_current', 'longevity_current',
             ])
-            active_instances = list(character.active_effects.filter(is_active=True))
+            # v26.2 (#330): curse-sourced effects ride through death —
+            # the refill above naturally fills to the CUT max (the cut
+            # components stay active and inside the max recompute).
+            active_instances = list(character.active_effects.filter(
+                is_active=True).exclude(definition__is_curse=True))
             for ei in active_instances:
                 ei.component_instances.filter(is_active=True).update(
                     is_active=False, removed_by='death'
                 )
-            character.active_effects.filter(is_active=True).update(
+            character.active_effects.filter(is_active=True).exclude(
+                definition__is_curse=True).update(
                 is_active=False, removed_by='death'
             )
             CombatAction.objects.filter(character=character, is_processed=False).delete()
@@ -592,8 +597,10 @@ class Command(BaseCommand):
             def execute_actions(session, ordered_actions, character, npcs):
                 import random as _random
                 from datetime import timedelta as _td
-                from django.db.models import F as _F
-                from django.db.models.functions import Least as _Least
+                from django.db.models import F as _F, Value as _Value
+                from django.db.models.functions import (
+                    Greatest as _Greatest, Least as _Least,
+                )
                 from django.utils import timezone as _tz
                 from apps.shyland.models import (
                     Character, CombatAction, ItemInstance, STAT_POINTS_PER_LEVEL,
@@ -607,7 +614,9 @@ class Command(BaseCommand):
                     xp_for_next_level, recalculate_bars, get_unarmed_message,
                     npc_display, npc_display_name, roll_gear_bonus_damage_detailed,
                     summed_gear_stat, total_armor_value, composite_weapon_term_detailed,
+                    curse_combat_reads,
                 )
+                from apps.shyland.effect_utils import vitality_hold_value
                 from apps.shyland.item_utils import create_corpse
 
                 _now = _tz.now()
@@ -644,6 +653,14 @@ class Command(BaseCommand):
                 ).select_related('definition'))
                 eff = effective_stats(character, equipped_all)
                 char_tav = total_armor_value(character, equipped_all)
+                # v26.2 (#330): the per-round curse reads — damage_cut
+                # scales the composed outgoing damage term, armor_cut
+                # scales TAV before the armor curve, and the floor-hold
+                # value caps the lifesteal heal. Read once per round,
+                # never in per-action hot loops.
+                curse_dmg_factor, curse_armor_factor = curse_combat_reads(character)
+                char_tav = char_tav * curse_armor_factor
+                char_vitality_hold = vitality_hold_value(character)
                 # v22 B5 (#68/#100): gear crit joins the capped crit
                 # computation; lifesteal heals flat on landed hits.
                 gear_crit_bonus = summed_gear_stat(equipped_all, 'crit_chance') * 0.01
@@ -720,6 +737,9 @@ class Command(BaseCommand):
 
                         acuity_mod = acuity_damage_modifier(character)
                         damage, dmg_detail = calculate_damage_detailed(base_damage, stat_bonus, acuity_mod, dur_mod, hit_result, is_focus_target=is_focus)
+                        # v26.2 (#330): damage_cut scales the composed
+                        # outgoing term (floor of 1 preserved below).
+                        damage = damage * curse_dmg_factor
                         damage_int = max(1, int(damage))
 
                         # v22 B5 (#68/#100): landed hits (hit/critical —
@@ -747,6 +767,10 @@ class Command(BaseCommand):
                             damage_data['weapons'] = weapon_detail['weapons']
                         else:
                             damage_data['unarmed_base'] = base_damage
+                        if curse_dmg_factor != 1.0:
+                            # v26.2 (#330): the record stays honest — the
+                            # dealt int is the composed final × this.
+                            damage_data['curse_factor'] = curse_dmg_factor
                         action_data['damage'] = damage_data
                         action_data['gear_bonus'] = gear_detail
                         if landed and gear_lifesteal > 0:
@@ -764,10 +788,19 @@ class Command(BaseCommand):
                         if landed and gear_lifesteal > 0:
                             # Atomic F()-heal clamped to vitality_max; no
                             # output line — the bar moving is the message.
+                            # v26.2 (#330): the floor-hold heal ceiling
+                            # rides every vitality-increasing write.
+                            if char_vitality_hold is None:
+                                _ls_cap = _F('vitality_max')
+                            else:
+                                _ls_cap = _Least(
+                                    _F('vitality_max'),
+                                    _Greatest(_F('vitality_current'),
+                                              _Value(char_vitality_hold)))
                             Character.objects.filter(pk=character.pk).update(
                                 vitality_current=_Least(
                                     _F('vitality_current') + gear_lifesteal,
-                                    _F('vitality_max')))
+                                    _ls_cap))
                             character.refresh_from_db(fields=['vitality_current'])
                             statuses.append((character.pk, self._build_status(character)))
 
@@ -1040,12 +1073,17 @@ class Command(BaseCommand):
                             character.dying_since = _now
                             character.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
 
-                            active_instances = list(character.active_effects.filter(is_active=True))
+                            # v26.2 (#330): curse-sourced effects ride
+                            # through the fall — an NPC kill is an
+                            # other-cause death for every curse.
+                            active_instances = list(character.active_effects.filter(
+                                is_active=True).exclude(definition__is_curse=True))
                             for ei in active_instances:
                                 ei.component_instances.filter(is_active=True).update(
                                     is_active=False, removed_by='dying'
                                 )
-                            character.active_effects.filter(is_active=True).update(
+                            character.active_effects.filter(is_active=True).exclude(
+                                definition__is_curse=True).update(
                                 is_active=False, removed_by='dying'
                             )
                             CombatAction.objects.filter(character=character, is_processed=False).delete()
@@ -1446,6 +1484,7 @@ class Command(BaseCommand):
             'dot_vitality', 'dot_acuity', 'dot_longevity',
             'hot_vitality', 'hot_acuity', 'hot_longevity',
             'shift_acuity_high', 'shift_acuity_low',
+            'floor_hold_vitality',
         }
 
         # ---- Phase 1: Component ticking (round boundaries only) ----
@@ -1465,18 +1504,59 @@ class Command(BaseCommand):
             @database_sync_to_async
             def fall_and_cancel(char):
                 char.save(update_fields=['vitality_current', 'is_dying', 'dying_since'])
-                active_instances = list(char.active_effects.filter(is_active=True))
+                # v26.2 (#330): curse-sourced effects ride through the
+                # fall — a curse outlives every death except its own kill
+                # (the caller attributes that one separately).
+                active_instances = list(char.active_effects.filter(
+                    is_active=True).exclude(definition__is_curse=True))
                 for ei in active_instances:
                     ei.component_instances.filter(is_active=True).update(
                         is_active=False, removed_by='dying'
                     )
-                char.active_effects.filter(is_active=True).update(
+                char.active_effects.filter(is_active=True).exclude(
+                    definition__is_curse=True).update(
                     is_active=False, removed_by='dying'
                 )
                 from apps.shyland.models import CombatAction
                 CombatAction.objects.filter(character=char, is_processed=False).delete()
 
+            @database_sync_to_async
+            def end_killing_curse(effect_instance):
+                # v26.2 (#330): the curse that carried its bearer to the
+                # fall ends itself — located by the active_curse reverse
+                # lookup; every other curse rides through.
+                from apps.shyland.curse_utils import end_curse
+                cursed_item = effect_instance.cursed_item.first()
+                if cursed_item is not None:
+                    end_curse(cursed_item, 'curse-death')
+
             ticking = await get_ticking_component_instances()
+
+            # v26.2 (#331): the staleness fix — components fire in apply
+            # order (applied_at, then component-instance pk), and every
+            # component on one character reads and mutates the SAME
+            # in-memory Character, so same-lane deltas are cumulative
+            # (two 10-damage dots on 100 leave 80). Before this, each
+            # select_related row carried its own stale Character copy.
+            ticking.sort(key=lambda c: (c.effect_instance.applied_at, c.pk))
+            canonical_characters = {}
+
+            # v26.2 (#330): active floor-hold values per character, from
+            # the already-loaded rows (no extra query) — the heal ceiling
+            # for hot_vitality ticks; the lowest hold wins when several
+            # are live.
+            import math as _math
+            holds_by_char = {}
+            for _hci in ticking:
+                if _hci.component.component_type != 'floor_hold_vitality':
+                    continue
+                _mag2 = _hci.component.computed_magnitude2(
+                    _hci.effect_instance.mk_tier) or 0.0
+                _target = _hci.effect_instance.target
+                _hv = max(1, _math.ceil(_mag2 * _target.vitality_max))
+                _pk = _target.pk
+                holds_by_char[_pk] = (_hv if _pk not in holds_by_char
+                                      else min(holds_by_char[_pk], _hv))
 
             # Characters who fell to a component processed earlier in this
             # same phase: skip any further ticking components on them this
@@ -1485,7 +1565,8 @@ class Command(BaseCommand):
             newly_dying = set()
 
             for ci in ticking:
-                character = ci.effect_instance.target
+                character = canonical_characters.setdefault(
+                    ci.effect_instance.target.pk, ci.effect_instance.target)
                 if character.pk in newly_dying:
                     continue
                 definition = ci.effect_instance.definition
@@ -1493,7 +1574,16 @@ class Command(BaseCommand):
                 magnitude = ci.magnitude
 
                 if ctype == 'dot_vitality':
-                    character.vitality_current = max(0, character.vitality_current - magnitude)
+                    # v26.2 (#330/#331): change-only — a tick on an
+                    # emptied bar (a persisting curse dot on a dying
+                    # character) is a genuine no-op: no re-fall, no
+                    # repeat message. Newly reaching 0 is a change, so
+                    # the fall still fires exactly once.
+                    old_vitality = character.vitality_current
+                    new_vitality = max(0, old_vitality - magnitude)
+                    if new_vitality == old_vitality:
+                        continue
+                    character.vitality_current = new_vitality
                     if character.vitality_current <= 0:
                         character.vitality_current = 0
                         character.is_dying = True
@@ -1501,6 +1591,10 @@ class Command(BaseCommand):
                         newly_dying.add(character.pk)
 
                         await fall_and_cancel(character)
+                        if definition.is_curse:
+                            # The killing curse ends itself; the item
+                            # comes out clean (memorial stamped).
+                            await end_killing_curse(ci.effect_instance)
 
                         await self.send_to_player(character.pk, '', None, None, event='clear')
                         await self.send_to_player(
@@ -1517,11 +1611,44 @@ class Command(BaseCommand):
                     else:
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
                         status = await self._build_status_async(character)
+                        # v26.2 (#331): the actual delta, never nominal —
+                        # cumulative same-lane passes can clamp at 0.
                         await self.send_to_player(
                             character.pk,
-                            f"You take {int(magnitude)} damage from {definition.name}.", 'combat',
+                            f"You take {int(old_vitality - new_vitality)} damage from {definition.name}.", 'combat',
                             status,
                         )
+
+                elif ctype == 'floor_hold_vitality':
+                    # v26.2 (#330): drain toward the hold, never past it,
+                    # never to death (hold_value >= 1 by construction).
+                    # #133 doctrine — actual deltas, one terminal line at
+                    # arrival, at-or-below-the-hold is silent (combat
+                    # damage below the hold is none of this branch's
+                    # business; the drain never goes below).
+                    mag2 = ci.component.computed_magnitude2(
+                        ci.effect_instance.mk_tier) or 0.0
+                    hold_value = max(
+                        1, _math.ceil(mag2 * character.vitality_max))
+                    old = character.vitality_current
+                    if old > hold_value:
+                        new = int(max(hold_value, old - magnitude))
+                        character.vitality_current = new
+                        await database_sync_to_async(character.save)(update_fields=['vitality_current'])
+                        status = await self._build_status_async(character)
+                        if new == hold_value:
+                            await self.send_to_player(
+                                character.pk,
+                                f"{definition.name} holds your life at its "
+                                f"lowest ebb. (-{int(old - new)} Vitality)",
+                                'combat', status,
+                            )
+                        else:
+                            await self.send_to_player(
+                                character.pk,
+                                f"You take {int(old - new)} damage from {definition.name}.",
+                                'combat', status,
+                            )
 
                 elif ctype == 'dot_longevity':
                     # v26.0 (#145): #133 announcement doctrine, uniform
@@ -1576,8 +1703,15 @@ class Command(BaseCommand):
 
                 elif ctype == 'hot_vitality':
                     # v26.0 (#145): doctrine as above.
+                    # v26.2 (#330): the floor-hold heal ceiling — below
+                    # the hold, heals work up to the hold; above it,
+                    # heals are no-ops (silent under change-only ticks).
                     old = character.vitality_current
-                    new = min(old + magnitude, character.vitality_max)
+                    cap = character.vitality_max
+                    hold = holds_by_char.get(character.pk)
+                    if hold is not None:
+                        cap = min(cap, max(old, hold))
+                    new = min(old + magnitude, cap)
                     if new != old:
                         character.vitality_current = new
                         await database_sync_to_async(character.save)(update_fields=['vitality_current'])
@@ -1800,6 +1934,28 @@ class Command(BaseCommand):
         def reverse_stat_ci(character, ci):
             apply_stat_effect(character, ci, reverse=True)
 
+        @database_sync_to_async
+        def rescale_after_cut_expiry(character):
+            # v26.2 (#330): the expired bar-cut instance is inactive now
+            # — the bar-law rescale recomputes the maxima without it.
+            from apps.shyland.combat_utils import rescale_bars_for_gear
+            rescale_bars_for_gear(character)
+            character.refresh_from_db(fields=[
+                'vitality_current', 'vitality_max',
+                'longevity_current', 'longevity_max',
+            ])
+
+        @database_sync_to_async
+        def clean_expired_curse(parent):
+            # v26.2 (#330): a closed curse instance routes through the
+            # one shared teardown — the item comes out clean, memorial
+            # stamped (the components are already expired; end_curse
+            # finds nothing active to re-reverse).
+            from apps.shyland.curse_utils import end_curse
+            cursed_item = parent.cursed_item.first()
+            if cursed_item is not None:
+                end_curse(cursed_item, 'timeout')
+
         expiring = await get_expiring_component_instances()
 
         by_instance = defaultdict(list)
@@ -1815,10 +1971,15 @@ class Command(BaseCommand):
                 character = parent.target
                 ctype = ci.component.component_type
 
-                if ctype in ('stat_bonus', 'stat_penalty'):
+                # v26.2 (#330): stat_cut_percent stores its negative flat
+                # delta — the stat-effect reversal restores it exactly.
+                if ctype in ('stat_bonus', 'stat_penalty', 'stat_cut_percent'):
                     await reverse_stat_ci(character, ci)
 
                 await expire_ci(ci)
+
+                if ctype in ('cut_vitality_max', 'cut_longevity_max'):
+                    await rescale_after_cut_expiry(character)
 
                 if not all_expiring_now:
                     msg = _expiry_message_for_component(ci, parent.definition.name)
@@ -1841,6 +2002,8 @@ class Command(BaseCommand):
             remaining = await count_active_cis_on_instance(parent)
             if remaining == 0:
                 await close_instance(parent)
+                if parent.definition.is_curse:
+                    await clean_expired_curse(parent)
                 logger.info(
                     f"EffectInstance closed: {parent.definition.slug} on {parent.target.name}"
                 )
@@ -1862,8 +2025,12 @@ class Command(BaseCommand):
                 'origin',
             ))
             result = []
+            from apps.shyland.effect_utils import vitality_hold_value
             for char in candidates:
                 if not char.combat_sessions.filter(is_active=True).exists():
+                    # v26.2 (#330): the floor-hold heal ceiling rides
+                    # passive regen too — read here, in DB context.
+                    char._vitality_hold = vitality_hold_value(char)
                     result.append(char)
             return result
 
@@ -1881,10 +2048,17 @@ class Command(BaseCommand):
             # number of seconds at every level.
             if character.vitality_current < character.vitality_max:
                 heal = math.ceil(character.vitality_max / VITALITY_REGEN_SECS)
-                character.vitality_current = min(
-                    character.vitality_current + heal, character.vitality_max
-                )
-                changed_fields.append('vitality_current')
+                # v26.2 (#330): the floor-hold heal ceiling — regen works
+                # up to the hold, is a no-op above it (also keeps the
+                # pinned state quiet: no save, no status churn).
+                cap = character.vitality_max
+                hold = getattr(character, '_vitality_hold', None)
+                if hold is not None:
+                    cap = min(cap, max(character.vitality_current, hold))
+                new_vitality = min(character.vitality_current + heal, cap)
+                if new_vitality != character.vitality_current:
+                    character.vitality_current = new_vitality
+                    changed_fields.append('vitality_current')
 
             if character.longevity_current < character.longevity_max:
                 if character.longevity_max >= LONGEVITY_REGEN_SECS:

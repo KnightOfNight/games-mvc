@@ -20,7 +20,7 @@ from . import currency
 from . import mc
 from . import npc_voice
 from .combat_utils import (
-    bar_rescale_updates, effective_stats,
+    active_bar_cut_totals, bar_rescale_updates, effective_stats,
     flee_contest_npc_side, gear_stat_bonus, npc_display, npc_display_name,
     release_session_npcs, rescale_bars_for_gear,
 )
@@ -28,7 +28,7 @@ from .command_grammar import (
     RARITY_RANK, Resolution, complete as grammar_complete,
     entry_display_name, oldest_first, resolve,
 )
-from .effect_utils import compose_use_sentence
+from .effect_utils import EffectRefused, compose_use_sentence
 from .envelope import envelope_ts
 from . import loot_utils
 from .loot_utils import sweep_corpses
@@ -1387,6 +1387,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # v22 brief 2 (DD §6): the transactional sentence — no slot
             # mention; the paper-doll carries slot placement now.
             await self.output(f'You equip {item_ref(item)}.', 'success')
+            # v26.2 (#330): the trap — success line first, then the
+            # theater, each line its own message, narration voice,
+            # private (no room broadcast).
+            for line in await self.spring_curse_if_latent(item, char):
+                await self.output(line, 'room')
             await self._warn_if_over_capacity(char)
             # v22 B5 (#110): gear can move the bar maxima — sync the pane.
             await self.send_status_refresh()
@@ -1448,6 +1453,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             f'You equip {item_ref(item)}, replacing {item_ref(displaced_item)}.',
             'success',
         )
+        # v26.2 (#330): the trap — see the free-slot path above.
+        for line in await self.spring_curse_if_latent(item, char):
+            await self.output(line, 'room')
         await self._warn_if_over_capacity(char)
         # v22 B5 (#110): gear can move the bar maxima — sync the pane.
         await self.send_status_refresh()
@@ -1601,7 +1609,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         stopped_fulfilled = True
                     break
 
-            pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            # v26.2 (#331): a refused application keeps the consumable
+            # whole — warn naming the blocker, stop the use loop. The old
+            # silently-spent lower-Mk path is a ruled behavior change.
+            try:
+                pairs = await self.do_apply_effect(effect_def, char, item.mk_tier)
+            except EffectRefused as refusal:
+                await self.output(
+                    f'The {refusal.blocking_name} coursing through you is '
+                    f'stronger — {item_ref(item, indefinite=True)} would '
+                    'be wasted.',
+                    'warn')
+                break
             await self.consume_item(item)
             used += 1
 
@@ -1744,10 +1763,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         the sentence; EffectInstance bookkeeping runs per consumed item
         as the per-item path does. Consumed instances are deleted.
         Returns (consumed, total, covered, extra_pairs)."""
-        from django.db.models import F
-        from django.db.models.functions import Least
-        from .effect_utils import _apply_instant_component, percent_heal_amount
+        from django.db.models import F, Value
+        from django.db.models.functions import Greatest, Least
+        from .effect_utils import (
+            _apply_instant_component, percent_heal_amount,
+            vitality_hold_value,
+        )
         from .models import EffectInstance
+
+        # v26.2 (#330): the floor-hold heal ceiling rides this write too
+        # (the third vitality-heal write path, beside the instant
+        # restores and hot ticking). Planning stops at the effective
+        # headroom — never mass-consume draughts a hold makes useless —
+        # while `covered` stays measured against the true full-bar
+        # deficit, so the full-heal fold never fires under a hold.
+        hold = vitality_hold_value(character)
+        effective_deficit = deficit
+        if hold is not None:
+            effective_deficit = min(
+                deficit, max(0, hold - character.vitality_current))
 
         consumed = []
         total = 0.0
@@ -1763,12 +1797,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         c.computed_magnitude(item.mk_tier),
                         character.vitality_max)
             consumed.append(item)
-            if total >= deficit:
+            if total >= effective_deficit:
                 break
 
+        if hold is None:
+            heal_cap = F('vitality_max')
+        else:
+            heal_cap = Least(F('vitality_max'),
+                             Greatest(F('vitality_current'), Value(hold)))
         Character.objects.filter(pk=character.pk).update(
             vitality_current=Least(
-                F('vitality_current') + total, F('vitality_max')))
+                F('vitality_current') + total, heal_cap))
 
         extra_pairs = []
         for item in consumed:
@@ -1844,13 +1883,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             line += f' (between {x} and {x + math.ceil(entry["value"])} damage)'
         return line
 
-    def _format_identified_item_lines(self, item):
+    def _format_identified_item_lines(self, item, curse_info=None):
         defn = item.definition
         lines = []
         # v20 brief 3 (#48): composed headline; rarity lives in the
         # trailing flag block now.
         lines.append(compose_item_line(item))
         lines.append(f'  {defn.description}')
+        if item.memorial_description:
+            # v26.2 (#330): an ended curse's memorial closes the
+            # description forever after.
+            lines.append('')
+            lines.append(f'  {item.memorial_description}')
         lines.append('')
         lines.append(f'  Type:       {defn.item_type.title()}')
         lines.append(f'  Genre:      {defn.genre_tag.title()}')
@@ -1908,9 +1952,43 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             lines.append(f'  Equipped:   {format_slot_name(item.equipped_slot)}')
 
         if item.is_cursed and item.curse_identified:
-            lines.append('  Curse:      This item carries a curse.')
+            # v26.2 (#330): the revealed block — name, time remaining
+            # ('permanent' for a never-expiring curse), description.
+            # curse_info arrives pre-fetched (this builder runs in async
+            # context, no ORM here); without it the generic row stands.
+            if curse_info is not None:
+                name, remaining, curse_desc = curse_info
+                lines.append(f'  Curse:      {name} ({remaining})')
+                if curse_desc:
+                    lines.append(f'              {curse_desc}')
+            else:
+                lines.append('  Curse:      This item carries a curse.')
 
         return lines
+
+    @database_sync_to_async
+    def get_curse_examine_info(self, item):
+        # v26.2 (#330): the examine reveal's data — (name, remaining,
+        # description) for the item's active curse, or None. Remaining is
+        # 'permanent' when the instance has only never-expiring
+        # components (#47's ruled vocabulary), else M:SS from the latest
+        # component expiry.
+        instance = item.active_curse
+        if instance is None:
+            return None
+        expiries = [
+            ci.expires_at
+            for ci in instance.component_instances.filter(is_active=True)
+            if ci.expires_at is not None
+        ]
+        if expiries:
+            from django.utils import timezone
+            secs = max(0, int((max(expiries) - timezone.now()).total_seconds()))
+            remaining = f'{secs // 60}:{secs % 60:02d} remaining'
+        else:
+            remaining = 'permanent'
+        return (instance.definition.name, remaining,
+                instance.definition.description)
 
     async def cmd_examine(self, args):
         # v22 brief 2 (DD §8, #96): examine's pool is the union —
@@ -1943,7 +2021,11 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 # the reveal is output-only. In-memory flip, no .save();
                 # the room listing keeps the mystery name until pickup.
                 item.is_identified = True
-                lines = self._format_identified_item_lines(item)
+                curse_info = None
+                if item.is_cursed and item.curse_identified:
+                    curse_info = await self.get_curse_examine_info(item)
+                lines = self._format_identified_item_lines(
+                    item, curse_info=curse_info)
             await self.output('\n'.join(lines), 'report')
             return
 
@@ -2986,9 +3068,13 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             }
             if stat in ('end', 'str', 'wis'):
                 gear = gear_stat_bonus(char)
+                # v26.2 (#330): active curse bar cuts ride every max
+                # recompute — see active_bar_cut_totals.
+                cuts = active_bar_cut_totals(char)
                 updates.update(bar_rescale_updates(
                     gear_end=gear['end'], gear_str=gear['str'],
-                    gear_wis=gear['wis'], **{f'{stat}_delta': pts}))
+                    gear_wis=gear['wis'], vit_cut=cuts['vit'],
+                    lon_cut=cuts['lon'], **{f'{stat}_delta': pts}))
             Character.objects.filter(pk=char.pk).update(**updates)
             # Field-limited refresh: a bare refresh_from_db would clear the
             # FK caches the async caller still reads (current_room).
@@ -4400,6 +4486,18 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def apply_character_stat_change(self, character):
         character.save()
+
+    @database_sync_to_async
+    def spring_curse_if_latent(self, item, character):
+        # v26.2 (#330): the trap — a player equip success springs the
+        # item's latent curse, once (active_curse set = already sprung;
+        # latent_curse cleared at curse end = never again). Returns the
+        # theater lines for the caller to print in narration voice.
+        if (item.is_cursed and item.latent_curse_id
+                and item.active_curse_id is None):
+            from .curse_utils import spring_curse
+            return spring_curse(item, character)
+        return []
 
     @database_sync_to_async
     def do_apply_effect(self, effect_def, character, mk_tier):

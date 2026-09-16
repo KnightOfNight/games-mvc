@@ -4,10 +4,10 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from django.utils.text import slugify
 from apps.shyland.models import (
-    Area, Archetype, Character, DialogueConnective, DialogueEntry,
-    DialogueResponse, EffectComponent, EffectDefinition, ItemDefinition,
-    LootTable, LootTableEntry, NpcDefinition, Origin, Room, RoomSpawn,
-    TravelMessage, TravelNode, VendorEntry, Zone,
+    Area, Archetype, Character, CurseCandidate, DialogueConnective,
+    DialogueEntry, DialogueResponse, EffectComponent, EffectDefinition,
+    ItemDefinition, LootTable, LootTableEntry, NpcDefinition, Origin,
+    Room, RoomSpawn, TravelMessage, TravelNode, VendorEntry, Zone,
     UnarmedMessage, UnarmedMessagePool,
 )
 
@@ -24,6 +24,7 @@ SEED_OWNED_MODELS = [
     DialogueEntry, DialogueResponse, DialogueConnective,
     ItemDefinition,
     EffectDefinition, EffectComponent,
+    CurseCandidate,
     UnarmedMessagePool, UnarmedMessage,
     Origin, Archetype,
     TravelNode, TravelMessage,
@@ -1352,6 +1353,7 @@ class Command(BaseCommand):
         self._seed_archetypes()
         self._seed_effects()
         self._seed_items()
+        self._seed_curses()
         self._seed_convergence_vendors()
 
         self._seed_verdant_loot_tables()
@@ -2561,6 +2563,12 @@ class Command(BaseCommand):
     }
     CART_CONSUMABLE_DEFAULT_PRICE = 15
 
+    # v26.2 (#330): consumables the carts do NOT stock — the admission
+    # playtest salve is shell-gift only by brief directive (no vendor
+    # entries, no loot entries). The one carve-out to the #43
+    # every-consumable rule; the seed verification honors the same set.
+    CART_STOCK_EXCLUDED = {'weak-mending-salve'}
+
     # v19 brief 10 Part 5: one-sentence listening hint appended to each of
     # the six mapped NPCs' descriptions. Aldric and Info Prime keep their
     # brief 9 descriptions unchanged, per this brief's explicit ruling.
@@ -3133,6 +3141,7 @@ class Command(BaseCommand):
         # entries present).
         consumable_slugs = set(
             ItemDefinition.objects.filter(item_type='consumable')
+            .exclude(slug__in=self.CART_STOCK_EXCLUDED)
             .values_list('slug', flat=True)
         )
         for cart_slug in sorted(self.CONVERGENCE_CART_VENDORS):
@@ -4231,6 +4240,333 @@ class Command(BaseCommand):
             'fracture-wraith-poison': wraith_poison,
             'repair-kit': repair_kit,
         }
+
+    def _seed_curses(self):
+        """v26.2 (#330): the curse set — five real Ridge curses (expiring
+        tier, pooled onto the Ridge-boss loot definitions), three
+        high-tier test curses (no pools; explicit-override gifting only),
+        and the admission-test definitions. Runs after _seed_items (the
+        pools reference item definitions by slug)."""
+
+        # Every component dict authors the full field set; magnitude2 and
+        # no_expiry are explicit even where unused (enforce-exact).
+        def _component(order, ctype, mag, mag_scale, dur, dur_scale,
+                       target_stat='', mag2=None, mag2_scale=None,
+                       no_expiry=False):
+            return {
+                'order': order,
+                'component_type': ctype,
+                'target_stat': target_stat,
+                'magnitude_base': mag,
+                'magnitude_scaling': mag_scale,
+                'duration_base': dur,
+                'duration_scaling': dur_scale,
+                'magnitude2_base': mag2,
+                'magnitude2_scaling': mag2_scale,
+                'no_expiry': no_expiry,
+            }
+
+        copper_accessories = [
+            f'copper-{kind}-of-{stat}'
+            for kind in ('ring', 'amulet')
+            for stat in ('strength', 'dexterity', 'endurance',
+                         'intelligence', 'wisdom', 'perception')
+        ]
+
+        curses = [
+            {
+                'slug': 'curse-leaden-arm',
+                'name': 'Curse of the Leaden Arm',
+                'description': (
+                    'The arm that bears it grows heavy as poured lead, '
+                    'and the strength runs out of the grip drop by drop.'
+                ),
+                'apply_text': (
+                    'A cold weight crawls up your arm from the haft.\n'
+                    'Your grip aches. The strength drains out of it like '
+                    'water through sand.'
+                ),
+                'memorial_text': (
+                    'A faint gray stain runs the length of this weapon, '
+                    'where a leaden curse once lived and spent itself.'
+                ),
+                'components': [
+                    _component(0, 'stat_cut_percent', 0.25, 0.0, 300.0, 0.0,
+                               target_stat='str'),
+                ],
+                'pool': ['iron-mace', 'battle-axe'],
+            },
+            {
+                'slug': 'curse-craven-edge',
+                'name': 'Curse of the Craven Edge',
+                'description': (
+                    'The edge remembers cowardice. It turns a little from '
+                    'every blow, and the wound it makes is a shallow '
+                    'apology.'
+                ),
+                'apply_text': (
+                    'The blade shivers in your hand, as if flinching from '
+                    'a fight not yet begun.\n'
+                    'Something in the steel goes timid.'
+                ),
+                'memorial_text': (
+                    'The steel carries a hairline waver, the scar of a '
+                    'craven spirit that finally fled.'
+                ),
+                'components': [
+                    _component(0, 'damage_cut', 0.20, 0.0, 240.0, 0.0),
+                ],
+                'pool': ['iron-sword', 'broadsword', 'combat-knife'],
+            },
+            {
+                'slug': 'curse-copper-tithe',
+                'name': 'Tithe of the Copper Court',
+                'description': (
+                    'The Copper Court collects on every heartbeat. Blood '
+                    'is accepted at the current rate of exchange.'
+                ),
+                'apply_text': (
+                    'The metal warms against your skin like a coin held '
+                    'too long.\n'
+                    'Somewhere far off, you hear a ledger close.\n'
+                    'Something begins to collect.'
+                ),
+                'memorial_text': (
+                    'The band bears a tiny stamped seal, a paid-in-full '
+                    'mark from the Copper Court.'
+                ),
+                'components': [
+                    _component(0, 'dot_vitality', 2.0, 1.0, 180.0, 0.0),
+                ],
+                'pool': copper_accessories,
+            },
+            {
+                'slug': 'curse-moth-eaten-ward',
+                'name': 'Curse of the Moth-Eaten Ward',
+                'description': (
+                    'Unseen moths chew at whatever wards the wearer. '
+                    'Armor thins to lace where their hunger passes.'
+                ),
+                'apply_text': (
+                    'A dry whisper of wings rises around you.\n'
+                    'You feel your defenses fraying at the edges, thread '
+                    'by thread.'
+                ),
+                'memorial_text': (
+                    'Under the light, the surface shows a fine lacework '
+                    'of healed-over holes, as if something once fed here.'
+                ),
+                'components': [
+                    _component(0, 'armor_cut', 0.30, 0.0, 360.0, 0.0),
+                ],
+                'pool': ['leather-cap', 'leather-shoulders', 'leather-vest',
+                         'leather-gloves', 'leather-belt', 'leather-leggings',
+                         'leather-boots', 'wooden-shield'],
+            },
+            {
+                'slug': 'curse-whisper-string',
+                'name': 'The Whisper in the String',
+                'description': (
+                    'A voice lives in the string. It hums doubt into the '
+                    "archer's fingers and drinks the stamina from every "
+                    'draw.'
+                ),
+                'apply_text': (
+                    'As your hand closes on the grip, a low hum threads '
+                    'the air.\n'
+                    'The whisper settles into your fingers, and they are '
+                    'no longer entirely yours.'
+                ),
+                'memorial_text': (
+                    'The string no longer hums. When drawn in a quiet '
+                    'room, it holds its silence like a kept promise.'
+                ),
+                'components': [
+                    _component(0, 'stat_cut_percent', 0.15, 0.0, 180.0, 0.0,
+                               target_stat='dex'),
+                    _component(1, 'dot_longevity', 3.0, 2.0, 180.0, 0.0),
+                ],
+                'pool': ['hunting-bow'],
+            },
+            {
+                'slug': 'curse-hollowing',
+                'name': 'The Hollowing',
+                'description': (
+                    'It empties what it touches. The flesh remains; the '
+                    'rest is carried elsewhere, a little at a time, until '
+                    'nothing is left to carry.'
+                ),
+                'apply_text': (
+                    'The world drops away. You stand in a gray country '
+                    'under a sunless sky, and a wind passes through you '
+                    'as if you were not there.\n'
+                    'Figures of ash turn their heads toward you. Where '
+                    'their eyes should be, there is only the same gray '
+                    'sky.\n'
+                    'One of them raises a hand, and you feel yourself '
+                    'thinning, becoming weather, becoming distance.\n'
+                    'Then the room returns. Your hands are your own '
+                    'again. But something of you stayed behind in the '
+                    'gray, and it is still draining there.'
+                ),
+                'memorial_text': (
+                    'It is quiet now. Whatever hollowed its bearer took '
+                    'what it came for and left this behind, lighter than '
+                    'it looks.'
+                ),
+                'components': [
+                    _component(0, 'dot_vitality', 5.0, 3.0, 0.0, 0.0,
+                               no_expiry=True),
+                ],
+                'pool': [],
+            },
+            {
+                'slug': 'curse-gravekeepers-hold',
+                'name': "Gravekeeper's Hold",
+                'description': (
+                    'The Gravekeeper does not take. The Gravekeeper '
+                    'keeps. It holds its bearer at the edge of the grave, '
+                    'and will not let them leave in either direction.'
+                ),
+                'apply_text': (
+                    'Soil you cannot see closes over your boots.\n'
+                    'A patient grip settles around your life and begins '
+                    'to lower it, gently, like a coffin on ropes.'
+                ),
+                'memorial_text': (
+                    'Grave-dirt still shadows its seams, though the grip '
+                    'is gone. The Gravekeeper kept what it wanted.'
+                ),
+                'components': [
+                    _component(0, 'floor_hold_vitality', 8.0, 4.0, 0.0, 0.0,
+                               mag2=0.05, mag2_scale=0.0, no_expiry=True),
+                ],
+                'pool': [],
+            },
+            {
+                'slug': 'curse-threefold-ruin',
+                'name': 'The Threefold Ruin',
+                'description': (
+                    'Three ruins in one binding: the strength, the '
+                    'strike, and the stamina. What one leaves standing, '
+                    'the others take.'
+                ),
+                'apply_text': (
+                    'Three voices speak over one another, and each one '
+                    'takes something as it goes.\n'
+                    'Your strength, your edge, and your wind are named, '
+                    'and claimed.'
+                ),
+                'memorial_text': (
+                    'Three faint scorings ring the piece, one for each '
+                    'ruin it worked. They no longer answer to anything.'
+                ),
+                'components': [
+                    _component(0, 'stat_cut_percent', 0.50, 0.0, 0.0, 0.0,
+                               target_stat='str', no_expiry=True),
+                    _component(1, 'damage_cut', 0.35, 0.0, 0.0, 0.0,
+                               no_expiry=True),
+                    _component(2, 'dot_longevity', 5.0, 2.0, 0.0, 0.0,
+                               no_expiry=True),
+                ],
+                'pool': [],
+            },
+        ]
+
+        pool_rows = 0
+        pooled_slugs = set()
+        for spec in curses:
+            definition = self._reconcile(EffectDefinition, {'slug': spec['slug']}, {
+                'name': spec['name'],
+                'description': spec['description'],
+                'is_curse': True,
+                'apply_text': spec['apply_text'],
+                'memorial_text': spec['memorial_text'],
+            })
+            for component in spec['components']:
+                order = component.pop('order')
+                self._reconcile(EffectComponent,
+                                {'definition': definition, 'order': order},
+                                component)
+            for item_slug in spec['pool']:
+                item_definition = ItemDefinition.objects.get(slug=item_slug)
+                self._reconcile(CurseCandidate, {
+                    'item_definition': item_definition,
+                    'curse': definition,
+                }, {'weight': 1})
+                pooled_slugs.add(item_slug)
+                pool_rows += 1
+            self.stdout.write(f'  Curse "{definition.name}" seeded.')
+
+        # The template flag follows the pool set exactly — set on every
+        # pooled definition, self-healed off anything else carrying it.
+        flagged = ItemDefinition.objects.filter(
+            slug__in=pooled_slugs).exclude(is_cursed_template=True)
+        flag_set = flagged.update(is_cursed_template=True)
+        flag_cleared = ItemDefinition.objects.filter(
+            is_cursed_template=True).exclude(
+            slug__in=pooled_slugs).update(is_cursed_template=False)
+        self.stdout.write(
+            f'  {pool_rows} CurseCandidate rows seeded; template flags: '
+            f'{len(pooled_slugs)} on ({flag_set} newly set, '
+            f'{flag_cleared} cleared).')
+
+        # --- Admission-test definitions (not curses) ---
+        mending_weak = self._reconcile(EffectDefinition, {'slug': 'test-mending-weak'}, {
+            'name': 'Weak Mending',
+            'description': 'A slow knitting of the flesh.',
+            'is_curse': False,
+            'apply_text': '',
+            'memorial_text': '',
+        })
+        self._reconcile(EffectComponent, {'definition': mending_weak, 'order': 0}, {
+            'component_type': 'hot_vitality',
+            'target_stat': '',
+            'magnitude_base': 3.0,
+            'magnitude_scaling': 0.0,
+            'duration_base': 60.0,
+            'duration_scaling': 0.0,
+            'magnitude2_base': None,
+            'magnitude2_scaling': None,
+            'no_expiry': False,
+        })
+        mending_strong = self._reconcile(EffectDefinition, {'slug': 'test-mending-strong'}, {
+            'name': 'Strong Mending',
+            'description': 'A firm knitting of the flesh.',
+            'is_curse': False,
+            'apply_text': '',
+            'memorial_text': '',
+        })
+        self._reconcile(EffectComponent, {'definition': mending_strong, 'order': 0}, {
+            'component_type': 'hot_vitality',
+            'target_stat': '',
+            'magnitude_base': 6.0,
+            'magnitude_scaling': 0.0,
+            'duration_base': 60.0,
+            'duration_scaling': 0.0,
+            'magnitude2_base': None,
+            'magnitude2_scaling': None,
+            'no_expiry': False,
+        })
+        # The salve mirrors the healing-draught consumable shape; no
+        # vendor entries, no loot entries — shell-gift only.
+        self._reconcile(ItemDefinition, {'slug': 'weak-mending-salve'}, {
+            'name': 'Weak Mending Salve',
+            'item_type': 'consumable',
+            'genre_tag': 'fantasy',
+            'valid_slots': [],
+            'base_value': 15,
+            'scaling_base': 0.0,
+            'scaling_factor': 0.0,
+            'takes_durability_loss': False,
+            'durability_table': [],
+            'primary_stats': [],
+            'secondary_stat_pool': [],
+            'effect': mending_weak,
+            'description': ('A thin herbal paste. It works slowly, when it '
+                            'works at all.'),
+        })
+        self.stdout.write('  Admission-test definitions seeded.')
 
     def _seed_items(self):
         effects = self._effects
@@ -5403,6 +5739,10 @@ class Command(BaseCommand):
             # listed here so the type-wide consumable back-fill below
             # can't overwrite the authored 15.
             'repair-kit': 15,
+            # v26.2 (#330): the admission-test salve at the draught
+            # standard — listed for the same reason (seeded later by
+            # _seed_curses; the filter().update() no-ops on run one).
+            'weak-mending-salve': 15,
             # v24.21 (#201): the floored-proc pair — authored pricing
             # (ruled 2026-08-05). Listing here also removes them from the
             # type-wide 25 back-fill's reach.
@@ -5523,6 +5863,7 @@ class Command(BaseCommand):
         # standard authored price.
         consumables = list(
             ItemDefinition.objects.filter(item_type=ItemDefinition.CONSUMABLE)
+            .exclude(slug__in=self.CART_STOCK_EXCLUDED)
         )
         for npc_slug in sorted(self.CONVERGENCE_CART_VENDORS):
             npc = NpcDefinition.objects.get(slug=npc_slug)

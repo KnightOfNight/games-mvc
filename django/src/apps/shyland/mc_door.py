@@ -359,7 +359,7 @@ async def q_inventory(params, agent_name):
 @database_sync_to_async
 def _item_payload(item_id):
     item = (ItemInstance.objects
-            .select_related('definition', 'owner',
+            .select_related('definition', 'owner', 'latent_curse',
                             'current_room__zone', 'current_room__area')
             .filter(pk=item_id).first())
     if item is None:
@@ -372,6 +372,13 @@ def _item_payload(item_id):
         'damage_spread': item.damage_spread,
         'is_cursed': item.is_cursed,
         'curse_identified': item.curse_identified,
+        # v26.2 (#330): full-fidelity curse state — read-only through
+        # the door (the edit whitelist refuses these keys; the curse
+        # lifecycle is engine-owned).
+        'latent_curse': (item.latent_curse.slug
+                         if item.latent_curse_id else None),
+        'active_curse': item.active_curse_id,
+        'memorial_description': item.memorial_description,
         'is_identified': item.is_identified,
         'is_unidentifiable': item.is_unidentifiable,
         'owner': ({'id': item.owner_id, 'name': item.owner.name}
@@ -856,6 +863,9 @@ def _dress(char):
                 missing.append(instance_id)
                 continue
             # Byte-consistent with equip_item: equip re-soulbinds.
+            # v26.2 (#330): documented admin bypass (the v25.7
+            # sudo-unequip precedent) — a door dress does NOT spring a
+            # latent curse; the trap is the player equip path only.
             item.is_equipped = True
             item.equipped_slot = slot or ''
             item.is_soulbound = True
@@ -1035,11 +1045,10 @@ def _remove_item(char, item_id):
         item = _owned_item(char, item_id)
         ref = item_ref(item)
         if item.active_curse_id is not None:
-            item.active_curse.component_instances.filter(
-                is_active=True).update(
-                    is_active=False, removed_by='item-removed')
-            EffectInstance.objects.filter(pk=item.active_curse_id).update(
-                is_active=False, removed_by='item-removed')
+            # v26.2 (#330): the one shared teardown — the v25.7 behavior
+            # plus reversal of the cut family and the latent-flag clean.
+            from .curse_utils import end_curse
+            end_curse(item, 'item-removed')
         was_equipped = item.is_equipped
         if item.rarity == ItemInstance.ARTIFACT:
             item.definition.delete()
@@ -1379,6 +1388,9 @@ def _equip_item_admin(char, item_id, slot):
             equipped.equipped_slot = ''
             equipped.save()
         # Byte-consistent with equip_item/_dress: equip re-soulbinds.
+        # v26.2 (#330): documented admin bypass (the v25.7 sudo-unequip
+        # precedent) — a door equip does NOT spring a latent curse; the
+        # trap is the player equip path only.
         item.is_equipped = True
         item.equipped_slot = target_slot
         item.is_soulbound = True

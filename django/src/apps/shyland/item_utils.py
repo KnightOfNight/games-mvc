@@ -95,7 +95,17 @@ def _roll_stat(base, factor, mk_tier, rarity):
     return round(random.uniform(midpoint * lo, midpoint * hi))
 
 
-def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, gift=False):
+# v26.2 (#330): the wild curse chance — WIRED BUT DORMANT at 0.0 in this
+# release (zero wild drops). Release B of the #297 curse arc turns it on.
+CURSE_WILD_CHANCE = 0.0
+
+# The natural roll's rarity habitat: only these rarities can roll cursed
+# in the wild (vendor buys are always 'common' — never cursed, deliberate).
+CURSE_RARITY_GATE = ('rare', 'epic', 'legendary')
+
+
+def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, gift=False,
+                           force_curse=False, curse=None):
     """
     Generate (but do not save) an ItemInstance from a definition at a given Mk tier and rarity.
     Call .save() on the returned instance to persist it.
@@ -104,6 +114,14 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
     A definition carrying tier_material_mk_min may only be generated inside its rung's
     range, because on the tier-material ladder the material name *is* the tier display
     and any tier outside the range produces a name that lies.
+
+    v26.2 (#330): the latent-curse roll. Natural path — cursed-template
+    definitions with CurseCandidate rows roll a weighted latent curse when
+    the rarity sits in CURSE_RARITY_GATE and random.random() beats
+    CURSE_WILD_CHANCE (dormant at 0.0 this release). Force path
+    (gifting/playtest) — force_curse=True skips the chance AND the rarity
+    gate; curse=<EffectDefinition> uses that curse directly (must be
+    is_curse=True), omitted rolls the weighted pool (empty pool refuses).
     """
     # v24.28 (#211, #245): the Mk-mismatch guard, first thing in the body —
     # both live generation paths (the loot-drop roll below and do_buy's vendor
@@ -156,6 +174,28 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
     is_soulbound = bool(owner and gift)
     soulbound_to = owner if (owner and gift) else None
 
+    # v26.2 (#330): the latent-curse roll (see the docstring).
+    latent_curse = None
+    if force_curse:
+        if curse is not None:
+            if not curse.is_curse:
+                raise ValueError(
+                    f'{curse.slug} is not a curse (is_curse=False); '
+                    'refusing to force it as one. (#330)'
+                )
+            latent_curse = curse
+        else:
+            latent_curse = _roll_curse_from_pool(definition)
+            if latent_curse is None:
+                raise ValueError(
+                    f'{definition.slug} has no CurseCandidate pool to '
+                    'roll a forced curse from. (#330)'
+                )
+    elif (definition.is_cursed_template
+            and rarity in CURSE_RARITY_GATE
+            and random.random() < CURSE_WILD_CHANCE):
+        latent_curse = _roll_curse_from_pool(definition)
+
     return ItemInstance(
         definition=definition,
         owner=owner,
@@ -168,7 +208,19 @@ def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, g
         damage_spread=damage_spread,
         is_soulbound=is_soulbound,
         soulbound_to=soulbound_to,
+        is_cursed=latent_curse is not None,
+        latent_curse=latent_curse,
     )
+
+
+def _roll_curse_from_pool(definition):
+    """v26.2 (#330): weighted roll over a definition's CurseCandidate
+    pool; None on an empty pool."""
+    candidates = list(definition.curse_candidates.select_related('curse'))
+    if not candidates:
+        return None
+    weights = [c.weight for c in candidates]
+    return random.choices(candidates, weights=weights, k=1)[0].curse
 
 
 def format_slot_name(slot_str):
@@ -255,7 +307,14 @@ def get_display_description(item):
     Identified items show the real description; unidentified show mystery description or fallback.
     """
     if item.is_identified:
-        return item.definition.description
+        # v26.2 (#330): an ended curse's memorial closes the identified
+        # description forever after.
+        description = item.definition.description
+        if item.memorial_description:
+            if description:
+                return f'{description}\n\n{item.memorial_description}'
+            return item.memorial_description
+        return description
     mystery = item.definition.mystery_description.strip()
     if mystery:
         return mystery
