@@ -742,6 +742,57 @@ class FloorHoldEngineTests(TransactionTestCase):
         self.assertEqual(rows, [])
 
 
+class AggregateHealCeilingTests(TransactionTestCase):
+    """v26.2 (#330): the heal ceiling on the third vitality-write path —
+    the #151 aggregate (`use`/`heal`), which writes vitality through its
+    own atomic UPDATE rather than _apply_instant_component. Found during
+    playtest prep, fixed in-session."""
+
+    async def test_aggregate_heals_to_the_hold_and_never_past(self):
+        def setup():
+            zone, room = make_world('aggA')
+            char = make_character('aggA', room)
+            set_bars(char, vitality_current=3, vitality_max=100)
+            _create_effect_instance(
+                make_effect('aggA-hold',
+                            [{'ctype': 'floor_hold_vitality', 'magnitude': 8.0,
+                              'mag2': 0.05, 'mag2_scale': 0.0,
+                              'no_expiry': True}], is_curse=True),
+                char, 1)
+            heal = make_effect(
+                'aggA-heal', [{'ctype': 'restore_vitality', 'magnitude': 25.0,
+                               'duration': 0.0}])
+            draught_def = make_item_def('aggA', 'Healing Draught',
+                                        'consumable', effect=heal)
+            for _ in range(3):
+                make_owned_item(draught_def, char)
+            return (Character.objects.select_related('user').get(pk=char.pk),
+                    draught_def)
+        char, draught_def = await sync_to_async(setup)()
+        sent = []
+        consumer = make_stub_consumer(char, sent)
+        await consumer.cmd_use('3 healing draught')
+        state = await sync_to_async(
+            lambda: (Character.objects.get(pk=char.pk).vitality_current,
+                     ItemInstance.objects.filter(
+                         owner=char, definition=draught_def).count()))()
+        # Below the hold: heals up to the hold (3 -> 5); planning stops
+        # at the effective headroom — ONE draught consumed, not three.
+        self.assertEqual(state, (5, 2))
+        # The full-heal fold never fires under a hold.
+        texts = [m['text'] for m in outputs(sent)]
+        self.assertFalse(any('full health' in t for t in texts))
+
+        # At the hold: the draught is consumed, the heal is a no-op.
+        sent.clear()
+        await consumer.cmd_use('healing draught')
+        state = await sync_to_async(
+            lambda: (Character.objects.get(pk=char.pk).vitality_current,
+                     ItemInstance.objects.filter(
+                         owner=char, definition=draught_def).count()))()
+        self.assertEqual(state, (5, 1))
+
+
 # ----------------------------------------------------------------------
 # §12.7 — lifecycle
 # ----------------------------------------------------------------------

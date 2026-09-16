@@ -1763,10 +1763,25 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         the sentence; EffectInstance bookkeeping runs per consumed item
         as the per-item path does. Consumed instances are deleted.
         Returns (consumed, total, covered, extra_pairs)."""
-        from django.db.models import F
-        from django.db.models.functions import Least
-        from .effect_utils import _apply_instant_component, percent_heal_amount
+        from django.db.models import F, Value
+        from django.db.models.functions import Greatest, Least
+        from .effect_utils import (
+            _apply_instant_component, percent_heal_amount,
+            vitality_hold_value,
+        )
         from .models import EffectInstance
+
+        # v26.2 (#330): the floor-hold heal ceiling rides this write too
+        # (the third vitality-heal write path, beside the instant
+        # restores and hot ticking). Planning stops at the effective
+        # headroom — never mass-consume draughts a hold makes useless —
+        # while `covered` stays measured against the true full-bar
+        # deficit, so the full-heal fold never fires under a hold.
+        hold = vitality_hold_value(character)
+        effective_deficit = deficit
+        if hold is not None:
+            effective_deficit = min(
+                deficit, max(0, hold - character.vitality_current))
 
         consumed = []
         total = 0.0
@@ -1782,12 +1797,17 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                         c.computed_magnitude(item.mk_tier),
                         character.vitality_max)
             consumed.append(item)
-            if total >= deficit:
+            if total >= effective_deficit:
                 break
 
+        if hold is None:
+            heal_cap = F('vitality_max')
+        else:
+            heal_cap = Least(F('vitality_max'),
+                             Greatest(F('vitality_current'), Value(hold)))
         Character.objects.filter(pk=character.pk).update(
             vitality_current=Least(
-                F('vitality_current') + total, F('vitality_max')))
+                F('vitality_current') + total, heal_cap))
 
         extra_pairs = []
         for item in consumed:
