@@ -2544,6 +2544,10 @@ class Command(BaseCommand):
     # fixtures with the standard commerce wiring.
     CONVERGENCE_CART_VENDORS = {'vnd-9', 'mother-tansy'}
 
+    # v26.3 (#297): the Convergence cleanser — Mother Tansy lifts curses
+    # and sweeps packs at her remedy cart.
+    CONVERGENCE_CLEANSERS = {'mother-tansy'}
+
     # v21 B3 (#103): the four placeholder roster NPCs seeded with
     # MINIMAL_STATS (999 HP, all-1 stats) refuse attack like the other
     # service NPCs until they get real content.
@@ -2704,6 +2708,9 @@ class Command(BaseCommand):
                 'is_unique': True,
                 'wanders': False,
                 'is_repairer': is_service_npc,
+                # v26.3 (#297): Mother Tansy gains the cleanser specialty;
+                # she is already a non-attackable cart fixture.
+                'is_cleanser': slug in self.CONVERGENCE_CLEANSERS,
                 'combat_tier': 'normal',
                 'loot_table': None,
                 'is_fixture': is_obelisk or is_cart,
@@ -3126,14 +3133,42 @@ class Command(BaseCommand):
         )
 
         # v19 brief 8: vendors and repairers must never be attackable.
+        # v26.3 (#297): cleansers join the rule.
         attackable_vendors_or_repairers = NpcDefinition.objects.filter(
-            Q(vendor_entries__isnull=False) | Q(is_repairer=True),
+            Q(vendor_entries__isnull=False) | Q(is_repairer=True)
+            | Q(is_cleanser=True),
             attackable=True,
         ).distinct()
         self._check(
-            'No vendor or repairer NpcDefinition is attackable '
+            'No vendor, repairer, or cleanser NpcDefinition is attackable '
             f'(found {attackable_vendors_or_repairers.count()})',
             not attackable_vendors_or_repairers.exists(),
+        )
+
+        # v26.3 (#297): exactly the four ruled cleansers, no others.
+        cleanser_slugs = set(NpcDefinition.objects.filter(
+            is_cleanser=True).values_list('slug', flat=True))
+        self._check(
+            'Exactly four cleansers: Mother Tansy, Maro, Tavik, Old Brammel '
+            f'(found {sorted(cleanser_slugs)})',
+            cleanser_slugs == {'mother-tansy', 'maro-the-mender',
+                               'tavik-the-mender', 'old-brammel'},
+        )
+
+        # v26.3 (#297): every curse carries a cleanse price; no non-curse
+        # has one.
+        unpriced_curses = EffectDefinition.objects.filter(
+            is_curse=True, cleanse_price=0).count()
+        self._check(
+            f'Every curse carries a cleanse price (found {unpriced_curses} '
+            'unpriced)',
+            unpriced_curses == 0,
+        )
+        priced_noncurses = EffectDefinition.objects.filter(
+            is_curse=False).exclude(cleanse_price=0).count()
+        self._check(
+            f'No non-curse carries a cleanse price (found {priced_noncurses})',
+            priced_noncurses == 0,
         )
 
         # v20 brief 1 (#43): the ring street carts stock every consumable
@@ -4276,6 +4311,9 @@ class Command(BaseCommand):
         curses = [
             {
                 'slug': 'curse-leaden-arm',
+                # v26.3 (#297): the Mk 1 cleansing price (ruling 3b/3c;
+                # the charge scales by the item's Mk tier).
+                'cleanse_price': 75,
                 'name': 'Curse of the Leaden Arm',
                 'description': (
                     'The arm that bears it grows heavy as poured lead, '
@@ -4298,6 +4336,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-craven-edge',
+                'cleanse_price': 60,
                 'name': 'Curse of the Craven Edge',
                 'description': (
                     'The edge remembers cowardice. It turns a little from '
@@ -4320,6 +4359,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-copper-tithe',
+                'cleanse_price': 90,
                 'name': 'Tithe of the Copper Court',
                 'description': (
                     'The Copper Court collects on every heartbeat. Blood '
@@ -4342,6 +4382,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-moth-eaten-ward',
+                'cleanse_price': 75,
                 'name': 'Curse of the Moth-Eaten Ward',
                 'description': (
                     'Unseen moths chew at whatever wards the wearer. '
@@ -4365,6 +4406,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-whisper-string',
+                'cleanse_price': 120,
                 'name': 'The Whisper in the String',
                 'description': (
                     'A voice lives in the string. It hums doubt into the '
@@ -4390,6 +4432,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-hollowing',
+                'cleanse_price': 5000,
                 'name': 'The Hollowing',
                 'description': (
                     'It empties what it touches. The flesh remains; the '
@@ -4422,6 +4465,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-gravekeepers-hold',
+                'cleanse_price': 8000,
                 'name': "Gravekeeper's Hold",
                 'description': (
                     'The Gravekeeper does not take. The Gravekeeper '
@@ -4445,6 +4489,7 @@ class Command(BaseCommand):
             },
             {
                 'slug': 'curse-threefold-ruin',
+                'cleanse_price': 15000,
                 'name': 'The Threefold Ruin',
                 'description': (
                     'Three ruins in one binding: the strength, the '
@@ -4482,6 +4527,8 @@ class Command(BaseCommand):
                 'is_curse': True,
                 'apply_text': spec['apply_text'],
                 'memorial_text': spec['memorial_text'],
+                # v26.3 (#297): the Mk 1 cleansing price.
+                'cleanse_price': spec['cleanse_price'],
             })
             for component in spec['components']:
                 order = component.pop('order')
@@ -7753,7 +7800,8 @@ class Command(BaseCommand):
              'bench worn smooth by work. He came up from the village for the '
              'foot traffic and stayed for the shard, which he talks to, '
              'quietly, when he thinks no one is listening.',
-             {'is_repairer': True, 'attackable': False, 'article': ''}),
+             {'is_repairer': True, 'is_cleanser': True, 'attackable': False,
+              'article': ''}),
             ('essa-the-trader', 'Essa the Trader', 'normal', False,
              (30, 7, 7, 7, 6, 6, 6), 2.0, None, 'reedmere-gear', (4, 12), 5,
              'A Reedmere trader with a blanket of goods weighted at the corners '
@@ -7765,7 +7813,8 @@ class Command(BaseCommand):
              'without being watched. Travelers keep appearing beside the green '
              'light, and travelers always need something sewn, hammered, or '
              'talked back into shape.',
-             {'is_repairer': True, 'attackable': False, 'article': ''}),
+             {'is_repairer': True, 'is_cleanser': True, 'attackable': False,
+              'article': ''}),
             ('sona-the-trader', 'Sona the Trader', 'normal', False,
              (50, 9, 9, 9, 7, 8, 8), 4.0, None, 'windhome-gear', (6, 16), 5,
              'A trader of Windhome, goods laid out in painted order against the '
@@ -7899,6 +7948,9 @@ class Command(BaseCommand):
                     UnarmedMessagePool.objects.get(slug=pool_slug) if pool_slug else None
                 ),
                 'is_repairer': extras.get('is_repairer', False),
+                # v26.3 (#297): enforce-exact — every non-cleanser
+                # self-heals to False.
+                'is_cleanser': extras.get('is_cleanser', False),
                 'death_message': extras.get('death_message', ''),
                 # v19 brief 8: display/combat-protection flags. Defaults are
                 # the plain-villager case; vendors, repairers, and the
@@ -8144,7 +8196,8 @@ class Command(BaseCommand):
              "appeared at the crag's foot, set up a bench, and has been "
              "mending travelers' gear beside it ever since. He calls the "
              'shard "the little lamp" and considers it excellent company.',
-             {'is_repairer': True, 'attackable': False, 'article': ''}),
+             {'is_repairer': True, 'is_cleanser': True, 'attackable': False,
+              'article': ''}),
             ('ridda-the-trader', 'Ridda the Trader', 'normal', False,
              (95, 12, 10, 13, 8, 9, 9), 7.0, None, 'ridge-gear', (10, 24), 5,
              "Ridda trades at the mountains' door: tools, iron, and the things "
