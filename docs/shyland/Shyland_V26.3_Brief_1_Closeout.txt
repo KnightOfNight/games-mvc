@@ -1,0 +1,3 @@
+2026-09-22 — Implementation session start: Shyland V26.3 Brief 1 (Curses in the World), branch version_26_3. [STUB — completed in place at session end]
+
+Pre-flight: all 16 T-claims verified against the code at branch tip 76a6299 (code byte-identical to main c1c4f2b and to the brief's verification point 8306b8a) — no mismatches, no HARD STOP. Prior PENDING DEPLOY-TIME ACTIONS: none open — V26.2's block (migration 0059 + curse seed) executed at the V26.2 closeout tail; production state operator-verified 2026-09-22, attestation recorded on #297.
