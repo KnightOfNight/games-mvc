@@ -95,9 +95,9 @@ def _roll_stat(base, factor, mk_tier, rarity):
     return round(random.uniform(midpoint * lo, midpoint * hi))
 
 
-# v26.2 (#330): the wild curse chance — WIRED BUT DORMANT at 0.0 in this
-# release (zero wild drops). Release B of the #297 curse arc turns it on.
-CURSE_WILD_CHANCE = 0.0
+# v26.3 (#297): live — one curse in three Rare+ drops from pooled
+# definitions (wired dormant at 0.0 in v26.2; Release B turned it on).
+CURSE_WILD_CHANCE = 1 / 3
 
 # The natural roll's rarity habitat: only these rarities can roll cursed
 # in the wild (vendor buys are always 'common' — never cursed, deliberate).
