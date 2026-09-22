@@ -87,9 +87,12 @@ class TableTests(SimpleTestCase):
         # minus exactly loot — and, since v24.7 brief 1 (#195, fn 21),
         # minus equip/eq, whose bare form became a valid information
         # rendering. Original intent preserved: nothing else has left.
+        # v26.3 (#297): cleanse JOINED the table (a new fn-10 verb) —
+        # joining is not leaving; the pin moves with the registry.
         self.assertEqual(SkylandConsumer.PROMPT_VERBS, {
             'attack': 'attack', 'kill': 'attack', 'k': 'attack',
             'buy': 'buy',
+            'cleanse': 'cleanse',
             'drop': 'drop',
             'examine': 'examine', 'ex': 'examine',
             'pickup': 'pickup', 'p': 'pickup',

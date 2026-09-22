@@ -434,11 +434,18 @@ class GenerationTests(TestCase):
         CurseCandidate.objects.create(
             item_definition=self.pool_def, curse=self.curse, weight=1)
 
-    def test_natural_roll_never_fires_at_zero_chance(self):
-        for _ in range(10):
-            item = generate_item_instance(self.pool_def, 1, 'rare')
-            self.assertIsNone(item.latent_curse)
-            self.assertFalse(item.is_cursed)
+    def test_natural_roll_never_fires_when_the_roll_misses(self):
+        # v26.3 (#297): CURSE_WILD_CHANCE went live at 1/3, so the
+        # dormant-constant pin (never fires at 0.0) converts to the
+        # mocked-roll form. Original intent preserved: a roll that does
+        # not beat the chance never curses the item.
+        from apps.shyland.item_utils import CURSE_WILD_CHANCE
+        with mock.patch('apps.shyland.item_utils.random.random',
+                        return_value=CURSE_WILD_CHANCE):
+            for _ in range(10):
+                item = generate_item_instance(self.pool_def, 1, 'rare')
+                self.assertIsNone(item.latent_curse)
+                self.assertFalse(item.is_cursed)
 
     def test_force_rolls_from_pool_and_bypasses_rarity_gate(self):
         item = generate_item_instance(
