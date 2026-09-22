@@ -393,6 +393,11 @@ class EffectDefinition(models.Model):
     memorial_text = models.TextField(
         blank=True, default='',
         help_text='Stamped onto the item as memorial_description at curse end.')
+    cleanse_price = models.PositiveBigIntegerField(
+        default=0,
+        help_text='v26.3 (#297): copper an NPC cleanser charges to lift this '
+                  'curse from a Mk 1 item; the charge is cleanse_price × the '
+                  'item\'s Mk tier. 0 on non-curses.')
 
     def __str__(self):
         return self.name
@@ -975,6 +980,12 @@ class NpcDefinition(models.Model):
         default=False,
         help_text='This NPC offers repair services. The repair command routes '
                   'to a living repairer in the room.',
+    )
+    is_cleanser     = models.BooleanField(
+        default=False,
+        help_text='v26.3 (#297): this NPC lifts item curses and sweeps packs '
+                  'for them. The cleanse and inspect commands route to a '
+                  'living cleanser in the room.',
     )
     is_fixture      = models.BooleanField(
         default=False,

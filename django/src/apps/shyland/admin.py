@@ -148,7 +148,7 @@ class EffectComponentInline(admin.TabularInline):
 
 @admin.register(EffectDefinition)
 class EffectDefinitionAdmin(admin.ModelAdmin):
-    list_display  = ['name', 'slug']
+    list_display  = ['name', 'slug', 'is_curse', 'cleanse_price']
     search_fields = ['name', 'slug']
     prepopulated_fields = {'slug': ('name',)}
     inlines = [EffectComponentInline]
@@ -257,8 +257,8 @@ class NpcEffectInline(admin.TabularInline):
 
 @admin.register(NpcDefinition)
 class NpcDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'genre_tag', 'combat_tier', 'is_aggressive', 'is_unique', 'is_repairer', 'respawn_minutes')
-    list_filter = ('genre_tag', 'is_aggressive', 'is_unique', 'is_repairer')
+    list_display = ('name', 'slug', 'genre_tag', 'combat_tier', 'is_aggressive', 'is_unique', 'is_repairer', 'is_cleanser', 'respawn_minutes')
+    list_filter = ('genre_tag', 'is_aggressive', 'is_unique', 'is_repairer', 'is_cleanser')
     prepopulated_fields = {'slug': ('name',)}
     raw_id_fields = ('loot_table', 'unarmed_message_pool')
     inlines = [NpcEffectInline]
