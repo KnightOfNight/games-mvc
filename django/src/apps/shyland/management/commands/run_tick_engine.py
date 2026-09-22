@@ -2031,6 +2031,15 @@ class Command(BaseCommand):
                     # v26.2 (#330): the floor-hold heal ceiling rides
                     # passive regen too — read here, in DB context.
                     char._vitality_hold = vitality_hold_value(char)
+                    # v26.3 (#338): an active vitality drain pauses passive
+                    # vitality regen — bar-scoped (longevity arm untouched),
+                    # source-blind (any dot_vitality component), silent. The
+                    # character stays a candidate: longevity must still run.
+                    char._vitality_dot_paused = EffectComponentInstance.objects.filter(
+                        effect_instance__target=char,
+                        is_active=True,
+                        component__component_type='dot_vitality',
+                    ).exists()
                     result.append(char)
             return result
 
@@ -2046,7 +2055,8 @@ class Command(BaseCommand):
             # v24.3 (#165): the proportional regen law — rate = bar_max /
             # CONSTANT, so a full refill from zero takes the constant's
             # number of seconds at every level.
-            if character.vitality_current < character.vitality_max:
+            if (character.vitality_current < character.vitality_max
+                    and not getattr(character, '_vitality_dot_paused', False)):
                 heal = math.ceil(character.vitality_max / VITALITY_REGEN_SECS)
                 # v26.2 (#330): the floor-hold heal ceiling — regen works
                 # up to the hold, is a no-op above it (also keeps the
