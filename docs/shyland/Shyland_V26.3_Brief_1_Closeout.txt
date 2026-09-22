@@ -1,3 +1,50 @@
-2026-09-22 — Implementation session start: Shyland V26.3 Brief 1 (Curses in the World), branch version_26_3. [STUB — completed in place at session end]
+2026-09-22 — Implementation session start: Shyland V26.3 Brief 1 (Curses in the World), branch version_26_3.
 
 Pre-flight: all 16 T-claims verified against the code at branch tip 76a6299 (code byte-identical to main c1c4f2b and to the brief's verification point 8306b8a) — no mismatches, no HARD STOP. Prior PENDING DEPLOY-TIME ACTIONS: none open — V26.2's block (migration 0059 + curse seed) executed at the V26.2 closeout tail; production state operator-verified 2026-09-22, attestation recorded on #297.
+
+== IMPLEMENTATION (all steps complete) ==
+
+Step 0   19b57d2  closeout stub (work-has-started signal)
+Step 1   ba51340  SHYLAND_VERSION -> 26.3-DEV + pin test, same commit; version-start make deploy-dev run
+Step 2   9655f96  schema: EffectDefinition.cleanse_price + NpcDefinition.is_cleanser, migration 0060 (two AddFields, as briefed), admin display; migration applied on dev
+Step 3   d173e3b  #338 regen pause: _vitality_dot_paused in get_regen_candidates (DB context), vitality arm gated; longevity arm/Phase 2 untouched; character stays a candidate
+Steps 4+5 0f6beed cleanse + inspect: registry (COMMAND_TABLE/COMBAT_BLOCKED/PROMPT_VERBS/GRAMMAR_VERBS/help/completion), POLICIES['cleanse'] with unequip's refusal messages verbatim, get_cleanser_in_room, cmd_cleanse (active curses only, price = cleanse_price x mk_tier, end_curse('cleansed'), status refresh, item stays equipped), do_cleanse/do_charge (do_repair_attempt atomic shape), cmd_inspect (5 cp x carried incl. equipped, presence only, sets nothing), CURSE_INSPECT_PRICE_PER_ITEM=5, six voice pool families x four cleansers + fallbacks (Step 9 creative content authored here), end_curse docstring gains 'cleansed'
+Step 6   738c2eb  examine Cleansing price line: get_curse_examine_info -> 4-tuple with tier-formatted price computed in DB context; generic veiled row unchanged
+Step 7   fefebba  CURSE_WILD_CHANCE 0.0 -> 1/3; nothing else touched (no loot-table edits, per ruling)
+Step 8   0da2bf2  seed: CONVERGENCE_CLEANSERS={mother-tansy}, three Menders' extras is_cleanser=True, upsert passthrough (enforce-exact self-heal), eight cleanse_price values per the ruling table, three new hard checks
+Step 10  c42f73f  tests: tests/test_v26_3_brief1.py (32 tests)
+Arch doc 128fadc  Shyland_Architecture_v26.md stamped 26.3, hash moved to c42f73f (LAST, gated step)
+
+== VERIFICATION (all passing) ==
+
+1. Full in-container suite, path form: 1062 tests OK (V26.2 baseline 1030; +32 new).
+2. make seed on dev: deletions 0 (expected 0 — actual matches expected); second consecutive run idempotent (no changes); the three new hard checks PASS ("No vendor, repairer, or cleanser NpcDefinition is attackable", "Exactly four cleansers", "Every curse carries a cleanse price" + "No non-curse carries a cleanse price").
+3. Shell spot-checks (dev): cleanser slugs == {maro-the-mender, mother-tansy, old-brammel, tavik-the-mender}; the eight (slug, cleanse_price) pairs match section 10.2 exactly; CurseCandidate count == 26; CURSE_WILD_CHANCE == 1/3; CURSE_INSPECT_PRICE_PER_ITEM == 5.
+4. Grep: end_curse( call sites are exactly the V26.2 three (mc_door 'item-removed', tick engine 'curse-death' + 'timeout') plus do_cleanse's 'cleansed'; no code path sets curse_identified from inspect.
+5. make deploy-dev run post-verification — dev stack runs the full brief.
+
+Issues: #297 and #338 closed with closing comments (gated on verification passing).
+
+== DEVIATIONS ==
+
+D1. Admin display (Step 2): the brief placed cleanse_price "beside is_curse" in the EffectDefinition admin, but that admin displayed only name/slug — added both is_curse and cleanse_price to list_display. Cosmetic-only, read-only convenience as briefed.
+D2. Test conversion (fixed-value-became-live rule): test_v26_2_brief1.GenerationTests.test_natural_roll_never_fires_at_zero_chance -> test_natural_roll_never_fires_when_the_roll_misses. The dormant-0.0 pin converts to the mocked-roll form (roll == CURSE_WILD_CHANCE never curses); original intent preserved: a roll that does not beat the chance never curses the item.
+D3. Test conversion (same rule): test_v245_bare_loot.TableTests.test_no_other_verb_left_prompt_verbs — 'cleanse' added to the pinned PROMPT_VERBS set-equality (joining is not leaving; the pin's original intent, "nothing else has left fn 10", preserved).
+D4. Section 8's anticipated 3-tuple -> 4-tuple test conversions: none needed — no existing test unpacked the examine curse tuple.
+
+== PENDING DEPLOY-TIME ACTIONS (open until the production executions at release deploy) ==
+
+| Action | Executor | Expected |
+|---|---|---|
+| Migration 0060 (Step 2) on production | make deploy-prod (closeout tail, standard) | applies cleanly |
+| Production seed — is_cleanser on the four cleansers, cleanse_price on the eight curses, the three new hard checks | make seed-prod, bare, on its own operator confirmation in the closeout tail | deletions: 0; counts as section 13.3 |
+
+Dev-side executions of both completed in-session. Code first, data second: the deploy precedes the seed.
+
+== FINAL COMMIT HASH ==
+
+128fadc (architecture doc; last code commit c42f73f)
+
+== OPERATOR PLAYTEST DISPOSITION ==
+
+PENDING — playtest delivered interactively per the v40 rule; disposition to be recorded here before session end.
