@@ -25,7 +25,7 @@ Ships Release B — curses live in the world, with the remediation that makes ca
 
 ## 2. Pre-flight
 
-**Process assumptions:** standard v40 rituals (interactive playtest delivery, one step at a time) — no deviations known. **Prior PENDING DEPLOY-TIME ACTIONS:** V26.2's block (migration `0059` + the curse seed) executed at the V26.2 closeout tail on 2026-09-16 (recorded in project memory: deletions 0, all pass); no committed artifact records that execution — the implementation session **confirms with the operator in its pre-flight line** that nothing from V26.2 remains open before proceeding.
+**Process assumptions:** standard v40 rituals (interactive playtest delivery, one step at a time) — no deviations known. **Prior PENDING DEPLOY-TIME ACTIONS: none open.** V26.2's block (migration `0059` + the curse seed) executed at the V26.2 closeout tail on 2026-09-16; no committed artifact recorded that execution, so the operator verified production directly on 2026-09-22 (Django admin: all eight curse Effect definitions present) — attestation recorded on #297 (2026-09-22). The implementation session's pre-flight line cites that comment; no re-confirmation needed.
 
 **Load-bearing technical claims — verified at writing time, re-verify before implementing (mismatch = HARD STOP per #252):**
 
