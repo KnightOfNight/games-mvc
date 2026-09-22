@@ -103,6 +103,10 @@ CURSE_WILD_CHANCE = 0.0
 # in the wild (vendor buys are always 'common' — never cursed, deliberate).
 CURSE_RARITY_GATE = ('rare', 'epic', 'legendary')
 
+# v26.3 (#297): the inspect sweep's rate — copper per carried instance
+# (equipped included); presence-only, sets nothing, repeatable.
+CURSE_INSPECT_PRICE_PER_ITEM = 5
+
 
 def generate_item_instance(definition, mk_tier, rarity, owner=None, room=None, gift=False,
                            force_curse=False, curse=None):

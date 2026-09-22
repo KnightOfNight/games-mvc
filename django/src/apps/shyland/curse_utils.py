@@ -36,7 +36,8 @@ def end_curse(item, cause):
     reversible component (stat cuts by stored delta; bar cuts via the
     bar-law rescale), clears is_cursed and latent_curse, stamps the
     memorial, and leaves curse_identified untouched. Causes: 'timeout'
-    (expiry), 'curse-death', 'item-removed' (sudo)."""
+    (expiry), 'curse-death', 'item-removed' (sudo), 'cleansed' (the paid
+    lift, v26.3 #297)."""
     from .combat_utils import rescale_bars_for_gear
     from .effect_utils import apply_stat_effect
 

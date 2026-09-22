@@ -35,6 +35,7 @@ from .loot_utils import sweep_corpses
 from .currency import display_for_zone
 from .version import SHYLAND_VERSION
 from .item_utils import (
+    CURSE_INSPECT_PRICE_PER_ITEM,
     bag_pct, carry_capacity, compose_item_line, details_cell,
     equip_candidates, equipment_doll_lines,
     format_slot_name, generate_item_instance,
@@ -73,6 +74,14 @@ def _pity_repair_line(repairer):
         npc_voice.PITY_REPAIR_FALLBACK,
         name=npc_display(repairer, capitalize=True),
     )
+
+
+def _cleanser_pool(cleanser, lines, fallback):
+    """v26.3 (#297): a cleanser's per-slug voice pool, or the {name}
+    fallback for an unvoiced cleanser (mirrors _pity_repair_line; call
+    sites pass name= alongside the outcome fields — unused placeholders
+    are inert in npc_voice.pick)."""
+    return lines.get(cleanser.definition.slug) or fallback
 
 
 logger = logging.getLogger('shyland.envelope')
@@ -269,6 +278,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'buy': ('cmd_buy', True),
         'sell': ('cmd_sell', True),
         'repair': ('cmd_repair', True),
+        # v26.3 (#297): curse remediation — the paid lift and the paid sweep.
+        'cleanse': ('cmd_cleanse', True),
+        'inspect': ('cmd_inspect', False),
         'kill': ('cmd_attack', True), 'attack': ('cmd_attack', True),
         'k': ('cmd_attack', True),
         # v24.26 brief 1 (#38): bare verb — args ignored (DD §9.1 fn 2).
@@ -315,6 +327,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'buy': "There's no trading in the middle of a fight!",
         'sell': "There's no trading in the middle of a fight!",
         'repair': "There's no mending anything in the middle of a fight!",
+        # v26.3 (#297): curse services refuse in combat.
+        'cleanse': "There's no lifting a curse in the middle of a fight!",
+        'inspect': "There's no time for that in the middle of a fight!",
         'drop': "Your hands are too busy with the fight!",
         'pickup': "Your hands are too busy with the fight!",
         'p': "Your hands are too busy with the fight!",
@@ -346,6 +361,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
     PROMPT_VERBS = {
         'attack': 'attack', 'kill': 'attack', 'k': 'attack',
         'buy': 'buy',
+        'cleanse': 'cleanse',
         'drop': 'drop',
         # v24.7 brief 1 (#195, DD §9.1 fn 21): equip left this table —
         # its bare form is a valid information rendering now.
@@ -370,6 +386,7 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         'unequip': 'unequip', 'uneq': 'unequip',
         'examine': 'examine', 'ex': 'examine',
         'loot': 'loot', 'repair': 'repair',
+        'cleanse': 'cleanse',
         'attack': 'attack', 'kill': 'attack', 'k': 'attack',
     }
 
@@ -1132,12 +1149,14 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             ('attune', 'attune', 'Bond to the travel node here — your new home.'),
             ('buy', 'buy [<quantity>] <item>', 'Buy from a vendor in the room.'),
             ('cancel', 'cancel [<command>]', 'Stop an in-progress command.'),
+            ('cleanse', 'cleanse <item>', 'Have a cleanser lift the curse from an equipped item.'),
             ('drop', 'drop [<quantity>] <item>', 'Drop an item on the ground.'),
             ('equip (eq)', 'equip [<item>]', 'Equip an item from your inventory.'),
             ('examine (ex)', 'examine <item> | <NPC> | <player>', 'Take a close look at something.'),
             ('flee', 'flee', 'Escape from combat.'),
             ('heal', 'heal', 'Drink healing draughts until your vitality is full.'),
             ('home', 'home', 'Return home after a short delay.'),
+            ('inspect', 'inspect', 'Pay a cleanser to sweep everything you carry for curses.'),
             ('loot', 'loot [all] | <NPC>', 'Loot every corpse here, or one named corpse.'),
             ('mc', 'mc <status|kill|restore>', 'The MC kill switch.', True),
             ('pickup (p)', 'pickup [<quantity>] <item>', 'Pick up items from the ground.'),
@@ -2711,6 +2730,122 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             )
 
     # ------------------------------------------------------------------
+    # v26.3 (#297): curse remediation — the paid lift and the paid sweep.
+    # ------------------------------------------------------------------
+
+    async def cmd_cleanse(self, args):
+        char = await self.get_character_fresh()
+        room = await self.get_current_room()
+        cleanser = await self.get_cleanser_in_room(room)
+        if cleanser is None:
+            await self.output('There is no one here who can cleanse.', 'warn')
+            return
+
+        equipped = await self.get_equipped_items(char)
+        res = resolve('cleanse', args, equipped)
+        if not res.ok:
+            await self.output(res.message, self._refusal_category(res))
+            return
+
+        item = res.items[0]
+        name = get_display_name_with_tier(item)
+        cleanser_name = npc_display(cleanser, capitalize=True)
+        # Active curses only (Q3.5): a plain equipped item and the
+        # admin-bypass unsprung latent answer this same branch alike.
+        if not (item.is_cursed and item.active_curse_id):
+            await self.output(
+                npc_voice.pick(
+                    _cleanser_pool(cleanser, npc_voice.CLEANSE_NOTHING_LINES,
+                                   npc_voice.CLEANSE_NOTHING_FALLBACK),
+                    name=cleanser_name, item=name,
+                ),
+                'warn',
+            )
+            return
+
+        outcome, price = await self.do_cleanse(item, char)
+        if outcome == 'poor':
+            await self.output(
+                npc_voice.pick(
+                    _cleanser_pool(cleanser, npc_voice.CLEANSE_POOR_LINES,
+                                   npc_voice.CLEANSE_POOR_FALLBACK),
+                    name=cleanser_name, item=name,
+                    price=self.format_amount(char, price),
+                ),
+                'warn',
+            )
+            return
+        await self.output(
+            npc_voice.pick(
+                _cleanser_pool(cleanser, npc_voice.CLEANSE_SUCCESS_LINES,
+                               npc_voice.CLEANSE_SUCCESS_FALLBACK),
+                name=cleanser_name, item=name,
+                price=self.format_amount(char, price),
+            ),
+            'success',
+        )
+        # Stat and bar cuts were just reversed — sync the pane (the
+        # cmd_unequip precedent). The item stays equipped.
+        await self.send_status_refresh()
+
+    async def cmd_inspect(self):
+        char = await self.get_character_fresh()
+        room = await self.get_current_room()
+        cleanser = await self.get_cleanser_in_room(room)
+        if cleanser is None:
+            await self.output('There is no one here who can cleanse.', 'warn')
+            return
+
+        items = await self.get_carried_items(char)
+        n = len(items)
+        if n == 0:
+            await self.output('You carry nothing to inspect.', 'warn')
+            return
+
+        cleanser_name = npc_display(cleanser, capitalize=True)
+        price = CURSE_INSPECT_PRICE_PER_ITEM * n
+        outcome = await self.do_charge(char, price)
+        if outcome == 'poor':
+            await self.output(
+                npc_voice.pick(
+                    _cleanser_pool(cleanser, npc_voice.INSPECT_POOR_LINES,
+                                   npc_voice.INSPECT_POOR_FALLBACK),
+                    name=cleanser_name,
+                    price=self.format_amount(char, price),
+                ),
+                'warn',
+            )
+            return
+
+        # Presence only — latent or sprung alike; sets nothing (no
+        # curse_identified, no flags). Repeat purchases allowed.
+        cursed = [i for i in items if i.is_cursed]
+        if not cursed:
+            await self.output(
+                npc_voice.pick(
+                    _cleanser_pool(cleanser, npc_voice.INSPECT_CLEAN_LINES,
+                                   npc_voice.INSPECT_CLEAN_FALLBACK),
+                    name=cleanser_name,
+                    price=self.format_amount(char, price),
+                ),
+                'success',
+            )
+            return
+        await self.output(
+            npc_voice.pick(
+                _cleanser_pool(cleanser, npc_voice.INSPECT_FOUND_LINES,
+                               npc_voice.INSPECT_FOUND_FALLBACK),
+                name=cleanser_name, count=len(cursed),
+                price=self.format_amount(char, price),
+            ),
+            'warn',
+        )
+        # The consequence must be seen (#132): one line per cursed item,
+        # in inventory order.
+        for item in cursed:
+            await self.output('  ' + compose_item_line(item), 'warn')
+
+    # ------------------------------------------------------------------
     # Combat commands
     # ------------------------------------------------------------------
 
@@ -4021,6 +4156,9 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             return [i for i in items if i.definition.valid_slots]
         if verb == 'unequip':
             return await self.get_equipped_items(char)
+        if verb == 'cleanse':
+            # v26.3 (#297): cleanse works on equipped items only.
+            return await self.get_equipped_items(char)
         if verb == 'pickup':
             room = await self.get_current_room()
             return await self.get_room_items(room)
@@ -4594,6 +4732,21 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
         )
 
     @database_sync_to_async
+    def get_cleanser_in_room(self, room):
+        # v26.3 (#297): the cleanse/inspect routing twin of the repairer
+        # lookup.
+        return (
+            NpcInstance.objects.filter(
+                current_room=room,
+                is_alive=True,
+                definition__is_cleanser=True,
+            )
+            .select_related('definition')
+            .order_by('pk')
+            .first()
+        )
+
+    @database_sync_to_async
     def get_vendor_entries(self, vendor):
         """Active entries for a vendor, exhausted ones included (buy reports Sold out)."""
         return list(
@@ -4713,6 +4866,44 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 outcome = 'fail'
         self.character.copper = char.copper
         return (outcome, cost)
+
+    @database_sync_to_async
+    def do_cleanse(self, item, character):
+        """v26.3 (#297): one paid curse lift. Returns (outcome, price);
+        outcome is 'poor' (refused, nothing charged) or 'success' — no
+        chance roll, cleansing always succeeds once paid."""
+        from django.db import transaction
+        from .curse_utils import end_curse
+
+        item = ItemInstance.objects.select_related(
+            'active_curse__definition').get(pk=item.pk)
+        price = item.active_curse.definition.cleanse_price * item.mk_tier
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            try:
+                char.copper = currency.subtract(char.copper, price)
+            except ValueError:
+                return ('poor', price)
+            char.save(update_fields=['copper'])
+            end_curse(item, 'cleansed')
+        self.character.copper = char.copper
+        return ('success', price)
+
+    @database_sync_to_async
+    def do_charge(self, character, price):
+        """v26.3 (#297): one flat paid charge (the inspect sweep).
+        Returns 'poor' (refused, nothing charged) or 'ok'."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=character.pk)
+            try:
+                char.copper = currency.subtract(char.copper, price)
+            except ValueError:
+                return 'poor'
+            char.save(update_fields=['copper'])
+        self.character.copper = char.copper
+        return 'ok'
 
     # ------------------------------------------------------------------
     # Combat DB helpers

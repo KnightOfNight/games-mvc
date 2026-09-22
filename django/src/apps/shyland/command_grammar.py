@@ -242,6 +242,15 @@ POLICIES = {
         not_found="You don't have that equipped.",
         bad_index="You don't have that many of those equipped.",
     ),
+    # v26.3 (#297): cleanse resolves against the equipped pool with
+    # unequip's refusal messages verbatim — a pool miss reads identically
+    # for a latent-cursed and a clean unequipped item (the no-leak rule).
+    'cleanse': Policy(
+        allow_quantifier=False,
+        no_multi="Cleanse one item at a time.",
+        not_found="You don't have that equipped.",
+        bad_index="You don't have that many of those equipped.",
+    ),
     'examine': Policy(
         allow_quantifier=False,
         no_multi="You can't examine everything at once.",
