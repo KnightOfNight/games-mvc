@@ -326,7 +326,7 @@ Three checkpoints, each sitting at an act threshold so that reaching the next ac
 | **Stairhead** | Top of the ancient stair, entering the Sagewind Flats |
 | **Cragfoot** | Base of the Viridian Ridge |
 
-Checkpoints are waystations in the full sense: destination-only nodes on the Obelisk Network (Section 2.11), and — as a **zone-wide pattern for all future zones** — the home of the zone's service NPCs (repair, buy, sell). Every zone gets consistent repair/vendor access, and checkpoint rooms are where it lives. Checkpoints let a returning player skip ahead to later content rather than re-walking outleveled territory.
+Checkpoints are waystations in the full sense: destination-only nodes on the Obelisk Network (Section 2.11), and — as a **zone-wide pattern for all future zones** — the home of the zone's service NPCs (repair, buy, sell — and, from v26.3, cleanse; Section 6.7) (v26.3, pending implementation). Every zone gets consistent repair/vendor access, and checkpoint rooms are where it lives. Checkpoints let a returning player skip ahead to later content rather than re-walking outleveled territory.
 
 #### Bestiary
 
@@ -473,7 +473,7 @@ The recurring signature players learn across every zone: see a Shard, you're saf
 
 #### Checkpoint Commerce
 
-The service NPCs at checkpoints (repair, buy, sell — the zone-wide pattern from Section 2.10) are **locals who migrated to the checkpoint because they recognized how much traffic it gets and want to make money there.** A Reedmere fisherman with a repair bench at Fordwatch; a mountain trader at Cragfoot. The obelisk provides safety and arrival; commerce follows foot traffic, exactly as it would in a real world. Zones keep their cultural identity, and the network keeps its magic unlittered. The locals don't understand the network — they just know travelers keep appearing near the floating sphere, and travelers have money.
+The service NPCs at checkpoints (repair, buy, sell, cleanse — the zone-wide pattern from Section 2.10) are **locals who migrated to the checkpoint because they recognized how much traffic it gets and want to make money there.** A Reedmere fisherman with a repair bench at Fordwatch; a mountain trader at Cragfoot. The obelisk provides safety and arrival; commerce follows foot traffic, exactly as it would in a real world. Zones keep their cultural identity, and the network keeps its magic unlittered. The locals don't understand the network — they just know travelers keep appearing near the floating sphere, and travelers have money.
 
 #### Travel Messaging
 

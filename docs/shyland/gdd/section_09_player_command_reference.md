@@ -18,12 +18,14 @@ Cell notation: footnote numbers listed left-to-right in argument order; listed =
 | | attune | 2 | v24.26 |
 | | buy | 11 4 · 10 | |
 | | cancel | 12 | v22 |
+| | cleanse | 4 · 10 | v26.3 |
 | | drop | 11 4 · 10 · 16 | |
 | | equip (eq) | 4 · 21 | |
 | | examine (ex) | 4 \| 5 \| 6 · 10 | |
 | | flee | 2 | |
 | | heal | 2 | v24.4 |
 | | home | 2 | v22 |
+| | inspect | 2 | v26.3 |
 | | loot | 3 \| 5 · 20 | |
 | | mc | 22 · 18 | v25.4 |
 | | pickup (p) | 7 4 · 10 · 13 | |
@@ -94,7 +96,7 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 
 #### The State-Gating Matrix (v22)
 
-- **In combat — allowed:** attack, flee, use (except durability-restore consumables — the Repair Kit refuses in the no-mending doctrine, gate keyed on the effect component, its own authored warn line; v24.12), heal (v24.4), examine, cancel, say, sudo, mc (v25.4), quit, all information commands (including `list`), all settings — and attune (v24.26: no gate needed structurally — every attunable room is a safe room, so an in-combat `attune` can only ever draw the nothing-here warn; Section 2.11). **Refused (warn, in voice):** buy, sell, repair, drop, pickup, loot (#29), equip (targeted forms only — bare `equip` is an information rendering and is allowed, per footnote 21; v24.7 — #195), unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
+- **In combat — allowed:** attack, flee, use (except durability-restore consumables — the Repair Kit refuses in the no-mending doctrine, gate keyed on the effect component, its own authored warn line; v24.12), heal (v24.4), examine, cancel, say, sudo, mc (v25.4), quit, all information commands (including `list`), all settings — and attune (v24.26: no gate needed structurally — every attunable room is a safe room, so an in-combat `attune` can only ever draw the nothing-here warn; Section 2.11). **Refused (warn, in voice):** buy, sell, repair, cleanse, inspect (v26.3 — Section 6.7), drop, pickup, loot (#29), equip (targeted forms only — bare `equip` is an information rendering and is allowed, per footnote 21; v24.7 — #195), unequip, home, travel, all movement — and **spend** (#131, blocked by later ruling with the first generic refusal `You can't do that while in combat.`; every other combat refusal is a per-command authored line).
 - **While dying — allowed:** use (restoratives only — durability-restore consumables refuse: nothing but healing while dying; v24.12), heal (v24.4) (self-rescue heal — deliberate design), cancel, say, sudo, mc (v25.4), quit, information, settings. Everything else refused (warn).
 - **Quit is allowed in both states, and combat continues after quit** — `CombatSession` is database state; no code path ends it on disconnect. The player can die logged out. Tab-closing and quitting are identical in cost, which is what makes the design honest rather than theater.
 - `cancel` is allowed in every state — the escape hatch is never locked.
@@ -102,7 +104,7 @@ Every response to a command belongs to exactly one layer, and the layer picks th
 
 #### Resolution Scope Pools
 
-buy → room vendor stock · sell → inventory excluding equipped (bound sellable — vendors are the designed sink) · drop → inventory excluding equipped and excluding bound (footnote 16) · pickup → room floor · equip → carried equippables (equippability = mechanical layer) · unequip → equipped only (inventory room = mechanical layer) · use → carried consumables, never vendor stock · repair → everything owned including equipped · **examine → the union**: inventory + equipped + floor + vendor stock + NPCs here + corpses + players here (the vendor-examine gap closed; players answer with their composite line) · attack → living NPCs in the room · loot → lootable corpses here · travel → revealed destinations the room's sender type offers (revealed spheres only at a shard; v24.26) · spend → the six stats · cancel → your running delayed actions. `attune` takes no noun — no pool (v24.26).
+buy → room vendor stock · sell → inventory excluding equipped (bound sellable — vendors are the designed sink) · drop → inventory excluding equipped and excluding bound (footnote 16) · pickup → room floor · equip → carried equippables (equippability = mechanical layer) · unequip → equipped only (inventory room = mechanical layer) · use → carried consumables, never vendor stock · repair → everything owned including equipped · cleanse → equipped only (v26.3 — the no-leak pool: an unequipped item misses identically whether latent-cursed or clean; Section 6.7) · **examine → the union**: inventory + equipped + floor + vendor stock + NPCs here + corpses + players here (the vendor-examine gap closed; players answer with their composite line) · attack → living NPCs in the room · loot → lootable corpses here · travel → revealed destinations the room's sender type offers (revealed spheres only at a shard; v24.26) · spend → the six stats · cancel → your running delayed actions. `attune` takes no noun — no pool (v24.26). `inspect` takes no noun either — the sweep covers everything carried (v26.3) (v26.3, pending implementation).
 
 Pool miss = warn. Same-segment ambiguity: **nearest wins** (self before room before vendor); ordinals and tab disambiguate.
 

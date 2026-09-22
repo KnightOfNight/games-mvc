@@ -160,7 +160,7 @@ All numbers are visible in the combat log. Verbose mode exposes the full calcula
 |**Unmoored**  |Eldritch effect; Acuity pushed violently away from baseline                                   |
 |**Focused**   |Acuity spiked high; single-target bonus, flanking blindness active                            |
 |**Scattered** |Acuity pushed low; awareness penalties, spell unreliability                                   |
-|**Cursed**    |Item-borne effect that springs on equip; ends once and cleans the item; cannot be removed voluntarily — Section 6.7 (v26.2)|
+|**Cursed**    |Item-borne effect that springs on equip; ends once and cleans the item; lifted only by an NPC cleanser, never a consumable — Section 6.7 (v26.2; cleansing v26.3 (v26.3, pending implementation))|
 
 **Effect system:** All status effects — whether from consumables, cursed items, or combat abilities — use a shared effect vocabulary (EffectDefinition and EffectInstance). Applying, ticking, and dispelling are the same mechanical operations whatever the source. The coherence is intentional.
 
