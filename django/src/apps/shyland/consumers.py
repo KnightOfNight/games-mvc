@@ -1976,22 +1976,28 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             # curse_info arrives pre-fetched (this builder runs in async
             # context, no ORM here); without it the generic row stands.
             if curse_info is not None:
-                name, remaining, curse_desc = curse_info
+                name, remaining, curse_desc, price_display = curse_info
                 lines.append(f'  Curse:      {name} ({remaining})')
                 if curse_desc:
                     lines.append(f'              {curse_desc}')
+                # v26.3 (#297): the cleansing price, shown once the
+                # curse is identified.
+                lines.append(f'  Cleansing:  {price_display}')
             else:
                 lines.append('  Curse:      This item carries a curse.')
 
         return lines
 
     @database_sync_to_async
-    def get_curse_examine_info(self, item):
+    def get_curse_examine_info(self, item, character):
         # v26.2 (#330): the examine reveal's data — (name, remaining,
-        # description) for the item's active curse, or None. Remaining is
-        # 'permanent' when the instance has only never-expiring
-        # components (#47's ruled vocabulary), else M:SS from the latest
-        # component expiry.
+        # description, price_display) for the item's active curse, or
+        # None. Remaining is 'permanent' when the instance has only
+        # never-expiring components (#47's ruled vocabulary), else M:SS
+        # from the latest component expiry. v26.3 (#297): price_display
+        # is the cleansing charge (cleanse_price × the item's Mk tier),
+        # tier-formatted here in DB context — format_amount reads the
+        # character's current_room.zone FK, never touch it async-side.
         instance = item.active_curse
         if instance is None:
             return None
@@ -2006,8 +2012,10 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
             remaining = f'{secs // 60}:{secs % 60:02d} remaining'
         else:
             remaining = 'permanent'
+        price_display = self.format_amount(
+            character, instance.definition.cleanse_price * item.mk_tier)
         return (instance.definition.name, remaining,
-                instance.definition.description)
+                instance.definition.description, price_display)
 
     async def cmd_examine(self, args):
         # v22 brief 2 (DD §8, #96): examine's pool is the union —
@@ -2042,7 +2050,8 @@ class SkylandConsumer(AsyncJsonWebsocketConsumer):
                 item.is_identified = True
                 curse_info = None
                 if item.is_cursed and item.curse_identified:
-                    curse_info = await self.get_curse_examine_info(item)
+                    curse_info = await self.get_curse_examine_info(
+                        item, self.character)
                 lines = self._format_identified_item_lines(
                     item, curse_info=curse_info)
             await self.output('\n'.join(lines), 'report')
